@@ -1,0 +1,13 @@
+work_package_id,title,depends_on,planned_phase,minimum_output,accountable_role,named_owner,estimated_person_days,p50_days,p90_days,required_gates,delivery_status,implementation_evidence_uri
+WP-01,Product/Governance,"F01,F02",Pre-MVP,Project Manifest and blocking ADR,Product+Governance,TBD,TBD,TBD,TBD,STD-CP1,NOT_IMPLEMENTED,
+WP-02,Go CI and tools,WP-01,MVP,"Go, CI, OAS parsing and build PoC",Engineering,TBD,TBD,TBD,TBD,STD-CP5,NOT_IMPLEMENTED,
+WP-03,Product access baseline,WP-02,MVP,"Product/Workspace ACL, audit",Platform+Security,TBD,TBD,TBD,TBD,STD-CP2;STD-CP3,NOT_IMPLEMENTED,
+WP-04,Contract capture,WP-03,MVP,"Source/ref digest, Revision, artifact store",Registry,TBD,TBD,TBD,TBD,STD-CP3,NOT_IMPLEMENTED,
+WP-05,Governance and review,WP-04,MVP,Lint/Diff/CheckRun/independent Review,Governance,TBD,TBD,TBD,TBD,STD-CP3,NOT_IMPLEMENTED,
+WP-06,Release and resilient publication,WP-05,MVP,"Immutable Release, Slot CAS, Block, Outbox",Publication+Security,TBD,TBD,TBD,TBD,STD-CP3;STD-CP5,NOT_IMPLEMENTED,
+WP-07,Internal Engineering Portal,WP-03;WP-06,MVP,Live workflow and approval SoD,UX+Engineering,TBD,TBD,TBD,TBD,STD-CP4,NOT_IMPLEMENTED,
+WP-08,CargoPai Developer Portal,WP-06;WP-07,MVP,Authorized docs and Block visibility,Developer Experience+Security,TBD,TBD,TBD,TBD,STD-CP4,NOT_IMPLEMENTED,
+WP-09,MVP integration and acceptance,WP-02..WP-08,MVP,Real E2/E3 security/resilience and AT tests,QA+Security+Operations,TBD,TBD,TBD,TBD,STD-CP3;STD-CP5,NOT_IMPLEMENTED,
+WP-10,V1 Consumer onboarding,WP-09,V1,Real IAM/Gateway sandbox first call and grants,Integration+DeveloperAccess,TBD,TBD,TBD,TBD,STD-CP3;STD-CP4;STD-CP5,NOT_IMPLEMENTED,
+WP-11,V1 contract extension,WP-09,V1,"AsyncAPI support, drift, announcements",Governance+DeveloperExperience,TBD,TBD,TBD,TBD,STD-CP3;STD-CP5,NOT_IMPLEMENTED,
+WP-12,Production and operations,WP-09;WP-10;WP-11 (as applicable),PRODUCTION,"DR, UAT, operations, approvals",Release+Operations,TBD,TBD,TBD,TBD,STD-CP5;STD-CP6,NOT_IMPLEMENTED,

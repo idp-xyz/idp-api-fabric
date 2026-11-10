@@ -1,0 +1,43 @@
+scenario_id,category,scenario,planned_stage,requirement_refs,accountable_role,required_evidence_level,execution_status,evidence_uri,actual_environment,notes
+EG-01,REGISTRY,拒绝来源 Digest 不一致的受控导入,MVP,FR-014;FR-018,Registry,E2,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-02,REGISTRY,外部 Ref 未批准时禁止联网解析,MVP,FR-016,Security,E2,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-03,REGISTRY,Schema 循环/炸弹不得耗尽宿主资源,MVP,FR-016,Security,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-04,REGISTRY,Reference closure 内容变化后旧审批失效,MVP,FR-020;FR-025,Governance,E2,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-05,REGISTRY,Release Blob 被覆盖/篡改需拒绝读取与发布,MVP,FR-031;FR-034,Registry,E2,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-06,POLICY,政策 Digest 变化后旧 CheckRun 不可复用,MVP,FR-023;FR-025,Governance,E2,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-07,POLICY,未经批准的 waiver 被拒绝,MVP,FR-024,Security,E2,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-08,POLICY,无法解析的规范版本标为 UNSUPPORTED 不发布,MVP,FR-020,Governance,E2,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-09,POLICY,Go DTO 的 OAS nullable 和 optional 语义一致,MVP,FR-021,Engineering,E2,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-10,POLICY,Breaking change 被正确分类与阻断,MVP,FR-023,Governance,E2,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-11,REVIEW,作者不能批准本人高风险变更,MVP,FR-026,Security,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-12,REVIEW,审批超时或撤销后旧 Decision 禁止发布,MVP,FR-027,Review,E2,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-13,RELEASE,两个发布者争同一 Slot 的 CAS 只允许一人成功,MVP,FR-033,Publication,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-14,RELEASE,错误 expected_generation 不得自动覆盖,MVP,FR-033,Publication,E2,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-15,RELEASE,同幂等键异负载拒绝且无重复生效,MVP,FR-033,Publication,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-16,RELEASE,DB 提交和 Outbox 审计强一致,MVP,FR-060;FR-061,Operations,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-17,RELEASE,对象已写而数据库失败后允许对账孤儿清理,MVP,FR-031;FR-060,Operations,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-18,RELEASE,数据库成功但 Artifact 不可读时禁止公布,MVP,FR-031;FR-032,Registry,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-19,REVOKE,AccessBlock 生效后私有文档所有读路径拒绝,MVP,FR-036;FR-052,Security,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-20,REVOKE,撤销和发布竞态不产生可见违规版本,MVP,FR-036,Publication,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-21,REVOKE,CDN 清理未知必须显示 UNKNOWN/AT_RISK,MVP,FR-036,Security,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-22,WORKER,Worker lease 过期后旧 fencing token 不得写入,MVP,FR-061,Operations,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-23,WORKER,重复事件消费不重复有效发布,MVP,FR-061,Operations,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-24,WORKER,Poison 任务有限重试并可人工隔离,MVP,FR-061,Operations,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-25,WORKER,投影落后时私有读取不能绕开主库授权,MVP,FR-052,Security,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-26,TENANCY,Parcel 主体不能访问 CargoPai 私有文档/搜索,MVP,FR-047;FR-052,Security,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-27,TENANCY,改产品时旧缓存/筛选/会话数据不得串产品,MVP,FR-040,Security/UX,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-28,TENANCY,直链 Blob 下载必须服务端重新授权,MVP,FR-052,Security,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-29,PORTAL,内部审核屏展示完整规则、摘要和拒绝原因,MVP,FR-042;FR-043,UX,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-30,PORTAL,外部门户公开/私有版本分离正确,MVP,FR-050;FR-052,UX/Security,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-31,PORTAL,手机端键盘导航、目录/横向表格可用,MVP,NFR-15,UX,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-32,INTEGRATION,V1 ConsumerApp/Grant 与 IAM Gateway 事实一致,V1,FR-053;FR-054,Integration,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-33,INTEGRATION,V1 首次沙箱调用具有真实 Gateway Trace,V1,FR-054,Integration,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-34,SUPPLY_CHAIN,CI 生成文件不可手改且可审计重建,MVP,NFR-16,Engineering,E2,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-35,SUPPLY_CHAIN,关键依赖扫描/签名/SBOM 与发布摘要关联,MVP,NFR-12,Security,E2,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-36,MIGRATION,Expand/Backfill/Verify/Contract 迁移具故障路径,MVP,NFR-14,Operations,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-37,RECOVERY,PITR 恢复后数据库与 Artifact 摘要一致,Before PROD,NFR-07;NFR-08,Operations,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-38,RECOVERY,恢复后 AccessBlock 继续阻断旧内容,Before PROD,FR-036,Security,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-39,CAPACITY,多产品热点 Slot/Outbox/搜索容量边界实测,Before PROD,NFR-03;NFR-04,Operations,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-40,TELEMETRY,指标/日志不包含令牌 Secret 和完整私有 Schema,MVP,NFR-10,Security,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-41,TELEMETRY,SLO 采集可区分公私门户与撤销指标,Before PROD,NFR-05,Operations,E3,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage
+EG-42,EVIDENCE,没有证据的测试不能转 PASS 且可追溯审核,MVP,NFR-18,Delivery,E2,NOT_RUN,,,Design-only scenario; to be executed F08 or implementation stage

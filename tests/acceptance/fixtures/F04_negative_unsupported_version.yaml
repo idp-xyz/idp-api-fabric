@@ -1,0 +1,3 @@
+openapi: 3.2.1
+info: {title: Unsupported version example, version: '1.0.0'}
+paths: {}

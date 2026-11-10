@@ -1,0 +1,13 @@
+openapi: 3.1.2
+info: {title: Duplicate operations, version: '1.0.0'}
+paths:
+  /v1/one:
+    get:
+      operationId: duplicatedOperation
+      security: [{exampleAuth: []}]
+      responses: {'200': {description: OK}}
+  /v1/two:
+    get:
+      operationId: duplicatedOperation
+      security: [{exampleAuth: []}]
+      responses: {'200': {description: OK}}

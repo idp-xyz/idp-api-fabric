@@ -1,0 +1,22 @@
+page_id,portal,page_name,planned_stage,primary_role,source_read_model,design_section,status
+IN-01,INTERNAL,Dashboard,MVP,Product Owner,Worklist/CheckRun,F06-A,MOCK/NOT_RUN
+IN-02,INTERNAL,Product Workspace Switcher,MVP,Member,Product/Membership,F06-A,MOCK/NOT_RUN
+IN-03,INTERNAL,API Catalog,MVP,API Author,APIAsset/Catalog,F06-A,MOCK/NOT_RUN
+IN-04,INTERNAL,Revision Detail,MVP,API Author,Revision/Release,F06-A,MOCK/NOT_RUN
+IN-05,INTERNAL,Governance Results,MVP,Reviewer,CheckRun/Policy,F06-A,MOCK/NOT_RUN
+IN-06,INTERNAL,Review Approval,MVP,Reviewer,ReviewDecision,F06-A,MOCK/NOT_RUN
+IN-07,INTERNAL,Publication Recovery,MVP,Release Operator,PublicationSlot/AccessBlock,F06-A,MOCK/NOT_RUN
+IN-08,INTERNAL,Audit Timeline,MVP,Auditor,AuditEvent,F06-A,MOCK/NOT_RUN
+IN-09,INTERNAL,Membership Admin,V1,Platform Admin,Membership/Role,F06-A,MOCK/NOT_RUN
+IN-10,INTERNAL,Integration Jobs,V1,Operator,Job/Reconciliation,F06-A,MOCK/NOT_RUN
+IN-11,INTERNAL,Governance Analytics,V1.x,Product Owner,Impact/Metrics,F06-A,MOCK/NOT_RUN
+EX-01,EXTERNAL,Home Discover,MVP,Anonymous Developer,Public Content,F06-B,MOCK/NOT_RUN
+EX-02,EXTERNAL,Quickstart,MVP,Anonymous Developer,Guide Release,F06-B,MOCK/NOT_RUN
+EX-03,EXTERNAL,API Reference,MVP,Developer,Publication Projection,F06-B,MOCK/NOT_RUN
+EX-04,EXTERNAL,Version Access,MVP,Developer,PublicationSlot/AccessBlock,F06-B,MOCK/NOT_RUN
+EX-05,EXTERNAL,SDK Webhook Guide,V1,Developer,Guide Catalog,F06-B,MOCK/NOT_RUN
+EX-06,EXTERNAL,Developer Organization,V1,Partner Developer,DeveloperOrg,F06-B,MOCK/NOT_RUN
+EX-07,EXTERNAL,Applications Grants,V1,Partner Developer,ConsumerApplication/Grant,F06-B,MOCK/NOT_RUN
+EX-08,EXTERNAL,Sandbox Explorer,V1,Partner Developer,IAM/Gateway Trace,F06-B,MOCK/NOT_RUN
+EX-09,EXTERNAL,Changelog Support,V1,Developer,Announcement/Support,F06-B,MOCK/NOT_RUN
+SH-01,Shared Components Design System,MVP/V1,All,Design Tokens / Components,F06-C,STATIC_DESIGN

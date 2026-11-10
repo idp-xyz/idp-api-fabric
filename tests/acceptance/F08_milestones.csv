@@ -1,0 +1,11 @@
+milestone_id,name,work_packages,planned_phase,exit_condition,required_gates,accountable_role,planned_date,actual_date,decision_status,approval_evidence_uri
+MS-00,Adoption and decisions,WP-01,Pre-MVP,Approved Manifest/owners/ADRs,STD-CP1,TBD,TBD,,NOT_RUN,
+MS-01,Engineering foundation,WP-02,MVP,PoC and reproducible build,STD-CP5,TBD,TBD,,NOT_RUN,
+MS-02,Product and identity baseline,WP-03,MVP,Real negative ACL E2,STD-CP2;STD-CP3,TBD,TBD,,NOT_RUN,
+MS-03,Contract and policy,WP-04;WP-05,MVP,Actual digest/revision/review tests,STD-CP3,TBD,TBD,,NOT_RUN,
+MS-04,Publication and recovery,WP-06,MVP,CAS/Outbox/Block E3,STD-CP3;STD-CP5,TBD,TBD,,NOT_RUN,
+MS-05,Internal portal user journey,WP-07,MVP,Authenticated review journeys,STD-CP4,TBD,TBD,,NOT_RUN,
+MS-06,External docs MVP,WP-08;WP-09,MVP,CargoPai read+deny+rollback E3,STD-CP4;STD-CP5,TBD,TBD,,NOT_RUN,
+MS-07,V1 Developer onboarding,WP-10,V1,Real Sandbox first call E3,STD-CP3;STD-CP4,TBD,TBD,,NOT_RUN,
+MS-08,V1 extensions,WP-11,V1,AsyncAPI + contracts verified,STD-CP3;STD-CP5,TBD,TBD,,NOT_RUN,
+MS-09,Production handover,WP-12,PRODUCTION,Authorized UAT/DR/go-no-go E3/E4,STD-CP1;STD-CP2;STD-CP3;STD-CP4;STD-CP5;STD-CP6,TBD,TBD,,NOT_RUN,

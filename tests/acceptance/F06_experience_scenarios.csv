@@ -1,0 +1,33 @@
+scenario_id,page_id,scenario,focus,execution_status,acceptance_owner,evidence_note
+UX-01,IN-01,加载待办时缺少数据,EMPTY,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-02,IN-02,切换 CargoPai → Parcel 后无跨产品旧数据,SCOPE,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-03,IN-03,Catalog 关键词筛选有效,FILTER,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-04,IN-03,过滤为空时显示空态,EMPTY,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-05,IN-04,Revision 只读历史摘要,VERSION,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-06,IN-05,Lint 阻断原因可解释,BLOCK,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-07,IN-05,差异变更标记不依赖颜色,A11Y,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-08,IN-06,自己提交的高风险审核被拒绝,SOD,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-09,IN-06,策略变更导致审核失效,STALE,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-10,IN-07,CAS 发布竞争显示冲突并要求刷新,CAS,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-11,IN-07,紧急撤销先阻断公开读取,REVOKE,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-12,IN-07,边缘传播未知展示 UNKNOWN / AT_RISK,UNKNOWN,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-13,IN-07,回退目标可追溯但非修改 Release,ROLLBACK,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-14,IN-08,审计可查但不可编辑,AUDIT,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-15,IN-09,无权限看不到成员私有信息,FORBIDDEN,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-16,IN-10,外部依赖失败显示诊断不报健康,ERROR,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-17,EX-01,外部门户不出现其他产品名称,BRAND,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-18,EX-02,Quickstart 路径连贯可达,JOURNEY,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-19,EX-03,API Reference 版本与代码切换同步,VERSION,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-20,EX-03,复制示例有可访问反馈,COPY,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-21,EX-03,受限版本不泄露 API 元数据,FORBIDDEN,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-22,EX-04,撤销版本不可访问,BLOCK,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-23,EX-05,Webhook 签名与重试指南清楚,CONTENT,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-24,EX-06,组织邀请尚未实现时标明 V1,PHASE,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-25,EX-07,Application / Grant 未连接真实 IAM,PHASE,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-26,EX-08,Sandbox 页面明确 LOCAL_MOCK,MOCK,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-27,EX-08,禁止任意目标 URL / 真实请求,SSRF,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-28,EX-09,Support/Status 有信息来源声明,SOURCE,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-29,SH-01,键盘 Tab/Escape 和焦点可用,KEYBOARD,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-30,SH-01,移动端 375px 无整页横向溢出,RESPONSIVE,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-31,SH-01,桌面/平板字体可读,RESPONSIVE,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08
+UX-32,SH-01,HTML 语义/色彩符合待验证规则,A11Y,NOT_RUN,TBD,No runtime evidence; to be executed F07/F08

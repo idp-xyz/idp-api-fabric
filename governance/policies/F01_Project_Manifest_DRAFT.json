@@ -1,0 +1,148 @@
+{
+  "document_type": "F01_PROJECT_MANIFEST_REVIEW_INPUT_NOT_OFFICIAL",
+  "note": "设计输入，仅供 F02/F05/F08 进一步核验。未按上位规范 Schema 或语义检查证明有效，不允许用于 STD-CP1 放行。",
+  "standard_id": "IDP-SCG-STD-001",
+  "standard_version": "1.0.0",
+  "reference_standard_sha256": "baa45d7210b71ccf5900afea1a3237f3f4f64f2d0a22ffb69bdb521b91224338",
+  "project_id": "idp-api-fabric",
+  "scope": {
+    "description": "跨供应链产品的 API 契约、治理、资产目录、双门户和接入体验；不是供应链业务执行系统",
+    "legal_entities": [],
+    "jurisdictions": [],
+    "exclusions": [
+      "不管理实物、库存账、运力与运输执行事实",
+      "不替代 IAM、API Gateway、消息代理",
+      "AI/MCP 执行工具治理在首期范围外"
+    ]
+  },
+  "risk_level": null,
+  "capabilities": {
+    "physical_goods": false,
+    "traceability": false,
+    "inventory": false,
+    "transport": false,
+    "trade_documents": false,
+    "commercial_fees": false,
+    "regulatory": false,
+    "special_goods": false,
+    "optimization": false,
+    "ai": false,
+    "integrations": true,
+    "user_interface": true,
+    "production_service": null,
+    "multi_tenant": true
+  },
+  "profiles_under_evaluation": [
+    {
+      "id": "CORE",
+      "version": "1.0.0",
+      "status": "applicable"
+    },
+    {
+      "id": "TECH",
+      "version": "1.0.0",
+      "status": "applicable"
+    },
+    {
+      "id": "GO",
+      "version": "1.0.0",
+      "status": "expected_if_go_confirmed"
+    },
+    {
+      "id": "BENTO_GO",
+      "version": "1.0.0",
+      "status": "undetermined_if_used"
+    }
+  ],
+  "technology": {
+    "language": "go",
+    "status": "proposed_F02_F07_to_confirm",
+    "toolchain": null,
+    "components": []
+  },
+  "owners": {
+    "GOV": null,
+    "DOMAIN": null,
+    "ARCH": null,
+    "DATA": null,
+    "SEC": null,
+    "ENG": null,
+    "OPS": null,
+    "UX": null,
+    "FIN": null
+  },
+  "project_overlay": {
+    "reference": "docs/F01_Product_Requirements.md",
+    "status": "design_only"
+  },
+  "quality_targets_reference": null,
+  "adoption": {
+    "status": "DRAFT_NOT_APPROVED",
+    "approved_by": null,
+    "approved_at": null,
+    "approval_reference": null
+  },
+  "gate_records": {
+    "STD-CP1": "NOT_RUN",
+    "STD-CP2": "NOT_RUN",
+    "STD-CP3": "NOT_RUN",
+    "STD-CP4": "NOT_RUN",
+    "STD-CP5": "NOT_RUN",
+    "STD-CP6": "NOT_RUN"
+  },
+  "approval_prerequisites": {
+    "risk_rating": {
+      "value": null,
+      "assessor": null,
+      "decision_evidence_uri": null,
+      "status": "OPEN"
+    },
+    "scope_and_residency": {
+      "legal_entity": null,
+      "jurisdiction_evidence_uri": null,
+      "data_residency_decision": null,
+      "status": "OPEN"
+    },
+    "named_responsibility": {
+      "required_roles": [
+        "GOV",
+        "DOMAIN",
+        "ARCH",
+        "DATA",
+        "SEC",
+        "ENG",
+        "OPS",
+        "UX",
+        "FIN"
+      ],
+      "status": "OPEN"
+    },
+    "profile_rule_applicability": {
+      "ruleset_reference": null,
+      "approved_profile_ids": [],
+      "waivers_evidence_uri": null,
+      "status": "OPEN"
+    },
+    "architecture_ADR_0001_0007": {
+      "approval_evidence_uris": [],
+      "status": "OPEN"
+    },
+    "technology_PoC": {
+      "go_toolchain_evidence_uri": null,
+      "contract_compatibility_evidence_uri": null,
+      "status": "NOT_RUN"
+    },
+    "production_intent": {
+      "production_service": null,
+      "SLO_RPO_RTO_approved_reference": null,
+      "status": "OPEN"
+    },
+    "approval_separation": {
+      "reviewer": null,
+      "approver": null,
+      "approval_timestamp": null,
+      "status": "OPEN"
+    }
+  },
+  "freeze_condition": "BLOCKED_PENDING_NAMED_ADOPTION_AND_RELEVANT_ADR_APPROVALS"
+}

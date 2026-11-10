@@ -1,0 +1,36 @@
+rule_id,principal_role,resource,action,channel,allow_if,pep,default_fail,status,runtime_verification
+AC-01,internal_author,ContractRevision,revision.create,internal,workspace.member & product.same & action.role,control-plane,DENY,PROPOSED,NOT_RUN
+AC-02,internal_author,ContractRevision,revision.read,internal,workspace.member & product.same & action.role,control-plane,DENY,PROPOSED,NOT_RUN
+AC-03,internal_reviewer,ReviewDecision,release.approve,internal,review.assignment & independent.reviewer & digest.valid & policy.current,control-plane,DENY,PROPOSED,NOT_RUN
+AC-04,internal_publisher,PublicationSlot,publication.activate,internal,role.publisher & product.same & target.scope & decision.valid & block.absent & cas.match,control-plane,DENY,PROPOSED,NOT_RUN
+AC-05,internal_publisher,PublicationSlot,publication.withdraw,internal,role.publisher & product.same & slot.scope & cas.match,control-plane,DENY,PROPOSED,NOT_RUN
+AC-06,security_admin,AccessBlock,security.block,internal,role.security & target.scope & incident.logged,control-plane,DENY,PROPOSED,NOT_RUN
+AC-07,security_reviewer,AccessBlock,security.unblock,internal,role.security_review & recovery.approved & safety.rechecked,control-plane,DENY,PROPOSED,NOT_RUN
+AC-08,platform_admin,Product,product.register,internal,role.platform_admin & admin.scope,control-plane,DENY,PROPOSED,NOT_RUN
+AC-09,product_owner,Workspace,workspace.manage,internal,role.product_owner & product.same,control-plane,DENY,PROPOSED,NOT_RUN
+AC-10,product_owner,Member,member.grant,internal,role.product_owner & product.same & membership.valid,control-plane,DENY,PROPOSED,NOT_RUN
+AC-11,workspace_maintainer,APIAsset,asset.create,internal,workspace.member & product.same & role.maintainer,control-plane,DENY,PROPOSED,NOT_RUN
+AC-12,workspace_maintainer,APIAsset,asset.update,internal,workspace.member & product.same & role.maintainer,control-plane,DENY,PROPOSED,NOT_RUN
+AC-13,internal_reader,APIAsset,asset.search,internal,read.scope & product.same & row.filtered,catalog-PEP,DENY_OR_404,PROPOSED,NOT_RUN
+AC-14,internal_reader,APIAsset,asset.read,internal,read.scope & product.same & object.rechecked,control-plane,DENY_OR_404,PROPOSED,NOT_RUN
+AC-15,internal_reader,ContractRelease,contract.history,internal,release.scope & product.same & object.rechecked,registry-PEP,DENY_OR_404,PROPOSED,NOT_RUN
+AC-16,internal_reader,ContractRelease,contract.download,internal,release.scope & product.same & accessblock.absent,artifact-gateway,DENY_OR_404,PROPOSED,NOT_RUN
+AC-17,external_anonymous,PortalDocument,public.read,public,slot.public & release.published & block.absent & security.approved,portal-origin,DENY_OR_404,PROPOSED,NOT_RUN
+AC-18,external_developer,PortalDocument,partner.read,partner,developerorg.member & grant.active & product.same & audience.env.match & block.absent,portal-BFF,DENY_OR_404,PROPOSED,NOT_RUN
+AC-19,external_developer,APIAsset,partner.search,partner,developerorg.member & grant.active & product.same & row.filtered,catalog-PEP,DENY_OR_404,PROPOSED,NOT_RUN
+AC-20,external_developer,ContractRelease,partner.download,partner,developerorg.member & grant.active & release.visible & block.absent,artifact-gateway,DENY_OR_404,PROPOSED,NOT_RUN
+AC-21,external_developer,ConsumerApplication,application.read,partner,developerorg.member & application.owner_same & product.same,developer-access-PEP,DENY_OR_404,PROPOSED,NOT_RUN
+AC-22,external_org_admin,ConsumerApplication,application.register,partner,developerorg.admin & grant.policy & product.same,developer-access-PEP,DENY,PROPOSED,NOT_RUN
+AC-23,external_org_admin,AccessGrant,access.request,partner,developerorg.admin & product.entitled & audience.env.match,developer-access-PEP,DENY,PROPOSED,NOT_RUN
+AC-24,external_org_admin,Member,developer.member.manage,partner,developerorg.admin & org.same,developer-access-PEP,DENY,PROPOSED,NOT_RUN
+AC-25,explorer_user,ExplorerRequest,explorer.execute,sandbox,grant.active & product.same & endpoint.allowlisted & sandbox.mode & quota.ok,explorer-admission,DENY,PROPOSED,NOT_RUN
+AC-26,ci_service,ContractRevision,ci.revision.submit,service,token.audience & service.scope & source.allowed & product.same,control-plane,DENY,PROPOSED,NOT_RUN
+AC-27,ci_service,CheckRun,ci.check.read,service,token.audience & service.scope & product.same,governance-PEP,DENY,PROPOSED,NOT_RUN
+AC-28,worker,ImportJob,job.execute,service,workload.identity & lease.valid & job.scope & egress.restricted,worker-admission,DENY,PROPOSED,NOT_RUN
+AC-29,internal_auditor,AuditRecord,audit.search,internal,auditor.scope & product.allowed & fields.minimized,audit-PEP,DENY,PROPOSED,NOT_RUN
+AC-30,auditor_exporter,AuditRecord,audit.export,internal,role.audit_export & purpose.approved & scope.finite & stepup.valid,audit-export-PEP,DENY,PROPOSED,NOT_RUN
+AC-31,platform_operator,Connector,connector.status.read,internal,operator.scope & secrets.redacted,connector-PEP,DENY,PROPOSED,NOT_RUN
+AC-32,connector_admin,Connector,connector.rotate,internal,role.connector_admin & stepup.valid & purpose.approved,connector-PEP,DENY,PROPOSED,NOT_RUN
+AC-33,internal_reader,SearchIndex,search.raw_read,internal,never_allow_direct_index,search-gateway,DENY,PROPOSED,NOT_RUN
+AC-34,external_developer,ObjectStore,blob.direct_read,partner,never_allow_long_lived_unsigned_url,artifact-gateway,DENY,PROPOSED,NOT_RUN
+AC-35,product_owner,ReviewDecision,review.self_approve,internal,never_allow_self_approval,control-plane,DENY,PROPOSED,NOT_RUN

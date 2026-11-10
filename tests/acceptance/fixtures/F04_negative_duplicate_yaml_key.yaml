@@ -1,0 +1,6 @@
+openapi: 3.1.2
+info:
+  title: Duplicate keys
+  title: Hidden overwrite
+  version: '1.0.0'
+paths: {}

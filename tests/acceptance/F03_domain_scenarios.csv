@@ -1,0 +1,19 @@
+﻿scenario_id,expected_observable_result,upstream_references,execution_status
+DM-01,CargoPai/Parcel 可以登记同名 Asset，身份、归属分开,FR-001/007、AR-01,NOT_RUN
+DM-02,同 Product 重复 asset_key 被拒绝，改名不影响稳定 ID,FR-007、AI-01,NOT_RUN
+DM-03,修改 Git commit 内容不会改写既有 Revision；新输入须重审,FR-013/016、AR-03,NOT_RUN
+DM-04,策略和受众变化时旧批准不可被滥用,FR-026/027、AI-02,NOT_RUN
+DM-05,不可读/摘要不匹配的 Artifact 不可成为 READY Release,FR-017、AR-05,NOT_RUN
+DM-06,同 Slot 并发 CAS 只允许一个生效版本,FR-033/036、AR-04,NOT_RUN
+DM-07,对象写成但 DB 失败不发生公开，可回收孤儿对象,FR-017/064、AR-05,NOT_RUN
+DM-08,READY 制品运行时缺失时拒绝正常发布并告警,FR-017/035、AI-05,NOT_RUN
+DM-09,Worker 重投不引起重复生效，lease 旧主不得提交,FR-061/064、AR-07,NOT_RUN
+DM-10,索引滞后/损坏不能使已撤销私有契约外泄,FR-008/063、AR-08,NOT_RUN
+DM-11,紧急撤销在所有受控读路径执行 deny，并报告未验证传播,FR-034/036、AR-06,NOT_RUN
+DM-12,从备份恢复后 Pointer/Digest/Deny 可对账,FR-066、AR-10,NOT_RUN
+DM-13,Grant 撤销/到期后私有文档不可继续访问,FR-049/053、AI-03,NOT_RUN
+DM-14,暂停 Product/Workspace 后无新的不当创建或发布,FR-006/063、AI-01,NOT_RUN
+DM-15,外部 IAM/Git 不可达时不报告虚假 PASS/授权,FR-059/060、AI-06,NOT_RUN
+DM-16,合规删除与审计保留保持可追溯且按策略最小化个人信息,FR-062/068、NFR-17,NOT_RUN
+DM-17,同一门户同时展示 Shipment 和 Tracking API，不互相覆盖版本,FR-009/035/047、AI-04,NOT_RUN
+DM-18,MVP 文档访问与 V1 实际沙箱调用严格区分，不能假报真实调用成功,FR-048/051–053、AI-07,NOT_RUN

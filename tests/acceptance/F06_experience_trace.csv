@@ -1,0 +1,90 @@
+requirement_id,coverage_class,page_refs,user_roles,next_documents,planned_stage,verification_status,evidence_note
+FR-001,SUPPORTING_UX,IN-02;IN-09,Admin,F02;F03;F05;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-002,SUPPORTING_UX,IN-02;IN-09,Admin,F02;F03;F05;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-003,SUPPORTING_UX,IN-02;IN-09,Admin,F02;F03;F05;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-004,SUPPORTING_UX,IN-02;IN-09,Admin,F02;F03;F05;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-005,SUPPORTING_UX,IN-02;IN-09,Admin,F02;F03;F05;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-006,SUPPORTING_UX,IN-02;IN-09,Admin,F02;F03;F05;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-007,DIRECT_UX,IN-03;IN-04,API Author;Owner,F03;F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-008,DIRECT_UX,IN-03;IN-04,API Author;Owner,F03;F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-009,DIRECT_UX,IN-03;IN-04,API Author;Owner,F03;F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-010,DIRECT_UX,IN-03;IN-04,API Author;Owner,F03;F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-011,DIRECT_UX,IN-03;IN-04,API Author;Owner,F03;F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-012,DIRECT_UX,IN-03;IN-04,API Author;Owner,F03;F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-013,SUPPORTING_UX,IN-04;EX-03,API Author;Developer,F04;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-014,SUPPORTING_UX,IN-04;EX-03,API Author;Developer,F04;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-015,SUPPORTING_UX,IN-04;EX-03,API Author;Developer,F04;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-016,SUPPORTING_UX,IN-04;EX-03,API Author;Developer,F04;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-017,SUPPORTING_UX,IN-04;EX-03,API Author;Developer,F04;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-018,SUPPORTING_UX,IN-04;EX-03,API Author;Developer,F04;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-019,SUPPORTING_UX,IN-04;EX-03,API Author;Developer,F04;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-020,SUPPORTING_UX,IN-04;EX-03,API Author;Developer,F04;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-021,SUPPORTING_UX,IN-04;EX-03,API Author;Developer,F04;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-022,SUPPORTING_UX,IN-04;EX-03,API Author;Developer,F04;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-023,DIRECT_UX,IN-05;IN-06,Reviewer,F04;F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-024,DIRECT_UX,IN-05;IN-06,Reviewer,F04;F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-025,DIRECT_UX,IN-05;IN-06,Reviewer,F04;F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-026,DIRECT_UX,IN-05;IN-06,Reviewer,F04;F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-027,DIRECT_UX,IN-05;IN-06,Reviewer,F04;F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-028,DIRECT_UX,IN-05;IN-06,Reviewer,F04;F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-029,DIRECT_UX,IN-05;IN-06,Reviewer,F04;F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-030,DIRECT_UX,IN-05;IN-06,Reviewer,F04;F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-031,DIRECT_UX,IN-07;EX-04,Release Operator;Developer,F03;F04;F05;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-032,DIRECT_UX,IN-07;EX-04,Release Operator;Developer,F03;F04;F05;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-033,DIRECT_UX,IN-07;EX-04,Release Operator;Developer,F03;F04;F05;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-034,DIRECT_UX,IN-07;EX-04,Release Operator;Developer,F03;F04;F05;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-035,DIRECT_UX,IN-07;EX-04,Release Operator;Developer,F03;F04;F05;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-036,DIRECT_UX,IN-07;EX-04,Release Operator;Developer,F03;F04;F05;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-037,DIRECT_UX,IN-07;EX-04,Release Operator;Developer,F03;F04;F05;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-038,DIRECT_UX,IN-07;EX-04,Release Operator;Developer,F03;F04;F05;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-039,DIRECT_UX,IN-07;EX-04,Release Operator;Developer,F03;F04;F05;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-040,DIRECT_UX,IN-01;IN-03;IN-08,Internal,F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-041,DIRECT_UX,IN-01;IN-03;IN-08,Internal,F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-042,DIRECT_UX,IN-01;IN-03;IN-08,Internal,F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-043,DIRECT_UX,IN-01;IN-03;IN-08,Internal,F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-044,DIRECT_UX,IN-01;IN-03;IN-08,Internal,F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-045,DIRECT_UX,IN-01;IN-03;IN-08,Internal,F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-046,DIRECT_UX,IN-01;IN-03;IN-08,Internal,F07;F08,MVP/V1.x,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-047,DIRECT_UX,EX-01;EX-02;EX-03;EX-04;EX-08,Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-048,DIRECT_UX,EX-01;EX-02;EX-03;EX-04;EX-08,Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-049,DIRECT_UX,EX-01;EX-02;EX-03;EX-04;EX-08,Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-050,DIRECT_UX,EX-01;EX-02;EX-03;EX-04;EX-08,Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-051,DIRECT_UX,EX-01;EX-02;EX-03;EX-04;EX-08,Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-052,DIRECT_UX,EX-01;EX-02;EX-03;EX-04;EX-08,Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-053,DIRECT_UX,EX-01;EX-02;EX-03;EX-04;EX-08,Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-054,DIRECT_UX,EX-01;EX-02;EX-03;EX-04;EX-08,Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-055,DIRECT_UX,EX-01;EX-02;EX-03;EX-04;EX-08,Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-056,SUPPORTING_UX,IN-10;IN-05,Operator,F04;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-057,SUPPORTING_UX,IN-10;IN-05,Operator,F04;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-058,SUPPORTING_UX,IN-10;IN-05,Operator,F04;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-059,SUPPORTING_UX,IN-10;IN-05,Operator,F04;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-060,SUPPORTING_UX,IN-10;IN-05,Operator,F04;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-061,SUPPORTING_UX,IN-10;IN-05,Operator,F04;F07,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-062,SUPPORTING_UX,IN-08;IN-10,Operator;Auditor,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-063,SUPPORTING_UX,IN-08;IN-10,Operator;Auditor,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-064,SUPPORTING_UX,IN-08;IN-10,Operator;Auditor,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-065,SUPPORTING_UX,IN-08;IN-10,Operator;Auditor,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-066,SUPPORTING_UX,IN-08;IN-10,Operator;Auditor,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-067,SUPPORTING_UX,IN-08;IN-10,Operator;Auditor,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-068,SUPPORTING_UX,IN-08;IN-10,Operator;Auditor,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-069,FUTURE_STAGE,SH-01,Agent Designer,F07;F08,V2,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-070,FUTURE_STAGE,SH-01,Agent Designer,F07;F08,V2,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+FR-071,FUTURE_STAGE,SH-01,Agent Designer,F07;F08,V2,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-01,SUPPORTING_UX,IN-08;EX-04,Auditor;Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-02,SUPPORTING_UX,IN-08;EX-04,Auditor;Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-03,SUPPORTING_UX,IN-08;EX-04,Auditor;Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-04,SUPPORTING_UX,IN-08;EX-04,Auditor;Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-05,SUPPORTING_UX,IN-08;EX-04,Auditor;Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-06,DIRECT_UX,SH-01;IN-01;EX-03,All,F06-C;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-07,DIRECT_UX,SH-01;IN-01;EX-03,All,F06-C;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-08,DIRECT_UX,SH-01;IN-01;EX-03,All,F06-C;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-09,SUPPORTING_UX,IN-08;EX-04,Auditor;Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-10,SUPPORTING_UX,IN-08;EX-04,Auditor;Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-11,DIRECT_UX,SH-01;IN-01;EX-03,All,F06-C;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-12,SUPPORTING_UX,SH-01;IN-01;EX-03,All,F06-C;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-13,SUPPORTING_UX,SH-01;IN-01;EX-03,All,F06-C;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-14,SUPPORTING_UX,SH-01;IN-01;EX-03,All,F06-C;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-15,SUPPORTING_UX,SH-01;IN-01;EX-03,All,F06-C;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-16,SUPPORTING_UX,IN-08;EX-04,Auditor;Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-17,SUPPORTING_UX,IN-08;EX-04,Auditor;Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK
+NFR-18,SUPPORTING_UX,IN-08;EX-04,Auditor;Developer,F05;F07;F08,MVP/V1,NOT_RUN,Design mapping only; prototype is LOCAL_MOCK

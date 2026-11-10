@@ -1,0 +1,55 @@
+asyncapi: '3.1.0'
+id: urn:idp:fabric:publication-consumer:design-example
+info:
+  title: Fabric Publication Consumer Events (DESIGN_EXAMPLE)
+  version: 1.0.0
+  description: >-
+    Illustrative AsyncAPI describing a consuming application. It receives
+    publication integration events; no actual broker topic is provisioned.
+servers:
+  exampleBroker:
+    host: broker.example.org:9092
+    protocol: kafka
+    description: Illustrative, non-operational broker
+channels:
+  publicationChanges:
+    address: idp.fabric.publication.v1
+    description: Integration events after authoritative publication actions
+    messages:
+      publicationActivated:
+        $ref: '#/components/messages/PublicationActivated'
+operations:
+  observePublication:
+    action: receive
+    channel:
+      $ref: '#/channels/publicationChanges'
+    messages:
+      - $ref: '#/channels/publicationChanges/messages/publicationActivated'
+components:
+  messages:
+    PublicationActivated:
+      name: PublicationActivated
+      title: Publication activated (design example)
+      contentType: application/json
+      headers:
+        type: object
+        additionalProperties: false
+        required: [event_id, event_type, event_version]
+        properties:
+          event_id: {type: string, minLength: 1}
+          event_type: {type: string, const: PublicationActivated}
+          event_version: {type: string, const: '1.0'}
+      payload:
+        type: object
+        additionalProperties: false
+        required: [event_id, occurred_at, product_id, target_id, slot_id, generation, release_id]
+        properties:
+          event_id: {type: string}
+          occurred_at: {type: string, format: date-time}
+          correlation_id: {type: string}
+          producer: {type: string, const: idp-api-fabric}
+          product_id: {type: string}
+          target_id: {type: string}
+          slot_id: {type: string}
+          generation: {type: integer, minimum: 0}
+          release_id: {type: string}

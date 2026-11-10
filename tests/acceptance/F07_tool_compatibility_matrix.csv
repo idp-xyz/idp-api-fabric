@@ -1,0 +1,16 @@
+capability_id,tool_or_subsystem,required_features,planned_stage,candidate_version,test_environment,execution_status,support_level,evidence_uri,notes
+TC-01,OAS31 parser,OpenAPI 3.1.2 parse and validate schema/ref closure,MVP,TBD,TBD,NOT_RUN,UNVERIFIED,,Published product capability cannot be claimed until PoC and approval
+TC-02,OAS31 Go generator,"required/null/union/oneOf/const, errors and headers",MVP,TBD,TBD,NOT_RUN,UNVERIFIED,,Published product capability cannot be claimed until PoC and approval
+TC-03,OAS31 diff,Breaking/Risky/Compatible/Unknown and semantically risky changes,MVP,TBD,TBD,NOT_RUN,UNVERIFIED,,Published product capability cannot be claimed until PoC and approval
+TC-04,OAS31 renderer,"reference, sanitization, exposed private data, local links",MVP,TBD,TBD,NOT_RUN,UNVERIFIED,,Published product capability cannot be claimed until PoC and approval
+TC-05,OAS32 parser,OpenAPI 3.2.1 roundtrip and feature preservation,V1 optional,TBD,TBD,NOT_RUN,UNVERIFIED,,Published product capability cannot be claimed until PoC and approval
+TC-06,AsyncAPI31 parser,channels/operations/messages/schema and bindings,V1,TBD,TBD,NOT_RUN,UNVERIFIED,,Published product capability cannot be claimed until PoC and approval
+TC-07,AsyncAPI31 renderer,operation direction and message examples,V1,TBD,TBD,NOT_RUN,UNVERIFIED,,Published product capability cannot be claimed until PoC and approval
+TC-08,JSON Schema,2020-12 format and annotation/validation distinctions,MVP,TBD,TBD,NOT_RUN,UNVERIFIED,,Published product capability cannot be claimed until PoC and approval
+TC-09,Go toolchain,"Go/version, go fmt/vet/test/race/fuzz, generator reproducibility",MVP,TBD,TBD,NOT_RUN,UNVERIFIED,,Published product capability cannot be claimed until PoC and approval
+TC-10,PostgreSQL,"CAS, idempotency, audit/outbox transaction, restore",MVP,TBD,TBD,NOT_RUN,UNVERIFIED,,Published product capability cannot be claimed until PoC and approval
+TC-11,Object Store,"read-after-write, digest, immutability, failure/retention",MVP,TBD,TBD,NOT_RUN,UNVERIFIED,,Published product capability cannot be claimed until PoC and approval
+TC-12,IAM Gateway,"OIDC claims, client credentials, grant expiry, revoke",MVP/V1,TBD,TBD,NOT_RUN,UNVERIFIED,,Published product capability cannot be claimed until PoC and approval
+TC-13,Portal Browser,"desktop/tablet/mobile, keyboard, SR, session and ACL",MVP/V1,TBD,TBD,NOT_RUN,UNVERIFIED,,Published product capability cannot be claimed until PoC and approval
+TC-14,CDN Edge,public cache invalidation/revocation propagation and receipts,Before PROD,TBD,TBD,NOT_RUN,UNVERIFIED,,Published product capability cannot be claimed until PoC and approval
+TC-15,OpenTelemetry Go,"trace/metrics/log signal support, PII sanitization",MVP,TBD,TBD,NOT_RUN,UNVERIFIED,,Published product capability cannot be claimed until PoC and approval

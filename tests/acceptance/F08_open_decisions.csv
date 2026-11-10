@@ -1,0 +1,11 @@
+decision_id,subject,risk_priority_candidate,accountable_role,named_owner,blocking_work_packages,required_decision_evidence,status,decision_uri,approved_at
+OD-08-01,CP4/CP5 corrected mapping: governance adoption approval pending,HIGH,Governance,TBD,WP-01,"F07 §18, F08 §5 and IDP-SCG-STD-001 now use correct CP4=professional UX CP5=engineering quality; named governance owner must approve adoption; no runtime gate PASS implied",OPEN,,
+OD-08-02,ADR-0001..0007 architecture and rollback scope,HIGH,Architecture,TBD,WP-01,Approvals/impact tests required before binding implementation,OPEN,,
+OD-08-03,Go/PostgreSQL/CI/toolchain exact versions,HIGH,Engineering,TBD,WP-02,Run compatibility Golden Samples; record support matrix,OPEN,,
+OD-08-04,IAM/Gateway/CDN interface & ownership,HIGH,Integration+Security,TBD,WP-03;WP-10,Actual adapter contract and isolated environment,OPEN,,
+OD-08-05,AccessBlock propagation and edge observability,CRITICAL,Security+Operations,TBD,WP-06,Test source deny and visibility/status from multiple edges,OPEN,,
+OD-08-06,SLO/Capacity/RPO/RTO and retention thresholds,HIGH,Operations+Product,TBD,WP-12,"Business load, failure impact, target approval and drills",OPEN,,
+OD-08-07,"Named owners, risk grades and standard profiles",HIGH,Governance,TBD,WP-01,Approved Project Manifest and SoD matrix,OPEN,,
+OD-08-08,"Multi-product privacy, residency and legal agreements",HIGH,Security+Legal,TBD,WP-01;WP-10,Approved data inventory and controls,OPEN,,
+OD-08-09,Real V1 sandbox provider and first-call proof,MEDIUM,DeveloperAccess,TBD,WP-10,Grant and real sandbox request+audit,OPEN,,
+OD-08-10,"Independent penetration, a11y and DR resourcing",HIGH,QA+Security+Operations,TBD,WP-09;WP-12,Specific environments/people and observable acceptance,OPEN,,

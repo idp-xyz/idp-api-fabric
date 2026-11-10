@@ -1,0 +1,90 @@
+﻿requirement_id,f02_sections,architecture_decisions,subsequent_documents,verification_status,evidence_note
+FR-001,"§3,§6","ADR-0001,ADR-0005","F03,F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-002,"§3,§6","ADR-0001,ADR-0005","F03,F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-003,"§3,§6","ADR-0001,ADR-0005","F03,F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-004,"§3,§6","ADR-0001,ADR-0005","F03,F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-005,"§3,§6","ADR-0001,ADR-0005","F03,F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-006,"§3,§6","ADR-0001,ADR-0005","F03,F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-007,"§5,§7,§13","ADR-0001,ADR-0004","F03,F04",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-008,"§5,§7,§13","ADR-0001,ADR-0004","F03,F04",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-009,"§5,§7,§13","ADR-0001,ADR-0004","F03,F04",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-010,"§5,§7,§13","ADR-0001,ADR-0004","F03,F04",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-011,"§5,§7,§13","ADR-0001,ADR-0004","F03,F04",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-012,"§5,§7,§13","ADR-0001,ADR-0004","F03,F04",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-013,"§7,§8,§13","ADR-0003,ADR-0004","F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-014,"§7,§8,§13","ADR-0003,ADR-0004","F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-015,"§7,§8,§13","ADR-0003,ADR-0004","F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-016,"§7,§8,§13","ADR-0003,ADR-0004","F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-017,"§7,§8,§13","ADR-0003,ADR-0004","F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-018,"§7,§8,§13","ADR-0003,ADR-0004","F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-019,"§7,§8,§13","ADR-0003,ADR-0004","F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-020,"§7,§8,§13","ADR-0003,ADR-0004","F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-021,"§7,§8,§13","ADR-0003,ADR-0004","F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-022,"§7,§8,§13","ADR-0003,ADR-0004","F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-023,"§8,§9",ADR-0004,"F04,F05,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-024,"§8,§9",ADR-0004,"F04,F05,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-025,"§8,§9",ADR-0004,"F04,F05,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-026,"§8,§9",ADR-0004,"F04,F05,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-027,"§8,§9",ADR-0004,"F04,F05,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-028,"§8,§9",ADR-0004,"F04,F05,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-029,"§8,§9",ADR-0004,"F04,F05,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-030,"§8,§9",ADR-0004,"F04,F05,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-031,"§7,§9,§13",ADR-0004,"F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-032,"§7,§9,§13",ADR-0004,"F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-033,"§7,§9,§13",ADR-0004,"F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-034,"§7,§9,§13",ADR-0004,"F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-035,"§7,§9,§13",ADR-0004,"F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-036,"§7,§9,§13",ADR-0004,"F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-037,"§7,§9,§13",ADR-0004,"F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-038,"§7,§9,§13",ADR-0004,"F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-039,"§7,§9,§13",ADR-0004,"F03,F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-040,"§4,§10",ADR-0005,"F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-041,"§4,§10",ADR-0005,"F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-042,"§4,§10",ADR-0005,"F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-043,"§4,§10",ADR-0005,"F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-044,"§4,§10",ADR-0005,"F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-045,"§4,§10",ADR-0005,"F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-046,"§4,§10",ADR-0005,"F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-047,"§6,§10,§11",ADR-0005,"F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-048,"§6,§10,§11",ADR-0005,"F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-049,"§6,§10,§11",ADR-0005,"F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-050,"§6,§10,§11",ADR-0005,"F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-051,"§6,§10,§11",ADR-0005,"F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-052,"§6,§10,§11",ADR-0005,"F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-053,"§6,§10,§11",ADR-0005,"F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-054,"§6,§10,§11",ADR-0005,"F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-055,"§6,§10,§11",ADR-0005,"F05,F06",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-056,"§8,§12",ADR-0006,"F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-057,"§8,§12",ADR-0006,"F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-058,"§8,§12",ADR-0006,"F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-059,"§8,§12",ADR-0006,"F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-060,"§8,§12",ADR-0006,"F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-061,"§8,§12",ADR-0006,"F04,F07",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-062,"§11,§14","ADR-0002,ADR-0004","F05,F07,F08",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-063,"§11,§14","ADR-0002,ADR-0004","F05,F07,F08",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-064,"§11,§14","ADR-0002,ADR-0004","F05,F07,F08",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-065,"§11,§14","ADR-0002,ADR-0004","F05,F07,F08",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-066,"§11,§14","ADR-0002,ADR-0004","F05,F07,F08",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-067,"§11,§14","ADR-0002,ADR-0004","F05,F07,F08",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-068,"§11,§14","ADR-0002,ADR-0004","F05,F07,F08",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-069,§16,ADR-0006,"F04,F05,F08",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-070,§16,ADR-0006,"F04,F05,F08",NOT_RUN,F02 design allocation only; no implementation/test evidence
+FR-071,§16,ADR-0006,"F04,F05,F08",NOT_RUN,F02 design allocation only; no implementation/test evidence
+NFR-01,"§6,§11",ADR-0005,F05,NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-02,"§6,§11",ADR-0005,F05,NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-03,"§7,§13",ADR-0004,"F03,F04",NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-04,"§7,§9",ADR-0004,F04,NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-05,"§9,§13",ADR-0004,F07,NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-06,"§2,§14",ADR-0002,F07,NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-07,"§2,§15",ADR-0002,F07,NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-08,§14,ADR-0002,F07,NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-09,"§9,§14",ADR-0004,"F07,F08",NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-10,§14,ADR-0002,F07,NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-11,"§5,§15",ADR-0002,F07,NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-12,"§7,§8",ADR-0004,F04,NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-13,"§4,§15",ADR-0001,"F03,F07",NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-14,§10,ADR-0005,F06,NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-15,§10,ADR-0005,F06,NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-16,"§6,§11",ADR-0005,F05,NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-17,"§11,§15",ADR-0006,F07,NOT_RUN,Metrics/quality verification pending F07/F08
+NFR-18,"§7,§11",ADR-0003,"F05,F07",NOT_RUN,Metrics/quality verification pending F07/F08

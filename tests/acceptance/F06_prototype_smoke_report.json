@@ -1,0 +1,22 @@
+{
+  "stage": "F06",
+  "document_version": "V1.0",
+  "result": "DESIGN_STATIC_AND_MOCK_SMOKE_ONLY",
+  "browser_smoke": {
+    "result": "PASS",
+    "checks_passed": 37,
+    "checks_total": 37,
+    "device_widths_px": [
+      375,
+      820,
+      1440
+    ],
+    "method": "Chromium Playwright, HTML+CSS inlined due file:// access restriction",
+    "scope": "LOCAL_MOCK only"
+  },
+  "ux_scenarios": "32 scenarios planned, NOT_RUN",
+  "official_approval": "PENDING",
+  "source_integrity": "F01-F05 Markdown SHA-256 unchanged versus prior F01-F05 ZIP",
+  "note": "Mock UI clickability does not prove server-side security or real API behavior.",
+  "runtime_security_gateway_iam": "NOT_RUN"
+}

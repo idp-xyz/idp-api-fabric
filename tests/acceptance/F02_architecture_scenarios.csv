@@ -1,0 +1,13 @@
+﻿scenario_id,scenario,f01_requirements,expected_observable_result,execution_status
+AR-01,CargoPai 与 Parcel 同时注册同名 API,FR-001–009；AT-01,不同产品有独立 Asset 与授权，不发生自动合并,NOT_RUN
+AR-02,Parcel 成员搜索/下载 CargoPai 私有 Release,FR-008/063；AT-04,搜索、详情、下载与缓存均拒绝,NOT_RUN
+AR-03,Git 来源提交内容/摘要不匹配,FR-013–017；AT-05,禁止 READY，保留失败诊断,NOT_RUN
+AR-04,并发向同一 Publication Target 发布,FR-031–036；AT-08/09,CAS 仅一个条件提交成功，版本可追溯,NOT_RUN
+AR-05,对象存储成功但 DB 提交失败,FR-017/033/064；AT-08,未公开、孤儿制品可清理、可安全重试,NOT_RUN
+AR-06,错误公开发布紧急撤销,FR-034/036；AT-03/09,Edge deny 优先，指针/缓存对账、匿名负向核验,NOT_RUN
+AR-07,Worker 反复投递相同任务,FR-033/056/061；AT-08/12,去重与幂等，有可观察结果，无重复有效发布,NOT_RUN
+AR-08,权威 Registry 有效、索引落后/损坏,FR-035/066；AT-10,投影延迟可见、可重建、发布事实不丢,NOT_RUN
+AR-09,外部门户与内部工作台同一 Release,FR-040–050；AT-11,仅在各自范围公开相应可见内容,NOT_RUN
+AR-10,恢复 DB + Artifact Store 与签名密钥,FR-066；AT-10,RPO/RTO 由批准目标判定，历史摘要/指针对账,NOT_RUN
+AR-11,F01 规范采用批准与六道门禁,§1.2；F01 §17,Project Manifest、责任和证据完整，不伪造 PASS,NOT_RUN
+AR-12,第二产品接入，复用治理与双门户,FR-005/047，NFR-13,无需克隆平台核心且不越权共享,NOT_RUN

@@ -1,0 +1,275 @@
+schema_version: '1.0'
+document: F07
+status: PROPOSED
+actual_runtime_evidence: NOT_RUN
+controls:
+- control_id: ENG-01
+  category: Input provenance
+  statement: 受控源提交和快照必须绑定来源凭证、来源摘要、产品作用域
+  accountable_role: Contract
+  source_refs: F04/F05
+  planned_stage: MVP
+  verification_method: Parse+negative
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-02
+  category: Ref security
+  statement: 拒绝非受控远程引用、目录逃逸、引用闭包逃逸与超额资源
+  accountable_role: Contract+Security
+  source_refs: F04-GOV;F05
+  planned_stage: MVP
+  verification_method: Sandbox+negative
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-03
+  category: Revision integrity
+  statement: Revision/Source/Ref digest 关系不可被静默替换
+  accountable_role: Registry
+  source_refs: F03 INV-04
+  planned_stage: MVP
+  verification_method: Property+DB
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-04
+  category: Policy integrity
+  statement: 固定 Policy Digest 和 Tool Manifest 的检查证据
+  accountable_role: Governance
+  source_refs: F04
+  planned_stage: MVP
+  verification_method: Golden+negative
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-05
+  category: Review binding
+  statement: 审批绑定输入、策略、受众及有效期并职责分离
+  accountable_role: Review
+  source_refs: F04/F05
+  planned_stage: MVP
+  verification_method: Integration+negative
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-06
+  category: Release immutability
+  statement: Release 制品写入后禁止覆盖，摘要重验
+  accountable_role: Registry
+  source_refs: F03/F04
+  planned_stage: MVP
+  verification_method: Blob+corrupt
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-07
+  category: Slot CAS
+  statement: PublicationSlot 唯一 Target×Asset；代数 CAS 更新
+  accountable_role: Publication
+  source_refs: F03 INV-07
+  planned_stage: MVP
+  verification_method: DB concurrent
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-08
+  category: AccessBlock
+  statement: 紧急撤销权威状态在源站同步拒绝
+  accountable_role: Publication/Security
+  source_refs: F05
+  planned_stage: MVP
+  verification_method: Security+edge
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-09
+  category: Authorization
+  statement: 全部敏感读写列表下载执行对象级访问判定
+  accountable_role: Security
+  source_refs: F05 Matrix
+  planned_stage: MVP
+  verification_method: HTTP/DB negative
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-10
+  category: Workload identity
+  statement: 服务/Worker 用最小权限短时凭证，不保存 Secret 原文
+  accountable_role: Security
+  source_refs: F05
+  planned_stage: MVP
+  verification_method: Secrets+audit
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-11
+  category: Outbox atomicity
+  statement: 权威写入与事件/审计同事务提交
+  accountable_role: Operations
+  source_refs: F03/F02
+  planned_stage: MVP
+  verification_method: DB failure
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-12
+  category: Worker fencing
+  statement: Lease fencing，重复投递必须幂等
+  accountable_role: Operations
+  source_refs: F02
+  planned_stage: MVP
+  verification_method: Crash/retry
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-13
+  category: Reconciliation
+  statement: Blob/DB/投影/Edge 能对账并显式 UNKNOWN
+  accountable_role: Operations
+  source_refs: F02/F05
+  planned_stage: MVP
+  verification_method: Fault injection
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-14
+  category: Catalog boundaries
+  statement: 产品归属和目录搜索只能受控投影读取
+  accountable_role: Catalog
+  source_refs: F03/F05
+  planned_stage: MVP
+  verification_method: Cross-product
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-15
+  category: API DTO isolation
+  statement: 传输生成 DTO 不穿透到领域实体
+  accountable_role: Engineering
+  source_refs: F02 DDD
+  planned_stage: MVP
+  verification_method: Dependency lint
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-16
+  category: Dependency direction
+  statement: 领域层不得依赖 HTTP、SQL、云 SDK、其他 BC DB
+  accountable_role: Engineering
+  source_refs: F02 DDD
+  planned_stage: MVP
+  verification_method: Go dependency
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-17
+  category: Tool capability
+  statement: OAS/AsyncAPI 各特性标记明确支持范围
+  accountable_role: Governance
+  source_refs: F04
+  planned_stage: MVP/V1
+  verification_method: Golden matrix
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-18
+  category: Compatibility policy
+  statement: Breaking/Risky/Compatible/Unknown 结果有政策级门禁
+  accountable_role: Governance
+  source_refs: F04
+  planned_stage: MVP
+  verification_method: Diff tests
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-19
+  category: DB migration
+  statement: Expand/Backfill/Verify/Contract 且有故障回退路径
+  accountable_role: DB/Operations
+  source_refs: F02/F03
+  planned_stage: MVP
+  verification_method: Migration+restore
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-20
+  category: Supply chain
+  statement: 依赖和 CI 工具可追溯，SBOM/签名/扫描
+  accountable_role: Security
+  source_refs: F05 SSDF
+  planned_stage: MVP
+  verification_method: SBOM+scan
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-21
+  category: Build reproducibility
+  statement: 构建版本、工具、Digest 与不可重复因素有证据
+  accountable_role: Engineering
+  source_refs: F04 Manifest
+  planned_stage: MVP
+  verification_method: Rebuild proof
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-22
+  category: CI gates
+  statement: 所有必须门禁失败/UNKNOWN 不得映射 PASS
+  accountable_role: Engineering
+  source_refs: STD-CP1..6
+  planned_stage: MVP
+  verification_method: Pipeline policy
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-23
+  category: Audit integrity
+  statement: 高风险操作持久审计且查询受控
+  accountable_role: Operations/Security
+  source_refs: F05
+  planned_stage: MVP
+  verification_method: Audit tamper
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-24
+  category: Observability
+  statement: 端到端 Trace / SLI 分层且日志不泄密
+  accountable_role: Operations
+  source_refs: F02/F05
+  planned_stage: MVP
+  verification_method: Telemetry audit
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-25
+  category: Backups
+  statement: 数据库、Blob、审计备份恢复带一致性验证
+  accountable_role: Operations
+  source_refs: F02
+  planned_stage: Before PROD
+  verification_method: Recovery drill
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-26
+  category: Internal portal
+  statement: 内部受控任务的错误/冲突/撤销/键盘状态完整
+  accountable_role: UX/Engineering
+  source_refs: F06-A
+  planned_stage: MVP
+  verification_method: Role journey
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-27
+  category: External portal
+  statement: 外部公开与私有隔离、独立品牌/会话
+  accountable_role: UX/Security
+  source_refs: F06-B
+  planned_stage: MVP
+  verification_method: Browser+HTTP
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-28
+  category: Developer onboarding
+  statement: V1 ConsumerApp/Grant/Sandbox 必须真实 IAM/Gateway 证据
+  accountable_role: Integration
+  source_refs: F06-B
+  planned_stage: V1
+  verification_method: IAM/Gateway E2E
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-29
+  category: Accessibility
+  statement: 关键任务键盘可用，V1 WCAG 2.2 AA 验证
+  accountable_role: UX
+  source_refs: F06-C
+  planned_stage: MVP/V1
+  verification_method: Keyboard+SR
+  verification_status: NOT_RUN
+  approval: TBD
+- control_id: ENG-30
+  category: Evidence governance
+  statement: 真实执行必须携带环境、commit、工具版本、结果、证据
+  accountable_role: Delivery
+  source_refs: F08
+  planned_stage: MVP/V1
+  verification_method: Evidence schema
+  verification_status: NOT_RUN
+  approval: TBD

@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0",
+  "template": "F08_EVIDENCE_RECORD",
+  "evidence_id": null,
+  "scenario_id": "AC-01",
+  "requirement_refs": [
+    "FR-014"
+  ],
+  "standard_id": "IDP-SCG-STD-001",
+  "gate_ids": [
+    "STD-CP3"
+  ],
+  "source_commit": null,
+  "artifact_digest": null,
+  "config_digest": null,
+  "policy_digest": null,
+  "release_id": null,
+  "publication_slot_id": null,
+  "slot_generation": null,
+  "environment": {
+    "kind": null,
+    "name": null,
+    "location": null,
+    "is_production": null,
+    "synthetic_contract": null,
+    "dependency_versions": {}
+  },
+  "tool_versions": {},
+  "executor": null,
+  "started_at": null,
+  "finished_at": null,
+  "expected": "Snapshot source and reference-closure digests stable",
+  "observed": null,
+  "evidence_level_required": "E2",
+  "evidence_level_obtained": null,
+  "result": "NOT_RUN",
+  "evidence_refs": [],
+  "reviewer": null,
+  "approver": null,
+  "approval_at": null,
+  "validity": {
+    "scope_product": null,
+    "scope_audience": null,
+    "scope_environment": null,
+    "expiry_at": null,
+    "retest_triggers": [
+      "source_digest_change",
+      "policy_digest_change",
+      "deployment_change",
+      "permission_scope_change"
+    ]
+  },
+  "notes": "DESIGN_TEMPLATE_ONLY; no real test has been performed; copy to a unique immutable record when run."
+}

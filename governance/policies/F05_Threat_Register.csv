@@ -1,0 +1,30 @@
+threat_id,stride,proposed_priority,boundary,attack_path,controls,scenario_ids,owner,residual_risk,design_status,runtime_verification
+TH-01,S,P0,external IdP,"Forged OIDC issuer, tokens with wrong audience",A01/A02,SEC-01;SEC-02,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-02,S,P0,service identity,CI leaked access token reused as admin,A01/A09,SEC-03,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-03,S,P0,webhook source,Unsigned webhook or replayed Git event,A06,SEC-17,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-04,T,P0,Registry,Mutable Release blob replaced after approval,A03/A05,SEC-15,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-05,T,P0,Policy Review,Reviewer decision reused after policy digest changes,A05/A11,SEC-13,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-06,T,P0,Publication,Slot CAS races overwrite safe Release,A05,SEC-14,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-07,R,P1,Audit,Approval cannot be tied to actor and immutable evidence,A08,SEC-23,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-08,R,P1,Emergency operations,Break-glass actions not independently reviewed,A08/A11,SEC-24,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-09,I,P0,Catalog Search,Cross-product asset metadata appears in search,A02/A04,SEC-04,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-10,I,P0,Object Store,Unauthenticated direct blob download via guessed/presigned link,A02/A04,SEC-05,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-11,I,P0,Portal CDN,Private document shared through public edge cache key,A04/A05,SEC-07,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-12,I,P0,External portal,Revoked grant continues serving previously authorized content,A02/A05,SEC-06,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-13,I,P0,Publication,Sensitive public Release persists after emergency deny,A05/A08,SEC-08,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-14,I,P1,Logging,Authorization header / client secret leaks into logs,A07/A08,SEC-22,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-15,I,P1,Explorer,Customer PII visible in shared Explorer history,A07,SEC-21,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-16,D,P0,Contract Parser,Recursive YAML reference CPU or memory exhaustion,A06,SEC-11,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-17,D,P0,Artifact import,ZIP bomb / oversized expanded file,A06,SEC-12,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-18,D,P1,Control Plane,Abusive search/API requests exceed quota,A04/A06,SEC-25,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-19,E,P0,Admin UI,Product admin escalates to platform admin,A02/A11,SEC-09,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-20,E,P0,Reviewer,Author reviews own high-risk release,A11,SEC-10,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-21,E,P0,Resolver,External $ref triggers SSRF metadata/internal network,A06,SEC-16,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-22,E,P0,Explorer,User-supplied URL turns Explorer into open proxy,A06/A07,SEC-18,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-23,E,P0,Worker,Trusted Worker uses broad credentials across products,A09,SEC-19,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-24,E,P1,Database Pool,RLS transaction context leaks previous product,A02/A10,SEC-20,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-25,T,P1,Recovery,Restore revives previously blocked publication,A05/A08,SEC-26,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-26,I,P1,Audit Export,Operator exports all tenants without purpose and scope,A02/A08,SEC-27,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-27,S,P1,Browser session,CSRF session fixation or stale session roles,A01/A02,SEC-28,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-28,T,P1,CI supply chain,Compromised document renderer publishes unsafe HTML,A06/A09,SEC-29,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-29,I,P1,Public publication,XSS executes from contract description,A06/A07,SEC-30,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN

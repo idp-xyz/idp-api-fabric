@@ -1,0 +1,38 @@
+﻿BC,Aggregate,Entity,PrimaryKey,RequiredReferences,Uniqueness,Cardinality,DataRetention,Phase
+ProductGovernance,Product,Product,product_id,owner_org_ref,product_key,1 Product to N Workspace,ACTIVE,MVP
+ProductGovernance,Product,ProductAudienceConfig,audience_config_id,product_id,product_id+audience_key+environment_key,N per Product,ACTIVE,MVP
+ProductGovernance,Workspace,Workspace,workspace_id,product_id,product_id+workspace_key,N per Product,ACTIVE,MVP
+ProductGovernance,Workspace,WorkspaceMembership,membership_id,workspace_id+principal_ref,active membership scope,N per Workspace,ACTIVE,MVP
+ProductGovernance,Product,ExternalTenantBinding,tenant_binding_id,product_id+authority,authority+external_tenant_id+product_id,N per Product,ACTIVE,V1
+APICatalog,APIAsset,APIAsset,api_asset_id,product_id+workspace_id,product_id+asset_key,N per Product,ACTIVE,MVP
+APICatalog,APIAsset,AssetOwnership,ownership_id,api_asset_id+owner_ref,active ownership rule,N per Asset over time,HIST,MVP
+APICatalog,APIAsset,AssetLifecycleTransition,lifecycle_event_id,api_asset_id+actor_ref,event_id,N per Asset,HIST,MVP
+ContractRegistry,ContractRevision,ContractSource,source_id,api_asset_id+source_kind,source registration key,N per Asset,ACTIVE,MVP
+ContractRegistry,ContractRevision,SourceSnapshot,source_snapshot_id,source_id+source_digest,immutable source fingerprint,N per Source,HIST,MVP
+ContractRegistry,ContractRevision,ContractRevision,revision_id,api_asset_id+source_snapshot_id,api_asset_id+revision_sequence,N per Asset,HIST,MVP
+ContractRegistry,ContractRevision,RefClosureManifest,ref_manifest_id,revision_id+closure_digest,revision_id+closure_digest,1 per registered Revision,HIST,MVP
+ContractRegistry,ContractRelease,ContractRelease,release_id,api_asset_id+revision_id+decision_ref,api_asset_id+release_label,N per Revision,HIST,MVP
+ContractRegistry,ContractRelease,ArtifactManifest,artifact_manifest_id,release_id+artifact_digest,release_id+manifest_digest,1 per READY Release,HIST,MVP
+ContractRegistry,ContractRelease,IntegrityIncident,integrity_incident_id,release_id+detected_at,incident_id,N per Release,HIST,V1
+PolicyReview,PolicySnapshot,PolicySnapshot,policy_snapshot_id,product_id+policy_digest,policy_snapshot_id,N per Product,HIST,MVP
+PolicyReview,CheckRun,CheckRun,check_run_id,revision_id+policy_snapshot_id,run_id,N per Revision,HIST,MVP
+PolicyReview,ReviewDecision,ReviewDecision,decision_id,revision_id+check_run_id+reviewer_ref,decision_id,N per Revision,HIST,MVP
+PolicyReview,ReviewDecision,WaiverRef,waiver_ref_id,decision_id+rule_id,waiver_ref_id,N per Decision,HIST,MVP
+Publication,PublicationTarget,PublicationTarget,target_id,product_id+audience_key+environment_key+portal_key,product_id+audience_key+environment_key+portal_key,N per Product,ACTIVE,MVP
+Publication,PublicationSlot,PublicationSlot,slot_id,target_id+api_asset_id,target_id+api_asset_id,N per Target,ACTIVE,MVP
+Publication,PublicationSlot,PublicationOperation,operation_id,slot_id+principal_ref+idempotency_key,scoped idempotency fingerprint,N per Slot,HIST,MVP
+Publication,PublicationSlot,PublicationHistory,publication_event_id,slot_id+generation+release_ref,slot_id+generation,N per Slot,HIST,MVP
+Publication,AccessBlock,AccessBlock,block_id,product_id+scope_ref+reason,block_id+generation,N per Scope,ACTIVE,MVP
+Publication,PublicationSlot,DeliveryState,delivery_state_id,slot_id+source_generation,slot_id+destination+source_generation,N per Slot+Destination,DERIVED,MVP
+DeveloperAccess,DeveloperOrganization,DeveloperOrganization,developer_org_id,identity_tenant_ref,developer_org_id,N per Product through Grant,ACTIVE,V1
+DeveloperAccess,DeveloperOrganization,DeveloperOrgMembership,dev_member_id,developer_org_id+principal_ref,active membership rule,N per Organization,ACTIVE,V1
+DeveloperAccess,ConsumerApplication,ConsumerApplication,consumer_app_id,developer_org_id,developer_org_id+application_key,N per Organization,ACTIVE,V1
+DeveloperAccess,ConsumerApplication,OAuthClientRef,oauth_client_ref_id,consumer_app_id+issuer+client_id,issuer+client_id,0..N per App,ACTIVE,V1
+DeveloperAccess,AccessGrant,AccessGrant,grant_id,consumer_app_id+product_id+audience+environment,grant_id,N per App,ACTIVE,V1
+PlatformOperations,Job,Job,job_id,product_scope+operation_type,job_id,N per Product,ACTIVE,MVP
+PlatformOperations,Job,JobAttempt,job_attempt_id,job_id+fencing_token,job_id+attempt_number,N per Job,HIST,MVP
+PlatformOperations,Outbox,OutboxEvent,outbox_event_id,event_id+aggregate_ref,event_id,N per Aggregate,HIST,MVP
+PlatformOperations,Outbox,InboxDedup,inbox_dedup_id,subscriber_id+event_id,subscriber_id+event_id,N per Consumer,ACTIVE,MVP
+PlatformOperations,Audit,AuditRecord,audit_id,actor_ref+scope_ref+correlation_id,audit_id,N per Scope,HIST,MVP
+PlatformOperations,Reconciliation,Reconciliation,reconciliation_id,target_ref+source_generation,reconciliation_id,N per Target,HIST,MVP
+PlatformOperations,Reconciliation,ProjectionCheckpoint,projection_checkpoint_id,projection_name+scope_ref,projection_name+scope_ref,1 current per Scope,DERIVED,MVP

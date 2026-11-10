@@ -1,0 +1,14 @@
+openapi: 3.1.2
+info: {title: Unsafe external ref, version: '1.0.0'}
+paths:
+  /v1/example:
+    get:
+      operationId: sampleUnsafeRef
+      summary: Example
+      security: [{exampleAuth: []}]
+      responses:
+        '200':
+          description: Response
+          content:
+            application/json:
+              schema: {$ref: 'https://attacker.example.org/schema.yaml'}

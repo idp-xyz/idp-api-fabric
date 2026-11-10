@@ -1,0 +1,507 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "kind": "F05AuthorizationPolicyDesignExample",
+  "version": "V1.0",
+  "status": "PROPOSED",
+  "validation": "STRUCTURE_ONLY_NOT_A_RUNTIME_PDP",
+  "decision_alg": "deny_overrides",
+  "outcomes": [
+    "ALLOW",
+    "DENY",
+    "INDETERMINATE"
+  ],
+  "default_outcome": "DENY",
+  "inputs": {
+    "principal": [
+      "issuer",
+      "subject",
+      "auth_time",
+      "token_audience",
+      "trusted_memberships"
+    ],
+    "resource": [
+      "product_id",
+      "workspace_id",
+      "asset_id",
+      "release_id",
+      "target_id",
+      "slot_id",
+      "owner_id"
+    ],
+    "context": [
+      "action",
+      "audience",
+      "environment",
+      "grant_generation",
+      "membership_generation",
+      "policy_digest",
+      "block_generation"
+    ]
+  },
+  "controls": [
+    {
+      "id": "A01",
+      "description": "Trusted OIDC/OAuth and JWT validation with session protections",
+      "status": "PROPOSED"
+    },
+    {
+      "id": "A02",
+      "description": "Server-side scope and object-level authorization; deny-by-default",
+      "status": "PROPOSED"
+    },
+    {
+      "id": "A03",
+      "description": "Immutable Release Manifest/digest and controlled artifact integrity",
+      "status": "PROPOSED"
+    },
+    {
+      "id": "A04",
+      "description": "Authenticated artifact/search/portal origin with segregated caches",
+      "status": "PROPOSED"
+    },
+    {
+      "id": "A05",
+      "description": "CAS PublicationSlot plus monotonic AccessBlock and Edge reconciliation",
+      "status": "PROPOSED"
+    },
+    {
+      "id": "A06",
+      "description": "Hardened parser/ref resolver, sandboxing, resource/egress limits",
+      "status": "PROPOSED"
+    },
+    {
+      "id": "A07",
+      "description": "Explorer confinement, content sanitization, CSP and secret redaction",
+      "status": "PROPOSED"
+    },
+    {
+      "id": "A08",
+      "description": "Append-only audit, incident handling and recovery evidence",
+      "status": "PROPOSED"
+    },
+    {
+      "id": "A09",
+      "description": "Least-privileged workload identities, connector/secrets controls, SBOM",
+      "status": "PROPOSED"
+    },
+    {
+      "id": "A10",
+      "description": "DB transaction context/RLS defense in depth and pool isolation",
+      "status": "PROPOSED"
+    },
+    {
+      "id": "A11",
+      "description": "Separation of duties, step-up auth and binding approvals to digests",
+      "status": "PROPOSED"
+    }
+  ],
+  "deny_rules": [
+    {
+      "id": "DENY-01",
+      "when": "not_authenticated_unless_explicit_public"
+    },
+    {
+      "id": "DENY-02",
+      "when": "product_or_scope_mismatch"
+    },
+    {
+      "id": "DENY-03",
+      "when": "missing_active_membership_or_grant"
+    },
+    {
+      "id": "DENY-04",
+      "when": "effective_access_block_present"
+    },
+    {
+      "id": "DENY-05",
+      "when": "release_or_approval_digest_invalid"
+    },
+    {
+      "id": "DENY-06",
+      "when": "reviewer_is_author_for_high_risk"
+    },
+    {
+      "id": "DENY-07",
+      "when": "policy_source_or_authorization_indeterminate"
+    },
+    {
+      "id": "DENY-08",
+      "when": "operation_or_method_not_allowlisted"
+    }
+  ],
+  "permit_rules": [
+    {
+      "rule_id": "AC-01",
+      "principal_role": "internal_author",
+      "action": "revision.create",
+      "resource": "ContractRevision",
+      "when_all": [
+        "workspace.member",
+        "product.same",
+        "action.role"
+      ]
+    },
+    {
+      "rule_id": "AC-02",
+      "principal_role": "internal_author",
+      "action": "revision.read",
+      "resource": "ContractRevision",
+      "when_all": [
+        "workspace.member",
+        "product.same",
+        "action.role"
+      ]
+    },
+    {
+      "rule_id": "AC-03",
+      "principal_role": "internal_reviewer",
+      "action": "release.approve",
+      "resource": "ReviewDecision",
+      "when_all": [
+        "review.assignment",
+        "independent.reviewer",
+        "digest.valid",
+        "policy.current"
+      ]
+    },
+    {
+      "rule_id": "AC-04",
+      "principal_role": "internal_publisher",
+      "action": "publication.activate",
+      "resource": "PublicationSlot",
+      "when_all": [
+        "role.publisher",
+        "product.same",
+        "target.scope",
+        "decision.valid",
+        "block.absent",
+        "cas.match"
+      ]
+    },
+    {
+      "rule_id": "AC-05",
+      "principal_role": "internal_publisher",
+      "action": "publication.withdraw",
+      "resource": "PublicationSlot",
+      "when_all": [
+        "role.publisher",
+        "product.same",
+        "slot.scope",
+        "cas.match"
+      ]
+    },
+    {
+      "rule_id": "AC-06",
+      "principal_role": "security_admin",
+      "action": "security.block",
+      "resource": "AccessBlock",
+      "when_all": [
+        "role.security",
+        "target.scope",
+        "incident.logged"
+      ]
+    },
+    {
+      "rule_id": "AC-07",
+      "principal_role": "security_reviewer",
+      "action": "security.unblock",
+      "resource": "AccessBlock",
+      "when_all": [
+        "role.security_review",
+        "recovery.approved",
+        "safety.rechecked"
+      ]
+    },
+    {
+      "rule_id": "AC-08",
+      "principal_role": "platform_admin",
+      "action": "product.register",
+      "resource": "Product",
+      "when_all": [
+        "role.platform_admin",
+        "admin.scope"
+      ]
+    },
+    {
+      "rule_id": "AC-09",
+      "principal_role": "product_owner",
+      "action": "workspace.manage",
+      "resource": "Workspace",
+      "when_all": [
+        "role.product_owner",
+        "product.same"
+      ]
+    },
+    {
+      "rule_id": "AC-10",
+      "principal_role": "product_owner",
+      "action": "member.grant",
+      "resource": "Member",
+      "when_all": [
+        "role.product_owner",
+        "product.same",
+        "membership.valid"
+      ]
+    },
+    {
+      "rule_id": "AC-11",
+      "principal_role": "workspace_maintainer",
+      "action": "asset.create",
+      "resource": "APIAsset",
+      "when_all": [
+        "workspace.member",
+        "product.same",
+        "role.maintainer"
+      ]
+    },
+    {
+      "rule_id": "AC-12",
+      "principal_role": "workspace_maintainer",
+      "action": "asset.update",
+      "resource": "APIAsset",
+      "when_all": [
+        "workspace.member",
+        "product.same",
+        "role.maintainer"
+      ]
+    },
+    {
+      "rule_id": "AC-13",
+      "principal_role": "internal_reader",
+      "action": "asset.search",
+      "resource": "APIAsset",
+      "when_all": [
+        "read.scope",
+        "product.same",
+        "row.filtered"
+      ]
+    },
+    {
+      "rule_id": "AC-14",
+      "principal_role": "internal_reader",
+      "action": "asset.read",
+      "resource": "APIAsset",
+      "when_all": [
+        "read.scope",
+        "product.same",
+        "object.rechecked"
+      ]
+    },
+    {
+      "rule_id": "AC-15",
+      "principal_role": "internal_reader",
+      "action": "contract.history",
+      "resource": "ContractRelease",
+      "when_all": [
+        "release.scope",
+        "product.same",
+        "object.rechecked"
+      ]
+    },
+    {
+      "rule_id": "AC-16",
+      "principal_role": "internal_reader",
+      "action": "contract.download",
+      "resource": "ContractRelease",
+      "when_all": [
+        "release.scope",
+        "product.same",
+        "accessblock.absent"
+      ]
+    },
+    {
+      "rule_id": "AC-17",
+      "principal_role": "external_anonymous",
+      "action": "public.read",
+      "resource": "PortalDocument",
+      "when_all": [
+        "slot.public",
+        "release.published",
+        "block.absent",
+        "security.approved"
+      ]
+    },
+    {
+      "rule_id": "AC-18",
+      "principal_role": "external_developer",
+      "action": "partner.read",
+      "resource": "PortalDocument",
+      "when_all": [
+        "developerorg.member",
+        "grant.active",
+        "product.same",
+        "audience.env.match",
+        "block.absent"
+      ]
+    },
+    {
+      "rule_id": "AC-19",
+      "principal_role": "external_developer",
+      "action": "partner.search",
+      "resource": "APIAsset",
+      "when_all": [
+        "developerorg.member",
+        "grant.active",
+        "product.same",
+        "row.filtered"
+      ]
+    },
+    {
+      "rule_id": "AC-20",
+      "principal_role": "external_developer",
+      "action": "partner.download",
+      "resource": "ContractRelease",
+      "when_all": [
+        "developerorg.member",
+        "grant.active",
+        "release.visible",
+        "block.absent"
+      ]
+    },
+    {
+      "rule_id": "AC-21",
+      "principal_role": "external_developer",
+      "action": "application.read",
+      "resource": "ConsumerApplication",
+      "when_all": [
+        "developerorg.member",
+        "application.owner_same",
+        "product.same"
+      ]
+    },
+    {
+      "rule_id": "AC-22",
+      "principal_role": "external_org_admin",
+      "action": "application.register",
+      "resource": "ConsumerApplication",
+      "when_all": [
+        "developerorg.admin",
+        "grant.policy",
+        "product.same"
+      ]
+    },
+    {
+      "rule_id": "AC-23",
+      "principal_role": "external_org_admin",
+      "action": "access.request",
+      "resource": "AccessGrant",
+      "when_all": [
+        "developerorg.admin",
+        "product.entitled",
+        "audience.env.match"
+      ]
+    },
+    {
+      "rule_id": "AC-24",
+      "principal_role": "external_org_admin",
+      "action": "developer.member.manage",
+      "resource": "Member",
+      "when_all": [
+        "developerorg.admin",
+        "org.same"
+      ]
+    },
+    {
+      "rule_id": "AC-25",
+      "principal_role": "explorer_user",
+      "action": "explorer.execute",
+      "resource": "ExplorerRequest",
+      "when_all": [
+        "grant.active",
+        "product.same",
+        "endpoint.allowlisted",
+        "sandbox.mode",
+        "quota.ok"
+      ]
+    },
+    {
+      "rule_id": "AC-26",
+      "principal_role": "ci_service",
+      "action": "ci.revision.submit",
+      "resource": "ContractRevision",
+      "when_all": [
+        "token.audience",
+        "service.scope",
+        "source.allowed",
+        "product.same"
+      ]
+    },
+    {
+      "rule_id": "AC-27",
+      "principal_role": "ci_service",
+      "action": "ci.check.read",
+      "resource": "CheckRun",
+      "when_all": [
+        "token.audience",
+        "service.scope",
+        "product.same"
+      ]
+    },
+    {
+      "rule_id": "AC-28",
+      "principal_role": "worker",
+      "action": "job.execute",
+      "resource": "ImportJob",
+      "when_all": [
+        "workload.identity",
+        "lease.valid",
+        "job.scope",
+        "egress.restricted"
+      ]
+    },
+    {
+      "rule_id": "AC-29",
+      "principal_role": "internal_auditor",
+      "action": "audit.search",
+      "resource": "AuditRecord",
+      "when_all": [
+        "auditor.scope",
+        "product.allowed",
+        "fields.minimized"
+      ]
+    },
+    {
+      "rule_id": "AC-30",
+      "principal_role": "auditor_exporter",
+      "action": "audit.export",
+      "resource": "AuditRecord",
+      "when_all": [
+        "role.audit_export",
+        "purpose.approved",
+        "scope.finite",
+        "stepup.valid"
+      ]
+    },
+    {
+      "rule_id": "AC-31",
+      "principal_role": "platform_operator",
+      "action": "connector.status.read",
+      "resource": "Connector",
+      "when_all": [
+        "operator.scope",
+        "secrets.redacted"
+      ]
+    },
+    {
+      "rule_id": "AC-32",
+      "principal_role": "connector_admin",
+      "action": "connector.rotate",
+      "resource": "Connector",
+      "when_all": [
+        "role.connector_admin",
+        "stepup.valid",
+        "purpose.approved"
+      ]
+    }
+  ],
+  "negative_rules": [
+    "AC-33",
+    "AC-34",
+    "AC-35"
+  ],
+  "notes": [
+    "No runtime policy engine is provided by this JSON design sample.",
+    "Server must load trusted relations and enforce object-level authorization on every read and write.",
+    "No real customer secret should be used in fixtures."
+  ]
+}

@@ -1,0 +1,37 @@
+scenario_id,category,scenario,expected_result,stage,execution_status,evidence_ref,owner
+SEC-01,identity,Token with unknown issuer,deny and audit without leaking token,MVP,NOT_RUN,,TBD
+SEC-02,identity,"Valid signature, wrong token audience/ID token used as access token",deny type or audience mismatch,MVP,NOT_RUN,,TBD
+SEC-03,service,Stolen CI token calls publication.activate,reject unsupported role/scope,MVP,NOT_RUN,,TBD
+SEC-04,isolation,Parcel user searches private CargoPai assets,"no IDs, names, counts or timing leakage within tolerances",MVP,NOT_RUN,,TBD
+SEC-05,artifact,Cross-product blob direct URL is invoked,deny; no unauthorized release bytes,MVP,NOT_RUN,,TBD
+SEC-06,revoke,Revoked grant repeatedly loads private release,origin denies; no stale private cache response,V1,NOT_RUN,,TBD
+SEC-07,cache,Private BFF response entered shared CDN cache,private response cannot be publicly retrieved,MVP,NOT_RUN,,TBD
+SEC-08,withdraw,"AccessBlock created during public leak, CDN purge delayed",origin denies; edge status remains UNKNOWN/AT_RISK until proven,MVP,NOT_RUN,,TBD
+SEC-09,roles,Product admin attempts global security action,deny via server-side action and scope,MVP,NOT_RUN,,TBD
+SEC-10,roles,Contract author attempts to approve own high-risk revision,reject; independent review required,MVP,NOT_RUN,,TBD
+SEC-11,input,Nested/recursive schema bombs parser,bounded timeout/memory; rejects without side effects,MVP,NOT_RUN,,TBD
+SEC-12,input,Archive expands beyond extraction quota or uses ../ path,reject; no escape/no partial release,MVP,NOT_RUN,,TBD
+SEC-13,review,"Policy changes after signed decision, then activation attempted",require new review based on new policy digest,MVP,NOT_RUN,,TBD
+SEC-14,publish,Concurrent CAS activation on same Target×APIAsset Slot,at most one winner; conflict reported,MVP,NOT_RUN,,TBD
+SEC-15,integrity,Immutable Release object differs from signed/content manifest,"block reading/publication, audit integrity incident",MVP,NOT_RUN,,TBD
+SEC-16,ssrf,Remote $ref resolves or redirects to private/metadata IP,no request to forbidden IP; safe reject,MVP,NOT_RUN,,TBD
+SEC-17,webhook,Valid webhook replay or invalid HMAC event,one effect or reject; no duplicate publication,V1,NOT_RUN,,TBD
+SEC-18,explorer,Explorer tries arbitrary URL/DNS rebound/redirect,"blocked by admission+egress, no internal request",V1,NOT_RUN,,TBD
+SEC-19,worker,Worker attempts unauthorized product secret or egress,blocked with narrow workload identity,MVP,NOT_RUN,,TBD
+SEC-20,database,Connection reuse retains prior product context under RLS,cannot leak rows across transactions,F07,NOT_RUN,,TBD
+SEC-21,explorer,Explorer request/response contains secret and PII,not logged nor shared in history,V1,NOT_RUN,,TBD
+SEC-22,logging,"Sensitive headers/tokens in HTTP errors, traces, audit",redacted consistently across all sinks,MVP,NOT_RUN,,TBD
+SEC-23,audit,Release published without linked actor and policy digest,transaction denied or evidence trail restored,MVP,NOT_RUN,,TBD
+SEC-24,emergency,Break-glass release block undone by same operator without review,unblock refused; independent reapproval,MVP,NOT_RUN,,TBD
+SEC-25,quota,Repeated search and large documents under abuse,quota/resource limits; no cross-tenant starvation,F07,NOT_RUN,,TBD
+SEC-26,recovery,Restore older snapshot with revoked private Release,retain deny facts; no visibility resurrection,F07,NOT_RUN,,TBD
+SEC-27,audit,Unauthorized audit bulk export requested,deny; no file created or reusable export link,V1,NOT_RUN,,TBD
+SEC-28,session,Stale session after member revoke/CSRF attempt,deny sensitive action; CSRF token and cookie protections,MVP,NOT_RUN,,TBD
+SEC-29,supply-chain,Compromised renderer dependency or unsafe update,detect via verification/CI gate; stop publishing,F07,NOT_RUN,,TBD
+SEC-30,xss,Malicious Markdown and inline script embedded in API description,safe render; no script execution or secret access,MVP,NOT_RUN,,TBD
+SEC-31,tenant,Different developer organizations share email domain,no implicit cross-org membership or grant,V1,NOT_RUN,,TBD
+SEC-32,download,Expired signed blob URL still accepted by cache,reject/no-store or bound short expiry and risk documented,V1,NOT_RUN,,TBD
+SEC-33,denial,Policy engine unavailable during write/high-risk read,deny and produce INDETERMINATE operational status,MVP,NOT_RUN,,TBD
+SEC-34,recovery,Edge reports partial ACK after origin blocked,UNKNOWN/AT_RISK rather than success,MVP,NOT_RUN,,TBD
+SEC-35,approval,Target audience changed after reviewer approval,"invalid old approval, new scope review required",MVP,NOT_RUN,,TBD
+SEC-36,multi-slot,Withdrawal of Shipment slot alters Tracking slot,other API slot remains unchanged unless target-wide block,MVP,NOT_RUN,,TBD

@@ -1,0 +1,174 @@
+openapi: 3.1.2
+info:
+  title: CargoPai Contract Control API (DESIGN_EXAMPLE)
+  version: 1.0.0
+  description: >-
+    DESIGN_EXAMPLE ONLY. Contract governance operations provided by IDP API Fabric.
+    These URLs are illustrative and are not evidence of a deployed service.
+servers:
+  - url: https://fabric.example.org
+    description: Non-operational illustrative endpoint
+security:
+  - serviceOAuth: [contracts:write]
+tags:
+  - name: ContractRegistry
+    description: Govern contract source revisions
+  - name: Publication
+    description: Conditionally update a publication slot
+paths:
+  /v1/products/{product_id}/assets/{api_asset_id}/revisions:
+    post:
+      tags: [ContractRegistry]
+      operationId: createContractRevision
+      summary: Register an immutable contract revision
+      description: >-
+        Creates a revision bound to a verified source snapshot; never publishes it.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/ApiAssetId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevisionRequest'
+      responses:
+        '201':
+          description: Revision registered; not yet approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevisionResponse'
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+      security:
+        - serviceOAuth: [contracts:write]
+  /v1/publication-slots/{slot_id}:
+    put:
+      tags: [Publication]
+      operationId: activatePublicationSlot
+      summary: Conditionally activate a verified release
+      description: >-
+        Compares the slot generation before activation. Requires current
+        review, product/audience/environment authorization and artifact verification.
+      parameters:
+        - name: slot_id
+          in: path
+          required: true
+          description: Stable publication slot identifier
+          schema: {type: string, minLength: 1}
+        - name: If-Match
+          in: header
+          required: true
+          description: Quoted slot generation ETag from an authorized read
+          schema: {type: string, minLength: 3}
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivationRequest'
+      responses:
+        '200':
+          description: Authoritative slot update; edge delivery can still be pending
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationResponse'
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '412': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '428': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+      security:
+        - serviceOAuth: [publication:write]
+components:
+  securitySchemes:
+    serviceOAuth:
+      type: oauth2
+      description: Token issuance remains owned by the external IAM
+      flows:
+        clientCredentials:
+          tokenUrl: https://identity.example.org/oauth2/token
+          scopes:
+            contracts:write: Register contract revisions
+            publication:write: Conditionally update publication slots
+  parameters:
+    ProductId:
+      name: product_id
+      in: path
+      required: true
+      description: Independent Fabric product identifier
+      schema: {type: string, minLength: 1}
+    ApiAssetId:
+      name: api_asset_id
+      in: path
+      required: true
+      description: Stable product-owned API asset identifier
+      schema: {type: string, minLength: 1}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Scoped retry token; TTL and fingerprint policy are pending F07
+      schema: {type: string, minLength: 8, maxLength: 128}
+  responses:
+    Problem:
+      description: RFC 9457 problem response with stable error code
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    RevisionRequest:
+      type: object
+      additionalProperties: false
+      required: [snapshot_id, source_digest, spec_version]
+      properties:
+        snapshot_id: {type: string, minLength: 1}
+        source_digest: {type: string, pattern: '^sha256:[a-f0-9]{64}$'}
+        spec_version: {type: string, const: '3.1.2'}
+    RevisionResponse:
+      type: object
+      additionalProperties: false
+      required: [revision_id, source_digest, review_state]
+      properties:
+        revision_id: {type: string}
+        source_digest: {type: string}
+        review_state: {type: string, enum: [DRAFT, IN_REVIEW, APPROVED, REJECTED]}
+    ActivationRequest:
+      type: object
+      additionalProperties: false
+      required: [release_id, target_id, policy_digest, decision_id]
+      properties:
+        release_id: {type: string, minLength: 1}
+        target_id: {type: string, minLength: 1}
+        policy_digest: {type: string, minLength: 1}
+        decision_id: {type: string, minLength: 1}
+    PublicationResponse:
+      type: object
+      additionalProperties: false
+      required: [slot_id, generation, active_release_id, delivery_state]
+      properties:
+        slot_id: {type: string}
+        generation: {type: integer, minimum: 0}
+        active_release_id: {type: string}
+        delivery_state: {type: string, enum: [PENDING, VERIFIED, UNKNOWN]}
+    Problem:
+      type: object
+      required: [type, title, status, error_code]
+      properties:
+        type: {type: string, format: uri-reference}
+        title: {type: string}
+        status: {type: integer, minimum: 400, maximum: 599}
+        detail: {type: string}
+        instance: {type: string}
+        error_code: {type: string}
+        trace_id: {type: string}

@@ -1,0 +1,1221 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="description" content="IDP API Fabric V1.0 F02 系统架构设计，包含 C4、DDD、契约数据权威、双门户、安全发布与可靠性。"><title>F02 · IDP API Fabric 总体架构设计</title><style>
+:root{--ink:#1a2c3e;--muted:#64768a;--brand:#0969aa;--brand2:#087c9e;--line:#dbe4ec;--panel:#fff;--bg:#f4f7fa;--soft:#eef5fb;--accent:#eaf6f4;--warn:#fff3d9;--danger:#fff0ed;--shadow:0 10px 40px rgba(20,52,88,.06)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:var(--ink);background:var(--bg);font-family:Inter,"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;line-height:1.78;font-size:14px}a{color:var(--brand);text-decoration:none}a:hover{text-decoration:underline}button,input{font:inherit}button{cursor:pointer}
+.layout{display:grid;grid-template-columns:296px minmax(0,1fr);min-height:100vh}.side{position:sticky;top:0;height:100vh;overflow-y:auto;background:#0c273f;color:#d7e3ee;padding:27px 19px 28px;scrollbar-width:thin;scrollbar-color:#557086 #0c273f}.logo{font-weight:800;letter-spacing:.045em;color:white;font-size:19px}.logo small{display:block;letter-spacing:.06em;color:#a1bccf;font-size:10px;margin-top:1px}.side-kicker{text-transform:uppercase;letter-spacing:.13em;color:#76a9c9;font-size:10px;margin:30px 10px 13px;font-weight:800}.navlist{display:flex;flex-direction:column;gap:4px}.navlist a,.navlist .pending{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;color:#b8d0e1;font-size:12px;line-height:1.4}.navlist a:hover{background:#163a58;color:white;text-decoration:none}.navlist a.active{background:#164a70;color:white;border-left:3px solid #4bc2d4}.navlist .pending{color:#7f98ab}.mini{margin-left:auto;font-size:10px;color:#9fb6c6}.side input{width:100%;background:#16354f;border:1px solid #2b4d66;border-radius:8px;padding:10px 12px;color:white;outline:none;font-size:12px}.side input::placeholder{color:#9eb4c6}.side hr{border:0;border-top:1px solid #27455e;margin:18px 0}.side-foot{font-size:11px;color:#7998b2;line-height:1.6;margin:22px 10px 4px}
+.main{min-width:0}.topbar{height:57px;background:rgba(255,255,255,.94);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 39px;position:sticky;top:0;z-index:10;backdrop-filter:blur(10px)}.crumb{font-size:12px;color:#6b7b8d}.crumb strong{color:#234359}.top-actions{display:flex;gap:10px;align-items:center}.top-actions a,.top-actions button{color:#315976;background:white;border:1px solid #dce6ed;border-radius:8px;padding:7px 11px;font-size:11px}.top-actions button:hover,.top-actions a:hover{background:#edf6fd;text-decoration:none}.menu{display:none!important}
+.sheet{max-width:1270px;margin:0 auto;padding:32px 46px 90px}.hero{position:relative;overflow:hidden;background:linear-gradient(125deg,#0b304f,#0e5077 70%,#0d7082);border-radius:18px;padding:33px 39px;color:#fff;box-shadow:0 18px 48px rgba(13,55,89,.16);margin-bottom:28px}.hero:after{content:"";position:absolute;width:360px;height:360px;border:1px solid rgba(255,255,255,.14);border-radius:50%;right:-90px;top:-175px;box-shadow:0 0 0 50px rgba(255,255,255,.035),0 0 0 105px rgba(255,255,255,.025);pointer-events:none}.eyebrow{font-size:11px;font-weight:700;letter-spacing:.19em;color:#95d8e9;text-transform:uppercase}.hero h1{font-size:29px;line-height:1.34;letter-spacing:-.035em;margin:9px 0 6px;color:white}.hero p{max-width:650px;color:#c1dbe9;margin:0;font-size:13px}.hero-meta{display:flex;gap:10px;margin-top:19px;flex-wrap:wrap}.hero-meta span{border:1px solid #477a95;background:rgba(255,255,255,.09);color:#d7e7ee;font-size:11px;border-radius:100px;padding:4px 12px}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:32px}.metric{background:white;border:1px solid var(--line);border-radius:12px;padding:15px 17px}.metric b{display:block;font-size:20px;line-height:1.25;color:#0f527e;font-weight:800}.metric span{font-size:11px;color:#7b8da0}
+.doc{background:white;border:1px solid var(--line);box-shadow:var(--shadow);border-radius:16px;padding:28px 37px 42px}.doc h1{display:none}.doc h2{margin:48px 0 19px;padding:0 0 11px;border-bottom:1px solid #dce5ed;font-size:21px;line-height:1.36;letter-spacing:-.018em;color:#133c5e;scroll-margin-top:82px}.doc h2:first-of-type{margin-top:12px}.doc h3{font-size:15px;line-height:1.5;color:#0c5879;margin:30px 0 12px;scroll-margin-top:85px}.doc h4{font-size:14px;color:#194968;margin:22px 0 10px}.doc p{margin:10px 0;color:#35475a}.doc ul,.doc ol{padding-left:23px;color:#35475a}.doc li{margin:5px 0}.doc strong{color:#1d3c57}.doc code{background:#edf4f9;border:1px solid #dce8f2;border-radius:4px;color:#13557c;font-size:.92em;padding:2px 4px}.doc blockquote{margin:16px 0;padding:13px 17px;background:#f0f7fb;border-left:4px solid #3697b5;border-radius:6px;font-size:13px}.doc blockquote p{margin:4px 0}.doc pre{background:#112d44;color:#d4e9f8;border-radius:9px;padding:19px;overflow:auto}.doc pre code{background:none;color:inherit;border:none;padding:0}.doc table{width:100%;border-collapse:separate;border-spacing:0;font-size:12px;line-height:1.62;margin:14px 0 22px;border:1px solid #dbe6ec;border-radius:9px;overflow:hidden}.doc thead th{background:#eaf2f8;color:#245271;text-align:left;font-size:11.5px;font-weight:750;white-space:nowrap;border-bottom:1px solid #d2e2ec}.doc td,.doc th{border-right:1px solid #e5edf3;border-bottom:1px solid #e6edf2;padding:10px 11px;vertical-align:top;overflow-wrap:anywhere}.doc tr>*:last-child{border-right:0}.doc tbody tr:last-child td{border-bottom:0}.doc tbody tr:nth-child(even){background:#fbfdff}.doc tbody tr:hover{background:#f3f9fd}.doc td:first-child{font-weight:620;color:#23577a;white-space:nowrap}.doc td:last-child{white-space:normal}.doc a{overflow-wrap:anywhere}.doc hr{border:none;border-top:1px solid #dce6ed;margin:24px 0}.tablenote{color:#8a9bad}
+.figure{margin:24px 0 27px;background:#f7fafc;border:1px solid #d9e5ed;border-radius:12px;padding:18px}.figure .fig-title{font-size:11px;color:#7892a6;text-transform:uppercase;letter-spacing:.12em;font-weight:800;margin-bottom:13px}.figure figcaption{font-size:11px;color:#71879a;margin-top:12px;line-height:1.6}.fig-main{background:linear-gradient(110deg,#123f60,#0e6580);color:white;text-align:center;border-radius:9px;padding:17px}.fig-main strong{color:white;font-size:17px}.fig-main small{display:block;font-size:11px;color:#bcd8e7}.arrow{font-size:21px;text-align:center;color:#6899ad;line-height:1.2;padding:3px}.portal-grid,.product-grid,.stage-grid{display:grid;gap:10px}.portal-grid{grid-template-columns:1fr 1fr}.product-grid{grid-template-columns:repeat(4,1fr)}.stage-grid{grid-template-columns:repeat(5,1fr)}.fig-card{background:white;border:1px solid #dce8ee;border-radius:9px;padding:13px 12px;min-width:0}.fig-card strong{display:block;color:#214c6a;font-size:12px;line-height:1.45}.fig-card small{display:block;color:#708598;font-size:11px;line-height:1.5;margin-top:5px}.fig-card .tag{display:inline-block;background:#eaf6f4;color:#197c71;border-radius:4px;padding:2px 6px;font-size:10px;margin-bottom:7px}.flow-stage{background:white;border:1px solid #d7e6ec;border-radius:9px;padding:12px}.flow-stage .n{display:inline-grid;place-items:center;width:25px;height:25px;background:#e5f2fb;color:#0d7194;border-radius:8px;font-size:11px;font-weight:800;margin-bottom:8px}.flow-stage strong{display:block;font-size:11.5px;color:#294d66;line-height:1.4}.flow-stage small{color:#6d8193;font-size:10.5px}.portallane{padding:14px;border-radius:10px;background:#fff;border:1px solid #dce8ee}.portallane header{font-weight:800;color:#185373;font-size:14px;border:0;padding-bottom:7px}.portallane p{margin:0 0 10px!important;color:#697f91!important;font-size:11px}.chiprow{display:flex;gap:6px;flex-wrap:wrap}.chip{background:#eff6fa;color:#2a6283;padding:4px 7px;font-size:10px;border-radius:6px;border:1px solid #d9e9f2}.caption{font-size:11px!important;color:#7690a2!important}
+.footer{color:#7d8f9f;text-align:center;font-size:11px;padding:20px}.back-to-top{position:fixed;right:23px;bottom:20px;background:#0f6285;color:white;border:0;border-radius:20px;padding:9px 14px;font-size:12px;box-shadow:0 5px 16px rgba(0,0,0,.14)}.back-to-top:hover{text-decoration:none;background:#124b6a}
+@media(max-width:1200px){.sheet{padding:24px 24px 80px}.side{width:272px}.layout{grid-template-columns:272px minmax(0,1fr)}.doc{padding:25px}.product-grid{grid-template-columns:repeat(2,1fr)}.stage-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:780px){.layout{display:block}.side{position:fixed;z-index:40;left:0;top:0;bottom:0;width:295px;transform:translateX(-102%);transition:transform .2s;box-shadow:10px 0 30px rgba(0,0,0,.2)}body.navopen .side{transform:translateX(0)}.menu{display:block!important}.topbar{padding:0 14px}.top-actions .desktop-only{display:none}.sheet{padding:16px 10px 55px}.hero{padding:24px 21px}.hero h1{font-size:25px}.metrics{grid-template-columns:repeat(2,1fr);gap:8px}.metric{padding:12px}.doc{padding:16px 13px}.doc h2{font-size:18px}.doc table{display:block;overflow-x:auto;white-space:normal}.doc td,.doc th{min-width:104px}.doc td:nth-child(2){min-width:230px}.portal-grid,.product-grid,.stage-grid{grid-template-columns:1fr 1fr}.back-to-top{bottom:12px;right:12px}}
+@media(max-width:460px){.portal-grid,.product-grid,.stage-grid{grid-template-columns:1fr}.hero h1{font-size:22px}}
+@media print{body{background:white;color:#111;font-size:10pt}.layout{display:block}.side,.topbar,.back-to-top{display:none!important}.sheet{max-width:none;padding:0}.hero{border:1px solid #cadce5;border-radius:0;box-shadow:none;color:#173e5e;background:#e9f1f7;padding:16px 20px;print-color-adjust:exact;-webkit-print-color-adjust:exact}.hero h1{color:#173e5e;font-size:22pt}.hero p,.eyebrow,.hero-meta span{color:#234e6d}.metrics{margin-bottom:10px}.metric{border-radius:0}.doc{border:0;border-radius:0;box-shadow:none;padding:0 4px}.doc h2{break-after:avoid;margin-top:20px;font-size:15pt}.doc h3{break-after:avoid}.doc table{font-size:8pt;break-inside:auto}.doc tr{break-inside:avoid}.doc thead{display:table-header-group}.doc td,.doc th{padding:6px;line-height:1.45}.figure{break-inside:avoid}.footer{display:none}a{color:#173e5e}}
+</style><style>
+/* Readability, accessibility and purpose-built engineering figures */
+.doc code{overflow-wrap:anywhere;word-break:break-word;white-space:normal}.doc pre code{word-break:normal;white-space:pre}
+.skip-link{position:fixed;left:12px;top:-80px;z-index:110;background:#fff;color:#173e5e;padding:10px 16px;border:2px solid #246b92;border-radius:8px}.skip-link:focus{top:12px}a:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid #d69a28;outline-offset:3px}.side-backdrop{display:none}.doc h1{display:none}.doc>blockquote:first-child{background:#eaf4f9;border:1px solid #c7dce9;border-left:4px solid #26799c}.doc>blockquote:first-child p{font-size:11.5px}.table-scroll{overflow:auto;max-width:100%;margin:15px 0 24px;border-radius:9px;border:1px solid #dbe6ec}.table-scroll table{margin:0;border:0;border-radius:0;min-width:620px}.doc tbody tr:nth-child(odd){background:#fff}.doc tbody tr:nth-child(even){background:#f9fcfe}.fig-eyebrow{font-size:10px;letter-spacing:.09em;color:#4085a3;font-weight:800;display:block}.relation-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.relation-unit{background:white;border:1px solid #cfdde7;border-radius:10px;padding:16px}.relation-unit strong{display:block;font-size:14px;color:#194d6c;margin:5px 0}.relation-unit small{display:block;color:#617d92;line-height:1.6}.relation-join{margin-top:11px;padding:11px 15px;border:1px dashed #a8c6d7;border-radius:9px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center;color:#386d89;font-size:11px}.relation-join span:nth-child(even){color:#118176;font-size:18px}.cap-super{border-radius:9px;background:#123e5f;text-align:center;padding:13px;color:white}.cap-super strong{display:block;color:white;font-size:15px}.cap-super small{color:#b8d9e8}.cap-groups{display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:10px;margin-top:10px}.cap-group{background:white;border:1px solid #d9e7ef;border-radius:10px;padding:12px}.cap-head{color:#1c5977;font-weight:800;font-size:12px;padding:5px 3px 11px;border-bottom:1px solid #d9e7ef;display:flex;align-items:center;justify-content:space-between;gap:5px}.cap-head span{font-size:10px;color:#7794a6;white-space:nowrap}.cap-grid{display:grid;grid-template-columns:1fr;gap:6px;margin-top:10px}.cap-grid>div{font-size:11.5px;display:flex;gap:7px;align-items:center;padding:7px;border-radius:7px;background:#f1f7fb;color:#254e68}.cap-grid b{display:inline-grid;place-items:center;min-width:23px;height:23px;border-radius:6px;background:#d7edf7;color:#145f83;font-size:10px}.roadmap-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.road{background:white;border:1px solid #d7e5ed;border-radius:9px;padding:14px;display:flex;flex-direction:column;gap:8px;min-height:185px}.road-id{font-size:10px;letter-spacing:.08em;color:#107687;background:#e7f4f5;border-radius:5px;padding:3px 8px;align-self:flex-start;font-weight:800}.road strong{color:#1c4b68;font-size:14px}.road small{font-size:11px;color:#617b8e;line-height:1.65}.road em{font-size:10px;color:#62788b;font-style:normal;border-top:1px solid #deebf0;padding-top:8px;margin-top:auto}.life-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.life-row{padding:13px;background:white;border:1px solid #d4e4ed;border-radius:9px}.life-row span{font-size:10px;letter-spacing:.09em;color:#2a85a1;font-weight:800}.life-row strong{display:block;color:#184c6d;margin:7px 0;font-size:12px}.life-row small{display:block;font-size:11px;color:#668397}.rule-flag{margin-top:10px;padding:12px;border-left:3px solid #168d7e;border-radius:6px;background:#ecf8f5;color:#2b675f;font-size:11.5px;line-height:1.7}.trace-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px}.trace-grid>div{border:1px solid #d8e8f0;background:white;padding:12px 7px;text-align:center;border-radius:8px;position:relative}.trace-grid>div:not(:last-child):after{content:'›';position:absolute;right:-8px;top:24%;color:#328b9d;font-size:22px;z-index:1}.trace-grid strong{display:block;color:#165b7b;font-size:12px}.trace-grid small{display:block;color:#678296;font-size:10px;margin-top:3px}
+@media(max-width:1080px){.cap-groups{grid-template-columns:1fr 1fr}.cap-group:first-child{grid-row:span 2}.roadmap-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:780px){.side-backdrop{display:none;position:fixed;inset:0;background:#0b223bb0;z-index:35;border:0}body.navopen .side-backdrop{display:block}.topbar .crumb{font-size:11px}.top-actions a,.top-actions button{padding:6px 8px}.relation-grid{grid-template-columns:1fr}.cap-groups{grid-template-columns:1fr}.cap-group:first-child{grid-row:auto}.trace-grid{grid-template-columns:repeat(3,1fr)}.trace-grid>div:not(:last-child):after{display:none}.life-grid{grid-template-columns:1fr}.doc table{display:table;overflow:visible}.doc td,.doc th{min-width:auto}.table-scroll table{min-width:680px}.figure{padding:13px}.sheet{padding-top:15px}}
+@media(max-width:460px){.roadmap-grid{grid-template-columns:1fr}.topbar{height:auto;min-height:57px;gap:8px}.crumb{display:none}.top-actions>a[href$=".md"]{display:none}}
+@media print{.table-scroll{overflow:visible;border:0}.table-scroll table{min-width:0;font-size:7.4pt;table-layout:auto}.roadmap-grid{grid-template-columns:repeat(2,1fr)}.road{min-height:auto}.cap-groups{grid-template-columns:repeat(3,1fr)}.relation-grid{grid-template-columns:repeat(3,1fr)}.trace-grid{grid-template-columns:repeat(6,1fr)}.side-backdrop,.skip-link{display:none!important}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{transition:none!important;animation:none!important}}
+</style><style>
+.table-scroll{width:100%;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;margin:16px 0 23px;border:1px solid #deebf0;border-radius:9px}.table-scroll table{margin:0;width:max-content;min-width:100%;border:0}.doc pre{max-width:100%;overflow-x:auto}.architecture-figure{border:1px solid #d0e1ec;border-radius:14px;padding:20px;margin:23px 0 28px;background:linear-gradient(135deg,#f8fbff,#f1f8fb);break-inside:avoid}
+.fig-label{color:#47738f;font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;margin-bottom:14px}
+.fig-stack{display:grid;gap:10px}.fig-head{background:linear-gradient(125deg,#123e5d,#117487);border-radius:10px;padding:18px 16px;text-align:center;color:#fff}.fig-head strong{display:block;color:#fff;font-size:17px}.fig-head small{display:block;font-size:11px;color:#cfe7ef;margin-top:5px}.fig-head.light{background:#e8f2f8;border:1px solid #cadae8;color:#1c4a63}.fig-head.light strong{color:#174f6c}.fig-head.light small{color:#4c7387}
+.fig-grid{display:grid;gap:9px;align-items:stretch}.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.cols-5{grid-template-columns:repeat(5,minmax(0,1fr))}
+.fig-box{min-width:0;background:#fff;border:1px solid #c9dfea;border-radius:9px;padding:13px;text-align:center;box-shadow:0 3px 9px #18375209}.fig-box b{display:block;color:#19536f;font-size:12.2px;line-height:1.5}.fig-box small{display:block;color:#71889a;font-size:11px;margin-top:3px;line-height:1.5}.fig-primary{background:#dceef7;border-color:#75b1c9}.fig-primary b{font-size:13.5px;color:#124967}
+.fig-box.tone-light{background:#f8fbfc}.fig-box.tone-green{background:#ecf7f2;border-color:#b8ded0}.fig-box.tone-green b{color:#1d7060}.fig-box.tone-red{background:#fff2ef;border-color:#e7c5bd}.fig-box.tone-red b{color:#a04941}
+.fig-arrow,.fig-connect{text-align:center;color:#4c879e;font-weight:750;font-size:11.5px;line-height:1.6;padding:9px 2px}.fig-layer{display:flex;gap:14px;align-items:center;justify-content:center;background:white;border:1px solid #a2c5d6;border-radius:10px;padding:16px;flex-wrap:wrap}.fig-layer b{color:#125475;font-size:14px}.fig-layer span{font-size:12px;color:#5a788f}.fig-separator{border-top:2px dashed #bfd4df;text-align:center;color:#6a8293;padding:13px 10px 4px;font-size:11px;font-weight:700}
+.fig-lane{display:flex;flex-direction:column;gap:8px;border:1px solid #c9dfea;border-radius:11px;background:#fff;padding:16px;min-width:0}.fig-lane strong{color:#154f71;font-size:15px;line-height:1.5}.fig-lane span{font-size:11px;color:#5e8299;border-bottom:1px solid #e0ebf0;padding-bottom:9px}.fig-lane small{color:#66869b;line-height:1.5}.fig-mini{padding:9px 10px;border:1px solid #deebf0;background:#f4f8fa;border-radius:6px;font-size:11px;color:#315f79}.architecture-figure figcaption{font-size:11px;color:#708b9f;line-height:1.7;margin-top:15px}
+.fig-label+ .fig-grid{margin-top:3px}.architecture-figure .fig-grid+.fig-arrow{margin-top:5px}
+.doc h2{counter-increment:foo}.doc blockquote strong{font-weight:750}.top-actions a{white-space:nowrap}
+@media (max-width:1100px){.cols-5{grid-template-columns:repeat(3,1fr)}.cols-4{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:780px){.table-scroll table{display:table;min-width:650px;width:max-content}.architecture-figure{padding:13px 11px}.fig-head{padding:14px}.fig-head strong{font-size:15px}.fig-layer{display:block;text-align:center}.fig-layer b{display:block;margin-bottom:5px}.fig-box{padding:10px}.fig-box b{font-size:11.5px}.cols-3{grid-template-columns:repeat(2,1fr)}.cols-5{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:480px){.fig-grid.cols-2,.fig-grid.cols-3,.fig-grid.cols-4,.fig-grid.cols-5{grid-template-columns:1fr}.fig-lane{padding:12px}.fig-head strong{font-size:14px}.architecture-figure figcaption{font-size:10.5px}}
+@media print{.architecture-figure{break-inside:avoid;background:#f6fafc}.fig-head,.fig-head.light{-webkit-print-color-adjust:exact;print-color-adjust:exact}.fig-grid.cols-4{grid-template-columns:repeat(4,1fr)}.fig-grid.cols-5{grid-template-columns:repeat(5,1fr)}}
+</style></head><body><a class="skip-link" href="#main-content">跳到文档正文</a><button id="sideBackdrop" class="side-backdrop" aria-label="关闭章节目录" aria-hidden="true" tabindex="-1"></button><div class="layout"><aside class="side" id="sidebar"><a href="../index.html" style="text-decoration:none"><div class="logo">IDP API Fabric<small>ENGINEERING BASELINE</small></div></a><div class="side-kicker">文档体系</div><div class="navlist"><a href="F01_Product_Requirements.html" class="">F01 · Product Requirements</a><a href="F02_System_Architecture.html" class="active">F02 · System Architecture</a><a href="F03_Domain_and_Data_Model.html" class="">F03 · Domain & Data Model</a><a href="F04_API_Contract_Governance.html" class="">F04 · Contract Governance</a><a href="F05_Security_and_Multitenancy.html" class="">F05 · Security & Multitenancy</a><div class="pending">F06 · Dual Portal Experience<span class="mini">待编写</span></div><div class="pending">F07 · Engineering & Quality<span class="mini">待编写</span></div><a href="F08_Delivery_and_Acceptance.html" class="">F08 · Delivery & Acceptance</a></div><hr><div class="side-kicker">F02 · 目录</div><input id="navsearch" type="search" placeholder="筛选本文章节…" aria-label="筛选目录章节"><nav class="navlist" id="toc"><a href="#section-0" style="">0. 执行摘要与架构裁决</a>
+<a href="#section-1" style="">1. 设计输入、范围与适用标准</a>
+<a href="#section-1-1" style="padding-left:24px">1.1 与 F01 的需求对齐</a>
+<a href="#section-1-2" style="padding-left:24px">1.2 上位标准的优先级</a>
+<a href="#section-1-3" style="padding-left:24px">1.3 工程设计不变量（Architectural Invariants）</a>
+<a href="#section-2" style="">2. 质量属性、架构驱动与假设</a>
+<a href="#section-3" style="">3. C4 视图：系统上下文及信任边界</a>
+<a href="#section-3-1" style="padding-left:24px">3.1 外部参与者与系统关系</a>
+<a href="#section-3-2" style="padding-left:24px">3.2 数据与网络信任区域</a>
+<a href="#section-4" style="">4. C4 Level 2：容器与部署职责</a>
+<a href="#section-4-1" style="padding-left:24px">4.1 可部署组件</a>
+<a href="#section-4-2" style="padding-left:24px">4.2 初期部署拓扑建议</a>
+<a href="#section-5" style="">5. DDD 子域、限界上下文与依赖方向</a>
+<a href="#section-5-1" style="padding-left:24px">5.1 先定义领域边界，不按表或 UI 拆服务</a>
+<a href="#section-5-2" style="padding-left:24px">5.2 代码依赖方向（Go First）</a>
+<a href="#section-5-3" style="padding-left:24px">5.3 跨上下文协作示例</a>
+<a href="#section-6" style="">6. 身份、租户、产品与权限隔离</a>
+<a href="#section-6-1" style="padding-left:24px">6.1 多维关系不是一棵“tenant_id”树</a>
+<a href="#section-6-2" style="padding-left:24px">6.2 授权执行原则</a>
+<a href="#section-7" style="">7. 契约与不可变制品：权威、版本、来源</a>
+<a href="#section-7-1" style="padding-left:24px">7.1 数据权威矩阵</a>
+<a href="#section-7-2" style="padding-left:24px">7.2 完整可追溯的契约链</a>
+<a href="#section-7-3" style="padding-left:24px">7.3 唯一键和制品完整性</a>
+<a href="#section-7-4" style="padding-left:24px">7.4 标准兼容策略</a>
+<a href="#section-8" style="">8. 治理检查与可靠任务执行</a>
+<a href="#section-8-1" style="padding-left:24px">8.1 Check Pipeline</a>
+<a href="#section-8-2" style="padding-left:24px">8.2 作业与外部依赖可靠性</a>
+<a href="#section-9" style="">9. 发布、撤销、回退与一致性</a>
+<a href="#section-9-1" style="padding-left:24px">9.1 必须分离的状态机</a>
+<a href="#section-9-2" style="padding-left:24px">9.2 发布可见性协议（MVP）</a>
+<a href="#section-10" style="">10. 双门户架构与多品牌发布</a>
+<a href="#section-10-1" style="padding-left:24px">10.1 两个不同的授权体验</a>
+<a href="#section-10-2" style="padding-left:24px">10.2 门户渲染与内容发布</a>
+<a href="#section-10-3" style="padding-left:24px">10.3 BFF 与部署选项</a>
+<a href="#section-11" style="">11. 安全架构与威胁面前置要求</a>
+<a href="#section-12" style="">12. 关键 API、事件与集成边界</a>
+<a href="#section-12-1" style="padding-left:24px">12.1 Fabric 自身 API（设计意图，不是已实现接口）</a>
+<a href="#section-12-2" style="padding-left:24px">12.2 建议的内部集成事件</a>
+<a href="#section-12-3" style="padding-left:24px">12.3 外部适配器契约</a>
+<a href="#section-13" style="">13. 数据存储、事务、一致性与搜索</a>
+<a href="#section-13-1" style="padding-left:24px">13.1 最小储存布局</a>
+<a href="#section-13-2" style="padding-left:24px">13.2 一致性模型</a>
+<a href="#section-13-3" style="padding-left:24px">13.3 并发与故障试验重点</a>
+<a href="#section-14" style="">14. 可观测性、运营与灾难恢复</a>
+<a href="#section-14-1" style="padding-left:24px">14.1 监控与审计维度</a>
+<a href="#section-14-2" style="padding-left:24px">14.2 恢复分类与演练</a>
+<a href="#section-15" style="">15. 技术选型、演进门槛与成本</a>
+<a href="#section-15-1" style="padding-left:24px">15.1 推荐起步技术决策（待 PoC）</a>
+<a href="#section-15-2" style="padding-left:24px">15.2 关键备选及迁移触发条件</a>
+<a href="#section-16" style="">16. 架构演进、AI-Native 与兼容界面</a>
+<a href="#section-17" style="">17. 关键场景、可验证架构断言与证据状态</a>
+<a href="#section-17-1" style="padding-left:24px">17.1 F02 设计验证场景</a>
+<a href="#section-17-2" style="padding-left:24px">17.2 追溯与标准门禁</a>
+<a href="#section-18" style="">18. 决策清单与 F03–F08 的接口</a>
+<a href="#section-18-1" style="padding-left:24px">18.1 已形成推荐方案、待具名审查的 ADR</a>
+<a href="#section-18-2" style="padding-left:24px">18.2 未被设计结论掩盖的待决问题</a>
+<a href="#section-18-3" style="padding-left:24px">18.3 后续文档的明确交付边界</a>
+<a href="#section-19" style="">19. 参考依据与采用边界</a></nav><div class="side-foot">V1.0 · 设计候选 / 待批准<br>文档中所有 PoC、测试与门禁均尚未实际执行。</div></aside><div class="main"><header class="topbar"><div><button class="menu" id="menu" aria-label="展开目录" aria-controls="sidebar" aria-expanded="false">☰ 目录</button><span class="crumb"><strong>IDP API Fabric</strong>　/　设计基线　/　F02</span></div><div class="top-actions"><a class="desktop-only" href="../index.html">总目录</a><a href="F02_System_Architecture.md">Markdown 源文件</a><button onclick="window.print()">打印 / PDF</button></div></header><main id="main-content" class="sheet" tabindex="-1"><header class="hero"><div class="eyebrow">F02 · System Architecture</div><h1>IDP API Fabric<br>总体架构设计</h1><p>跨产品联邦治理 · Go 模块化 DDD · 不可变契约发布 · 安全多租户 · 双门户架构</p><div class="hero-meta"><span>V1.0 · 设计候选基线</span><span>2026.11.09</span><span>内部架构文档</span><span>PoC / 门禁未执行</span></div></header><div class="metrics"><div class="metric"><b>8</b><span>关键架构图</span></div><div class="metric"><b>6</b><span>设计 ADR（含 F01 继承）</span></div><div class="metric"><b>12</b><span>架构验证场景</span></div><div class="metric"><b>20</b><span>正文架构章节（0–19）</span></div></div><article class="doc">
+<blockquote>
+<p><strong>文档编号</strong>：F02 · System Architecture<br/>
+<strong>项目</strong>：IDP API Fabric (<code>idp-api-fabric</code>)<br/>
+<strong>文档基线</strong>：V1.0 · 2026-11-09<br/>
+<strong>状态</strong>：设计候选基线，已形成可评审的总体架构；具名架构批准、工程 PoC、性能/恢复实测及标准门禁尚未完成<br/>
+<strong>直接上游</strong>：<code>docs/F01_Product_Requirements.md</code>；《IDP Supply Chain DDD Product Engineering Standard V1.0》（IDP-SCG-STD-001）<br/>
+<strong>后续承接</strong>：F03 领域与数据模型、F04 契约治理、F05 安全与多租户、F06 双门户、F07 工程质量、F08 交付验收<br/>
+<strong>文档边界</strong>：描述应如何构建，不声明系统已实现、上线、满足 SLO 或通过六道门禁。</p>
+</blockquote>
+<h2 id="section-0">0. 执行摘要与架构裁决</h2>
+<p><strong>建议的 V1.0 目标架构</strong>：一个独立于 CargoPai、IDP Parcel、IDP Brant 和 IDP Prism 的 <strong>联邦式 API 治理控制平面</strong>；业务产品保有独立的领域服务和运行时 API。控制平面优先使用 <strong>Go 模块化单体 + 持久任务 Worker</strong>，共享 PostgreSQL 权威元数据存储、不可变制品存储及可重建的查询索引。双门户以独立授权面访问同一受控能力集合；外部按产品分别发布及展示。</p>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 01 · 架构总览 / 控制平面与各产品数据平面</div><div class="fig-stack"><div class="fig-head"><strong>IDP API Fabric — Control Plane</strong><small>Contract Registry · API Catalog · Governance · Publication · Developer Experience</small></div><div class="fig-grid cols-4"><div class="fig-box"><b>内部工程门户</b><small>审批、目录、变更、运营</small></div><div class="fig-box"><b>产品外部门户</b><small>独立品牌、授权文档</small></div><div class="fig-box"><b>CI / Git 接入</b><small>来源校验、契约提交</small></div><div class="fig-box"><b>IAM / Gateway 接入</b><small>身份、订阅与状态同步</small></div></div><div class="fig-arrow">↓ 经由显式权限、版本与发布门禁</div><div class="fig-layer"><b>Fabric 核心</b><span>Registry / Catalog / Governance / Release &amp; Publication / Access / Audit</span></div><div class="fig-grid cols-3"><div class="fig-box tone-green"><b>PostgreSQL</b><small>权威业务元数据 / Outbox</small></div><div class="fig-box tone-green"><b>不可变对象存储</b><small>契约与发布制品</small></div><div class="fig-box tone-green"><b>Search / Read Models</b><small>授权约束的可重建投影</small></div></div><div class="fig-separator">严格边界：Fabric 不执行物流业务命令或替代 Gateway</div><div class="fig-grid cols-4"><div class="fig-box tone-light"><b>CargoPai</b><small>货代领域 API</small></div><div class="fig-box tone-light"><b>IDP Parcel</b><small>跨境小包 API</small></div><div class="fig-box tone-light"><b>IDP Brant</b><small>贸易 API</small></div><div class="fig-box tone-light"><b>IDP Prism</b><small>仓储 / WMS API</small></div></div></div><figcaption>上下两层是责任边界而不是同一网络安全域；各业务产品 API 运行时由其所有者治理。图中的 Gateway、IAM 与 CI 是外部依赖，不表示 Fabric 拥有其执行权。</figcaption></figure>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>决策主题</th>
+<th>推荐结论</th>
+<th>依据 / 约束</th>
+<th>批准状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>平台与产品关系</td>
+<td>一套共享治理能力、多产品独立契约及独立发布权限</td>
+<td>F01 BG-01/04、FR-001–005、FR-032/047</td>
+<td>ADR-0001 Proposed</td>
+</tr>
+<tr>
+<td>服务组织</td>
+<td>先行 Go 模块化单体；Worker 独立进程，按容量与职责适时拆分</td>
+<td>领域边界 ≠ 微服务边界；减少初期分布式复杂度</td>
+<td>ADR-0002 Proposed</td>
+</tr>
+<tr>
+<td>契约来源</td>
+<td>Git-first；同时允许受控上传，<strong>每一修订仅一种可证明来源</strong></td>
+<td>版本来源可验、避免双主写入</td>
+<td>ADR-0003 Proposed</td>
+</tr>
+<tr>
+<td>发布与检索</td>
+<td>Release 不可变；Publication 可变指针；目录/检索为可重建投影</td>
+<td>安全撤销、恢复与追溯</td>
+<td>ADR-0004 Proposed</td>
+</tr>
+<tr>
+<td>双门户</td>
+<td>独立安全策略和发布面，复用标准引擎与设计组件</td>
+<td>F01 FR-040–055、NFR-01/15</td>
+<td>ADR-0005 Proposed</td>
+</tr>
+<tr>
+<td>外部基础设施</td>
+<td>通过适配器接入 IAM / Gateway / Git / CI；无自建数据平面</td>
+<td>最小可行范围、可替换性</td>
+<td>ADR-0006 Proposed</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>严格区分</strong>：这六项是 F02 提出的推荐架构，不等于已取得具名批准。尚未执行 PoC、容量实测、渗透测试或恢复演练的结论必须标记为 <code>NOT_RUN</code>，详见第 17 章。</p>
+<h2 id="section-1">1. 设计输入、范围与适用标准</h2>
+<h3 id="section-1-1">1.1 与 F01 的需求对齐</h3>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>需求簇</th>
+<th>架构责任</th>
+<th>本文覆盖位置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>产品自治、Workspace、身份范围（FR-001–006、NFR-01/02）</td>
+<td>多维隔离、统一 Policy Enforcement Point</td>
+<td>§3、§6、§11</td>
+</tr>
+<tr>
+<td>Catalog 与 Registry（FR-007–022、NFR-03/04/13）</td>
+<td>资产模型、制品权威、索引分离、版本溯源</td>
+<td>§4、§5、§8</td>
+</tr>
+<tr>
+<td>治理与发布（FR-023–039、NFR-05/12）</td>
+<td>规则执行、风险评估、不可变 Release、Publication、回退</td>
+<td>§7–§9</td>
+</tr>
+<tr>
+<td>双门户（FR-040–055、NFR-14/15）</td>
+<td>独立 BFF/访问面、多品牌发布、UX 责任</td>
+<td>§10</td>
+</tr>
+<tr>
+<td>集成与可靠性（FR-056–068、NFR-06–11/16–18）</td>
+<td>非交互 API、可靠任务、审计、安全、备份恢复</td>
+<td>§12–§15</td>
+</tr>
+<tr>
+<td>AI-Native 预留（FR-069–071）</td>
+<td>只声明可扩展的契约引用，不默认开放执行</td>
+<td>§16</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="section-1-2">1.2 上位标准的优先级</h3>
+<p>上位工程规范采用 <strong>CORE / 能力触发 Profile / 项目补充 / 正交 TECH</strong> 的适用模型。Fabric 作为平台，在 F01 的 Project Manifest <strong>草案</strong>基础上预评估 CORE、TECH、GO；BENTO_GO 仅在正式选用且版本被验证时启用。业务专项 Profile（例如 TRACE、TRANSPORT、REGULATORY）由 Fabric <strong>自身实际能力</strong>触发，不因为它管理其他产品的这些 API 就自动适用全部业务执行规则。未来实际提供 Agent 工具发布/受控执行时，重新判断 AI Profile。</p>
+<p>本设计引用上位标准的 <code>SCG-DDD-001/003/005/007/009/010</code>、<code>SCG-DATA-002–010</code>、<code>SCG-SEC-001–010</code>、<code>SCG-UX-001–008</code>、<code>SCG-ENG-001–012</code> 和 <code>SCG-TECH-001–004</code> 的适用原则。<strong>具体条件是否触发、规则版本、责任人及例外只能由正式 Manifest 和治理评估确定，不能用本章文字代替</strong>。</p>
+<h3 id="section-1-3">1.3 工程设计不变量（Architectural Invariants）</h3>
+<ul>
+<li><strong>AI-01 产品自治</strong>：任何写操作均有确定 Product/Workspace 范围；不得通过共享数据库把某产品 API 的内容自动暴露给另一产品。</li>
+<li><strong>AI-02 契约溯源</strong>：每个正式 Release 必须能校验内容摘要，追到来源修订、签核结果、策略版本和构建摘要。</li>
+<li><strong>AI-03 私有默认</strong>：无显式授权时，API 详情、搜索、下载、外部门户和索引均不暴露内容；隐藏菜单不能替代服务端拒绝。</li>
+<li><strong>AI-04 发布原子性</strong>：<code>PublicationTarget</code> 仅定义分发范围（Product × Audience × Environment × Portal）；同一 Target 的每个 <code>APIAsset</code> 独立拥有 <code>PublicationSlot</code>。仅 Slot 持有当前 <code>active_release_id</code> 与 <code>generation</code>，以 <code>UNIQUE(target_id, api_asset_id)</code> 和 Slot 级 CAS 实现原子生效、可审计及幂等重试。不同 API 的 Slot 不应相互竞争；部分成功不得显示为正式生效。</li>
+<li><strong>AI-05 权威单一</strong>：Git 或受控上传原始内容属于修订来源；Registry 管理正式不可变制品；PublicationSlot 的主库指针管理每 API 生效事实，PublicationTarget 仅定义分发范围；索引不得升级为业务事实权威。</li>
+<li><strong>AI-06 可恢复</strong>：任何外部依赖短暂故障都应具备可追踪的失败、重试、对账或人工修复路径；不可宣称跨组件 Exactly-Once。</li>
+<li><strong>AI-07 无越界执行</strong>：API 文档读取权限不蕴含运行时 API 的调用权；Fabric 不在 MVP 内代理生产业务流量。</li>
+</ul>
+<h2 id="section-2">2. 质量属性、架构驱动与假设</h2>
+<p>质量属性按“业务场景 → 可观察指标 → 验证条件”定义；本稿不捏造已批准的数值阈值。</p>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>驱动</th>
+<th>要求 / 设计响应</th>
+<th>验证责任及状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>隔离</td>
+<td>搜索、详情、导出、缓存、后台任务统一判定 Product × Workspace × Audience × Environment × Principal</td>
+<td>F05；负向矩阵 NOT_RUN</td>
+</tr>
+<tr>
+<td>正确性</td>
+<td>内容寻址的不可变 Release、条件更新 Publication、乐观版本与幂等唯一约束</td>
+<td>F03/F04；并发/故障测试 NOT_RUN</td>
+</tr>
+<tr>
+<td>延迟</td>
+<td>公开读路径与治理写路径解耦；缓存只保存可安全共享的公开制品</td>
+<td>F07；p95、规模与命中率 TBD</td>
+</tr>
+<tr>
+<td>可恢复</td>
+<td>DB、对象存储、签名密钥、发布快照联合备份；索引可重建</td>
+<td>F07/F08；RPO/RTO TBD</td>
+</tr>
+<tr>
+<td>扩展</td>
+<td>新产品通过元数据、授权及发布策略接入，不复制整套平台</td>
+<td>F03/F06；第二产品试点 NOT_RUN</td>
+</tr>
+<tr>
+<td>安全</td>
+<td>受限 <code>$ref</code>、沙箱网络隔离、敏感内容扫描、发布撤销阻断</td>
+<td>F05；攻击面审查 NOT_RUN</td>
+</tr>
+<tr>
+<td>可维护</td>
+<td>DDD 依赖方向、Ports/Adapters、分层测试、ADR 与制品来源</td>
+<td>F07；模块检查 NOT_RUN</td>
+</tr>
+<tr>
+<td>DX</td>
+<td>门户按任务组织、真实/Mock 明示、错误反馈、双门户键盘可用</td>
+<td>F06；任务测试 NOT_RUN</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>待测规模假设</strong>：产品数量、每产品 API 数量、历史 Release 增长、文件尺寸、搜索 QPS、并发检查任务、公开文档访问峰值和历史保留期限；不得在未完成基线盘点前写入固定容量承诺。</p>
+<h2 id="section-3">3. C4 视图：系统上下文及信任边界</h2>
+<h3 id="section-3-1">3.1 外部参与者与系统关系</h3>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 02 · C4 Level 1 / 系统上下文</div><div class="fig-grid cols-3"><div class="fig-box"><b>内部研发 / 架构 / 审批人</b><small>SSO · Engineering Portal</small></div><div class="fig-box fig-primary"><b>IDP API Fabric</b><small>发布权威、审查、门户内容</small></div><div class="fig-box"><b>客户 / 集成商 / 合作伙伴</b><small>Product Developer Portal</small></div></div><div class="fig-connect">↕ 身份与审计　 ↕ 契约及发布　 ↕ 受控文档发现</div><div class="fig-grid cols-4"><div class="fig-box tone-light"><b>Git / CI</b><small>提交、凭证证明</small></div><div class="fig-box tone-light"><b>Identity Provider</b><small>认证和令牌</small></div><div class="fig-box tone-light"><b>Gateway / Product APIs</b><small>运行时授权执行</small></div><div class="fig-box tone-light"><b>Object Store / Observability</b><small>制品、日志、监测</small></div></div><figcaption>文档与管理请求进入 Fabric；真实物流业务请求仍指向对应产品的运行时 API，不能绕过该产品独立授权。</figcaption></figure>
+<h3 id="section-3-2">3.2 数据与网络信任区域</h3>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>区域</th>
+<th>典型访问者</th>
+<th>可接触数据</th>
+<th>强制边界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Z0 Public</td>
+<td>匿名浏览器</td>
+<td>标记为 public 的已发布内容</td>
+<td>CDN/Edge + 公开目标 allow 判定；禁止私有资产混入</td>
+</tr>
+<tr>
+<td>Z1 Developer Authenticated</td>
+<td>外部开发者组织</td>
+<td>对应产品与订阅允许的受限文档和应用元数据</td>
+<td>外部 IAM、对象级授权、产品与环境隔离</td>
+</tr>
+<tr>
+<td>Z2 Engineering</td>
+<td>内部成员与 CI 服务账户</td>
+<td>工作空间、修订、审批与已授权制品</td>
+<td>内部 SSO、MFA/策略、最小权限、操作审计</td>
+</tr>
+<tr>
+<td>Z3 Trusted Control</td>
+<td>Go 服务、Worker</td>
+<td>权威元数据、不可变制品、私密发布策略</td>
+<td>私有网络、工作负载身份、DB/存储最小权限</td>
+</tr>
+<tr>
+<td>Z4 Product Runtime</td>
+<td>产品 API、Gateway、沙箱</td>
+<td>真实业务与运行时状态</td>
+<td>外部系统独立授权，Fabric 仅有限适配权限</td>
+</tr>
+</tbody>
+</table></div>
+<p>跨域的每次操作都显式声明 <strong>caller、delegated actor（如有）、subject、scope、policy version、target</strong>。不能把内部管理员身份默认转换为客户生产 API 权限。网络分区、租户标识、RLS 和应用级授权属于不同防护层，应组合使用并开展绕过验证。</p>
+<h2 id="section-4">4. C4 Level 2：容器与部署职责</h2>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 03 · C4 Level 2 / 逻辑容器与交互</div><div class="fig-grid cols-2"><div class="fig-box"><b>Engineering Web</b><small>内部 SSO / 授权工作台</small></div><div class="fig-box"><b>Developer Web</b><small>按产品站点/品牌的公开与私有入口</small></div></div><div class="fig-arrow">↓ API + 访问策略（同一逻辑域，独立认证与 BFF/路由策略）</div><div class="fig-head"><strong>Fabric API / Control Plane · Go</strong><small>Catalog · Registry · Governance · Release · Access · Audit · Integrations</small></div><div class="fig-arrow">↓ 事务 / 持久任务 / 出站适配</div><div class="fig-grid cols-3"><div class="fig-box"><b>PostgreSQL</b><small>事务主库、发布指针、Outbox、Job</small></div><div class="fig-box"><b>Artifact Store</b><small>不可变内容、摘要、签名证据</small></div><div class="fig-box"><b>Index / Portal Projection</b><small>可重建、受控查询</small></div></div><div class="fig-arrow">↔ 持久任务调度（至少一次投递）</div><div class="fig-head light"><strong>Validation / Publishing Worker · Go</strong><small>Parse · Lint · Diff · Scan · Build · Index · Reconcile · Audit Export</small></div><figcaption>这里的“容器”指 C4 软件部署单元，不强制表示 Docker 镜像数。MVP 可以在同仓库中部署 API 和 Worker 两种进程，未来视负载和风险独立伸缩。</figcaption></figure>
+<h3 id="section-4-1">4.1 可部署组件</h3>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>组件</th>
+<th>职责</th>
+<th>是否独立伸缩</th>
+<th>运行域</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fabric-api</code></td>
+<td>登录上下文、命令受理、领域编排、授权、只读查询、发布状态 API</td>
+<td>可以</td>
+<td>私有控制平面</td>
+</tr>
+<tr>
+<td><code>fabric-worker</code></td>
+<td>解析校验、差异、安全扫描、构建、索引、修复与对账</td>
+<td>可以</td>
+<td>受限执行域，不直接受公网任意输入控制</td>
+</tr>
+<tr>
+<td><code>engineering-web</code></td>
+<td>内部工程治理 UI</td>
+<td>可独立部署</td>
+<td>仅内部可信身份访问</td>
+</tr>
+<tr>
+<td><code>developer-web</code></td>
+<td>多产品模板渲染、公开与受限文档、开发者接入（V1）</td>
+<td>可分产品部署</td>
+<td>公开/受限 Edge，受独立策略保护</td>
+</tr>
+<tr>
+<td><code>postgresql</code></td>
+<td>事务性事实与审计元数据</td>
+<td>运维策略决定</td>
+<td>受控数据域</td>
+</tr>
+<tr>
+<td><code>artifact-store</code></td>
+<td>内容寻址、不可变发布包</td>
+<td>独立容量扩展</td>
+<td>私有对象存储</td>
+</tr>
+<tr>
+<td><code>read-index</code></td>
+<td>可重建的检索及门户投影，MVP 可由 PostgreSQL 承担</td>
+<td>按规模决策</td>
+<td>不作为授权与发布权威</td>
+</tr>
+<tr>
+<td>外部 <code>IAM / Gateway / Git / CI</code></td>
+<td>认证、业务调用、版本与流水线</td>
+<td>不归 Fabric 实现</td>
+<td>各自的治理域</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>不强制的组件</strong>：独立 API Gateway、Kafka/NATS、Elasticsearch/OpenSearch、服务网格、Kubernetes。引入条件是测量后的性能、可用性、隔离及组织需要，而非架构图的视觉完整性。</p>
+<h3 id="section-4-2">4.2 初期部署拓扑建议</h3>
+<p>建议 MVP 采用单区域、多个受控网络区域、API/Worker 分离运行、PostgreSQL 可恢复部署和受控对象存储。生产前必须明确高可用、备份及恢复；<strong>单区域候选方案不等于已批准生产部署</strong>。对私有文档优先经过鉴权请求按版本读取，不依赖可长期公开的静态 CDN URL。公开内容允许 CDN，但必须具备紧急拒绝与缓存失效策略。</p>
+<h2 id="section-5">5. DDD 子域、限界上下文与依赖方向</h2>
+<h3 id="section-5-1">5.1 先定义领域边界，不按表或 UI 拆服务</h3>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>建议 BC（待 F03 细化）</th>
+<th>主要业务责任</th>
+<th>事实/不变量的拥有者</th>
+<th>不应该拥有的内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Product Governance</td>
+<td>产品身份、Workspace、成员与产品角色</td>
+<td>Product、Workspace 与管理边界</td>
+<td>外部 OAuth 令牌签发</td>
+</tr>
+<tr>
+<td>API Catalog</td>
+<td>API 资产注册、归属、领域、生命周期索引</td>
+<td>Asset 身份和负责人声明</td>
+<td>Release 原始制品</td>
+</tr>
+<tr>
+<td>Contract Registry</td>
+<td>导入来源、Revision、Release、内容摘要</td>
+<td>修订溯源和 Release 不可变性</td>
+<td>Portal 当前生效指针</td>
+</tr>
+<tr>
+<td>Policy &amp; Review</td>
+<td>策略版本、检查结果、审批证据与豁免</td>
+<td>治理结论及审批权限约束</td>
+<td>运行时 Gateway 的最终授权</td>
+</tr>
+<tr>
+<td>Publication</td>
+<td>目标、受众、环境、生效、撤销、恢复</td>
+<td>Publication 指针和生效状态</td>
+<td>变更不可变 Release 内容</td>
+</tr>
+<tr>
+<td>Developer Access</td>
+<td>开发者组织、应用、订阅与授权申请（V1）</td>
+<td>接入关系、申请流转</td>
+<td>IAM 凭证签发、产品业务 API 权限本体</td>
+</tr>
+<tr>
+<td>Platform Operations</td>
+<td>任务、集成状态、审计、恢复与对账</td>
+<td>Job / Reconciliation 状态及运营证据</td>
+<td>业务领域最终执行事实</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote>
+<p><strong>BC 是逻辑语义边界，不是初始 Go Module、数据库 Schema、微服务或团队的必然一一对应关系</strong>。F03 应通过用例、事务不变量、聚合边界和反例检查确认是否拆合。</p>
+</blockquote>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 04 · DDD Context Map / 模块协作</div><div class="fig-grid cols-3"><div class="fig-box tone-light"><b>Product Governance</b><small>身份归属、范围、成员</small></div><div class="fig-box"><b>API Catalog</b><small>API 资产与发现</small></div><div class="fig-box"><b>Contract Registry</b><small>Revision / Release</small></div></div><div class="fig-arrow">↓ 受保护的应用服务接口 + 明确消费者契约</div><div class="fig-grid cols-3"><div class="fig-box"><b>Policy &amp; Review</b><small>规则、审核与证据</small></div><div class="fig-box fig-primary"><b>Publication</b><small>版本指针与发布授权</small></div><div class="fig-box"><b>Developer Access</b><small>外部组织与访问申请</small></div></div><div class="fig-arrow">↓ 只通过明确应用接口，外部入站使用 ACL</div><div class="fig-head light"><strong>Platform Operations &amp; Integration ACLs</strong><small>Git · CI · IAM · Gateway · Event Bus · Object Storage</small></div><figcaption>各上下文之间使用显式命令/查询契约、稳定标识、必要领域事件及 ACL。共享 DTO 或事件格式不意味着共享数据库写入和业务决策权。</figcaption></figure>
+<h3 id="section-5-2">5.2 代码依赖方向（Go First）</h3>
+<p>建议仓库主模块参考 <code>github.com/idp-xyz/idp-api-fabric</code>（仓库地址为建议，非已验证存在）。内部目录可以从下述形态起步：</p>
+<pre><code class="language-text">idp-api-fabric/                     # 同一产品工程仓库
+├── cmd/fabric-api/                 # 控制平面进程入口
+├── cmd/fabric-worker/              # 持久任务 Worker 入口
+├── internal/contexts/
+│   ├── product/
+│   ├── catalog/
+│   ├── registry/
+│   ├── governance/
+│   ├── publication/
+│   ├── developeraccess/
+│   └── operations/
+│       # 每个上下文可包含 domain / application / ports / adapters
+├── internal/platform/              # DB / Auth adapter / telemetry / transport
+├── api/                             # Fabric 自身受控对外契约；非所有产品 API 合并文件
+├── migrations/                      # 追加式迁移
+└── web/
+    ├── engineering/
+    ├── developer/
+    └── shared-ui/
+</code></pre>
+<p><strong>依赖规则</strong>：<code>transport → application → domain</code>；领域层不引用 HTTP、ORM、Redis、IAM SDK、外部门户或其他上下文的数据库模型。跨上下文编排由应用层/明确契约完成；Domain Event 不直接暴露为对外 Integration Event。<code>internal/</code> 的 Go 可见性语义不足以自动保证跨 BC 隔离，需要静态依赖检查。Bento-Go 如拟复用，应先通过精确版本与工程消费者验证，不能预先将其列为强制依赖。</p>
+<h3 id="section-5-3">5.3 跨上下文协作示例</h3>
+<p>发布申请的 Application Use Case 验证调用者、Product/Target 范围、Release 存在且不可变、Governance Decision 与策略版本匹配，再提交 Publication 状态转换和 Outbox/任务状态。Catalog、搜索和外部文档均通过异步投影反映生效结果，<strong>不能由各上下文分别决定同一 Publication 是否有效</strong>。</p>
+<h2 id="section-6">6. 身份、租户、产品与权限隔离</h2>
+<h3 id="section-6-1">6.1 多维关系不是一棵“tenant_id”树</h3>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 05 · 隔离维度与访问判定</div><div class="fig-grid cols-3"><div class="fig-box"><b>Principal</b><small>内部成员 / 外部开发者 / CI Service</small></div><div class="fig-box"><b>Product + Workspace</b><small>CargoPai / Parcel / Brant / Prism</small></div><div class="fig-box"><b>Audience + Environment</b><small>internal / partner / public · dev / sandbox / prod</small></div></div><div class="fig-arrow">↓ Policy Decision / 必须在服务端复核</div><div class="fig-head"><strong>Allow = 有效身份 ∧ 有效关系 ∧ 允许操作 ∧ 对象范围 ∧ 发布范围</strong><small>缺省拒绝 · 附加角色/属性策略 · 审计 · 有效期 · deny 优先</small></div><div class="fig-arrow">↓ 校验资源身份与版本，禁止只凭搜索结果/站点路由推定授权</div><div class="fig-grid cols-2"><div class="fig-box tone-green"><b>Authorized</b><small>返回最小必要的内容及版本</small></div><div class="fig-box tone-red"><b>Denied</b><small>拒绝并写入受控审计，不泄露私有元数据</small></div></div><figcaption>此判定表达最小必备的维度；最终 ABAC/RBAC 条件及授权实体细节由 F05 和 F03 完成。对外身份的认证成功不能自动授予 API 执行权限。</figcaption></figure>
+<h3 id="section-6-2">6.2 授权执行原则</h3>
+<ul>
+<li>统一 AuthN 适配层验证 issuer、audience、签名、expiry、授权主体及委托关系；但内部与外部使用独立 client / policy 配置。<strong>不能把同一个 SSO Token 用于跨安全域通行</strong>。</li>
+<li>服务端 <code>authorize(principal, action, resource, context)</code> 应覆盖命令、查询、搜索、导出、后台任务、批量处理、对象存储获取和门户发布；对每次下载重判资格。</li>
+<li>查询可先进行范围过滤，再进行结果级校验；不能仅凭 Search Index ACL 片段作为最终允许依据。索引/缓存失效的默认处理为拒绝敏感请求。</li>
+<li>Worker 接收到的是经过验证的目标/操作身份快照，执行前重新确认权限、状态与策略有效性。撤销/到期后的积压任务不得继续以旧权限执行高风险发布。</li>
+<li>开发者组织、产品订阅、Consumer Application 与 OAuth Client 不同；凭证原值保存在授权的 Secret/IAM 服务而非业务库或普通日志中。</li>
+<li>产品品牌域名/会话/CORS/CSP/CSRF/重定向应隔离；共享渲染层不会继承共享 Cookie。公网访问私有文档要经过 Edge 与服务端双重控制。</li>
+</ul>
+<h2 id="section-7">7. 契约与不可变制品：权威、版本、来源</h2>
+<h3 id="section-7-1">7.1 数据权威矩阵</h3>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>数据事实</th>
+<th>权威记录</th>
+<th>是否允许覆盖</th>
+<th>派生/消费</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Git 来源的契约正文及修订历史</td>
+<td>绑定仓库 + Commit + 文件路径 + 内容摘要</td>
+<td>Git 按其受控流程演进，已导入记录不可改写</td>
+<td>Fabric Revision</td>
+</tr>
+<tr>
+<td>受控上传来源的契约正文</td>
+<td>Fabric 保存的原始上传快照 + 上传人 + 摘要</td>
+<td>不可就地覆盖；更新创建新 Revision</td>
+<td>Fabric Revision</td>
+</tr>
+<tr>
+<td>审批、扫描与规则结果</td>
+<td>Policy &amp; Review 记录（绑定策略版本、输入摘要）</td>
+<td>新决定产生新记录，不能篡改旧决定</td>
+<td>Release Gate</td>
+</tr>
+<tr>
+<td>正式 Contract Release</td>
+<td>Registry 元数据 + 对象存储内容寻址制品</td>
+<td><strong>不可变</strong>；需要撤回时改变可见性与发布事实</td>
+<td>文档渲染、SDK/集成</td>
+</tr>
+<tr>
+<td>生效的 Publication</td>
+<td>Publication 主库的 <code>PublicationSlot</code>（唯一 <code>target_id + api_asset_id</code>）中的 <code>active_release_id / generation</code></td>
+<td>Slot 级 CAS 条件原子切换；保留操作历史；Target 只定义分发范围</td>
+<td>公开入口、内部版本查阅</td>
+</tr>
+<tr>
+<td>搜索目录、门户菜单和缓存</td>
+<td>基于权威来源的投影/缓存</td>
+<td>可重建、可删除</td>
+<td>只读发现</td>
+</tr>
+<tr>
+<td>真实 API 部署/运行状态</td>
+<td>产品部署平台 / Gateway / 产品 Owner</td>
+<td>Fabric 只复制带来源与检测时间的快照</td>
+<td>V1 Drift 分析</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>显式拒绝的模式</strong>：Git/数据库/门户三个可写主本；同一 Release 修改原文件；把 <code>latest</code> 当成永久 ID；把外部 API 的实时执行状态写成 Fabric 发布事实；用客户端导航隐藏替代授权。</p>
+<h3 id="section-7-2">7.2 完整可追溯的契约链</h3>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 06 · 不可变链路 / Source → Revision → Release → Publication</div><div class="fig-grid cols-4"><div class="fig-box"><b>Source</b><small>Git commit 或受控上传 / Provenance</small></div><div class="fig-box"><b>Revision</b><small>规范原文 SHA-256 / schema version</small></div><div class="fig-box"><b>Release</b><small>审核证据、制品 Manifest、不可变 Digest</small></div><div class="fig-box fig-primary"><b>PublicationTarget → Slot</b><small>Target 定范围；每 APIAsset 独立 Slot CAS 指向 Release</small></div></div><div class="fig-arrow">↓ 准确绑定来源摘要与策略版本</div><div class="fig-grid cols-3"><div class="fig-box tone-green"><b>内部 Catalog</b><small>管理与追溯</small></div><div class="fig-box tone-green"><b>外部文档</b><small>只有授权范围内的 Release</small></div><div class="fig-box tone-green"><b>版本对比</b><small>不影响历史资产与证据</small></div></div><figcaption>Release 的身份是内容摘要与发布 ID 的组合，不是可以漂移的 latest 标签。一个 Target 允许多个 API 的 Slot 并存；仅 Slot 指针可变更，必须与操作记录、审计和 Outbox 在主库事务内协调。</figcaption></figure>
+<h3 id="section-7-3">7.3 唯一键和制品完整性</h3>
+<ul>
+<li>最小标识集：<code>product_id</code>、<code>workspace_id</code>、<code>api_asset_id</code>、<code>revision_id</code>、<code>release_id</code>、<code>publication_target_id</code>、<code>publication_slot_id</code>、<code>publication_operation_id</code>、<code>digest</code>、<code>source_ref</code>、<code>policy_version</code>、<code>audit_correlation_id</code>。</li>
+<li><code>revision_id</code> 与 <code>release_id</code> 稳定不可复用；一个 API Asset 可关联多个 Revisions/Releases；Release 可发布到多个 Target，但权限必须逐目标和 API 评审。<code>PublicationTarget</code> 由 <code>product_id,audience_key,environment_key,portal_key</code> 唯一确定；<code>PublicationSlot</code> 由 <code>UNIQUE(target_id, api_asset_id)</code> 唯一确定，且 <code>APIAsset.product_id = PublicationTarget.product_id</code>。Target 没有全局当前 Release 指针。</li>
+<li>原始源制品与规范化制品摘要不同：必须保存<strong>原文摘要</strong>、<strong>转换流水线版本</strong>及<strong>最终发布制品摘要</strong>，禁止仅凭规范化后的 JSON 断言源文件完全相同。</li>
+<li>包内多文件 <code>$ref</code> 必须固定引用闭包，生成统一 Build Manifest（路径、摘要、引用版本、工具版本）；不得允许任意网络解析器在发布时从未批准地址拉取变动内容。</li>
+<li>下载与发布校验摘要/签名（如配置），Release Manifest 记录算法、签署身份、构建来源和安全扫描结果；签名方案及关键材料托管由 F07/F05 落实。</li>
+</ul>
+<h3 id="section-7-4">7.4 标准兼容策略</h3>
+<p>以 F01 确认的规范族为输入；推荐先使用 <strong>OpenAPI 3.1.2</strong> 作为受控工程基线候选，OpenAPI 3.2.1 作为兼容性评估目标，AsyncAPI 3.1.0 对应 V1 候选。<strong>任何版本支持声明必须基于解析、差异、文档渲染、Go/TS 生成和安全测试的实际验证</strong>，F02 不宣布工具链已完成适配。具体支持矩阵、例外和升级门禁归 F04/F07。</p>
+<h2 id="section-8">8. 治理检查与可靠任务执行</h2>
+<h3 id="section-8-1">8.1 Check Pipeline</h3>
+<p>建议每次可发布变更生成不可变 <code>check_run_id</code> 与输入摘要，执行：<strong>格式/引用 → 规范校验 → 项目/全局 Lint → 相容性 Diff → 敏感信息/授权扫描 → 策略判定 → 审核证据固化</strong>。检查规则具有 <code>rule_id + version + severity + waiver eligibility + policy_snapshot_digest</code>。</p>
+<p><strong>检查结论不是发布许可</strong>：<code>PASSED_CHECKS</code> 只说明在特定输入、规则和工具版本下检查成功；真正发布还需符合角色、审批和目标范围。策略变化、来源改动、目标变化必须判定已有证据是否失效。</p>
+<h3 id="section-8-2">8.2 作业与外部依赖可靠性</h3>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>失败或竞争场景</th>
+<th>必须实现的架构处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CI 重投相同提交</td>
+<td><code>idempotency_scope = principal + product + operation + key</code>，同键异内容拒绝；保留期限由 F04 确定</td>
+</tr>
+<tr>
+<td>Worker 执行中崩溃</td>
+<td>持久 Job <code>PENDING/RUNNING/RETRY_WAIT/SUCCEEDED/FAILED/BLOCKED</code>，带 lease、fencing token 和重试上限</td>
+</tr>
+<tr>
+<td>数据库提交后通知失败</td>
+<td>本地事务 Outbox 与状态同行提交；外部投递至少一次，消费者通过事件 ID/版本去重</td>
+</tr>
+<tr>
+<td>对象存储写入成功、DB 未登记</td>
+<td>先临时对象/验证摘要，再提交元数据；孤儿制品清理/对账，不提前公开</td>
+</tr>
+<tr>
+<td>DB 已批准但索引未更新</td>
+<td>以权威 Publication 读验证；索引重试/重建；显示同步延迟，不假报已完整同步</td>
+</tr>
+<tr>
+<td>审批后策略发生变化</td>
+<td>启动发布前检查授权与策略版本是否仍有效，失效时返回新审批需求</td>
+</tr>
+<tr>
+<td>消费方无幂等或查询接口</td>
+<td>暂停盲目重试，转为查询结果/人工 HOLD；不推断成功</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>初期不强制消息中间件</strong>：PostgreSQL 持久 Job + Outbox 已能覆盖较多 MVP 场景，但必须按吞吐、锁争用、积压和故障恢复实测决定是否需要 NATS/Kafka 等。任何“Exactly-Once”措辞仅可描述被证明的局部效果，不宣称端到端业务天然恰好一次。</p>
+<h2 id="section-9">9. 发布、撤销、回退与一致性</h2>
+<h3 id="section-9-1">9.1 必须分离的状态机</h3>
+<ul>
+<li>Revision：<code>DRAFT → IN_REVIEW → APPROVED | REJECTED</code>；撤回草稿可由独立事件记录，修改生成新 Revision。</li>
+<li>Release：<code>PREPARING → READY | FAILED</code>；<code>READY</code> 不可修改内容，撤回权限不能修改其历史摘要。</li>
+<li>Publication：<code>REQUESTED → PREPARING → ACTIVE | FAILED | WITHDRAWN</code>；失败可重试，ACTIVE 的原子指针可被新已批准 Release 替换。</li>
+<li>API Asset 生命周期：<code>EXPERIMENTAL → STABLE → DEPRECATED → RETIRED</code>；单独管理，不与 Release、Publication 状态混淆。</li>
+</ul>
+<p>状态仅为架构建议；合法迁移、不变量、拒绝及并发行为必须由 F03/F04 具体冻结。</p>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 07 · 安全发布与紧急撤销</div><div class="fig-grid cols-5"><div class="fig-box"><b>1 · 预检</b><small>来源/摘要/规则/批准</small></div><div class="fig-box"><b>2 · Stage</b><small>构建静态/私有制品</small></div><div class="fig-box"><b>3 · Validate</b><small>目标授权、可读性与路径</small></div><div class="fig-box fig-primary"><b>4 · Commit</b><small>原子生效指针 + Outbox</small></div><div class="fig-box"><b>5 · Reconcile</b><small>索引/CDN/消费方差异</small></div></div><div class="fig-arrow">↘ 错误公开：先执行 Edge deny/目标关闭，再进行受控指针撤销/回退与缓存失效</div><div class="fig-grid cols-3"><div class="fig-box tone-red"><b>Emergency Deny</b><small>立即阻断对应目标及资源路径</small></div><div class="fig-box tone-light"><b>Withdraw / Restore</b><small>条件切换、审计、恢复到可用历史版</small></div><div class="fig-box tone-green"><b>Verify</b><small>匿名/授权负向访问与边缘缓存核验</small></div></div><figcaption>数据库事务不能直接保证远端 CDN 的原子可见。正式发布“成功”的定义需明确区分 DB 指针生效、Edge 可见性和最终对账；涉及敏感内容时撤销必须具备独立的立即拒绝控制。</figcaption></figure>
+<h3 id="section-9-2">9.2 发布可见性协议（MVP）</h3>
+<ol>
+<li><strong>Staging</strong>：先生成带 Digest 的不可变文档制品，完成病毒/敏感信息/外部引用及渲染安全检查；对外不可见。</li>
+<li><strong>Preflight</strong>：验证调用者、审批、策略快照、目标、预设版本、内容可读取、可回退目标和必要的紧急 deny 控制；不满足则拒绝。</li>
+<li><strong>Commit</strong>：数据库事务按 <code>(target_id, api_asset_id)</code> 定位唯一 PublicationSlot，以 <code>expected_generation</code> / CAS 验证<strong>该 Slot</strong> 当前代数并写入 <code>active_release_id</code>、递增 <code>generation</code>、操作审计和 Outbox；同 Slot 竞争只有一个条件提交成功，不同 Slot 可独立成功。必须验证 Release 属于该 APIAsset、产品一致且审批对本次目标有效。</li>
+<li><strong>Delivery</strong>：Portal / Edge 根据 Slot generation、Target 的受众/环境及当前授权读取；检索与缓存异步更新。<strong>不会声称 DB 事务对全球 CDN 是分布式原子操作</strong>。</li>
+<li><strong>Confirmation</strong>：外部门户人工/自动探测证明目标内容与 Digest 对应；未完成时标记 <code>SYNCING/DEGRADED</code> 之类的独立交付状态，不把它混入业务指针状态。</li>
+<li><strong>Withdraw</strong>：遇错误或敏感暴露，优先执行可同步验证的 Edge/Origin deny（<code>AccessBlock</code> 可覆盖 Target、Slot 或 Artifact，Target-wide Block <strong>不替代 Slot 指针</strong>）；随后仅对受影响的 Slot 使用 <code>expected_generation</code> CAS 更新为安全不可见或先前已批准的 Release，保留其它 API 的 Slot 不变，并驱动缓存清理、审计与可见性验证。</li>
+</ol>
+<p><strong>禁止</strong>在对象存储桶中把受控私有内容直接赋予长期公开 URL；敏感文档不使用无法即时撤销的长效预签名链接。公开静态 CDN 内容也必须给出最坏缓存残留策略和可验证应急阻断能力。若选择的发布介质无法实现这些控制，应调整部署而不是将风险标记“已解决”。</p>
+<h2 id="section-10">10. 双门户架构与多品牌发布</h2>
+<h3 id="section-10-1">10.1 两个不同的授权体验</h3>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 08 · 两种体验、同一受控内核</div><div class="fig-grid cols-2"><div class="fig-lane"><strong>Engineering Portal · 内部</strong><span>SSO / 管理授权 / 组织范围</span><div class="fig-mini">Product &amp; Workspace / API Catalog</div><div class="fig-mini">Contract Diff / Governance / Review</div><div class="fig-mini">Release / Withdraw / Audit / Operations</div><small>高密度操作工作台 · 全操作结果可解释</small></div><div class="fig-lane"><strong>Product Developer Portal · 外部</strong><span>公开访问或按产品授权</span><div class="fig-mini">Quick Start / API Reference / Guides</div><div class="fig-mini">版本、示例、错误、Webhook / SDK（分期）</div><div class="fig-mini">Application / Subscription / Sandbox（V1）</div><small>CargoPai 等独立品牌 · 无跨产品默认继承</small></div></div><div class="fig-arrow">↓ 双门户共享 API Contract/Publication 真源，不共享无差别会话或执行权限</div><div class="fig-head light"><strong>Fabric Services + Versioned Rendering Components</strong><small>Public vs private content policy · Product theme · locale · availability · source digest</small></div><figcaption>两个门户可复用前端组件，但依然具备独立安全域、访问策略与部署选择。是否采用不同代码仓库不由产品边界直接推出。</figcaption></figure>
+<h3 id="section-10-2">10.2 门户渲染与内容发布</h3>
+<ul>
+<li>外部文档主题配置属于 Product 的门户设置；域名、品牌、默认语言、导航和可见范围通过独立 Publication Target 决定。</li>
+<li>每个文档页面必须能追溯 <code>product / target / release / digest / locale</code>；翻译是 Release 的派生内容，需有源语言版本与欠缺翻译回退声明。</li>
+<li>文档内容和 Markdown/HTML 渲染必须清洗，CSP、链接、安全头与脚本执行策略由 F05/F06 冻结。交互式调试只能通过受控 Explorer 执行，不能直接用浏览器任意抓取开放内网地址。</li>
+<li>内部门户偏高密度表格、批量操作、变更对比、审核和恢复；外部门户偏文档导航、示例、任务旅程和自助支持，具体页面与无障碍验收由 F06-A/B/C 详细设计。</li>
+<li><strong>MVP 外部门户仅承诺经授权的文档发现、阅读、版本选择</strong>；真实沙箱首调作为 V1 功能，不能在 MVP 成功指标中混淆。</li>
+</ul>
+<h3 id="section-10-3">10.3 BFF 与部署选项</h3>
+<p>可以采用同一个 API 核心、分别配置内外路由/BFF/Edge 的实现，也可以采用独立 Web 服务。<strong>安全正确性必须由服务器端资源授权和网络策略保证</strong>，不能由前端源代码拆分替代。外部门户只暴露面向消费者的最小接口，不暴露审核操作。推荐外部查询遵循显式 allowlist 的视图契约。</p>
+<h2 id="section-11">11. 安全架构与威胁面前置要求</h2>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>威胁 / 风险</th>
+<th>主要防护层</th>
+<th>需由 F05 验证</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>越权跨产品读取 / 下载 / 发布</td>
+<td>统一鉴权拦截 + 领域资源校验 + 存储访问隔离</td>
+<td>横向/纵向 IDOR，索引与缓存越权</td>
+</tr>
+<tr>
+<td>恶意 <code>$ref</code> / OpenAPI 内容</td>
+<td>解析器沙箱、协议白名单、私网拒绝、深度/大小/超时限制</td>
+<td>SSRF、循环引用、压缩炸弹、资源耗尽</td>
+</tr>
+<tr>
+<td>渲染富文本注入</td>
+<td>Markdown / HTML Sanitizer、CSP、链接处理</td>
+<td>XSS、危险 URI、脚本注入</td>
+</tr>
+<tr>
+<td>Explorer / Webhook 请求</td>
+<td>目标允许名单、网络 egress 隔离、身份代理</td>
+<td>通过浏览器/服务端访问内部地址</td>
+</tr>
+<tr>
+<td>供应链攻击</td>
+<td>锁定工具版本、SBOM、制品摘要/签名、构建来源</td>
+<td>依赖替换、制品污染、许可证审查</td>
+</tr>
+<tr>
+<td>CI/Worker 凭证泄漏</td>
+<td>Workload Identity / Secret 管理、最小权限、轮换</td>
+<td>日志、错误堆栈、构建输出泄漏</td>
+</tr>
+<tr>
+<td>错误对外公开</td>
+<td>目标级审批 + 敏感扫描 + Edge deny + 访问探测</td>
+<td>撤销后残存访问路径与缓存回源</td>
+</tr>
+<tr>
+<td>审计伪造/篡改</td>
+<td>事务审计、访问控制、可校验导出与保留策略</td>
+<td>谁在何时以何身份批准和执行</td>
+</tr>
+</tbody>
+</table></div>
+<p>安全控制遵循<strong>风险基础上的多层防御</strong>，不把“已经采用 OAuth”当作对象级授权或租户隔离已通过的证据。凭证密钥材料不得写入普通 DB/日志；外部生产 OAuth 调用的权限最终由业务产品 IAM/Gateway 实施。</p>
+<h2 id="section-12">12. 关键 API、事件与集成边界</h2>
+<h3 id="section-12-1">12.1 Fabric 自身 API（设计意图，不是已实现接口）</h3>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>操作族（示例）</th>
+<th>消费者</th>
+<th>主要命令/查询</th>
+<th>安全要求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Product/Workspace</td>
+<td>内部管理员</td>
+<td>登记产品、设置成员、查询范围</td>
+<td>Product 管理权限，审计</td>
+</tr>
+<tr>
+<td>Contract Import</td>
+<td>CI / 工程人员</td>
+<td>创建 Revision、提交来源及摘要</td>
+<td>非交互身份、内容检查、幂等</td>
+</tr>
+<tr>
+<td>Governance</td>
+<td>工程/审核</td>
+<td>请求 Check Run、查询 Diff、记录批准</td>
+<td>检查/审批职责分离</td>
+</tr>
+<tr>
+<td>Release</td>
+<td>注册中心使用者</td>
+<td>生成不可变 Release、读取制品</td>
+<td>Owner/策略快照与 Digest</td>
+</tr>
+<tr>
+<td>Publication</td>
+<td>授权发布人</td>
+<td>Publish、Withdraw、Restore、查询状态</td>
+<td>Target 级授权、CAS、最高级别审计</td>
+</tr>
+<tr>
+<td>Developer Document</td>
+<td>外部开发者</td>
+<td>查询已发布目录、版本与文档</td>
+<td>产品/受众/环境逐项判定</td>
+</tr>
+<tr>
+<td>Operations</td>
+<td>管理/值守</td>
+<td>查询作业、重试、修复、审计</td>
+<td>运维权限、危险操作限权</td>
+</tr>
+</tbody>
+</table></div>
+<p>具体 URI、参数、错误、Idempotency-Key 和并发前置条件由 F04 的契约定义；不能在 F02 的示意操作表中假定已有稳定生产 API。</p>
+<h3 id="section-12-2">12.2 建议的内部集成事件</h3>
+<ul>
+<li><code>ContractRevisionRegistered</code>：修订被登记，不代表审查通过或正式发布。</li>
+<li><code>GovernanceCheckCompleted</code>：保存 Check Run 结果、策略摘要和来源。</li>
+<li><code>ContractReleasePrepared</code>：不可变制品准备完成，不代表外部可见。</li>
+<li><code>PublicationActivated</code> / <code>PublicationWithdrawn</code>：主库的目标状态转移完成，门户最终传播另报状态。</li>
+<li><code>PortalProjectionUpdated</code> / <code>PortalDeliveryFailed</code>：投影/交付结果，不改变 Publication 事实权威。</li>
+</ul>
+<p>事件必须有 <code>event_id / occurred_at / aggregate_id / aggregate_version / product_id / correlation_id / schema_version</code> 的明确语义；版本/分区顺序、消费去重、迟到和重放由 F03/F04 冻结。不得将普通日志事件自动视作可供外部客户订阅的正式 AsyncAPI 契约。</p>
+<h3 id="section-12-3">12.3 外部适配器契约</h3>
+<p>Git 适配器负责认证提交/仓库/文件来源；CI 适配器提供非交互提交与检查结果；Identity 适配器负责身份验证和已批准的成员同步；Gateway 适配器只提供部署快照或经批准的配置意图，<strong>不由 Fabric 执行商业业务请求</strong>。连接超时/不可用必须显示为 <code>UNKNOWN/STALE/FAILED</code>，不因上次检测通过而假报实时一致。</p>
+<h2 id="section-13">13. 数据存储、事务、一致性与搜索</h2>
+<h3 id="section-13-1">13.1 最小储存布局</h3>
+<ul>
+<li><strong>PostgreSQL</strong>：Product/Workspace 关系、资产 ID、Revision/Release 元数据、审批结果、Publication Target（分发范围）与 PublicationSlot（每 API 生效指针及 CAS generation）、审计索引、Job 和 Outbox。版本以项目批准配置为准，不能假定特定版本已实际测试。</li>
+<li><strong>对象存储</strong>：原始上传、固定 <code>$ref</code> 引用闭包、不可变 Release 包、渲染输出和校验报告；通过 Digest 引用及校验访问。</li>
+<li><strong>索引与缓存</strong>：MVP 可使用 PostgreSQL 全文检索/专用投影表，达到规模阈值后再评估 OpenSearch/其他索引。任何索引均可从主库+制品重建。</li>
+<li><strong>Secret Store</strong>：运行身份/连接机密存放于授权 Secret 系统，不保存在文档仓库或 Release 示例中。</li>
+</ul>
+<h3 id="section-13-2">13.2 一致性模型</h3>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>行为</th>
+<th>需要的保证</th>
+<th>允许的滞后</th>
+<th>不允许的结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>同一目标 Publication 生效切换</td>
+<td>主库单事务 + CAS/版本约束</td>
+<td>交付缓存/索引可短暂同步</td>
+<td>两个相斥版本同时被主库标记同目标当前版本</td>
+</tr>
+<tr>
+<td>正式 Release 创建</td>
+<td>内容摘要匹配 + 只写一次 + 完成状态与制品可读</td>
+<td>构建阶段可异步</td>
+<td>引用缺失对象却标记 READY</td>
+</tr>
+<tr>
+<td>搜索与目录投影</td>
+<td>由受授权源数据驱动、可重建</td>
+<td>必须可检测新鲜度</td>
+<td>将私有结果当成公开内容泄露</td>
+</tr>
+<tr>
+<td>Check Run 与审批</td>
+<td>绑定输入摘要、规则和策略版本</td>
+<td>长任务可异步</td>
+<td>用旧检查结果批准已修改的内容</td>
+</tr>
+<tr>
+<td>Audit 与发布命令</td>
+<td>本地关键审计元数据和命令事实同事务</td>
+<td>外部归档可异步</td>
+<td>成功发布无可追溯操作者/范围</td>
+</tr>
+<tr>
+<td>外部 Gateway 运行态</td>
+<td>带时间戳的快照/检查结果</td>
+<td>允许有限滞后但必须显示</td>
+<td>断连当成一致 / 100% 在线</td>
+</tr>
+</tbody>
+</table></div>
+<p>跨 PostgreSQL 与对象存储的操作没有天然分布式事务。采用“先私有暂存制品 → 验证 Digest/可读性 → 主库提交 READY/生效指针 → 可靠 Outbox 通知 → 对账/孤儿清理”，所有失败都应留下可恢复的观测状态。</p>
+<h3 id="section-13-3">13.3 并发与故障试验重点</h3>
+<p>同一个 Target 的并发发布、旧审批被替换、同幂等键异内容、Worker lease 过期、上传后网络未知、对象存储短暂读失败、索引落后/异常重建、紧急公开撤销后 CDN 残留、带权限快照任务的过期执行等都应进入 F08 测试矩阵。业务语义明确时采用串行化或条件更新，<strong>不可把“最终一致”当作硬约束可以不受保护的理由</strong>。</p>
+<h2 id="section-14">14. 可观测性、运营与灾难恢复</h2>
+<h3 id="section-14-1">14.1 监控与审计维度</h3>
+<p>按责任区分：控制平面可用性、契约校验成功率、Check Run 排队时延、Publication 端到端生效延迟、公开撤销生效时延、对象存储读校验失败、索引投影 Lag、外部依赖新鲜度、拒绝访问率、审计写入失败率。</p>
+<p>Trace 关联 <code>trace_id / command_id / correlation_id / product_id / workspace_id / release_id / publication_target_id / job_id</code>；需要限制个人信息与机密进入日志。Metrics/Traces/Logs 可遵循 OpenTelemetry 语义，但不将采用某一观察组件等价为可运维。</p>
+<h3 id="section-14-2">14.2 恢复分类与演练</h3>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>故障</th>
+<th>恢复来源</th>
+<th>必须核验</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>搜索索引丢失</td>
+<td>权威元数据 + Release 制品</td>
+<td>ACL、版本、新鲜度一致性</td>
+</tr>
+<tr>
+<td>Worker 重启/队列积压</td>
+<td>Job + lease + Outbox</td>
+<td>不重复有效发布、失败可见</td>
+</tr>
+<tr>
+<td>对象存储部分损坏</td>
+<td>有摘要的备份/副本</td>
+<td>Digest、来源、历史制品完整性</td>
+</tr>
+<tr>
+<td>PostgreSQL 恢复</td>
+<td>一致性备份/日志恢复</td>
+<td>Publication 指针、审计/Outbox 与制品能对账</td>
+</tr>
+<tr>
+<td>外部门户泄露事件</td>
+<td>Edge deny + 撤销/回退 + 访问核验</td>
+<td>各 CDN/Origin 路径不可读、完整事件记录</td>
+</tr>
+<tr>
+<td>IAM/Gateway 临时不可达</td>
+<td>Fail closed / 告警 / 恢复后对账</td>
+<td>不能因依赖失败绕过权限或假报状态</td>
+</tr>
+</tbody>
+</table></div>
+<p>恢复目标必须明确范围（控制台/公网门户/Registry）、RPO、RTO、样本数据规模、负责人、观察窗口以及失败处置，<strong>在首次生产上线前真实演练</strong>。最终目标值由 F07/F08 与运营方批准，F02 不虚构 99.99% 或 15 分钟等承诺。</p>
+<h2 id="section-15">15. 技术选型、演进门槛与成本</h2>
+<h3 id="section-15-1">15.1 推荐起步技术决策（待 PoC）</h3>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>层次</th>
+<th>优先候选</th>
+<th>选择理由</th>
+<th>必须证明的边界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>业务核心</td>
+<td>Go + DDD 模块化单体</td>
+<td>与 IDP Go-first 技术方向一致、低初期分布式复杂度</td>
+<td>依赖规则、并发、真实用户任务</td>
+</tr>
+<tr>
+<td>HTTP 契约</td>
+<td>OpenAPI 3.1.2 候选基线</td>
+<td>工具链成熟度相对可控</td>
+<td>解析/代码生成/差异和渲染兼容</td>
+</tr>
+<tr>
+<td>异步契约</td>
+<td>AsyncAPI 3.1.0 候选（V1）</td>
+<td>描述事件与消息协议</td>
+<td>Binding/工具支持/安全</td>
+</tr>
+<tr>
+<td>事务存储</td>
+<td>PostgreSQL</td>
+<td>一致性、关系与条件写入</td>
+<td>容量、索引、迁移与 HA</td>
+</tr>
+<tr>
+<td>制品</td>
+<td>支持 Digest、版本、WORM/不可变策略的对象存储</td>
+<td>可核验、分离容量与历史</td>
+<td>完整性、权限、恢复与成本</td>
+</tr>
+<tr>
+<td>任务</td>
+<td>PostgreSQL Job/Outbox + Go Worker</td>
+<td>最小依赖，具可恢复性</td>
+<td>背压、并发、重试与队列容量</td>
+</tr>
+<tr>
+<td>文档渲染</td>
+<td>受控 OpenAPI Reference 组件</td>
+<td>重用成熟展示能力</td>
+<td>多品牌、访问控制、XSS 防御</td>
+</tr>
+<tr>
+<td>外部集成</td>
+<td>Ports &amp; Adapters</td>
+<td>IAM / Gateway / Git 可替换</td>
+<td>失败语义与消费方契约</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>不宜过早引入</strong>：全域微服务拆分、数据库每 BC 物理拆库、集中消息集群、全量 Elastic 搜索、事件溯源或复杂 Workflow Engine。它们都属于可评估方案，只有证据证明收益超过复杂性、可靠性和成本代价时再引入。</p>
+<h3 id="section-15-2">15.2 关键备选及迁移触发条件</h3>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>决策</th>
+<th>起步方案</th>
+<th>迁移/分拆触发证据</th>
+<th>主要代价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Module → 微服务</td>
+<td>模块化单体</td>
+<td>独立部署/SLO、安全域或团队自治要求无法满足</td>
+<td>跨服务一致性、观测、运维</td>
+</tr>
+<tr>
+<td>PostgreSQL Search → 专用引擎</td>
+<td>DB FTS + ACL 投影</td>
+<td>实际 p95、相关性、索引规模无法达标</td>
+<td>双写/投影延迟、运维、隐私</td>
+</tr>
+<tr>
+<td>DB Job → Broker</td>
+<td>持久 Job/Outbox</td>
+<td>锁争用、积压/吞吐/消费者数实测超出预算</td>
+<td>消费去重、集群与成本</td>
+</tr>
+<tr>
+<td>共享门户部署 → 独立实例</td>
+<td>共享组件、产品隔离入口</td>
+<td>法规驻留、合同 SLA、客户定制安全域</td>
+<td>版本协调、部署数量</td>
+</tr>
+<tr>
+<td>单区域 → 多区域</td>
+<td>单区域候选</td>
+<td>RTO/灾备/驻留要求明确且可测</td>
+<td>跨域一致性、复制冲突、成本</td>
+</tr>
+</tbody>
+</table></div>
+<p>成本评估采用 <code>工程建设 + 许可证/维护 + 运行基础设施 + 安全与合规 + 迁移退出</code> 的全生命周期模型。没有真实供应商报价和流量数据时，不计算“节省 X%”之类不可审计的收益指标。F07/F08 应形成配置与成本假设清单，并用 CargoPai 与第二个产品接入验证复用价值。</p>
+<h2 id="section-16">16. 架构演进、AI-Native 与兼容界面</h2>
+<p>V2 的 Agent/MCP 能力可以通过 <code>Release Ref + Policy Ref + Tool Capability Descriptor + Risk Classification</code> 的受控只读投影衔接，但 <strong>不默认把 OpenAPI 操作直接暴露为可执行 Agent 工具</strong>。更改、取消、提交报关、费用确认等高副作用操作，始终由业务产品的真实执行授权和必要人工批准控制。Fabric 仅治理工具描述及发布关系，不接管通用 Agent Runtime。</p>
+<p>SDK 发布、Arazzo 业务流程、Webhook 管理、消费者影响图等属于后续演进，不应进入 MVP 核心事务不变量。公共契约从一开始保留稳定 ID 和版本来源，以便后续可以在不改写历史 Release 的条件下扩展。</p>
+<h2 id="section-17">17. 关键场景、可验证架构断言与证据状态</h2>
+<h3 id="section-17-1">17.1 F02 设计验证场景</h3>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>设计验证场景</th>
+<th>对应 F01</th>
+<th>预期可观察的结果</th>
+<th>当前状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AR-01</td>
+<td>CargoPai 与 Parcel 同时注册同名 API</td>
+<td>FR-001–009；AT-01</td>
+<td>不同产品有独立 Asset 与授权，不发生自动合并</td>
+<td>NOT_RUN</td>
+</tr>
+<tr>
+<td>AR-02</td>
+<td>Parcel 成员搜索/下载 CargoPai 私有 Release</td>
+<td>FR-008/063；AT-04</td>
+<td>搜索、详情、下载与缓存均拒绝</td>
+<td>NOT_RUN</td>
+</tr>
+<tr>
+<td>AR-03</td>
+<td>Git 来源提交内容/摘要不匹配</td>
+<td>FR-013–017；AT-05</td>
+<td>禁止 READY，保留失败诊断</td>
+<td>NOT_RUN</td>
+</tr>
+<tr>
+<td>AR-04</td>
+<td>同一 Target 内同 Slot 双并发、不同 API 的两 Slot 并发发布</td>
+<td>FR-031–036；AT-08/09</td>
+<td>同 Slot 仅一个 CAS 成功；不同 Slot 均可成功且互不覆盖；目标级 AccessBlock 不改变其它 Slot 生效指针</td>
+<td>NOT_RUN</td>
+</tr>
+<tr>
+<td>AR-05</td>
+<td>对象存储成功但 DB 提交失败</td>
+<td>FR-017/033/064；AT-08</td>
+<td>未公开、孤儿制品可清理、可安全重试</td>
+<td>NOT_RUN</td>
+</tr>
+<tr>
+<td>AR-06</td>
+<td>错误公开发布紧急撤销</td>
+<td>FR-034/036；AT-03/09</td>
+<td>Edge deny 优先，指针/缓存对账、匿名负向核验</td>
+<td>NOT_RUN</td>
+</tr>
+<tr>
+<td>AR-07</td>
+<td>Worker 反复投递相同任务</td>
+<td>FR-033/056/061；AT-08/12</td>
+<td>去重与幂等，有可观察结果，无重复有效发布</td>
+<td>NOT_RUN</td>
+</tr>
+<tr>
+<td>AR-08</td>
+<td>权威 Registry 有效、索引落后/损坏</td>
+<td>FR-035/066；AT-10</td>
+<td>投影延迟可见、可重建、发布事实不丢</td>
+<td>NOT_RUN</td>
+</tr>
+<tr>
+<td>AR-09</td>
+<td>外部门户与内部工作台同一 Release</td>
+<td>FR-040–050；AT-11</td>
+<td>仅在各自范围公开相应可见内容</td>
+<td>NOT_RUN</td>
+</tr>
+<tr>
+<td>AR-10</td>
+<td>恢复 DB + Artifact Store 与签名密钥</td>
+<td>FR-066；AT-10</td>
+<td>RPO/RTO 由批准目标判定，历史摘要/指针对账</td>
+<td>NOT_RUN</td>
+</tr>
+<tr>
+<td>AR-11</td>
+<td>F01 规范采用批准与六道门禁</td>
+<td>§1.2；F01 §17</td>
+<td>Project Manifest、责任和证据完整，不伪造 PASS</td>
+<td>NOT_RUN</td>
+</tr>
+<tr>
+<td>AR-12</td>
+<td>第二产品接入，复用治理与双门户</td>
+<td>FR-005/047，NFR-13</td>
+<td>无需克隆平台核心且不越权共享</td>
+<td>NOT_RUN</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>验证纪律</strong>：本表是架构场景与测试输入，不是已执行的测试结果。静态文档检查通过不能替代并发、故障注入、渗透、消费者和灾难恢复的实际证据。</p>
+<h3 id="section-17-2">17.2 追溯与标准门禁</h3>
+<p>文档关联：<code>F01 BG/FR/NFR/AT → F02 架构元素与 ADR → F03/F04/F05/F06/F07 → F08 验收 → Evidence</code>。设计期关联详见 <code>tests/acceptance/F02_architecture_trace.csv</code>，所有真实执行证据标记为 <code>NOT_RUN</code>。</p>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>上位门禁</th>
+<th>F02 的输入与责任</th>
+<th>可作为后续验收的证据（尚未执行）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>STD-CP1 范围与采用</td>
+<td>F01 Manifest、Profile 与具名责任</td>
+<td>批准采用记录</td>
+</tr>
+<tr>
+<td>STD-CP2 领域与事实</td>
+<td>§5/§7、F03 Context Map 与聚合</td>
+<td>领域反例、状态/权威检验</td>
+</tr>
+<tr>
+<td>STD-CP3 契约与恢复</td>
+<td>§8/§9/§12/§13、F04 契约</td>
+<td>幂等、并发、失败恢复测试</td>
+</tr>
+<tr>
+<td>STD-CP4 专业体验</td>
+<td>§10、F06 双门户详细 UX</td>
+<td>用户任务、无障碍实测</td>
+</tr>
+<tr>
+<td>STD-CP5 工程与质量</td>
+<td>§11–§15、F07 工程与 SLO</td>
+<td>性能、安全、迁移、恢复实测</td>
+</tr>
+<tr>
+<td>STD-CP6 发布与运营</td>
+<td>§9/§14、F08 交付</td>
+<td>批准发布、监控、运营与发布后真实结果</td>
+</tr>
+</tbody>
+</table></div>
+<p>所有门禁当前保持 <code>NOT_RUN</code> 或“待具名批准”，与上位规范“未实际执行不能标 PASS”的要求一致。</p>
+<h2 id="section-18">18. 决策清单与 F03–F08 的接口</h2>
+<h3 id="section-18-1">18.1 已形成推荐方案、待具名审查的 ADR</h3>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>ADR</th>
+<th>主题</th>
+<th>推荐方案</th>
+<th>执行前必须验证</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ADR-0001</td>
+<td>联邦治理、多产品自治</td>
+<td>一个共享平台 + 独立产品契约</td>
+<td>第二产品接入、授权隔离</td>
+</tr>
+<tr>
+<td>ADR-0002</td>
+<td>服务组织和演进</td>
+<td>Go 模块化单体 + 分离 Worker</td>
+<td>模块依赖、容量/运维边界</td>
+</tr>
+<tr>
+<td>ADR-0003</td>
+<td>修订来源权威</td>
+<td>Git-first + 受控上传双来源类型、单修订单权威</td>
+<td>来源溯源、同步/重试</td>
+</tr>
+<tr>
+<td>ADR-0004</td>
+<td>Release/Publication/Projection</td>
+<td>不可变制品 + CAS 指针 + 可重建投影</td>
+<td>并发、撤销、Edge 缓存与恢复</td>
+</tr>
+<tr>
+<td>ADR-0005</td>
+<td>双门户隔离</td>
+<td>共享引擎，独立授权面/品牌/目标</td>
+<td>威胁模型、域名/会话、UX</td>
+</tr>
+<tr>
+<td>ADR-0006</td>
+<td>外部基础设施边界</td>
+<td>Ports &amp; Adapters，业务数据平面独立</td>
+<td>IAM/Gateway 适配、失败策略</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="section-18-2">18.2 未被设计结论掩盖的待决问题</h3>
+<ul>
+<li><strong>D-01</strong>：具名产品、架构、安全、运营 Owner 及 Risk R1/R2/R3 风险级别，由项目治理确认。</li>
+<li><strong>D-02</strong>：Go 精确版本、Bento-Go 是否采用及版本、PostgreSQL 版本、对象存储和操作系统/运行方式，在 F07 的兼容性与运维验证后确定。</li>
+<li><strong>D-03</strong>：外部身份系统、内部 IdP、Gateway、Git Provider、CI 平台的现状、合同与部署位置；没有连接数据时只保留适配协议。</li>
+<li><strong>D-04</strong>：Release 的详细命名、破坏性兼容规则、Policy 例外与保留期由 F04 决定。</li>
+<li><strong>D-05</strong>：发布权限矩阵、关键威胁、Cookie/CSP/Token/Network 策略及保留合规由 F05 决定。</li>
+<li><strong>D-06</strong>：双门户页面与交互、WCAG 2.2 AA 验证、多语言版本降级由 F06 决定。</li>
+<li><strong>D-07</strong>：量化容量、p95、SLO、RPO/RTO、资源预算、备份演练、数据迁移与值守由 F07/F08 决定。</li>
+<li><strong>D-08</strong>：跨区域/独立客户实例、复杂搜索、事件总线和 AI Agent 等仅当真实需求触发时再行 ADR。</li>
+</ul>
+<h3 id="section-18-3">18.3 后续文档的明确交付边界</h3>
+<div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>下一份</th>
+<th>必须从 F02 继承的东西</th>
+<th>不应重复写成新的事实权威</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F03</td>
+<td>BC 责任、聚合、状态机、读写权威、唯一约束、事务</td>
+<td>不可把推荐的模块直接当固定 DB/服务拆分</td>
+</tr>
+<tr>
+<td>F04</td>
+<td>契约发布链、规则版本、兼容性、Revision/Release/Publication</td>
+<td>不以工具输出代替审核/发布授权</td>
+</tr>
+<tr>
+<td>F05</td>
+<td>五个信任区、多维隔离、内容供应链、紧急阻断</td>
+<td>不把门户隐藏/Token 认证当授权证明</td>
+</tr>
+<tr>
+<td>F06</td>
+<td>双门户用户旅程、授权内容、可解释状态与多品牌</td>
+<td>不把一个 HTML 模板视为两个独立用户体验</td>
+</tr>
+<tr>
+<td>F07</td>
+<td>Go 包依赖、Outbox/Job、制品库、观测、容量/恢复</td>
+<td>不凭技术名称推断高可用或 Exactly-Once</td>
+</tr>
+<tr>
+<td>F08</td>
+<td>AR-01–12、上位六道门禁与证据语义</td>
+<td>不把 <code>NOT_RUN</code> 写成 PASS</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="section-19">19. 参考依据与采用边界</h2>
+<ul>
+<li>IDP Supply Chain DDD Product Engineering Standard V1.0（上位规范原文由项目治理另行引用）：内部上位规范；应以正式具名采用记录及对应版本为准，当前仅有设计层引用。</li>
+<li><a href="F01_Product_Requirements.md">F01 — Product Requirements</a>：产品需求、阶段和既定边界；与本文存在实质冲突时必须显式提交架构/需求复核。</li>
+<li><a href="https://spec.openapis.org/oas/v3.2.1.html">OpenAPI Specification 3.2.1</a>：截至本文日期可核实的正式规范版本；不意味着 Go 工具链已全部支持。</li>
+<li><a href="https://spec.openapis.org/oas/v3.1.2.html">OpenAPI Specification 3.1.2</a>：本文建议的工程支持候选基线。</li>
+<li><a href="https://www.asyncapi.com/docs/reference/specification/v3.1.0">AsyncAPI Specification 3.1.0</a>：异步契约标准，实际采用由兼容测试决定。</li>
+<li><a href="https://www.rfc-editor.org/rfc/rfc9457.html">RFC 9457 — Problem Details for HTTP APIs</a>：错误契约候选，详细响应形式由 F04 定义。</li>
+<li><a href="https://www.rfc-editor.org/rfc/rfc9700.html">RFC 9700 — OAuth 2.0 Security Best Current Practice</a>：安全架构参考，由 F05 将控制映射至实际身份基础设施。</li>
+<li><a href="https://owasp.org/API-Security/editions/2023/en/0x00-header/">OWASP API Security Top 10 (2023)</a>：威胁建模基础，不能替代特定部署的风险评估。</li>
+<li><a href="https://opentelemetry.io/docs/specs/otel/">OpenTelemetry Specification</a>：追踪、指标与日志关联参考。</li>
+</ul>
+<p><strong>结论</strong>：F02 已提供系统总览、C4、DDD、发布事实权威、安全、多租户、双门户、存储一致性、运维及演进的可评审推荐架构。完成文档并不等于批准架构或运行验证；后续必须用 F03–F08 的具体模型、契约、PoC 与真实证据关闭未决风险。</p>
+</article><div class="footer">IDP API Fabric · F02 · Generated from Markdown · Design candidate, approval and runtime verification pending</div></main></div></div><a href="#" class="back-to-top">↑ 返回顶部</a><script>(()=>{const menu=document.getElementById('menu'),q=document.getElementById('navsearch'),toc=document.getElementById('toc'),shade=document.getElementById('sideBackdrop');let last=null;function open(v){document.body.classList.toggle('navopen',v);menu.setAttribute('aria-expanded',String(v));shade.setAttribute('aria-hidden',String(!v));if(v){last=document.activeElement;q.focus()}else if(last){last.focus();last=null}}menu.addEventListener('click',()=>open(!document.body.classList.contains('navopen')));shade.addEventListener('click',()=>open(false));document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('navopen'))open(false)});toc.addEventListener('click',e=>{if(e.target.closest('a')&&document.body.classList.contains('navopen'))open(false)});q.addEventListener('input',()=>{let z=q.value.toLocaleLowerCase();toc.querySelectorAll('a').forEach(a=>a.style.display=a.textContent.toLocaleLowerCase().includes(z)?'':'none')});})();</script></body></html>

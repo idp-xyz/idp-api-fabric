@@ -1,0 +1,17 @@
+{
+  "kind": "APIAsset",
+  "designation": "DESIGN_EXAMPLE",
+  "id": "asset-cargopai-contract-control",
+  "product_id": "cargopai",
+  "workspace_id": "cargopai-platform",
+  "owner_ref": "team:api-platform",
+  "api_kind": "HTTP",
+  "lifecycle": "Experimental",
+  "visibility": "INTERNAL_ONLY",
+  "source_ref": "design-example-repository",
+  "revision_ref": "DESIGN_EXAMPLE-rev-001",
+  "contract_spec_version": "3.1.2",
+  "publication_authority": "PublicationSlot",
+  "access_grant_is_not_runtime_authorization": true,
+  "tags": ["contract-governance", "design-example"]
+}

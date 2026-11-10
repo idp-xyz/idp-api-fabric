@@ -1,0 +1,7 @@
+openapi: 3.1.2
+info: {title: Public operation without explicit policy, version: '1.0.0'}
+paths:
+  /v1/open:
+    get:
+      operationId: unprotectedOperation
+      responses: {'200': {description: OK}}
