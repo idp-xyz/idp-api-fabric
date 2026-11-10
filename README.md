@@ -200,3 +200,7 @@ python scripts/test_f06_browser.py
 - 上位门禁：`STD-CP4 = 专业体验（Product/UX）`，`STD-CP5 = 工程与质量（Engineering/QA/Security）`；详见 F07/F08。
 - 直接验收设计：原 24 个 AC + 新增 51 个 DC，覆盖 89 项 FR/NFR；**均为计划，真实执行全为 NOT_RUN**。
 - 正式冻结仍被 `Manifest DRAFT`、`ADR-0001…0007 Proposed`、`OD-08-01…10 OPEN` 和真实技术/安全验收前置条件阻断；文档一致性修复不构成组织批准。
+
+## 许可证
+
+本仓库采用 [PolyForm Noncommercial License 1.0.0](LICENSE)：允许非商业用途，禁止任何商业使用。
