@@ -62,6 +62,14 @@ const testDatabases = modulePath + "/internal/platform/db/pgtest"
 // package imports them.
 var testSupport = []string{frameworkTestkit, testDatabases}
 
+// devIssuer signs tokens for development machines and tests. It stands where
+// the identity provider of a deployment stands and signs any subject it is
+// asked to, so no product binary links it. Only its own command does.
+const (
+	devIssuer        = modulePath + "/internal/platform/identity/devissuer"
+	devIssuerCommand = modulePath + "/cmd/fabric-devidp"
+)
+
 // place is where a package of this module sits in the layout of F07 §3. The
 // zero place is a package the layout does not know.
 type place struct {
@@ -102,6 +110,9 @@ func placeOf(pkg string) (place, bool) {
 func violation(pkg, imported string) string {
 	if hasAnyPathPrefix(imported, testSupport) && !hasAnyPathPrefix(pkg, testSupport) {
 		return "production code imports test support; only test files may"
+	}
+	if hasPathPrefix(imported, devIssuer) && pkg != devIssuerCommand && !hasPathPrefix(pkg, devIssuer) {
+		return "a product package imports the development issuer; only cmd/fabric-devidp may"
 	}
 
 	from, _ := placeOf(pkg)
@@ -212,6 +223,11 @@ func TestRulesRefuseForbiddenImports(t *testing.T) {
 		{"an adapter imports the testkit", internal + "publication/adapters/postgres", frameworkTestkit, "test support"},
 		{"a command imports the test databases", modulePath + "/cmd/fabric-api", testDatabases, "test support"},
 		{"the platform imports the test databases", internal + "platform/db", testDatabases, "test support"},
+		{"the API imports the development issuer", modulePath + "/cmd/fabric-api", devIssuer, "development issuer"},
+		{"the worker imports the development issuer", modulePath + "/cmd/fabric-worker", devIssuer, "development issuer"},
+		{"the transport imports the development issuer", internal + "transport/http", devIssuer, "development issuer"},
+		{"the verifier imports the development issuer", internal + "platform/identity", devIssuer, "development issuer"},
+		{"an adapter imports the development issuer", internal + "publication/adapters/http", devIssuer, "development issuer"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -249,6 +265,9 @@ func TestRulesAllowIntendedImports(t *testing.T) {
 		{internal + "platform/db", "go.idp.xyz/idp-bento-go/postgres"},
 		{modulePath + "/cmd/fabric-api", internal + "publication/adapters/postgres"},
 		{modulePath + "/cmd/fabric-api", internal + "transport/http"},
+		{modulePath + "/cmd/fabric-api", internal + "platform/identity"},
+		{internal + "transport/http", internal + "platform/identity"},
+		{devIssuerCommand, devIssuer},
 	}
 	for _, c := range cases {
 		if got := violation(c.pkg, c.imported); got != "" {
