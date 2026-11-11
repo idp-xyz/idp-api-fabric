@@ -17,6 +17,8 @@ import (
 
 	"go.idp.xyz/idp-bento-go/eventing"
 	"go.idp.xyz/idp-bento-go/testkit"
+
+	"go.idp.xyz/idp-api-fabric/internal/platform/db/migrate"
 )
 
 // The candidate under contract. The build must resolve it through the module
@@ -54,6 +56,14 @@ func TestTheBuildResolvesThePinnedCandidate(t *testing.T) {
 	if resolved.Path != modulePath || resolved.Version != version {
 		t.Fatalf("the build resolves %s %s, want %s %s", resolved.Path, resolved.Version, modulePath, version)
 	}
+	// The migration history stamps every framework step with this version. A
+	// dependency bump that forgets the constant would stamp steps with a
+	// version that never produced them.
+	if migrate.FrameworkModule != modulePath || migrate.FrameworkVersion != version {
+		t.Fatalf("the migration plan records %s %s, want %s %s",
+			migrate.FrameworkModule, migrate.FrameworkVersion, modulePath, version)
+	}
+
 	sums := recordedSums(t)
 	if got := sums[modulePath+" "+version]; got != moduleSum {
 		t.Fatalf("candidate checksum %q, want %s", got, moduleSum)

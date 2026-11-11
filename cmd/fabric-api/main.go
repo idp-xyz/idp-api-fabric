@@ -1,8 +1,13 @@
 // Command fabric-api serves the IDP API Fabric control plane over HTTP.
 //
-// This is the process skeleton: it answers /healthz and /version and nothing
-// else. No bounded context is mounted yet, so the process opens no database,
-// identity provider or object store connection.
+// It reads a database that fabric-migrate has already migrated and never
+// executes DDL: the process refuses to start against a schema it does not
+// recognise. No bounded context is mounted yet, so beyond that check it
+// answers /healthz and /version only.
+//
+// IDP_FABRIC_POSTGRES_DSN is the connection string of the application role:
+// the one fabric-migrate grants to, not the one it migrates as. The process
+// refuses to start as a role that could change the schema.
 //
 // IDP_FABRIC_HTTP_ADDR sets the listen address. The default is loopback only:
 // the control plane is private (F02 §4.1), so reaching it from another host is
@@ -22,11 +27,13 @@ import (
 	"time"
 
 	"go.idp.xyz/idp-api-fabric/internal/platform/buildinfo"
+	"go.idp.xyz/idp-api-fabric/internal/platform/db"
 	httptransport "go.idp.xyz/idp-api-fabric/internal/transport/http"
 )
 
 const (
 	defaultAddress  = "127.0.0.1:8080"
+	connectTimeout  = 15 * time.Second
 	shutdownTimeout = 10 * time.Second
 )
 
@@ -45,8 +52,25 @@ func run(logger *slog.Logger) error {
 		address = defaultAddress
 	}
 
+	// The DSN carries credentials: it comes from the environment only and is
+	// never echoed. It is required rather than optional: a control plane that
+	// cannot reach its database must fail to start, not answer /healthz with
+	// nothing behind it.
+	dsn := os.Getenv("IDP_FABRIC_POSTGRES_DSN")
+	if dsn == "" {
+		return errors.New("IDP_FABRIC_POSTGRES_DSN is required")
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	connectCtx, cancel := context.WithTimeout(ctx, connectTimeout)
+	defer cancel()
+	database, err := db.Open(connectCtx, dsn)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
 
 	listener, err := net.Listen("tcp", address)
 	if err != nil {

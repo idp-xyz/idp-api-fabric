@@ -55,6 +55,13 @@ var persistenceDrivers = []string{"database/sql", "github.com/jackc/pgx"}
 // consumer contract). Only test files may import it.
 const frameworkTestkit = "go.idp.xyz/idp-bento-go/testkit"
 
+// testDatabases creates and drops databases for integration tests.
+const testDatabases = modulePath + "/internal/platform/db/pgtest"
+
+// testSupport are the packages that exist for tests only. No production
+// package imports them.
+var testSupport = []string{frameworkTestkit, testDatabases}
+
 // place is where a package of this module sits in the layout of F07 §3. The
 // zero place is a package the layout does not know.
 type place struct {
@@ -93,8 +100,8 @@ func placeOf(pkg string) (place, bool) {
 // violation says why a production file of package pkg may not import imported,
 // or returns "" when it may.
 func violation(pkg, imported string) string {
-	if hasPathPrefix(imported, frameworkTestkit) {
-		return "production code imports the framework testkit; only test files may"
+	if hasAnyPathPrefix(imported, testSupport) && !hasAnyPathPrefix(pkg, testSupport) {
+		return "production code imports test support; only test files may"
 	}
 
 	from, _ := placeOf(pkg)
@@ -201,8 +208,10 @@ func TestRulesRefuseForbiddenImports(t *testing.T) {
 		{"the transport imports the driver", internal + "transport/http", "github.com/jackc/pgx/v5/pgxpool", "goes through a use case"},
 		{"the platform imports a context", internal + "platform/db", internal + "publication/domain", "context-free"},
 		{"the platform imports the transport", internal + "platform/telemetry", internal + "transport/http", "context-free"},
-		{"a command imports the testkit", modulePath + "/cmd/fabric-worker", frameworkTestkit, "testkit"},
-		{"an adapter imports the testkit", internal + "publication/adapters/postgres", frameworkTestkit, "testkit"},
+		{"a command imports the testkit", modulePath + "/cmd/fabric-worker", frameworkTestkit, "test support"},
+		{"an adapter imports the testkit", internal + "publication/adapters/postgres", frameworkTestkit, "test support"},
+		{"a command imports the test databases", modulePath + "/cmd/fabric-api", testDatabases, "test support"},
+		{"the platform imports the test databases", internal + "platform/db", testDatabases, "test support"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
