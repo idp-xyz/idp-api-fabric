@@ -21,9 +21,10 @@ func TestServeAnswersUntilCancelledThenStopsCleanly(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
+	logger := slog.New(slog.DiscardHandler)
 	stopped := make(chan error, 1)
 	go func() {
-		stopped <- serve(ctx, slog.New(slog.DiscardHandler), listener, httptransport.NewHandler(buildinfo.Current()))
+		stopped <- serve(ctx, logger, listener, httptransport.NewHandler(logger, buildinfo.Current()))
 	}()
 
 	response, err := http.Get("http://" + listener.Addr().String() + "/healthz")

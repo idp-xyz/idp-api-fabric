@@ -1,0 +1,112 @@
+openapi: 3.1.2
+info:
+  title: PoC sample - HTTP semantics
+  version: 0.0.0
+paths:
+  /assets/{asset_id}:
+    put:
+      operationId: replaceAsset
+      parameters:
+        - name: asset_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: tags
+          in: query
+          required: false
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 3
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+        - name: session
+          in: cookie
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Asset'
+      responses:
+        '200':
+          description: The asset after the update
+          headers:
+            ETag:
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asset'
+        '412':
+          $ref: '#/components/responses/Problem'
+        '428':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+components:
+  responses:
+    Problem:
+      description: RFC 9457 problem response with a stable error code
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Asset:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+    Problem:
+      type: object
+      required: [type, title, status, error_code]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+        error_code:
+          type: string
+        trace_id:
+          type: string

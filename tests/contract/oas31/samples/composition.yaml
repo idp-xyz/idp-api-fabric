@@ -1,0 +1,134 @@
+openapi: 3.1.2
+info:
+  title: PoC sample - composed schemas
+  version: 0.0.0
+paths:
+  /events:
+    post:
+      operationId: recordEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Event'
+      responses:
+        '200':
+          description: Which kind of event was recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Receipt'
+  /documents:
+    post:
+      operationId: storeDocument
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Document'
+      responses:
+        '200':
+          description: The document as stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+components:
+  schemas:
+    Event:
+      oneOf:
+        - $ref: '#/components/schemas/Published'
+        - $ref: '#/components/schemas/Revoked'
+      discriminator:
+        propertyName: kind
+        mapping:
+          published: '#/components/schemas/Published'
+          revoked: '#/components/schemas/Revoked'
+    Published:
+      type: object
+      required: [kind, release_id]
+      properties:
+        kind:
+          type: string
+          const: published
+        release_id:
+          type: string
+    Revoked:
+      type: object
+      required: [kind, reason]
+      properties:
+        kind:
+          type: string
+          const: revoked
+        reason:
+          type: string
+    Receipt:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+    Document:
+      type: object
+      required: [spec_version, audited, labels, closed, open, state, review_state]
+      properties:
+        spec_version:
+          type: string
+          const: 3.1.2
+        audited:
+          $ref: '#/components/schemas/Audited'
+        labels:
+          $ref: '#/components/schemas/Labels'
+        closed:
+          $ref: '#/components/schemas/Closed'
+        open:
+          $ref: '#/components/schemas/Open'
+        state:
+          $ref: '#/components/schemas/State'
+        review_state:
+          $ref: '#/components/schemas/ReviewState'
+    Base:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+    Audited:
+      allOf:
+        - $ref: '#/components/schemas/Base'
+        - type: object
+          required: [actor]
+          properties:
+            actor:
+              type: string
+    Labels:
+      type: object
+      additionalProperties:
+        type: string
+    Closed:
+      type: object
+      additionalProperties: false
+      required: [known]
+      properties:
+        known:
+          type: string
+    Open:
+      type: object
+      additionalProperties: true
+      properties:
+        known:
+          type: string
+    State:
+      description: An enumeration written as oneOf + const, the 3.1 idiom
+      type: string
+      oneOf:
+        - const: DRAFT
+          title: Draft
+        - const: APPROVED
+          title: Approved
+    ReviewState:
+      description: An enumeration written with enum
+      type: string
+      enum: [IN_REVIEW, REJECTED]

@@ -18,7 +18,12 @@ export GOFLAGS := -mod=readonly
 LOCAL_MIGRATOR_DSN := postgres://fabric:fabric@127.0.0.1:55450/postgres?sslmode=disable
 LOCAL_APPLICATION_DSN := postgres://fabric_app:fabric_app@127.0.0.1:55450/postgres?sslmode=disable
 
-.PHONY: check fmt-check vet test build db-up db-down
+# The sample contracts that record what the code generator makes of OpenAPI
+# 3.1.2, with the code generated from them and its tests. They are a module of
+# their own, so `go vet ./...` and `go test ./...` here do not reach them.
+SAMPLES := tests/contract/oas31
+
+.PHONY: check fmt-check vet test build generate db-up db-down
 
 check: fmt-check vet test build
 
@@ -28,13 +33,22 @@ fmt-check:
 
 vet:
 	$(GO) vet ./...
+	cd $(SAMPLES) && $(GO) vet ./...
 
 test:
 	@[ -n "$$IDP_FABRIC_MIGRATOR_DSN$$IDP_FABRIC_POSTGRES_DSN" ] || echo "note: IDP_FABRIC_MIGRATOR_DSN and IDP_FABRIC_POSTGRES_DSN are not set, so the PostgreSQL tests are skipped (see make db-up)"
 	$(GO) test -race -count=1 ./...
+	cd $(SAMPLES) && $(GO) test -race -count=1 ./...
 
 build:
 	$(GO) build -o bin/ ./cmd/...
+
+# Rewrites every generated file from its contract: the transport of the
+# management API (api/openapi.yaml) and the sample packages. The generator is
+# the one tools/go.mod pins. The same test, without -update, is part of
+# `make check` and fails when a committed file is not what it would write.
+generate:
+	$(GO) test ./tests/contract/codegen -run TestGeneratedCodeIsWhatTheContractsProduce -count=1 -update
 
 db-up:
 	docker compose up -d --wait
