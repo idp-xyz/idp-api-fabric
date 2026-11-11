@@ -48,6 +48,28 @@ func TestANewProductIsActiveAtVersionOne(t *testing.T) {
 	}
 }
 
+// The store keeps an instant to the microsecond. The model does too, so that
+// an object is the same when it is created and when it is read back.
+func TestAnInstantIsKeptInUTCToTheMicrosecond(t *testing.T) {
+	at := time.Date(2026, 11, 11, 17, 0, 0, 123456789, time.FixedZone("UTC+8", 8*60*60))
+	want := time.Date(2026, 11, 11, 9, 0, 0, 123456000, time.UTC)
+
+	product, err := NewProduct(productID, "cargopai", "CargoPai", owner, admin, at)
+	if err != nil {
+		t.Fatalf("register the product: %v", err)
+	}
+	if !product.CreatedAt.Equal(want) || product.CreatedAt.Location() != time.UTC || product.UpdatedAt != product.CreatedAt {
+		t.Errorf("the product is timed %s and %s, want %s", product.CreatedAt, product.UpdatedAt, want)
+	}
+	workspace, err := NewWorkspace(workspaceID, product, "api", "API", alice, at)
+	if err != nil {
+		t.Fatalf("create the workspace: %v", err)
+	}
+	if !workspace.CreatedAt.Equal(want) || workspace.CreatedAt.Location() != time.UTC {
+		t.Errorf("the workspace is timed %s, want %s", workspace.CreatedAt, want)
+	}
+}
+
 func TestKeys(t *testing.T) {
 	accepted := []string{"ab", "cargopai", "idp-parcel", "a1", "api-engineering-2", "a" + strings.Repeat("b", 62)}
 	for _, key := range accepted {

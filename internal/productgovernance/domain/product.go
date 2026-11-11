@@ -20,6 +20,13 @@ const (
 // ErrProductNotActive reports new work for a product that is suspended.
 var ErrProductNotActive = errors.New("the product is suspended and takes no new work")
 
+// instant is the time a fact is kept under: in UTC (F03 §1.3) and to the
+// microsecond, which is as fine as the store keeps it. An object is then the
+// same when it is created and when it is read back.
+func instant(at time.Time) time.Time {
+	return at.UTC().Truncate(time.Microsecond)
+}
+
 // Product is an independent IDP product Fabric governs, such as CargoPai
 // (F03 §2). It is the boundary of isolation of the control plane: nothing of
 // one product is visible to, or governed by, the members of another.
@@ -63,7 +70,7 @@ func NewProduct(id ProductID, key, displayName string, owner OrganizationRef, by
 	if at.IsZero() {
 		return Product{}, invalid("a product is registered at a known time")
 	}
-	at = at.UTC()
+	at = instant(at)
 	return Product{
 		ID: id, Key: key, DisplayName: displayName, Status: ProductActive, Owner: owner,
 		Version: 1, CreatedAt: at, CreatedBy: by, UpdatedAt: at,
@@ -169,7 +176,7 @@ func NewWorkspace(id WorkspaceID, product Product, key, displayName string, by P
 	if at.IsZero() {
 		return Workspace{}, invalid("a workspace is created at a known time")
 	}
-	at = at.UTC()
+	at = instant(at)
 	return Workspace{
 		ID: id, ProductID: product.ID, Key: key, DisplayName: displayName, Status: WorkspaceActive,
 		Version: 1, CreatedAt: at, CreatedBy: by, UpdatedAt: at,

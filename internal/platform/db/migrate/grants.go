@@ -39,6 +39,11 @@ func ApplicationPrivileges() []TablePrivileges {
 		// The audit trail is append-only for a process: it cannot read back,
 		// change or remove what it recorded (FR-062).
 		{"platformoperations", "audit_record", []string{"INSERT"}},
+		// Products, workspaces and role assignments are registered and read.
+		// No use case changes or removes one yet.
+		{"productgovernance", "product", []string{"SELECT", "INSERT"}},
+		{"productgovernance", "product_role_assignment", []string{"SELECT", "INSERT"}},
+		{"productgovernance", "workspace", []string{"SELECT", "INSERT"}},
 	}
 }
 
