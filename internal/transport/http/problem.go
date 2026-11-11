@@ -13,25 +13,14 @@ const ProblemContentType = "application/problem+json"
 const (
 	CodeRouteNotFound    = "ROUTE_NOT_FOUND"
 	CodeMethodNotAllowed = "METHOD_NOT_ALLOWED"
+	CodeRequestInvalid   = "REQUEST_INVALID"
 	CodeInternalError    = "INTERNAL_ERROR"
 )
 
-// Problem is the error body of the management API. Its members are the ones
-// the F04 design example declares for its Problem schema: type, title, status
-// and error_code are always present, the others only when set.
-type Problem struct {
-	Type      string `json:"type"`
-	Title     string `json:"title"`
-	Status    int    `json:"status"`
-	Detail    string `json:"detail,omitempty"`
-	Instance  string `json:"instance,omitempty"`
-	ErrorCode string `json:"error_code"`
-	TraceID   string `json:"trace_id,omitempty"`
-}
-
-// WriteProblem answers with problem. The HTTP status is taken from the status
-// member, so the two cannot disagree (F04 §11). An unset type is about:blank
-// and an unset title is the status phrase.
+// WriteProblem answers with problem, the error body the contract declares.
+// The HTTP status is taken from the status member, so the two cannot disagree
+// (F04 §11). An unset type is about:blank and an unset title is the status
+// phrase.
 //
 // A problem outside 400–599 or without an error code is a programming mistake.
 // It is answered as an internal error and its detail is dropped, since that

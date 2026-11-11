@@ -1,0 +1,54 @@
+openapi: 3.1.2
+info:
+  title: PoC sample - nullability and presence
+  version: 0.0.0
+paths:
+  /things:
+    post:
+      operationId: createThing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Thing'
+      responses:
+        '200':
+          description: The thing as stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Thing'
+components:
+  schemas:
+    Thing:
+      type: object
+      required: [required_string, required_nullable, required_nullable_count]
+      properties:
+        required_string:
+          type: string
+        required_nullable:
+          type: [string, "null"]
+        required_nullable_count:
+          type: [integer, "null"]
+          format: int64
+        optional_string:
+          type: string
+        optional_nullable:
+          type: [string, "null"]
+        optional_nullable_ref:
+          oneOf:
+            - $ref: '#/components/schemas/Owner'
+            - type: "null"
+        server_assigned:
+          type: string
+          readOnly: true
+        secret:
+          type: string
+          writeOnly: true
+    Owner:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string

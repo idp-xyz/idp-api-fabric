@@ -1,0 +1,23 @@
+# How internal/transport/http/api.gen.go is generated from openapi.yaml.
+# Regenerate with `make generate`; the tests fail when the committed file is
+# not what this configuration produces.
+#
+# The sample contracts under tests/contract/oas31 are generated with these
+# same options, so what those tests establish holds for this API.
+package: http
+output: internal/transport/http/api.gen.go
+generate:
+  models: true
+  # Registers the operations on a net/http ServeMux.
+  std-http-server: true
+  # One typed request and response object per operation.
+  strict-server: true
+compatibility:
+  # HealthStatusOk rather than Ok: a constant is named after its type whether
+  # or not its bare name happens to be free.
+  always-prefix-enum-values: true
+output-options:
+  # A property that may be null becomes nullable.Nullable[T], which tells an
+  # absent member from a null one. A plain pointer cannot.
+  nullable-type: true
+  name-normalizer: ToCamelCaseWithInitialisms

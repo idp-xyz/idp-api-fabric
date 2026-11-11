@@ -1,0 +1,97 @@
+openapi: 3.1.2
+info:
+  title: IDP API Fabric management API
+  version: 0.1.0
+  description: >-
+    The HTTP contract of the Fabric control plane. The DTOs and the handler
+    interface in internal/transport/http are generated from this document, so
+    an operation is served only if it is declared here.
+paths:
+  /healthz:
+    get:
+      operationId: getHealthz
+      summary: Report liveness
+      description: >-
+        Answers as long as the process serves HTTP. It reads no dependency, so
+        it says nothing about the database.
+      security: []
+      responses:
+        '200':
+          description: The process is serving
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        default:
+          $ref: '#/components/responses/Problem'
+  /version:
+    get:
+      operationId: getVersion
+      summary: Report the build identity
+      security: []
+      responses:
+        '200':
+          description: The build this process runs
+          headers:
+            Cache-Control:
+              description: The identity changes with every deployment
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildInfo'
+        default:
+          $ref: '#/components/responses/Problem'
+components:
+  responses:
+    Problem:
+      description: RFC 9457 problem with a stable error code
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: ok
+    BuildInfo:
+      type: object
+      required: [version, commit, built_at]
+      properties:
+        version:
+          type: string
+        commit:
+          type: string
+        built_at:
+          type: string
+    Problem:
+      description: >-
+        The error body of every operation. Callers branch on error_code, never
+        on title or detail.
+      type: object
+      required: [type, title, status, error_code]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+        error_code:
+          type: string
+        trace_id:
+          type: string

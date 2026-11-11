@@ -1,0 +1,30 @@
+openapi: 3.1.2
+info:
+  title: PoC sample - a union of two primitive types
+  version: 0.0.0
+paths:
+  /identifiers:
+    post:
+      operationId: storeIdentifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reference'
+      responses:
+        '200':
+          description: The reference as stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reference'
+components:
+  schemas:
+    Reference:
+      type: object
+      required: [identifier]
+      properties:
+        identifier:
+          description: Either form identifies the same resource
+          type: [string, integer]

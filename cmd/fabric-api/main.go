@@ -76,7 +76,7 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", address, err)
 	}
-	return serve(ctx, logger, listener, httptransport.NewHandler(buildinfo.Current()))
+	return serve(ctx, logger, listener, httptransport.NewHandler(logger, buildinfo.Current()))
 }
 
 // serve answers on listener until ctx is done, then lets in-flight requests

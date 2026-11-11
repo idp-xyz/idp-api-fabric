@@ -1,12 +1,15 @@
 // Package http is the inbound HTTP transport of the Fabric control plane:
-// routing, the liveness and version endpoints and the RFC 9457 error body.
+// routing, the operations of the management API and the RFC 9457 error body.
 //
-// DTOs and handlers generated from the management API contract land here and
-// stay here: no bounded context imports this package (F07 §3.1).
+// The DTOs and the handler interface in api.gen.go are generated from
+// api/openapi.yaml and are never edited by hand. They stay in this package:
+// no bounded context imports it (F07 §3.1).
 package http
 
 import (
-	"encoding/json"
+	"context"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -15,16 +18,72 @@ import (
 
 // NewHandler returns the root handler of fabric-api. Until a bounded context
 // is mounted it serves liveness and the build identity only.
-func NewHandler(build buildinfo.Info) http.Handler {
+func NewHandler(logger *slog.Logger, build buildinfo.Info) http.Handler {
+	return newHandler(logger, operations{build: build})
+}
+
+// newHandler routes the operations of the contract to server and answers
+// everything else, and every failure, as a problem.
+func newHandler(logger *slog.Logger, server StrictServerInterface) http.Handler {
+	failures := failures{logger: logger}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
-	mux.HandleFunc("GET /version", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, http.StatusOK, build)
-	})
+	HandlerWithOptions(
+		NewStrictHandlerWithOptions(server, []StrictMiddlewareFunc{requireResponse}, StrictHTTPServerOptions{
+			RequestErrorHandlerFunc:  failures.badRequest,
+			ResponseErrorHandlerFunc: failures.operationFailed,
+		}),
+		StdHTTPServerOptions{BaseRouter: mux, ErrorHandlerFunc: failures.badRequest},
+	)
 	return problemFallback{mux: mux}
+}
+
+// requireResponse fails an operation that returns neither a response nor an
+// error. The generated code would write nothing for it, which a client reads
+// as an empty 200 the contract does not declare.
+func requireResponse(next StrictHandlerFunc, operationID string) StrictHandlerFunc {
+	return func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error) {
+		response, err := next(ctx, w, r, request)
+		if err == nil && response == nil {
+			return nil, fmt.Errorf("operation %s returned neither a response nor an error", operationID)
+		}
+		return response, err
+	}
+}
+
+// operations implements the operations of the contract that no bounded
+// context owns.
+type operations struct {
+	build buildinfo.Info
+}
+
+func (operations) GetHealthz(context.Context, GetHealthzRequestObject) (GetHealthzResponseObject, error) {
+	return GetHealthz200JSONResponse{Status: HealthStatusOk}, nil
+}
+
+func (o operations) GetVersion(context.Context, GetVersionRequestObject) (GetVersionResponseObject, error) {
+	return GetVersion200JSONResponse{
+		Body:    BuildInfo{Version: o.build.Version, Commit: o.build.Commit, BuiltAt: o.build.BuiltAt},
+		Headers: GetVersion200ResponseHeaders{CacheControl: "no-store"},
+	}, nil
+}
+
+// failures turns what the generated code reports into problems. The generated
+// defaults would answer in plain text and echo the error.
+type failures struct {
+	logger *slog.Logger
+}
+
+// badRequest answers a request whose parameters or body could not be read.
+// The error is not echoed: it quotes the request, which can carry a secret.
+func (failures) badRequest(w http.ResponseWriter, _ *http.Request, _ error) {
+	WriteProblem(w, Problem{Status: http.StatusBadRequest, ErrorCode: CodeRequestInvalid})
+}
+
+// operationFailed answers an operation that returned an error or a response
+// it does not declare. The cause is logged and never sent.
+func (f failures) operationFailed(w http.ResponseWriter, r *http.Request, err error) {
+	f.logger.ErrorContext(r.Context(), "operation failed", "method", r.Method, "path", r.URL.Path, "error", err)
+	WriteProblem(w, Problem{Status: http.StatusInternalServerError, ErrorCode: CodeInternalError})
 }
 
 // probedMethods are the methods tried to tell a missing route from a route
@@ -65,10 +124,4 @@ func (f problemFallback) allowedMethods(r *http.Request) []string {
 		}
 	}
 	return allowed
-}
-
-func writeJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
 }

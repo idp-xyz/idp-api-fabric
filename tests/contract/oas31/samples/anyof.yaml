@@ -1,0 +1,39 @@
+openapi: 3.1.2
+info:
+  title: PoC sample - anyOf of object schemas
+  version: 0.0.0
+paths:
+  /contacts:
+    post:
+      operationId: storeContact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Contact'
+      responses:
+        '200':
+          description: The contact as stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+components:
+  schemas:
+    Contact:
+      anyOf:
+        - $ref: '#/components/schemas/ByEmail'
+        - $ref: '#/components/schemas/ByPhone'
+    ByEmail:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+    ByPhone:
+      type: object
+      required: [phone]
+      properties:
+        phone:
+          type: string

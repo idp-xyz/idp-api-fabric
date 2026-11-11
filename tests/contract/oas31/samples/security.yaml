@@ -1,0 +1,60 @@
+openapi: 3.1.2
+info:
+  title: PoC sample - security requirements
+  version: 0.0.0
+security:
+  - serviceOAuth: [contracts:read]
+paths:
+  /public/notice:
+    get:
+      operationId: readPublicNotice
+      description: Explicitly anonymous; overrides the document default
+      security: []
+      responses:
+        '200':
+          description: A notice anyone may read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notice'
+  /private/notice:
+    get:
+      operationId: readPrivateNotice
+      description: Inherits the document default
+      responses:
+        '200':
+          description: A notice for callers holding contracts:read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notice'
+    put:
+      operationId: replacePrivateNotice
+      security:
+        - serviceOAuth: [contracts:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Notice'
+      responses:
+        '204':
+          description: Replaced
+components:
+  securitySchemes:
+    serviceOAuth:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://identity.example.org/oauth2/token
+          scopes:
+            contracts:read: Read contract resources
+            contracts:write: Change contract resources
+  schemas:
+    Notice:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
