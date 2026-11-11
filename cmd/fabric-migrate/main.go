@@ -8,6 +8,8 @@
 // With -apply it creates the schemas, applies the steps the database does not
 // record yet and records each one. With -grant-to it then grants the named
 // application role exactly what a Fabric process needs; it creates no role.
+// A build that adds a table also adds privileges, so an upgrade passes both:
+// a process refuses to start as a role that lacks one and names it.
 //
 // IDP_FABRIC_MIGRATOR_DSN is the connection string of the migrating role, which
 // owns the schemas. It is not the role an application process connects with:
@@ -102,7 +104,7 @@ func printPlan() error {
 		if version == "" {
 			version = "-"
 		}
-		fmt.Printf("%3d  %-9s  %-16s  %-36s  %-12s  %s\n",
+		fmt.Printf("%3d  %-9s  %-18s  %-44s  %-12s  %s\n",
 			index+1, step.Origin, step.Schema, step.ID, version, step.Checksum)
 	}
 	return nil

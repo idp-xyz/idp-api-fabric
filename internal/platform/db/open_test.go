@@ -104,6 +104,55 @@ func TestOpenBindsTheFrameworkAsTheApplicationRole(t *testing.T) {
 	}
 }
 
+func TestWithinTransactionJoinsTheTransactionOfItsContext(t *testing.T) {
+	database := open(t, pgtest.MigratedDatabase(t).Application)
+
+	transactionID := func(ctx context.Context) (id string) {
+		executor, err := database.Framework.RequireExecutor(ctx)
+		if err != nil {
+			t.Fatalf("no transaction in the context: %v", err)
+		}
+		if err := executor.QueryRow(ctx, `SELECT pg_current_xact_id()::text`).Scan(&id); err != nil {
+			t.Fatalf("read the transaction identifier: %v", err)
+		}
+		return id
+	}
+
+	var outer, inner, separate string
+	err := database.WithinTransaction(t.Context(), func(ctx context.Context) error {
+		outer = transactionID(ctx)
+		return database.WithinTransaction(ctx, func(ctx context.Context) error {
+			inner = transactionID(ctx)
+			return nil
+		})
+	})
+	if err != nil {
+		t.Fatalf("a transaction inside a transaction: %v", err)
+	}
+	if outer == "" || inner != outer {
+		t.Errorf("the inner call ran in transaction %q, want the transaction %q it was called in", inner, outer)
+	}
+
+	if err := database.WithinTransaction(t.Context(), func(ctx context.Context) error {
+		separate = transactionID(ctx)
+		return nil
+	}); err != nil {
+		t.Fatalf("a transaction of its own: %v", err)
+	}
+	if separate == outer {
+		t.Errorf("a call outside any transaction reused transaction %q", outer)
+	}
+
+	// What fails inside fails the transaction it joined.
+	failure := errors.New("the joined work failed")
+	err = database.WithinTransaction(t.Context(), func(ctx context.Context) error {
+		return database.WithinTransaction(ctx, func(context.Context) error { return failure })
+	})
+	if !errors.Is(err, failure) {
+		t.Errorf("got %v, want the failure of the joined work", err)
+	}
+}
+
 func TestOpenRefusesARoleThatCanDoMoreThanAProcessMay(t *testing.T) {
 	t.Run("the migrating role", func(t *testing.T) {
 		database := pgtest.MigratedDatabase(t)
@@ -157,6 +206,10 @@ func TestOpenRefusesARoleThatWasGrantedLessThanAProcessNeeds(t *testing.T) {
 	}{
 		"a table privilege was revoked":   {`REVOKE UPDATE ON bento.outbox FROM `, "UPDATE on bento.outbox"},
 		"the use of a schema was revoked": {`REVOKE USAGE ON SCHEMA fabric_migration FROM `, "USAGE on schema fabric_migration"},
+		"a privilege on a table of a context was revoked": {
+			`REVOKE INSERT ON platformoperations.audit_record FROM `, "INSERT on platformoperations.audit_record"},
+		"the use of the schema of a context was revoked": {
+			`REVOKE USAGE ON SCHEMA platformoperations FROM `, "USAGE on schema platformoperations"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -173,14 +226,16 @@ func TestOpenRefusesARoleThatWasGrantedLessThanAProcessNeeds(t *testing.T) {
 
 func TestOpenRefusesADatabaseThatDoesNotMatchTheBuild(t *testing.T) {
 	cases := map[string]string{
-		"nobody migrated it":                      "",
-		"the history was dropped":                 `DROP SCHEMA fabric_migration CASCADE`,
-		"the history lacks a step of the plan":    `DELETE FROM fabric_migration.applied_migration`,
-		"a step came from another artifact":       `UPDATE fabric_migration.applied_migration SET canonical_checksum = 'sha256:rewritten'`,
-		"a framework table was altered":           `ALTER TABLE bento.inbox DROP COLUMN failure_code`,
-		"the framework schema was dropped":        `DROP SCHEMA bento CASCADE`,
-		"a framework index was dropped by hand":   `DROP INDEX bento.outbox_active_recorded_idx`,
-		"a framework trigger was dropped by hand": `DROP TRIGGER inbox_settled_before_commit ON bento.inbox`,
+		"nobody migrated it":                       "",
+		"the history was dropped":                  `DROP SCHEMA fabric_migration CASCADE`,
+		"the history lacks a step of the plan":     `DELETE FROM fabric_migration.applied_migration`,
+		"a step came from another artifact":        `UPDATE fabric_migration.applied_migration SET canonical_checksum = 'sha256:rewritten'`,
+		"a framework table was altered":            `ALTER TABLE bento.inbox DROP COLUMN failure_code`,
+		"the framework schema was dropped":         `DROP SCHEMA bento CASCADE`,
+		"a framework index was dropped by hand":    `DROP INDEX bento.outbox_active_recorded_idx`,
+		"a framework trigger was dropped by hand":  `DROP TRIGGER inbox_settled_before_commit ON bento.inbox`,
+		"a table of a context was dropped by hand": `DROP TABLE platformoperations.audit_record`,
+		"the schema of a context was dropped":      `DROP SCHEMA platformoperations CASCADE`,
 	}
 	for name, damage := range cases {
 		t.Run(name, func(t *testing.T) {

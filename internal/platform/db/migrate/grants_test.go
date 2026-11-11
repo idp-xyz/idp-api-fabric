@@ -2,8 +2,10 @@ package migrate_test
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"go.idp.xyz/idp-api-fabric/internal/platform/db/migrate"
@@ -43,7 +45,7 @@ func TestTheApplicationRoleHoldsWhatItNeedsAndNothingElse(t *testing.T) {
 	var owned int
 	if err := app.QueryRow(t.Context(),
 		`SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-		 WHERE n.nspname IN ('bento', 'fabric_migration') AND pg_has_role(current_user, c.relowner, 'USAGE')`,
+		 WHERE n.nspname = ANY($1) AND pg_has_role(current_user, c.relowner, 'USAGE')`, fabricSchemas(t),
 	).Scan(&owned); err != nil {
 		t.Fatalf("count what the role owns: %v", err)
 	}
@@ -72,11 +74,62 @@ func TestTheApplicationRoleHoldsWhatItNeedsAndNothingElse(t *testing.T) {
 		 VALUES ('intruder/0001', 'FABRIC', 'sha256:intruder', 'bento')`,
 		`UPDATE fabric_migration.applied_migration SET canonical_checksum = 'sha256:rewritten'`,
 		`DELETE FROM fabric_migration.applied_migration`,
+		`CREATE TABLE platformoperations.intruder (id integer)`,
+		`DROP SCHEMA platformoperations CASCADE`,
 	}
 	for _, statement := range refused {
 		if _, err := app.Exec(t.Context(), statement); sqlState(err) != insufficientPrivilege {
 			t.Errorf("%s\n got %v, want it refused for lack of privilege", statement, err)
 		}
+	}
+}
+
+// fabricSchemas are the schemas a migrated database holds for Fabric: the one
+// of the history and the one of every step of the plan.
+func fabricSchemas(t *testing.T) []string {
+	t.Helper()
+
+	plan, err := migrate.Plan()
+	if err != nil {
+		t.Fatalf("build the plan: %v", err)
+	}
+	schemas := []string{migrate.SchemaHistory}
+	for _, step := range plan {
+		if !slices.Contains(schemas, step.Schema) {
+			schemas = append(schemas, step.Schema)
+		}
+	}
+	return schemas
+}
+
+// What a process may do on a table is decided when the table is added, in
+// ApplicationPrivileges. A migration that adds a table without that decision
+// fails here, instead of failing a process on its first statement.
+func TestEveryFabricTableHasItsPrivilegesDeclared(t *testing.T) {
+	conn := pgtest.Connect(t, pgtest.MigratedDatabase(t).Migrator)
+
+	rows, err := conn.Query(t.Context(),
+		`SELECT n.nspname || '.' || c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+		 WHERE n.nspname = ANY($1) AND c.relkind IN ('r', 'p') ORDER BY 1`, fabricSchemas(t))
+	if err != nil {
+		t.Fatalf("list the tables: %v", err)
+	}
+	tables, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatalf("list the tables: %v", err)
+	}
+
+	var declared []string
+	for _, table := range migrate.ApplicationPrivileges() {
+		declared = append(declared, table.Schema+"."+table.Table)
+		if len(table.Privileges) == 0 {
+			t.Errorf("%s.%s is declared with no privilege at all", table.Schema, table.Table)
+		}
+	}
+	slices.Sort(declared)
+
+	if !slices.Equal(tables, declared) {
+		t.Errorf("the migrated database holds the tables\n %v\nand privileges are declared for\n %v", tables, declared)
 	}
 }
 

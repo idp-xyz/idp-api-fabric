@@ -307,6 +307,29 @@ func TestRepositoryKeepsTheBoundaries(t *testing.T) {
 	}
 }
 
+// A bounded context is the only owner of its tables (F03 §3.2), so every
+// directory of migrations is named after one of them. The migration plan
+// turns that name into the schema the tables live in.
+func TestMigrationsBelongToTheBoundedContexts(t *testing.T) {
+	entries, err := os.ReadDir(filepath.Join(repositoryRoot(t), "migrations"))
+	if err != nil {
+		t.Fatalf("read the migrations: %v", err)
+	}
+	owned := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		owned++
+		if !slices.Contains(contexts, entry.Name()) {
+			t.Errorf("migrations/%s is not the directory of a bounded context of F03 §3", entry.Name())
+		}
+	}
+	if owned == 0 {
+		t.Fatal("no context has a migration; this test would pass vacuously")
+	}
+}
+
 type sourceFile struct {
 	pkg     string
 	path    string
