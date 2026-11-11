@@ -550,15 +550,17 @@ func TestARefusalThatCannotBeAuditedIsStillARefusal(t *testing.T) {
 
 	command := registration()
 	command.Caller, command.Key = mallory, "intruder"
-	if _, err := service.RegisterProduct(ctx, command); !errors.Is(err, ErrForbidden) || !strings.Contains(err.Error(), "could not be audited") {
-		t.Errorf("a registration: got %v, want a refusal that says it could not be audited", err)
+	_, err := service.RegisterProduct(ctx, command)
+	if !errors.Is(err, ErrForbidden) || !errors.Is(err, ErrRefusalNotAudited) || !strings.Contains(err.Error(), "the audit trail is down") {
+		t.Errorf("a registration: got %v, want a refusal that says why it could not be audited", err)
 	}
-	if _, err := service.GetProduct(ctx, GetProduct{Caller: mallory, ProductID: string(product.ID)}); !errors.Is(err, ErrProductNotFound) {
-		t.Errorf("a read: got %v, want %v", err, ErrProductNotFound)
+	_, err = service.GetProduct(ctx, GetProduct{Caller: mallory, ProductID: string(product.ID)})
+	if !errors.Is(err, ErrProductNotFound) || !errors.Is(err, ErrRefusalNotAudited) {
+		t.Errorf("a read: got %v, want %v and %v", err, ErrProductNotFound, ErrRefusalNotAudited)
 	}
-	_, err := service.CreateWorkspace(ctx, CreateWorkspace{Caller: mallory, ProductID: string(product.ID), Key: "api", DisplayName: "API"})
-	if !errors.Is(err, ErrProductNotFound) {
-		t.Errorf("a creation: got %v, want %v", err, ErrProductNotFound)
+	_, err = service.CreateWorkspace(ctx, CreateWorkspace{Caller: mallory, ProductID: string(product.ID), Key: "api", DisplayName: "API"})
+	if !errors.Is(err, ErrProductNotFound) || !errors.Is(err, ErrRefusalNotAudited) {
+		t.Errorf("a creation: got %v, want %v and %v", err, ErrProductNotFound, ErrRefusalNotAudited)
 	}
 	if len(w.products) != 1 || len(w.workspaces) != 0 {
 		t.Errorf("refusals left %d products and %d workspaces, want 1 and 0", len(w.products), len(w.workspaces))

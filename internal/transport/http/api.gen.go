@@ -11,6 +11,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
+
+	"github.com/oapi-codegen/runtime"
 )
 
 // Defines values for HealthStatus.
@@ -28,12 +31,48 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for ProductStatus.
+const (
+	ProductStatusACTIVE    ProductStatus = "ACTIVE"
+	ProductStatusSUSPENDED ProductStatus = "SUSPENDED"
+)
+
+// Valid indicates whether the value is a known member of the ProductStatus enum.
+func (e ProductStatus) Valid() bool {
+	switch e {
+	case ProductStatusACTIVE:
+		return true
+	case ProductStatusSUSPENDED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceStatus.
+const (
+	WorkspaceStatusACTIVE WorkspaceStatus = "ACTIVE"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceStatus enum.
+func (e WorkspaceStatus) Valid() bool {
+	switch e {
+	case WorkspaceStatusACTIVE:
+		return true
+	default:
+		return false
+	}
+}
+
 // BuildInfo defines model for BuildInfo.
 type BuildInfo struct {
 	BuiltAt string `json:"built_at"`
 	Commit  string `json:"commit"`
 	Version string `json:"version"`
 }
+
+// DisplayName The name an object is shown under: 1 to 120 characters, without control characters and without surrounding white space. It identifies nothing and is not unique.
+type DisplayName = string
 
 // Health defines model for Health.
 type Health struct {
@@ -43,6 +82,30 @@ type Health struct {
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
 
+// Identifier The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+type Identifier = string
+
+// Key The name people and configuration use for an object, unique in its scope: 2 to 63 lower case letters, digits and hyphens, starting with a letter and not ending with a hyphen. It is not the identity of the object.
+type Key = string
+
+// OrganizationRef A reference to the organization a product belongs to, in the identity or organization system that knows it. It is recorded as it is given; no permission is derived from it.
+type OrganizationRef struct {
+	// IdentityProvider A reference into another system, compared for equality and never interpreted: 1 to 255 characters, without control characters.
+	IdentityProvider Reference `json:"identity_provider"`
+
+	// Organization A reference into another system, compared for equality and never interpreted: 1 to 255 characters, without control characters.
+	Organization Reference `json:"organization"`
+}
+
+// Principal A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
+type Principal struct {
+	// Issuer A reference into another system, compared for equality and never interpreted: 1 to 255 characters, without control characters.
+	Issuer Reference `json:"issuer"`
+
+	// Subject A reference into another system, compared for equality and never interpreted: 1 to 255 characters, without control characters.
+	Subject Reference `json:"subject"`
+}
+
 // Problem The error body of every operation. Callers branch on error_code, never on title or detail.
 type Problem struct {
 	Detail    *string `json:"detail,omitempty"`
@@ -50,15 +113,115 @@ type Problem struct {
 	Instance  *string `json:"instance,omitempty"`
 	Status    int     `json:"status"`
 	Title     string  `json:"title"`
-	TraceID   *string `json:"trace_id,omitempty"`
-	Type      string  `json:"type"`
+
+	// TraceID Ties the problem to the log lines and the audit record of the request
+	TraceID *string `json:"trace_id,omitempty"`
+	Type    string  `json:"type"`
 }
+
+// Product defines model for Product.
+type Product struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// DisplayName The name an object is shown under: 1 to 120 characters, without control characters and without surrounding white space. It identifies nothing and is not unique.
+	DisplayName DisplayName `json:"display_name"`
+
+	// OwnerOrganization A reference to the organization a product belongs to, in the identity or organization system that knows it. It is recorded as it is given; no permission is derived from it.
+	OwnerOrganization OrganizationRef `json:"owner_organization"`
+
+	// ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ProductID Identifier `json:"product_id"`
+
+	// ProductKey The name people and configuration use for an object, unique in its scope: 2 to 63 lower case letters, digits and hyphens, starting with a letter and not ending with a hyphen. It is not the identity of the object.
+	ProductKey Key `json:"product_key"`
+
+	// Status A suspended product takes no new work; what it holds is kept
+	Status ProductStatus `json:"status"`
+}
+
+// ProductStatus A suspended product takes no new work; what it holds is kept
+type ProductStatus string
+
+// ProductRegistration defines model for ProductRegistration.
+type ProductRegistration struct {
+	// DisplayName The name an object is shown under: 1 to 120 characters, without control characters and without surrounding white space. It identifies nothing and is not unique.
+	DisplayName DisplayName `json:"display_name"`
+
+	// OwnerOrganization A reference to the organization a product belongs to, in the identity or organization system that knows it. It is recorded as it is given; no permission is derived from it.
+	OwnerOrganization OrganizationRef `json:"owner_organization"`
+
+	// Owners The principals that own the product from the start. An owner manages the workspaces of the product. Each is named under an issuer this deployment trusts.
+	Owners []Principal `json:"owners"`
+
+	// ProductKey Unique among all products
+	ProductKey Key `json:"product_key"`
+}
+
+// Reference A reference into another system, compared for equality and never interpreted: 1 to 255 characters, without control characters.
+type Reference = string
+
+// Workspace defines model for Workspace.
+type Workspace struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// DisplayName The name an object is shown under: 1 to 120 characters, without control characters and without surrounding white space. It identifies nothing and is not unique.
+	DisplayName DisplayName `json:"display_name"`
+
+	// ProductID The product the workspace belongs to, for good
+	ProductID Identifier      `json:"product_id"`
+	Status    WorkspaceStatus `json:"status"`
+
+	// WorkspaceID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	WorkspaceID Identifier `json:"workspace_id"`
+
+	// WorkspaceKey The name people and configuration use for an object, unique in its scope: 2 to 63 lower case letters, digits and hyphens, starting with a letter and not ending with a hyphen. It is not the identity of the object.
+	WorkspaceKey Key `json:"workspace_key"`
+}
+
+// WorkspaceStatus defines model for Workspace.Status.
+type WorkspaceStatus string
+
+// WorkspaceCreation defines model for WorkspaceCreation.
+type WorkspaceCreation struct {
+	// DisplayName The name an object is shown under: 1 to 120 characters, without control characters and without surrounding white space. It identifies nothing and is not unique.
+	DisplayName DisplayName `json:"display_name"`
+
+	// WorkspaceKey Unique among the workspaces of the product
+	WorkspaceKey Key `json:"workspace_key"`
+}
+
+// ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+type ProductID = Identifier
+
+// WorkspaceID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+type WorkspaceID = Identifier
+
+// Unauthenticated The error body of every operation. Callers branch on error_code, never on title or detail.
+type Unauthenticated = Problem
+
+// RegisterProductJSONRequestBody defines body for RegisterProduct for application/json ContentType.
+type RegisterProductJSONRequestBody = ProductRegistration
+
+// CreateWorkspaceJSONRequestBody defines body for CreateWorkspace for application/json ContentType.
+type CreateWorkspaceJSONRequestBody = WorkspaceCreation
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// GetHealthz Report liveness
 	// (GET /healthz)
 	GetHealthz(w http.ResponseWriter, r *http.Request)
+	// RegisterProduct Register a product
+	// (POST /v1/products)
+	RegisterProduct(w http.ResponseWriter, r *http.Request)
+	// GetProduct Read a product
+	// (GET /v1/products/{product_id})
+	GetProduct(w http.ResponseWriter, r *http.Request, productID ProductID)
+	// CreateWorkspace Create a workspace of a product
+	// (POST /v1/products/{product_id}/workspaces)
+	CreateWorkspace(w http.ResponseWriter, r *http.Request, productID ProductID)
+	// GetWorkspace Read a workspace of a product
+	// (GET /v1/products/{product_id}/workspaces/{workspace_id})
+	GetWorkspace(w http.ResponseWriter, r *http.Request, productID ProductID, workspaceID WorkspaceID)
 	// GetVersion Report the build identity
 	// (GET /version)
 	GetVersion(w http.ResponseWriter, r *http.Request)
@@ -78,6 +241,107 @@ func (siw *ServerInterfaceWrapper) GetHealthz(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealthz(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RegisterProduct operation middleware
+func (siw *ServerInterfaceWrapper) RegisterProduct(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RegisterProduct(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProduct operation middleware
+func (siw *ServerInterfaceWrapper) GetProduct(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProduct(w, r, productID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateWorkspace operation middleware
+func (siw *ServerInterfaceWrapper) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateWorkspace(w, r, productID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetWorkspace operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkspace(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workspace_id" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspace_id", r.PathValue("workspace_id"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspace_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkspace(w, r, productID, workspaceID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -223,11 +487,24 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/healthz", wrapper.GetHealthz)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/version", wrapper.GetVersion)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products", wrapper.RegisterProduct)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}", wrapper.GetProduct)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/workspaces", wrapper.CreateWorkspace)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/workspaces/{workspace_id}", wrapper.GetWorkspace)
 
 	return m
 }
 
 type ProblemApplicationProblemPlusJSONResponse Problem
+
+type UnauthenticatedResponseHeaders struct {
+	WWWAuthenticate string
+}
+type UnauthenticatedApplicationProblemPlusJSONResponse struct {
+	Body Problem
+
+	Headers UnauthenticatedResponseHeaders
+}
 
 type GetHealthzRequestObject struct {
 }
@@ -256,6 +533,514 @@ type GetHealthzdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetHealthzdefaultApplicationProblemPlusJSONResponse) VisitGetHealthzResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterProductRequestObject struct {
+	Body *RegisterProductJSONRequestBody
+}
+
+type RegisterProductResponseObject interface {
+	VisitRegisterProductResponse(w http.ResponseWriter) error
+}
+
+type RegisterProduct201ResponseHeaders struct {
+	CacheControl string
+	Location     string
+}
+
+type RegisterProduct201JSONResponse struct {
+	Body    Product
+	Headers RegisterProduct201ResponseHeaders
+}
+
+func (response RegisterProduct201JSONResponse) VisitRegisterProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterProduct400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterProduct400ApplicationProblemPlusJSONResponse) VisitRegisterProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterProduct401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterProduct401ApplicationProblemPlusJSONResponse) VisitRegisterProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterProduct403ApplicationProblemPlusJSONResponse Problem
+
+func (response RegisterProduct403ApplicationProblemPlusJSONResponse) VisitRegisterProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterProduct409ApplicationProblemPlusJSONResponse Problem
+
+func (response RegisterProduct409ApplicationProblemPlusJSONResponse) VisitRegisterProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterProduct422ApplicationProblemPlusJSONResponse Problem
+
+func (response RegisterProduct422ApplicationProblemPlusJSONResponse) VisitRegisterProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterProduct503ApplicationProblemPlusJSONResponse Problem
+
+func (response RegisterProduct503ApplicationProblemPlusJSONResponse) VisitRegisterProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterProductdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response RegisterProductdefaultApplicationProblemPlusJSONResponse) VisitRegisterProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductRequestObject struct {
+	ProductID ProductID `json:"product_id"`
+}
+
+type GetProductResponseObject interface {
+	VisitGetProductResponse(w http.ResponseWriter) error
+}
+
+type GetProduct200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetProduct200JSONResponse struct {
+	Body    Product
+	Headers GetProduct200ResponseHeaders
+}
+
+func (response GetProduct200JSONResponse) VisitGetProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProduct400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetProduct400ApplicationProblemPlusJSONResponse) VisitGetProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProduct401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetProduct401ApplicationProblemPlusJSONResponse) VisitGetProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProduct404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetProduct404ApplicationProblemPlusJSONResponse) VisitGetProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProduct503ApplicationProblemPlusJSONResponse Problem
+
+func (response GetProduct503ApplicationProblemPlusJSONResponse) VisitGetProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetProductdefaultApplicationProblemPlusJSONResponse) VisitGetProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspaceRequestObject struct {
+	ProductID ProductID `json:"product_id"`
+	Body      *CreateWorkspaceJSONRequestBody
+}
+
+type CreateWorkspaceResponseObject interface {
+	VisitCreateWorkspaceResponse(w http.ResponseWriter) error
+}
+
+type CreateWorkspace201ResponseHeaders struct {
+	CacheControl string
+	Location     string
+}
+
+type CreateWorkspace201JSONResponse struct {
+	Body    Workspace
+	Headers CreateWorkspace201ResponseHeaders
+}
+
+func (response CreateWorkspace201JSONResponse) VisitCreateWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspace400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response CreateWorkspace400ApplicationProblemPlusJSONResponse) VisitCreateWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspace401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateWorkspace401ApplicationProblemPlusJSONResponse) VisitCreateWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspace403ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateWorkspace403ApplicationProblemPlusJSONResponse) VisitCreateWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspace404ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateWorkspace404ApplicationProblemPlusJSONResponse) VisitCreateWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspace409ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateWorkspace409ApplicationProblemPlusJSONResponse) VisitCreateWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspace422ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateWorkspace422ApplicationProblemPlusJSONResponse) VisitCreateWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspace503ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateWorkspace503ApplicationProblemPlusJSONResponse) VisitCreateWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspacedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response CreateWorkspacedefaultApplicationProblemPlusJSONResponse) VisitCreateWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceRequestObject struct {
+	ProductID   ProductID   `json:"product_id"`
+	WorkspaceID WorkspaceID `json:"workspace_id"`
+}
+
+type GetWorkspaceResponseObject interface {
+	VisitGetWorkspaceResponse(w http.ResponseWriter) error
+}
+
+type GetWorkspace200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetWorkspace200JSONResponse struct {
+	Body    Workspace
+	Headers GetWorkspace200ResponseHeaders
+}
+
+func (response GetWorkspace200JSONResponse) VisitGetWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspace400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetWorkspace400ApplicationProblemPlusJSONResponse) VisitGetWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspace401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetWorkspace401ApplicationProblemPlusJSONResponse) VisitGetWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspace404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetWorkspace404ApplicationProblemPlusJSONResponse) VisitGetWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspace503ApplicationProblemPlusJSONResponse Problem
+
+func (response GetWorkspace503ApplicationProblemPlusJSONResponse) VisitGetWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspacedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetWorkspacedefaultApplicationProblemPlusJSONResponse) VisitGetWorkspaceResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -318,6 +1103,18 @@ type StrictServerInterface interface {
 	// GetHealthz Report liveness
 	// (GET /healthz)
 	GetHealthz(ctx context.Context, request GetHealthzRequestObject) (GetHealthzResponseObject, error)
+	// RegisterProduct Register a product
+	// (POST /v1/products)
+	RegisterProduct(ctx context.Context, request RegisterProductRequestObject) (RegisterProductResponseObject, error)
+	// GetProduct Read a product
+	// (GET /v1/products/{product_id})
+	GetProduct(ctx context.Context, request GetProductRequestObject) (GetProductResponseObject, error)
+	// CreateWorkspace Create a workspace of a product
+	// (POST /v1/products/{product_id}/workspaces)
+	CreateWorkspace(ctx context.Context, request CreateWorkspaceRequestObject) (CreateWorkspaceResponseObject, error)
+	// GetWorkspace Read a workspace of a product
+	// (GET /v1/products/{product_id}/workspaces/{workspace_id})
+	GetWorkspace(ctx context.Context, request GetWorkspaceRequestObject) (GetWorkspaceResponseObject, error)
 	// GetVersion Report the build identity
 	// (GET /version)
 	GetVersion(ctx context.Context, request GetVersionRequestObject) (GetVersionResponseObject, error)
@@ -379,6 +1176,123 @@ func (sh *strictHandler) GetHealthz(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHealthzResponseObject); ok {
 		if err := validResponse.VisitGetHealthzResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RegisterProduct operation middleware
+func (sh *strictHandler) RegisterProduct(w http.ResponseWriter, r *http.Request) {
+	var request RegisterProductRequestObject
+
+	var body RegisterProductJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RegisterProduct(ctx, request.(RegisterProductRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RegisterProduct")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RegisterProductResponseObject); ok {
+		if err := validResponse.VisitRegisterProductResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProduct operation middleware
+func (sh *strictHandler) GetProduct(w http.ResponseWriter, r *http.Request, productID ProductID) {
+	var request GetProductRequestObject
+
+	request.ProductID = productID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProduct(ctx, request.(GetProductRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProduct")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProductResponseObject); ok {
+		if err := validResponse.VisitGetProductResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateWorkspace operation middleware
+func (sh *strictHandler) CreateWorkspace(w http.ResponseWriter, r *http.Request, productID ProductID) {
+	var request CreateWorkspaceRequestObject
+
+	request.ProductID = productID
+
+	var body CreateWorkspaceJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateWorkspace(ctx, request.(CreateWorkspaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateWorkspace")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateWorkspaceResponseObject); ok {
+		if err := validResponse.VisitCreateWorkspaceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetWorkspace operation middleware
+func (sh *strictHandler) GetWorkspace(w http.ResponseWriter, r *http.Request, productID ProductID, workspaceID WorkspaceID) {
+	var request GetWorkspaceRequestObject
+
+	request.ProductID = productID
+	request.WorkspaceID = workspaceID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorkspace(ctx, request.(GetWorkspaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorkspace")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorkspaceResponseObject); ok {
+		if err := validResponse.VisitGetWorkspaceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

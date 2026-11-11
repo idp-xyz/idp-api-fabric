@@ -26,6 +26,11 @@ var (
 	// ErrOwnerIssuerNotTrusted reports an owner named under an identity
 	// provider whose principals cannot authenticate here.
 	ErrOwnerIssuerNotTrusted = errors.New("an owner is named under an issuer this deployment does not trust")
+
+	// ErrRefusalNotAudited accompanies a refusal whose audit record could
+	// not be written. The refusal stands; this is for whoever operates the
+	// service, and it never changes what the caller is told.
+	ErrRefusalNotAudited = errors.New("the refusal could not be audited")
 )
 
 // The actions of Product Governance, the smallest units authorization
@@ -112,10 +117,10 @@ type refusal struct {
 // transaction: a refusal changes nothing, so its record commits on its own.
 //
 // The caller is refused whether or not the record could be written. A record
-// that could not is reported with the refusal, for the log.
+// that could not is reported with the refusal, as ErrRefusalNotAudited.
 func (s *ProductGovernance) refuse(ctx context.Context, refused refusal) error {
 	if err := s.deps.Audit.Record(ctx, refused.entry); err != nil {
-		return fmt.Errorf("%w; the refusal could not be audited: %v", refused.err, err)
+		return fmt.Errorf("%w; %w: %v", refused.err, ErrRefusalNotAudited, err)
 	}
 	return refused.err
 }

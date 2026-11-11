@@ -1,11 +1,20 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.1.0
+  version: 0.2.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
-    interface in internal/transport/http are generated from this document, so
-    an operation is served only if it is declared here.
+    interface in internal/transport/http are generated from this document, and
+    every request is validated against it before an operation runs, so an
+    operation is served only as it is declared here.
+
+
+    Every error is an RFC 9457 problem. Callers branch on its error_code,
+    never on its title or detail.
+# An operation needs a verified caller unless it says otherwise. A new
+# operation is therefore private until its declaration makes it public.
+security:
+  - bearerToken: []
 paths:
   /healthz:
     get:
@@ -45,10 +54,236 @@ paths:
                 $ref: '#/components/schemas/BuildInfo'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/products:
+    post:
+      operationId: registerProduct
+      summary: Register a product
+      description: >-
+        Registers an independent product and makes its first owners. Only a
+        platform administrator may (403 FORBIDDEN otherwise). A product key
+        that is taken is refused (409 PRODUCT_KEY_TAKEN), and so is an owner
+        under an issuer this deployment does not trust (422
+        OWNER_ISSUER_NOT_TRUSTED).
+
+
+        The product, the role of its owners, the audit record and the event
+        are committed together or not at all. A 503 OUTCOME_UNCERTAIN means it
+        is not known which: read before retrying.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductRegistration'
+      responses:
+        '201':
+          description: The product was registered
+          headers:
+            Location:
+              description: Where the product is read
+              required: true
+              schema:
+                type: string
+                format: uri-reference
+            Cache-Control:
+              description: A product is private to its members
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}:
+    get:
+      operationId: getProduct
+      summary: Read a product
+      description: >-
+        Returns the product to a platform administrator and to whoever holds a
+        role in it. To anyone else the product does not exist: the answer is
+        404 PRODUCT_NOT_FOUND, the same as for a product that is missing.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: The product
+          headers:
+            Cache-Control:
+              description: A product is private to its members
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/workspaces:
+    post:
+      operationId: createWorkspace
+      summary: Create a workspace of a product
+      description: >-
+        Gives the product a workspace. Only an owner of that product may.
+        Whoever may know the product exists and does not own it is refused
+        (403 FORBIDDEN); to anyone else there is no such product (404
+        PRODUCT_NOT_FOUND). A workspace key the product has already is refused
+        (409 WORKSPACE_KEY_TAKEN), and so is a product that is suspended (409
+        PRODUCT_NOT_ACTIVE).
+
+
+        The workspace, the audit record and the event are committed together
+        or not at all. A 503 OUTCOME_UNCERTAIN means it is not known which:
+        read before retrying.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkspaceCreation'
+      responses:
+        '201':
+          description: The workspace was created
+          headers:
+            Location:
+              description: Where the workspace is read
+              required: true
+              schema:
+                type: string
+                format: uri-reference
+            Cache-Control:
+              description: A workspace is private to the members of its product
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/workspaces/{workspace_id}:
+    get:
+      operationId: getWorkspace
+      summary: Read a workspace of a product
+      description: >-
+        Returns the workspace to whoever holds a role in its product. To a
+        stranger the product does not exist (404 PRODUCT_NOT_FOUND). A
+        platform administrator knows the product exists and nothing of what
+        is inside it (404 WORKSPACE_NOT_FOUND). A workspace of another product
+        is not found under this one.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: The workspace
+          headers:
+            Cache-Control:
+              description: A workspace is private to the members of its product
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
 components:
+  securitySchemes:
+    bearerToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        An access token of the identity provider this deployment trusts,
+        addressed to this deployment. Fabric verifies tokens and never issues
+        them. A token says who the caller is; what the caller may do is
+        decided from the roles the server holds, so no scope is declared.
+  parameters:
+    ProductId:
+      name: product_id
+      in: path
+      required: true
+      description: The identifier of the product
+      schema:
+        $ref: '#/components/schemas/Identifier'
+    WorkspaceId:
+      name: workspace_id
+      in: path
+      required: true
+      description: The identifier of the workspace
+      schema:
+        $ref: '#/components/schemas/Identifier'
   responses:
     Problem:
       description: RFC 9457 problem with a stable error code
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthenticated:
+      description: >-
+        The request carries no credentials (CREDENTIALS_MISSING) or a token
+        that is not accepted (TOKEN_INVALID). Why a token is not accepted is
+        not said.
+      headers:
+        WWW-Authenticate:
+          description: The Bearer challenge of RFC 6750
+          required: true
+          schema:
+            type: string
       content:
         application/problem+json:
           schema:
@@ -71,6 +306,133 @@ components:
           type: string
         built_at:
           type: string
+    Identifier:
+      description: >-
+        The stable identity of an object: a UUID in its canonical form. It is
+        never reused and says nothing about the object.
+      type: string
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    Key:
+      description: >-
+        The name people and configuration use for an object, unique in its
+        scope: 2 to 63 lower case letters, digits and hyphens, starting with a
+        letter and not ending with a hyphen. It is not the identity of the
+        object.
+      type: string
+      pattern: '^[a-z][a-z0-9-]{0,61}[a-z0-9]$'
+    DisplayName:
+      description: >-
+        The name an object is shown under: 1 to 120 characters, without
+        control characters and without surrounding white space. It identifies
+        nothing and is not unique.
+      type: string
+      minLength: 1
+      maxLength: 120
+      pattern: '^[^\p{Z}\p{Cc}]([^\p{Cc}]*[^\p{Z}\p{Cc}])?$'
+    Reference:
+      description: >-
+        A reference into another system, compared for equality and never
+        interpreted: 1 to 255 characters, without control characters.
+      type: string
+      minLength: 1
+      maxLength: 255
+      pattern: '^[^\p{Cc}]+$'
+    Principal:
+      description: >-
+        A user, a service account or a workload: a subject as one issuer
+        names it. The same subject under another issuer is another principal.
+      type: object
+      additionalProperties: false
+      required: [issuer, subject]
+      properties:
+        issuer:
+          $ref: '#/components/schemas/Reference'
+        subject:
+          $ref: '#/components/schemas/Reference'
+    OrganizationRef:
+      description: >-
+        A reference to the organization a product belongs to, in the identity
+        or organization system that knows it. It is recorded as it is given;
+        no permission is derived from it.
+      type: object
+      additionalProperties: false
+      required: [identity_provider, organization]
+      properties:
+        identity_provider:
+          $ref: '#/components/schemas/Reference'
+        organization:
+          $ref: '#/components/schemas/Reference'
+    ProductRegistration:
+      type: object
+      additionalProperties: false
+      required: [product_key, display_name, owner_organization, owners]
+      properties:
+        product_key:
+          description: Unique among all products
+          $ref: '#/components/schemas/Key'
+        display_name:
+          $ref: '#/components/schemas/DisplayName'
+        owner_organization:
+          $ref: '#/components/schemas/OrganizationRef'
+        owners:
+          description: >-
+            The principals that own the product from the start. An owner
+            manages the workspaces of the product. Each is named under an
+            issuer this deployment trusts.
+          type: array
+          minItems: 1
+          maxItems: 10
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Principal'
+    Product:
+      type: object
+      required: [product_id, product_key, display_name, status, owner_organization, created_at]
+      properties:
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        product_key:
+          $ref: '#/components/schemas/Key'
+        display_name:
+          $ref: '#/components/schemas/DisplayName'
+        status:
+          description: A suspended product takes no new work; what it holds is kept
+          type: string
+          enum: [ACTIVE, SUSPENDED]
+        owner_organization:
+          $ref: '#/components/schemas/OrganizationRef'
+        created_at:
+          type: string
+          format: date-time
+    WorkspaceCreation:
+      type: object
+      additionalProperties: false
+      required: [workspace_key, display_name]
+      properties:
+        workspace_key:
+          description: Unique among the workspaces of the product
+          $ref: '#/components/schemas/Key'
+        display_name:
+          $ref: '#/components/schemas/DisplayName'
+    Workspace:
+      type: object
+      required: [workspace_id, product_id, workspace_key, display_name, status, created_at]
+      properties:
+        workspace_id:
+          $ref: '#/components/schemas/Identifier'
+        product_id:
+          description: The product the workspace belongs to, for good
+          $ref: '#/components/schemas/Identifier'
+        workspace_key:
+          $ref: '#/components/schemas/Key'
+        display_name:
+          $ref: '#/components/schemas/DisplayName'
+        status:
+          type: string
+          enum: [ACTIVE]
+        created_at:
+          type: string
+          format: date-time
     Problem:
       description: >-
         The error body of every operation. Callers branch on error_code, never
@@ -94,4 +456,5 @@ components:
         error_code:
           type: string
         trace_id:
+          description: Ties the problem to the log lines and the audit record of the request
           type: string
