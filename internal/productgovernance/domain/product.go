@@ -85,9 +85,9 @@ func (p Product) AdmitNewWork() error {
 	return nil
 }
 
-// Role is what a principal is in a product. A role is necessary for an action
-// and never sufficient: the action is still checked against the product, the
-// resource and its state (F05 §5.1).
+// Role is what a principal is in a product or in one of its workspaces. A
+// role is necessary for an action and never sufficient: the action is still
+// checked against the product, the resource and its state (F05 §5.1).
 type Role string
 
 // RoleProductOwner manages the workspaces and the members of one product
