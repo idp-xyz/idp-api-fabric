@@ -1,0 +1,53 @@
+# A throwaway PostgreSQL for the local integration tests. It is not a
+# deployment descriptor.
+#
+# The image is pinned to an exact patch release: evidence taken on a floating
+# "16" tag would point at a different database on a different day. 16 is the
+# only major the framework's schema check supports in v0.1.
+#
+#   make db-up        # starts it and prints the two DSNs to export
+#   make check
+#   make db-down
+#
+# It has the two roles a deployment has. fabric migrates and owns the schema;
+# here it is also the server's superuser, because the tests create and drop
+# their own databases with it. fabric_app is the role a Fabric process connects
+# with: it gets what fabric-migrate grants it and nothing else.
+#
+# The credentials are the fixed values of a disposable local database, not a
+# secret of any environment, and must not be copied anywhere as a default.
+# The data lives in memory and is gone with the container.
+
+services:
+  postgres:
+    image: postgres:16.14
+    container_name: idp-api-fabric-postgres
+    environment:
+      POSTGRES_USER: fabric
+      POSTGRES_PASSWORD: fabric
+      POSTGRES_DB: postgres
+      # The framework's read-only schema check requires UTF8.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    configs:
+      - source: application-role
+        target: /docker-entrypoint-initdb.d/10-application-role.sql
+    ports:
+      # Loopback only. 5432, 5452, 55432, 55433 and 55440 are taken by other
+      # IDP repositories on a shared host.
+      - "127.0.0.1:55450:5432"
+    tmpfs:
+      - /var/lib/postgresql/data:size=1g
+    healthcheck:
+      # Over TCP, not the unix socket: while the image initializes, a temporary
+      # server answers on the socket only and then goes away.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U fabric -d postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 3s
+
+configs:
+  application-role:
+    content: |
+      CREATE ROLE fabric_app LOGIN PASSWORD 'fabric_app'
+          NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;

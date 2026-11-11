@@ -1,0 +1,19 @@
+# Go build and test outputs
+/bin/
+coverage.out
+*.test
+*.prof
+
+# Python bytecode written when the docs scripts run
+__pycache__/
+*.pyc
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Local multi-repository workspace only: the build resolves idp-bento-go
+# through its module path, never through a local checkout.
+go.work
+go.work.sum
