@@ -170,7 +170,10 @@ func TestPrincipals(t *testing.T) {
 		alice,
 		{Issuer: "https://issuer.example", Subject: "auth0|5f7c8ec7c33c6c004bbafe82"},
 		{Issuer: "https://issuer.example", Subject: "service account 7"},
-		{Issuer: "https://issuer.example", Subject: strings.Repeat("s", 255)},
+		{Issuer: "https://issuer.example", Subject: strings.Repeat("s", ReferenceMaxLength)},
+		// The bound is in characters, whatever a character takes in bytes.
+		{Issuer: "https://issuer.example", Subject: strings.Repeat("名", ReferenceMaxLength)},
+		{Issuer: strings.Repeat("发", ReferenceMaxLength), Subject: "alice"},
 	}
 	for _, principal := range accepted {
 		if err := principal.Validate(); err != nil {
@@ -179,16 +182,49 @@ func TestPrincipals(t *testing.T) {
 	}
 
 	refused := map[string]Principal{
-		"no issuer":                   {Subject: "alice"},
-		"no subject":                  {Issuer: "https://issuer.example"},
-		"a subject that is too long":  {Issuer: "https://issuer.example", Subject: strings.Repeat("s", 256)},
-		"an issuer that is too long":  {Issuer: strings.Repeat("i", 256), Subject: "alice"},
-		"a subject with a line break": {Issuer: "https://issuer.example", Subject: "alice\nadmin"},
-		"a subject that is not UTF-8": {Issuer: "https://issuer.example", Subject: "al\xffice"},
+		"no issuer":                  {Subject: "alice"},
+		"no subject":                 {Issuer: "https://issuer.example"},
+		"a subject that is too long": {Issuer: "https://issuer.example", Subject: strings.Repeat("s", ReferenceMaxLength+1)},
+		"an issuer that is too long": {Issuer: strings.Repeat("i", ReferenceMaxLength+1), Subject: "alice"},
+		"a subject of too many characters beyond ASCII": {Issuer: "https://issuer.example", Subject: strings.Repeat("名", ReferenceMaxLength+1)},
+		"a subject with a line break":                   {Issuer: "https://issuer.example", Subject: "alice\nadmin"},
+		"a subject that is not UTF-8":                   {Issuer: "https://issuer.example", Subject: "al\xffice"},
 	}
 	for name, principal := range refused {
 		t.Run(name, func(t *testing.T) {
 			if err := principal.Validate(); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("got %v, want %v", err, ErrInvalid)
+			}
+		})
+	}
+}
+
+// A reference to an organization is bounded like any other reference: in
+// characters, as the contract of the API counts them.
+func TestAnOrganizationIsReferredToInAtMost255Characters(t *testing.T) {
+	accepted := []OrganizationRef{
+		owner,
+		{IdentityProvider: "https://issuer.example", Organization: strings.Repeat("o", ReferenceMaxLength)},
+		{IdentityProvider: "https://issuer.example", Organization: strings.Repeat("组", ReferenceMaxLength)},
+		{IdentityProvider: strings.Repeat("身", ReferenceMaxLength), Organization: "org-cargopai"},
+	}
+	for _, organization := range accepted {
+		if err := organization.Validate(); err != nil {
+			t.Errorf("an organization of %d and %d characters was refused: %v",
+				len([]rune(organization.IdentityProvider)), len([]rune(organization.Organization)), err)
+		}
+	}
+
+	refused := map[string]OrganizationRef{
+		"an organization that is too long":                    {IdentityProvider: "https://issuer.example", Organization: strings.Repeat("o", ReferenceMaxLength+1)},
+		"an organization of too many characters beyond ASCII": {IdentityProvider: "https://issuer.example", Organization: strings.Repeat("组", ReferenceMaxLength+1)},
+		"an identity provider that is too long":               {IdentityProvider: strings.Repeat("身", ReferenceMaxLength+1), Organization: "org-cargopai"},
+		"an organization with a line break":                   {IdentityProvider: "https://issuer.example", Organization: "org\ncargopai"},
+		"an organization that is not UTF-8":                   {IdentityProvider: "https://issuer.example", Organization: "org\xffcargopai"},
+	}
+	for name, organization := range refused {
+		t.Run(name, func(t *testing.T) {
+			if err := organization.Validate(); !errors.Is(err, ErrInvalid) {
 				t.Fatalf("got %v, want %v", err, ErrInvalid)
 			}
 		})

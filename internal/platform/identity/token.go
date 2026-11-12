@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 // algorithmRS256 is the only signature algorithm accepted. The header of a
@@ -39,9 +40,11 @@ const (
 	// An access token is well under a kilobyte.
 	tokenMaxBytes = 16 << 10
 
-	// subjectMaxBytes bounds the subject. A principal is stored and audited
-	// under it, so its length has to be known.
-	subjectMaxBytes = 255
+	// SubjectMaxLength bounds the subject, in characters. A principal is
+	// stored and audited under it, so its length has to be known. It is the
+	// bound the contract of the API puts on a reference: whoever can be
+	// named as a principal can also authenticate as one.
+	SubjectMaxLength = 255
 
 	// leeway absorbs the clock drift between the issuer and this process on
 	// the not-before and issued-at checks. The expiry check gets none: a
@@ -227,8 +230,8 @@ func (v *Verifier) checkClaims(claims map[string]json.RawMessage) (Principal, er
 	switch {
 	case subject == "":
 		return Principal{}, fmt.Errorf("%w: the token names no subject", ErrClaimsRejected)
-	case len(subject) > subjectMaxBytes:
-		return Principal{}, fmt.Errorf("%w: the subject is longer than %d bytes", ErrClaimsRejected, subjectMaxBytes)
+	case utf8.RuneCountInString(subject) > SubjectMaxLength:
+		return Principal{}, fmt.Errorf("%w: the subject is longer than %d characters", ErrClaimsRejected, SubjectMaxLength)
 	case strings.ContainsFunc(subject, unicode.IsControl):
 		// A subject is written to logs and audit records as it is.
 		return Principal{}, fmt.Errorf("%w: the subject contains a control character", ErrClaimsRejected)

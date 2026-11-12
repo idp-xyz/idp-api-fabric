@@ -696,6 +696,66 @@ func TestARequestThatDoesNotMatchTheContractChangesNothing(t *testing.T) {
 	}
 }
 
+// A reference is bounded in characters, as the contract states it, whatever
+// a character takes in bytes. An organization and an owner named in 255
+// characters of three bytes each are registered and kept as they were given,
+// and that owner authenticates, acts and is recorded. One character more is
+// refused where the contract is checked, with the place and the keyword.
+func TestAReferenceIsBoundedInCharactersAsTheContractStates(t *testing.T) {
+	s := start(t, "platform-admin")
+
+	organization, subject := strings.Repeat("组", 255), strings.Repeat("名", 255)
+	registrationOf := func(key, organization, subject string) string {
+		body, _ := json.Marshal(map[string]any{
+			"product_key": key, "display_name": "Product " + key,
+			"owner_organization": map[string]string{"identity_provider": s.issuer.URL(), "organization": organization},
+			"owners":             []map[string]string{{"issuer": s.issuer.URL(), "subject": subject}},
+		})
+		return string(body)
+	}
+
+	registered := s.call(http.MethodPost, "/v1/products", "platform-admin", registrationOf("cargopai", organization, subject))
+	if registered.status != http.StatusCreated {
+		t.Fatalf("register: status %d %v", registered.status, registered.body)
+	}
+	if kept, _ := registered.body["owner_organization"].(map[string]any); kept["organization"] != organization {
+		t.Error("the organization was not kept as it was given")
+	}
+	productID := registered.id("product_id")
+
+	// The owner authenticates under that subject, reads the product and
+	// gives it a workspace.
+	read := s.call(http.MethodGet, "/v1/products/"+productID, subject, "")
+	if read.status != http.StatusOK || fmt.Sprint(read.body) != fmt.Sprint(registered.body) {
+		t.Errorf("the owner reads %d, want 200 and what the registration answered", read.status)
+	}
+	created := s.call(http.MethodPost, "/v1/products/"+productID+"/workspaces", subject, `{"workspace_key":"api","display_name":"API"}`)
+	if created.status != http.StatusCreated {
+		t.Fatalf("the owner creates a workspace: status %d %v", created.status, created.body)
+	}
+	if trail := s.audit(); len(trail) != 2 || trail[1].Subject != subject || trail[1].Action != "workspace.manage" || trail[1].Outcome != "SUCCEEDED" {
+		t.Errorf("the audit trail has %d records and does not end with the owner creating the workspace", len(trail))
+	}
+
+	for name, refused := range map[string]struct{ body, place string }{
+		"an organization": {registrationOf("parcel", organization+"组", "alice"), "/owner_organization/organization"},
+		"an owner":        {registrationOf("parcel", "org-parcel", subject+"名"), "/owners/0/subject"},
+	} {
+		got := s.call(http.MethodPost, "/v1/products", "platform-admin", refused.body)
+		want := "The request body does not match the contract at " + refused.place + " (maxLength)."
+		if got.status != http.StatusBadRequest || got.code() != "REQUEST_INVALID" || got.body["detail"] != want {
+			t.Errorf("%s of 256 characters: %d %s %v, want 400 REQUEST_INVALID and %q", name, got.status, got.code(), got.body["detail"], want)
+		}
+	}
+	// A subject of one character more does not authenticate either.
+	if got := s.call(http.MethodGet, "/v1/products/"+productID, subject+"名", ""); got.status != http.StatusUnauthorized || got.code() != "TOKEN_INVALID" {
+		t.Errorf("a subject of 256 characters: %d %s, want 401 TOKEN_INVALID", got.status, got.code())
+	}
+	if products := s.count("productgovernance.product"); products != 1 {
+		t.Errorf("%d products, want the one that was registered", products)
+	}
+}
+
 // The process answers /healthz and /version to anybody, and HEAD as GET.
 func TestTheAnonymousOperationsAnswerAnybody(t *testing.T) {
 	s := start(t)

@@ -67,11 +67,12 @@ func TestUnacceptableClaimsAreRejected(t *testing.T) {
 		"an audience list without this deployment":         func(c map[string]any) { c["aud"] = []string{"canary-a", "canary-b"} },
 		"an audience list with a member that is no string": func(c map[string]any) { c["aud"] = []any{audience, 7} },
 
-		"no subject":                     func(c map[string]any) { delete(c, "sub") },
-		"an empty subject":               func(c map[string]any) { c["sub"] = "" },
-		"a subject that is not a string": func(c map[string]any) { c["sub"] = 7 },
-		"a subject that is too long":     func(c map[string]any) { c["sub"] = strings.Repeat("s", subjectMaxBytes+1) },
-		"a subject with a line break":    func(c map[string]any) { c["sub"] = "alice\nlevel=error" },
+		"no subject":                                    func(c map[string]any) { delete(c, "sub") },
+		"an empty subject":                              func(c map[string]any) { c["sub"] = "" },
+		"a subject that is not a string":                func(c map[string]any) { c["sub"] = 7 },
+		"a subject that is too long":                    func(c map[string]any) { c["sub"] = strings.Repeat("s", SubjectMaxLength+1) },
+		"a subject of too many characters beyond ASCII": func(c map[string]any) { c["sub"] = strings.Repeat("名", SubjectMaxLength+1) },
+		"a subject with a line break":                   func(c map[string]any) { c["sub"] = "alice\nlevel=error" },
 
 		"no expiry":                      func(c map[string]any) { delete(c, "exp") },
 		"expiring at this instant":       func(c map[string]any) { c["exp"] = now.Unix() },
@@ -135,6 +136,31 @@ func TestClaimsAndHeadersWithinWhatIsAllowedAreAccepted(t *testing.T) {
 			}
 			if want := (Principal{Issuer: f.issuer.URL(), Subject: "alice"}); principal != want {
 				t.Errorf("principal %+v, want %+v", principal, want)
+			}
+		})
+	}
+}
+
+// A subject is bounded in characters, as the contract of the API bounds the
+// reference a principal is named by. A subject at the bound is accepted
+// whatever its characters take in bytes.
+func TestASubjectIsBoundedInCharacters(t *testing.T) {
+	f := newFixture(t)
+
+	for name, subject := range map[string]string{
+		"ASCII":        strings.Repeat("s", SubjectMaxLength),
+		"beyond ASCII": strings.Repeat("名", SubjectMaxLength),
+	} {
+		t.Run(name, func(t *testing.T) {
+			claims := f.claims()
+			claims["sub"] = subject
+
+			principal, err := f.verify(sign(t, f.issuer, f.header(), claims))
+			if err != nil {
+				t.Fatalf("verify a subject of %d characters and %d bytes: %v", SubjectMaxLength, len(subject), err)
+			}
+			if want := (Principal{Issuer: f.issuer.URL(), Subject: subject}); principal != want {
+				t.Errorf("the principal is not the subject of the token")
 			}
 		})
 	}

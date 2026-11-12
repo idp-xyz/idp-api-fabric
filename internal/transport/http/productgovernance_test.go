@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"go.idp.xyz/idp-api-fabric/internal/platform/identity"
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/application"
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/domain"
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/ports"
@@ -290,24 +291,38 @@ func TestTheContractStatesTheRulesOfTheModel(t *testing.T) {
 	if got := schemas["ProductRegistration"].Value.Properties["owners"].Value.MaxItems; got == nil || *got != domain.MaxFirstOwners {
 		t.Errorf("the contract allows %v first owners, the model %d", got, domain.MaxFirstOwners)
 	}
+	if got := schemas["Reference"].Value.MaxLength; got == nil || *got != domain.ReferenceMaxLength {
+		t.Errorf("the contract bounds a reference at %v characters, the model at %d", got, domain.ReferenceMaxLength)
+	}
+	// A principal is named by a reference and authenticates under its
+	// subject. With two bounds, somebody could be named who can never
+	// authenticate.
+	if verifier, model := identity.SubjectMaxLength, domain.ReferenceMaxLength; verifier != model {
+		t.Errorf("the verifier bounds a subject at %d characters, the model a reference at %d", verifier, model)
+	}
 
 	owner := domain.OrganizationRef{IdentityProvider: issuer, Organization: "org-cargopai"}
 	at := time.Date(2026, 11, 11, 9, 0, 0, 0, time.UTC)
-	register := func(key, displayName string) (contractAccepts bool) {
+	registerWith := func(key, displayName, organization, subject string) (contractAccepts bool) {
 		t.Helper()
 		body, err := json.Marshal(map[string]any{
 			"product_key": key, "display_name": displayName,
-			"owner_organization": map[string]any{"identity_provider": issuer, "organization": "org-cargopai"},
-			"owners":             []map[string]any{{"issuer": issuer, "subject": "alice"}},
+			"owner_organization": map[string]any{"identity_provider": issuer, "organization": organization},
+			"owners":             []map[string]any{{"issuer": issuer, "subject": subject}},
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 		response := newService(t).do(t, call{Method: http.MethodPost, Target: "/v1/products", Token: "platform-admin", Body: string(body)})
 		if response.Code != http.StatusCreated && response.Code != http.StatusBadRequest {
-			t.Fatalf("status %d for the key %q and the name %q: %s", response.Code, key, displayName, response.Body)
+			t.Fatalf("status %d for the key %q, the name %q, the organization %q and the subject %q: %s",
+				response.Code, key, displayName, organization, subject, response.Body)
 		}
 		return response.Code == http.StatusCreated
+	}
+	register := func(key, displayName string) (contractAccepts bool) {
+		t.Helper()
+		return registerWith(key, displayName, "org-cargopai", "alice")
 	}
 
 	keys := []string{
@@ -330,6 +345,29 @@ func TestTheContractStatesTheRulesOfTheModel(t *testing.T) {
 		_, err := domain.NewProduct(productID, "cargopai", name, owner, domain.Principal(admin), at)
 		if contract, model := register("cargopai", name), err == nil; contract != model {
 			t.Errorf("the display name %q: the contract accepts it %t, the model %t", name, contract, model)
+		}
+	}
+
+	// A reference is bounded in characters on both sides: one of 255
+	// characters that take three bytes each is as good as one of 255 letters.
+	references := []string{
+		"org-cargopai", "", "o", "组织", "org cargopai", " org ", "org\ncargopai", "org\tcargopai", "org\u0000", "org\u0085cargopai",
+		"org\u2028cargopai", strings.Repeat("r", 255), strings.Repeat("r", 256), strings.Repeat("组", 255), strings.Repeat("组", 256),
+	}
+	product, err := domain.NewProduct(productID, "cargopai", "CargoPai", owner, domain.Principal(admin), at)
+	if err != nil {
+		t.Fatalf("register the product: %v", err)
+	}
+	for _, reference := range references {
+		_, err := domain.NewProduct(productID, "cargopai", "CargoPai",
+			domain.OrganizationRef{IdentityProvider: issuer, Organization: reference}, domain.Principal(admin), at)
+		if contract, model := registerWith("cargopai", "CargoPai", reference, "alice"), err == nil; contract != model {
+			t.Errorf("the organization %q: the contract accepts it %t, the model %t", reference, contract, model)
+		}
+
+		_, err = product.AssignFirstOwners([]domain.Principal{{Issuer: issuer, Subject: reference}}, domain.Principal(admin))
+		if contract, model := registerWith("cargopai", "CargoPai", "org-cargopai", reference), err == nil; contract != model {
+			t.Errorf("the subject %q of an owner: the contract accepts it %t, the model %t", reference, contract, model)
 		}
 	}
 }

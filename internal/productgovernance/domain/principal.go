@@ -17,24 +17,30 @@ func invalid(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrInvalid, fmt.Sprintf(format, args...))
 }
 
-// referenceMaxBytes bounds every reference into another system: an issuer, a
-// subject, an identity provider, an organization. They are stored and audited
-// as they are given, so their size has to be known.
-const referenceMaxBytes = 255
+// ReferenceMaxLength bounds every reference into another system, in
+// characters: an issuer, a subject, an identity provider, an organization.
+// They are stored and audited as they are given, so their length has to be
+// known. The contract of the API states the same bound, and the token
+// verifier puts it on a subject.
+const ReferenceMaxLength = 255
 
 // checkReference accepts a reference into another system. Fabric cannot know
 // its format, only that it is something to compare for equality: not empty,
-// of a bounded size and without control characters. That is exactly what the
-// token verifier accepts as a subject, so every principal that can
+// of a bounded length and without control characters. That is exactly what
+// the token verifier accepts as a subject, so every principal that can
 // authenticate can also be named here.
+//
+// The length is counted in characters, as the contract counts it. Counted in
+// bytes, a reference in a script that takes several bytes a character would
+// pass the contract and be refused here.
 func checkReference(what, value string) error {
 	switch {
 	case value == "":
 		return invalid("%s is empty", what)
-	case len(value) > referenceMaxBytes:
-		return invalid("%s is longer than %d bytes", what, referenceMaxBytes)
 	case !utf8.ValidString(value):
 		return invalid("%s is not valid UTF-8", what)
+	case utf8.RuneCountInString(value) > ReferenceMaxLength:
+		return invalid("%s is longer than %d characters", what, ReferenceMaxLength)
 	case strings.ContainsFunc(value, unicode.IsControl):
 		return invalid("%s contains a control character", what)
 	}
