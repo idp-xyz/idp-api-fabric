@@ -4,9 +4,9 @@
 // (INV-13, F03 §12.1).
 //
 // The events are the candidates of F03 §12.2, and MembershipChanged of
-// F03 §3.1, in the envelope of the framework. F04 has not frozen their
-// contract: the types and the payloads here are a first version, and each
-// payload says which.
+// F03 §3.1 with its counterpart for the roles of a product, in the envelope
+// of the framework. F04 has not frozen their contract: the types and the
+// payloads here are a first version, and each payload says which.
 package outbox
 
 import (
@@ -33,6 +33,11 @@ const (
 	// publishes about its members (F03 §3.1). Its payload says whether the
 	// membership is in force after the change.
 	TypeMembershipChanged eventing.EventType = "fabric.productgovernance.membership.changed"
+	// TypeProductRoleChanged is what MembershipChanged is for a membership,
+	// for the assignment of a role in a product: one event for its grant
+	// and for its revocation, whose payload says whether the assignment is
+	// in force after the change.
+	TypeProductRoleChanged eventing.EventType = "fabric.productgovernance.product_role.changed"
 
 	// schemaVersion is the version of the payloads below. A change a
 	// consumer cannot ignore gets the next one.
@@ -141,6 +146,40 @@ func (e *Events) MembershipChanged(ctx context.Context, membership domain.Member
 			WorkspaceID:  string(membership.WorkspaceID),
 			Role:         string(membership.Role),
 			InForce:      membership.InForce(),
+		})
+}
+
+// ProductRoleChanged announces a role assignment that was granted or
+// revoked, as it is after the change.
+//
+// The assignment is what the event is about and what its version counts: 1
+// for the grant, 2 for the revocation, so a consumer that gets them out of
+// order can tell. It happened when the role was granted or, once the
+// assignment is revoked, when it was revoked.
+//
+// The payload names the role and not who holds it. Who an owner is
+// identifies a person; a consumer that needs it asks for the assignment, and
+// is authorized like anyone else.
+func (e *Events) ProductRoleChanged(ctx context.Context, assignment domain.RoleAssignment, correlationID string) error {
+	occurredAt := assignment.GrantedAt
+	if !assignment.InForce() {
+		occurredAt = assignment.RevokedAt
+	}
+	id := e.ids.NewID()
+	return e.enqueue(ctx, id, TypeProductRoleChanged, assignment.ProductID, "product_role/"+string(assignment.ID), occurredAt, correlationID,
+		struct {
+			header
+			RoleAssignmentID string `json:"role_assignment_id"`
+			Role             string `json:"role"`
+			InForce          bool   `json:"in_force"`
+		}{
+			header: header{
+				EventID: id, SchemaVersion: schemaVersion, OccurredAt: occurredAt, CorrelationID: correlationID,
+				ProductID: string(assignment.ProductID), AggregateID: string(assignment.ID), AggregateVersion: assignment.Version,
+			},
+			RoleAssignmentID: string(assignment.ID),
+			Role:             string(assignment.Role),
+			InForce:          assignment.InForce(),
 		})
 }
 

@@ -22,9 +22,9 @@ import (
 type world struct {
 	products   map[domain.ProductID]domain.Product
 	workspaces map[domain.WorkspaceID]domain.Workspace
-	roles      []domain.RoleAssignment
-	// memberships holds every membership, in force or revoked, as the table
-	// does.
+	// roles and memberships hold every role assignment and every
+	// membership, in force or revoked, as the tables do.
+	roles       map[domain.RoleAssignmentID]domain.RoleAssignment
 	memberships map[domain.MembershipID]domain.Membership
 	audited     []audited
 	events      []string
@@ -76,6 +76,7 @@ func newWorld(t *testing.T) (*world, *ProductGovernance) {
 	w := &world{
 		products:       map[domain.ProductID]domain.Product{},
 		workspaces:     map[domain.WorkspaceID]domain.Workspace{},
+		roles:          map[domain.RoleAssignmentID]domain.RoleAssignment{},
 		memberships:    map[domain.MembershipID]domain.Membership{},
 		administrators: []domain.Principal{admin},
 		issuers:        []string{trustedIssuer},
@@ -97,16 +98,18 @@ func (w *world) WithinTransaction(ctx context.Context, fn func(ctx context.Conte
 		return fn(ctx)
 	}
 	w.transactions++
-	products, workspaces, memberships := maps.Clone(w.products), maps.Clone(w.workspaces), maps.Clone(w.memberships)
-	roles, audit, events := slices.Clone(w.roles), slices.Clone(w.audited), slices.Clone(w.events)
+	products, workspaces := maps.Clone(w.products), maps.Clone(w.workspaces)
+	roles, memberships := maps.Clone(w.roles), maps.Clone(w.memberships)
+	audit, events := slices.Clone(w.audited), slices.Clone(w.events)
 
 	err := fn(context.WithValue(ctx, inTransaction{}, true))
 	if err == nil {
 		err = w.fail("commit")
 	}
 	if err != nil {
-		w.products, w.workspaces, w.memberships = products, workspaces, memberships
-		w.roles, w.audited, w.events = roles, audit, events
+		w.products, w.workspaces = products, workspaces
+		w.roles, w.memberships = roles, memberships
+		w.audited, w.events = audit, events
 	}
 	return err
 }
@@ -170,6 +173,21 @@ func (w *world) MembershipChanged(ctx context.Context, membership domain.Members
 	return nil
 }
 
+func (w *world) ProductRoleChanged(ctx context.Context, assignment domain.RoleAssignment, correlationID string) error {
+	if err := w.fail("events"); err != nil {
+		return err
+	}
+	if !transacted(ctx) {
+		return fmt.Errorf("an event was announced outside a transaction")
+	}
+	change := "granted"
+	if !assignment.InForce() {
+		change = "revoked"
+	}
+	w.events = append(w.events, "ProductRoleChanged "+string(assignment.ID)+" "+change+" "+correlationID)
+	return nil
+}
+
 type productStore struct{ *world }
 
 func (s productStore) Add(ctx context.Context, product domain.Product) error {
@@ -218,22 +236,72 @@ func (s workspaceStore) Find(_ context.Context, productID domain.ProductID, id d
 
 type roleStore struct{ *world }
 
-func (s roleStore) Add(ctx context.Context, assignments []domain.RoleAssignment) error {
+func (s roleStore) Add(ctx context.Context, assignment domain.RoleAssignment) error {
 	if !transacted(ctx) {
 		return fmt.Errorf("a role was written outside a transaction")
 	}
-	s.roles = append(s.roles, assignments...)
+	for _, existing := range s.roles {
+		if existing.InForce() && existing.ProductID == assignment.ProductID &&
+			existing.Principal == assignment.Principal && existing.Role == assignment.Role {
+			return ports.ErrRoleAssignmentExists
+		}
+	}
+	s.roles[assignment.ID] = assignment
 	return nil
 }
 
+// Find finds a role assignment in force, under its own product.
+func (s roleStore) Find(_ context.Context, productID domain.ProductID, id domain.RoleAssignmentID) (domain.RoleAssignment, bool, error) {
+	assignment, found := s.roles[id]
+	if !found || !assignment.InForce() || assignment.ProductID != productID {
+		return domain.RoleAssignment{}, false, nil
+	}
+	return assignment, true, nil
+}
+
+func (s roleStore) Revoke(ctx context.Context, revoked domain.RoleAssignment) error {
+	if !transacted(ctx) {
+		return fmt.Errorf("a role was revoked outside a transaction")
+	}
+	// "unassign" stands for a revocation that lost the race against another.
+	if err := s.fail("unassign"); err != nil {
+		return err
+	}
+	if _, found, _ := s.Find(ctx, revoked.ProductID, revoked.ID); !found {
+		return ports.ErrRoleAssignmentGone
+	}
+	s.roles[revoked.ID] = revoked
+	return nil
+}
+
+// RolesOf returns the roles of the assignments in force of the principal in
+// the product.
 func (s roleStore) RolesOf(_ context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Role, error) {
 	var roles []domain.Role
 	for _, assignment := range s.roles {
-		if assignment.ProductID == productID && assignment.Principal == principal {
+		if assignment.InForce() && assignment.ProductID == productID && assignment.Principal == principal {
 			roles = append(roles, assignment.Role)
 		}
 	}
 	return roles, nil
+}
+
+// LockOwners counts the owners in force of the product. Nothing runs beside
+// a test, so there is nobody to wait for.
+func (s roleStore) LockOwners(ctx context.Context, productID domain.ProductID) (int, error) {
+	if !transacted(ctx) {
+		return 0, fmt.Errorf("the owners of a product were locked outside a transaction")
+	}
+	if err := s.fail("lock"); err != nil {
+		return 0, err
+	}
+	owners := 0
+	for _, assignment := range s.roles {
+		if assignment.InForce() && assignment.ProductID == productID && assignment.Role == domain.RoleProductOwner {
+			owners++
+		}
+	}
+	return owners, nil
 }
 
 type membershipStore struct{ *world }

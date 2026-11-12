@@ -281,8 +281,10 @@ func (s *ProductGovernance) RegisterProduct(ctx context.Context, command Registe
 		if err := s.deps.Products.Add(ctx, product); err != nil {
 			return err
 		}
-		if err := s.deps.Roles.Add(ctx, owners); err != nil {
-			return err
+		for _, owner := range owners {
+			if err := s.deps.Roles.Add(ctx, owner); err != nil {
+				return err
+			}
 		}
 		if err := s.deps.Audit.Record(ctx, ports.AuditEntry{
 			Actor: command.Caller, Action: ActionProductRegister, Allowed: true, Rule: rulePlatformAdministrator,

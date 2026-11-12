@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -75,13 +76,14 @@ func TestRegisterProductStoresTheProductItsOwnersTheAuditFactAndTheEventTogether
 
 	// Each first owner holds its role under an identifier of its own, in
 	// force from the registration, granted by the registrant.
-	wantRoles := []domain.RoleAssignment{
-		{ID: "00000000-0000-4000-8000-000000000002", ProductID: product.ID, Principal: alice, Role: domain.RoleProductOwner,
+	const first, second = "00000000-0000-4000-8000-000000000002", "00000000-0000-4000-8000-000000000003"
+	wantRoles := map[domain.RoleAssignmentID]domain.RoleAssignment{
+		first: {ID: first, ProductID: product.ID, Principal: alice, Role: domain.RoleProductOwner,
 			Version: 1, GrantedAt: started, GrantedBy: admin},
-		{ID: "00000000-0000-4000-8000-000000000003", ProductID: product.ID, Principal: bob, Role: domain.RoleProductOwner,
+		second: {ID: second, ProductID: product.ID, Principal: bob, Role: domain.RoleProductOwner,
 			Version: 1, GrantedAt: started, GrantedBy: admin},
 	}
-	if !slices.Equal(w.roles, wantRoles) {
+	if !maps.Equal(w.roles, wantRoles) {
 		t.Errorf("roles\n %+v\nwant\n %+v", w.roles, wantRoles)
 	}
 

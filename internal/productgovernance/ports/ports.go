@@ -24,6 +24,13 @@ var (
 	// it was revoked after it was read and before it could be changed.
 	ErrMembershipGone = errors.New("the membership is not in force any more")
 
+	// ErrRoleAssignmentExists reports that the principal holds the role in
+	// the product already.
+	ErrRoleAssignmentExists = errors.New("the principal holds this role in the product already")
+
+	// ErrRoleAssignmentGone is ErrMembershipGone for a role assignment.
+	ErrRoleAssignmentGone = errors.New("the role assignment is not in force any more")
+
 	// ErrOutcomeUncertain reports a transaction whose commit may or may not
 	// have happened. The caller must not assume either: it reads the state
 	// again before it decides what to do (F03 §9).
@@ -53,10 +60,29 @@ type Workspaces interface {
 // RoleAssignments stores who holds which role in which product. It is the
 // state authorization is decided from (F05 §4.2).
 type RoleAssignments interface {
-	// Add stores new assignments in the transaction ctx carries.
-	Add(ctx context.Context, assignments []domain.RoleAssignment) error
-	// RolesOf returns the roles the principal holds in the product now.
+	// Add stores a new assignment in the transaction ctx carries. It fails
+	// with ErrRoleAssignmentExists when the principal holds the role in the
+	// product already.
+	Add(ctx context.Context, assignment domain.RoleAssignment) error
+	// Find returns the assignment with the identifier if it is in force and
+	// belongs to the product. An assignment of another product is not found,
+	// and neither is one that was revoked: it grants nothing, and nothing
+	// can be done to it.
+	Find(ctx context.Context, productID domain.ProductID, id domain.RoleAssignmentID) (assignment domain.RoleAssignment, found bool, err error)
+	// Revoke stores, in the transaction ctx carries, that the assignment was
+	// revoked, when and by whom, as revoked says. It fails with
+	// ErrRoleAssignmentGone when the assignment is not in force any more.
+	Revoke(ctx context.Context, revoked domain.RoleAssignment) error
+	// RolesOf returns the roles the principal holds in the product now. The
+	// role of an assignment that was revoked is not among them.
 	RolesOf(ctx context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Role, error)
+	// LockOwners locks the assignments in force that make somebody an owner
+	// of the product, for the transaction ctx carries, and returns how many
+	// they are. It waits for a transaction that locked them before. Until
+	// the transaction ends, no other one ends any of them: what is read
+	// after the lock was taken is what a revocation decides from, and the
+	// count is how many owners the product is known to keep.
+	LockOwners(ctx context.Context, productID domain.ProductID) (owners int, err error)
 }
 
 // Memberships stores who is a member of which workspace, in which role. With
@@ -131,6 +157,9 @@ type Events interface {
 	// MembershipChanged announces a membership that was granted or revoked,
 	// as it is after the change.
 	MembershipChanged(ctx context.Context, membership domain.Membership, correlationID string) error
+	// ProductRoleChanged announces a role assignment that was granted or
+	// revoked, as it is after the change.
+	ProductRoleChanged(ctx context.Context, assignment domain.RoleAssignment, correlationID string) error
 }
 
 // Transactor owns the transaction boundary of a use case. It fails with

@@ -237,33 +237,24 @@ func TestRolesAreHeldByAPrincipalInAProduct(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assign the owners: %v", err)
 	}
-	f.within(t, func(ctx context.Context) error { return f.roles.Add(ctx, owners) })
-
-	rolesOf := func(productID domain.ProductID, principal domain.Principal) []domain.Role {
-		t.Helper()
-		roles, err := f.roles.RolesOf(t.Context(), productID, principal)
-		if err != nil {
-			t.Fatalf("read the roles: %v", err)
-		}
-		return roles
-	}
+	f.assign(t, owners...)
 
 	owner := []domain.Role{domain.RoleProductOwner}
-	if got := rolesOf(cargopai.ID, alice); !slices.Equal(got, owner) {
+	if got := f.rolesOf(t, cargopai.ID, alice); !slices.Equal(got, owner) {
 		t.Errorf("alice in CargoPai holds %v, want %v", got, owner)
 	}
-	if got := rolesOf(cargopai.ID, bob); !slices.Equal(got, owner) {
+	if got := f.rolesOf(t, cargopai.ID, bob); !slices.Equal(got, owner) {
 		t.Errorf("bob in CargoPai holds %v, want %v", got, owner)
 	}
 
 	// A role in one product is nothing in another, and a principal is its
 	// issuer and its subject together.
 	nothing := map[string][]domain.Role{
-		"alice in Parcel":                      rolesOf(parcel.ID, alice),
-		"the registrant in CargoPai":           rolesOf(cargopai.ID, admin),
-		"alice's subject under another issuer": rolesOf(cargopai.ID, domain.Principal{Issuer: "https://other.example", Subject: alice.Subject}),
-		"another subject under alice's issuer": rolesOf(cargopai.ID, domain.Principal{Issuer: alice.Issuer, Subject: "Alice"}),
-		"alice in a product nobody stored":     rolesOf(domain.ProductID(ids.NewUUID()), alice),
+		"alice in Parcel":                      f.rolesOf(t, parcel.ID, alice),
+		"the registrant in CargoPai":           f.rolesOf(t, cargopai.ID, admin),
+		"alice's subject under another issuer": f.rolesOf(t, cargopai.ID, domain.Principal{Issuer: "https://other.example", Subject: alice.Subject}),
+		"another subject under alice's issuer": f.rolesOf(t, cargopai.ID, domain.Principal{Issuer: alice.Issuer, Subject: "Alice"}),
+		"alice in a product nobody stored":     f.rolesOf(t, domain.ProductID(ids.NewUUID()), alice),
 	}
 	for who, roles := range nothing {
 		if len(roles) != 0 {
@@ -292,7 +283,7 @@ func TestAWriteNeedsATransaction(t *testing.T) {
 	for what, err := range map[string]error{
 		"a product":         f.products.Add(t.Context(), cargopai),
 		"a workspace":       f.workspaces.Add(t.Context(), workspace(t, cargopai, "api")),
-		"a role assignment": f.roles.Add(t.Context(), owners),
+		"a role assignment": f.roles.Add(t.Context(), owners[0]),
 	} {
 		if !errors.Is(err, bentopostgres.ErrTransactionRequired) {
 			t.Errorf("%s outside a transaction: got %v, want %v", what, err, bentopostgres.ErrTransactionRequired)
@@ -323,18 +314,18 @@ func TestTheSchemaHoldsItsOwnLine(t *testing.T) {
 		t.Errorf("a product in a status nobody defined: got %v, want a check violation", err)
 	}
 
-	err = f.fabric.WithinTransaction(t.Context(), func(ctx context.Context) error {
-		return f.roles.Add(ctx, []domain.RoleAssignment{{
-			ProductID: cargopai.ID, Principal: alice, Role: "platform_admin", GrantedAt: created, GrantedBy: admin,
-		}})
-	})
+	administrator := owning(t, cargopai, alice)
+	administrator.Role = "platform_admin"
+	err = f.fabric.WithinTransaction(t.Context(), func(ctx context.Context) error { return f.roles.Add(ctx, administrator) })
 	if sqlState(err) != "23514" {
 		t.Errorf("a role nobody defined: got %v, want a check violation", err)
 	}
 }
 
-// A process registers and reads. It has no statement that changes or removes
-// a product, a workspace or a role, and its role holds no privilege to.
+// A process registers a product and a workspace and reads them. It has no
+// statement that changes or removes one, or that removes a role assignment,
+// and its role holds no privilege to. What it may change of a role
+// assignment, the table decides.
 func TestTheApplicationRoleCanRegisterAndReadAndNothingElse(t *testing.T) {
 	f := newFixture(t)
 	cargopai := product(t, "cargopai")
@@ -346,7 +337,6 @@ func TestTheApplicationRoleCanRegisterAndReadAndNothingElse(t *testing.T) {
 		`DELETE FROM productgovernance.product`,
 		`UPDATE productgovernance.workspace SET product_id = gen_random_uuid()`,
 		`DELETE FROM productgovernance.workspace`,
-		`UPDATE productgovernance.product_role_assignment SET principal_subject = 'mallory'`,
 		`DELETE FROM productgovernance.product_role_assignment`,
 		`TRUNCATE productgovernance.product CASCADE`,
 		`ALTER TABLE productgovernance.product DROP CONSTRAINT product_key_unique`,
