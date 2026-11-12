@@ -34,6 +34,17 @@ func ParseWorkspaceID(value string) (WorkspaceID, error) {
 	return WorkspaceID(value), nil
 }
 
+// MembershipID identifies a membership of a workspace.
+type MembershipID string
+
+// ParseMembershipID accepts the canonical form of an identifier.
+func ParseMembershipID(value string) (MembershipID, error) {
+	if !identifier.MatchString(value) {
+		return "", invalid("a membership identifier is a UUID in its canonical form")
+	}
+	return MembershipID(value), nil
+}
+
 // KeyPattern is the pattern of a key. A key is the name people and
 // configuration use for an object: unique in its scope, short, and safe in a
 // URL or a file name. It is 2 to 63 lower case letters, digits and hyphens,

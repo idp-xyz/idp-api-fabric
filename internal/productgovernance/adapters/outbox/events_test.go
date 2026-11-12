@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -21,13 +22,15 @@ import (
 )
 
 const (
-	productID   = domain.ProductID("1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6")
-	workspaceID = domain.WorkspaceID("7d2e9f10-3a4b-4c5d-8e6f-0a1b2c3d4e5f")
+	productID    = domain.ProductID("1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6")
+	workspaceID  = domain.WorkspaceID("7d2e9f10-3a4b-4c5d-8e6f-0a1b2c3d4e5f")
+	membershipID = domain.MembershipID("3f8b1c2d-4e5a-4b6c-9d7e-8f9a0b1c2d3e")
 )
 
 var (
 	admin      = domain.Principal{Issuer: "https://issuer.example", Subject: "platform-admin"}
 	alice      = domain.Principal{Issuer: "https://issuer.example", Subject: "alice"}
+	bob        = domain.Principal{Issuer: "https://issuer.example", Subject: "bob"}
 	cargo      = domain.OrganizationRef{IdentityProvider: "https://issuer.example", Organization: "org-cargopai"}
 	created    = time.Date(2026, 11, 11, 9, 0, 0, 123456000, time.UTC)
 	recordedAt = created.Add(2 * time.Second)
@@ -37,12 +40,13 @@ type fixedClock struct{}
 
 func (fixedClock) Now() time.Time { return recordedAt }
 
-// eventIDs hands out the identifiers of the events of a test, in order.
+// eventIDs hands out the identifiers of the events of a test, in order: the
+// first ends in e1, the second in e2.
 type eventIDs struct{ next int }
 
 func (i *eventIDs) NewID() string {
 	i.next++
-	return []string{"00000000-0000-4000-8000-0000000000e1", "00000000-0000-4000-8000-0000000000e2"}[i.next-1]
+	return fmt.Sprintf("00000000-0000-4000-8000-0000000000e%d", i.next)
 }
 
 func cargopai(t *testing.T) (domain.Product, domain.Workspace) {
@@ -57,6 +61,23 @@ func cargopai(t *testing.T) (domain.Product, domain.Workspace) {
 		t.Fatalf("build the workspace: %v", err)
 	}
 	return product, workspace
+}
+
+// member is bob's membership of the workspace as alice granted it, and as it
+// is once the administrator has revoked it.
+func member(t *testing.T) (granted, revoked domain.Membership) {
+	t.Helper()
+
+	product, workspace := cargopai(t)
+	granted, err := domain.GrantMembership(membershipID, product, workspace, bob, domain.RoleWorkspaceMaintainer, alice, created.Add(2*time.Minute))
+	if err != nil {
+		t.Fatalf("build the membership: %v", err)
+	}
+	revoked, err = granted.Revoke(admin, created.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("revoke the membership: %v", err)
+	}
+	return granted, revoked
 }
 
 // stored is one row of the outbox, as far as these events fill it.
@@ -188,6 +209,83 @@ func TestAnEventSharesTheFateOfTheTransactionItWasStoredIn(t *testing.T) {
 	}
 }
 
+// MembershipChanged is one event for both ends of a membership (F03 §3.1).
+// The membership is its subject and what its version counts, and the payload
+// says whether the membership is in force after the change.
+func TestAMembershipIsAnnouncedWhenItIsGrantedAndWhenItIsRevoked(t *testing.T) {
+	database := pgtest.MigratedDatabase(t)
+	fabric, err := db.Open(t.Context(), database.Application)
+	if err != nil {
+		t.Fatalf("open the database: %v", err)
+	}
+	t.Cleanup(fabric.Close)
+	owner := pgtest.Connect(t, database.Migrator)
+
+	store, err := bentooutbox.NewStore(fabric.Framework)
+	if err != nil {
+		t.Fatalf("build the outbox: %v", err)
+	}
+	events, err := outbox.NewEvents(store, fixedClock{}, &eventIDs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	granted, revoked := member(t)
+
+	err = fabric.WithinTransaction(t.Context(), func(ctx context.Context) error {
+		if err := events.MembershipChanged(ctx, granted, "correlation-3"); err != nil {
+			return err
+		}
+		return events.MembershipChanged(ctx, revoked, "correlation-4")
+	})
+	if err != nil {
+		t.Fatalf("store two events: %v", err)
+	}
+
+	want := []stored{
+		{
+			Source: "idp-api-fabric/productgovernance", EventID: "00000000-0000-4000-8000-0000000000e1",
+			EventType: "fabric.productgovernance.membership.changed", EventVersion: 1,
+			Scope: string(productID), Subject: "membership/" + string(membershipID), PartitionKey: string(productID),
+			// It happened when the membership was granted.
+			Status: "PENDING", OccurredAt: created.Add(2 * time.Minute), RecordedAt: recordedAt,
+			CorrelationID: "correlation-3", ContentType: "application/json",
+			Payload: map[string]any{
+				"event_id": "00000000-0000-4000-8000-0000000000e1", "schema_version": float64(1),
+				"occurred_at": "2026-11-11T09:02:00.123456Z", "correlation_id": "correlation-3",
+				"product_id": string(productID), "aggregate_id": string(membershipID), "aggregate_version": float64(1),
+				"membership_id": string(membershipID), "workspace_id": string(workspaceID),
+				"role": "workspace_maintainer", "in_force": true,
+			},
+		},
+		{
+			Source: "idp-api-fabric/productgovernance", EventID: "00000000-0000-4000-8000-0000000000e2",
+			EventType: "fabric.productgovernance.membership.changed", EventVersion: 1,
+			Scope: string(productID), Subject: "membership/" + string(membershipID), PartitionKey: string(productID),
+			// It happened when the membership was revoked.
+			Status: "PENDING", OccurredAt: created.Add(time.Hour), RecordedAt: recordedAt,
+			CorrelationID: "correlation-4", ContentType: "application/json",
+			Payload: map[string]any{
+				"event_id": "00000000-0000-4000-8000-0000000000e2", "schema_version": float64(1),
+				"occurred_at": "2026-11-11T10:00:00.123456Z", "correlation_id": "correlation-4",
+				"product_id": string(productID), "aggregate_id": string(membershipID), "aggregate_version": float64(2),
+				"membership_id": string(membershipID), "workspace_id": string(workspaceID),
+				"role": "workspace_maintainer", "in_force": false,
+			},
+		},
+	}
+	if got := outboxRows(t, owner); !reflect.DeepEqual(got, want) {
+		t.Errorf("the outbox holds\n %+v\nwant\n %+v", got, want)
+	}
+
+	events, _ = outbox.NewEvents(store, fixedClock{}, &eventIDs{})
+	if err := events.MembershipChanged(t.Context(), granted, "no-transaction"); !errors.Is(err, bentopostgres.ErrTransactionRequired) {
+		t.Errorf("outside a transaction: got %v, want %v", err, bentopostgres.ErrTransactionRequired)
+	}
+	if rows := outboxRows(t, owner); len(rows) != 2 {
+		t.Errorf("the outbox holds %d events, want 2", len(rows))
+	}
+}
+
 // capture keeps what is enqueued, without a database.
 type capture struct {
 	envelopes []eventing.Envelope
@@ -203,9 +301,11 @@ func (c *capture) Enqueue(_ context.Context, envelope eventing.Envelope) error {
 }
 
 // An event carries references and never the content of what it reports: no
-// display name, no principal.
+// display name, no principal. That holds for the member of a membership too:
+// who it is identifies a person.
 func TestAnEventIsAValidEnvelopeOfReferences(t *testing.T) {
 	product, workspace := cargopai(t)
+	granted, revoked := member(t)
 	writer := &capture{}
 	events, err := outbox.NewEvents(writer, fixedClock{}, &eventIDs{})
 	if err != nil {
@@ -217,9 +317,15 @@ func TestAnEventIsAValidEnvelopeOfReferences(t *testing.T) {
 	if err := events.WorkspaceCreated(t.Context(), workspace, "correlation-2"); err != nil {
 		t.Fatalf("announce the workspace: %v", err)
 	}
+	if err := events.MembershipChanged(t.Context(), granted, "correlation-3"); err != nil {
+		t.Fatalf("announce the membership: %v", err)
+	}
+	if err := events.MembershipChanged(t.Context(), revoked, "correlation-4"); err != nil {
+		t.Fatalf("announce the revocation: %v", err)
+	}
 
-	if len(writer.envelopes) != 2 {
-		t.Fatalf("%d envelopes, want 2", len(writer.envelopes))
+	if len(writer.envelopes) != 4 {
+		t.Fatalf("%d envelopes, want 4", len(writer.envelopes))
 	}
 	for _, envelope := range writer.envelopes {
 		if err := envelope.Validate(); err != nil {
@@ -234,7 +340,7 @@ func TestAnEventIsAValidEnvelopeOfReferences(t *testing.T) {
 				t.Errorf("the payload of %s lacks %s (F03 §9)", envelope.Type, member)
 			}
 		}
-		for _, withheld := range []string{"CargoPai", "API engineering", admin.Subject, alice.Subject} {
+		for _, withheld := range []string{"CargoPai", "API engineering", admin.Subject, alice.Subject, bob.Subject} {
 			if json.Valid(envelope.Payload) && containsValue(payload, withheld) {
 				t.Errorf("the payload of %s carries %q", envelope.Type, withheld)
 			}

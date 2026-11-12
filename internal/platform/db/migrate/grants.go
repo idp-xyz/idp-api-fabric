@@ -44,6 +44,10 @@ func ApplicationPrivileges() []TablePrivileges {
 		{"productgovernance", "product", []string{"SELECT", "INSERT"}},
 		{"productgovernance", "product_role_assignment", []string{"SELECT", "INSERT"}},
 		{"productgovernance", "workspace", []string{"SELECT", "INSERT"}},
+		// A membership is granted, read and ended. Ending it is an UPDATE,
+		// and a trigger of the table refuses every other one. No statement
+		// removes a membership.
+		{"productgovernance", "workspace_membership", []string{"SELECT", "INSERT", "UPDATE"}},
 	}
 }
 

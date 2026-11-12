@@ -31,13 +31,14 @@ var (
 )
 
 // fixture is a migrated database opened the way a Fabric process opens it,
-// as the application role, with the three stores on it.
+// as the application role, with the stores on it.
 type fixture struct {
-	fabric     *db.Database
-	products   *postgres.Products
-	workspaces *postgres.Workspaces
-	roles      *postgres.RoleAssignments
-	app        *pgx.Conn
+	fabric      *db.Database
+	products    *postgres.Products
+	workspaces  *postgres.Workspaces
+	roles       *postgres.RoleAssignments
+	memberships *postgres.Memberships
+	app         *pgx.Conn
 }
 
 func newFixture(t *testing.T) fixture {
@@ -50,11 +51,12 @@ func newFixture(t *testing.T) fixture {
 	}
 	t.Cleanup(fabric.Close)
 	return fixture{
-		fabric:     fabric,
-		products:   postgres.NewProducts(fabric.Framework),
-		workspaces: postgres.NewWorkspaces(fabric.Framework),
-		roles:      postgres.NewRoleAssignments(fabric.Framework),
-		app:        pgtest.Connect(t, database.Application),
+		fabric:      fabric,
+		products:    postgres.NewProducts(fabric.Framework),
+		workspaces:  postgres.NewWorkspaces(fabric.Framework),
+		roles:       postgres.NewRoleAssignments(fabric.Framework),
+		memberships: postgres.NewMemberships(fabric.Framework),
+		app:         pgtest.Connect(t, database.Application),
 	}
 }
 

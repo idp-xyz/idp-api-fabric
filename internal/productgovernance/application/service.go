@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/domain"
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/ports"
@@ -23,9 +22,18 @@ var (
 	// ErrWorkspaceNotFound is ErrProductNotFound for a workspace.
 	ErrWorkspaceNotFound = errors.New("no such workspace")
 
+	// ErrMembershipNotFound is ErrProductNotFound for a membership. A
+	// membership that was revoked is not found either: it grants nothing,
+	// and nothing can be done to it.
+	ErrMembershipNotFound = errors.New("no such membership")
+
 	// ErrOwnerIssuerNotTrusted reports an owner named under an identity
 	// provider whose principals cannot authenticate here.
 	ErrOwnerIssuerNotTrusted = errors.New("an owner is named under an issuer this deployment does not trust")
+
+	// ErrMemberIssuerNotTrusted is ErrOwnerIssuerNotTrusted for the member
+	// of a workspace.
+	ErrMemberIssuerNotTrusted = errors.New("a member is named under an issuer this deployment does not trust")
 
 	// ErrRefusalNotAudited accompanies a refusal whose audit record could
 	// not be written. The refusal stands; this is for whoever operates the
@@ -40,16 +48,23 @@ const (
 	ActionProductRead     = "product.read"
 	ActionWorkspaceManage = "workspace.manage"
 	ActionWorkspaceRead   = "workspace.read"
+	ActionMemberGrant     = "member.grant"
+	ActionMemberRevoke    = "member.revoke"
+	ActionMemberRead      = "member.read"
 )
 
 // The rules a decision is recorded under, as the access matrix of F05 names
-// them. A read that is allowed is not recorded, so the two read actions need
-// no permit rule here.
+// them. A read that is allowed is not recorded, so the read actions need no
+// permit rule here.
 const (
 	// rulePlatformAdministrator permits product.register (AC-08).
 	rulePlatformAdministrator = "AC-08"
 	// ruleProductOwner permits workspace.manage (AC-09).
 	ruleProductOwner = "AC-09"
+	// ruleMembersOfOwnProduct permits member.grant (AC-10). The matrix has
+	// no row for revoking a membership: whoever may grant one may revoke
+	// one, and member.revoke is recorded under the same rule.
+	ruleMembersOfOwnProduct = "AC-10"
 	// ruleNoRole refuses whoever holds no role that permits the action
 	// (DENY-03, missing_active_membership_or_grant).
 	ruleNoRole = "DENY-03"
@@ -58,6 +73,9 @@ const (
 const (
 	resourceProduct   = "Product"
 	resourceWorkspace = "Workspace"
+	// resourceMember is what the access matrix calls the resource of
+	// member.grant. Its identifier is that of the membership.
+	resourceMember = "Member"
 )
 
 // Dependencies are the ports the use cases are wired with. All are required.
@@ -66,6 +84,7 @@ type Dependencies struct {
 	Products       ports.Products
 	Workspaces     ports.Workspaces
 	Roles          ports.RoleAssignments
+	Memberships    ports.Memberships
 	Administrators ports.PlatformAdministrators
 	Issuers        ports.TrustedIssuers
 	Audit          ports.AuditTrail
@@ -91,6 +110,7 @@ func New(deps Dependencies) (*ProductGovernance, error) {
 		"the products":            deps.Products == nil,
 		"the workspaces":          deps.Workspaces == nil,
 		"the role assignments":    deps.Roles == nil,
+		"the memberships":         deps.Memberships == nil,
 		"the administrators":      deps.Administrators == nil,
 		"the trusted issuers":     deps.Issuers == nil,
 		"the audit trail":         deps.Audit == nil,
@@ -134,6 +154,74 @@ func known(caller domain.Principal) error {
 		return fmt.Errorf("%w: the request carries no principal", ErrForbidden)
 	}
 	return nil
+}
+
+// scene is what a use case reads before it decides: the product, what the
+// caller holds in it and, as far as the request names them, the workspace
+// and the membership.
+type scene struct {
+	product      domain.Product
+	productFound bool
+	// standing is what the caller holds in the product now.
+	standing        domain.Standing
+	workspace       domain.Workspace
+	workspaceFound  bool
+	membership      domain.Membership
+	membershipFound bool
+}
+
+// survey reads the scene of a request. An empty identifier names nothing and
+// is not looked up.
+//
+// All of it is read whatever the answer will be, so that what is withheld
+// costs what is missing costs. What the caller holds is read here, where the
+// decision is made, and never kept from one request to the next: a role or a
+// membership that was taken away grants nothing from that moment on
+// (F05 §5.3).
+func (s *ProductGovernance) survey(ctx context.Context, caller domain.Principal,
+	productID domain.ProductID, workspaceID domain.WorkspaceID, membershipID domain.MembershipID) (scene, error) {
+	var seen scene
+	var err error
+
+	if seen.product, seen.productFound, err = s.deps.Products.Find(ctx, productID); err != nil {
+		return scene{}, fmt.Errorf("read the product: %w", err)
+	}
+	if seen.standing.Roles, err = s.deps.Roles.RolesOf(ctx, productID, caller); err != nil {
+		return scene{}, fmt.Errorf("read the roles of the caller: %w", err)
+	}
+	if seen.standing.Memberships, err = s.deps.Memberships.HeldBy(ctx, productID, caller); err != nil {
+		return scene{}, fmt.Errorf("read the memberships of the caller: %w", err)
+	}
+	if workspaceID != "" {
+		if seen.workspace, seen.workspaceFound, err = s.deps.Workspaces.Find(ctx, productID, workspaceID); err != nil {
+			return scene{}, fmt.Errorf("read the workspace: %w", err)
+		}
+	}
+	if workspaceID != "" && membershipID != "" {
+		if seen.membership, seen.membershipFound, err = s.deps.Memberships.Find(ctx, productID, workspaceID, membershipID); err != nil {
+			return scene{}, fmt.Errorf("read the membership: %w", err)
+		}
+	}
+	return seen, nil
+}
+
+// knows reports whether the caller may know that the product exists: it
+// holds something in it, or it administers the platform. A platform
+// administrator knows that much and nothing of what is inside the product.
+func (s *ProductGovernance) knows(standing domain.Standing, caller domain.Principal) bool {
+	return !standing.Stranger() || s.deps.Administrators.Includes(caller)
+}
+
+// notOwner is the refusal of a caller that asked for what only an owner of
+// the product may do. Whoever may know the product exists is told it may
+// not; to anyone else there is no such product. The answer depends on the
+// product alone, so it says nothing about what is inside it.
+func (s *ProductGovernance) notOwner(standing domain.Standing, entry ports.AuditEntry) *refusal {
+	refused := &refusal{ErrProductNotFound, entry}
+	if s.knows(standing, entry.Actor) {
+		refused.err = ErrForbidden
+	}
+	return refused
 }
 
 // RegisterProduct is what the registration of a product needs.
@@ -211,7 +299,8 @@ type GetProduct struct {
 }
 
 // GetProduct returns a product to a platform administrator and to whoever
-// holds a role in it. To anyone else the product does not exist.
+// holds something in it: a role in the product or a membership in force of
+// one of its workspaces. To anyone else the product does not exist.
 func (s *ProductGovernance) GetProduct(ctx context.Context, query GetProduct) (domain.Product, error) {
 	if err := known(query.Caller); err != nil {
 		return domain.Product{}, err
@@ -220,28 +309,22 @@ func (s *ProductGovernance) GetProduct(ctx context.Context, query GetProduct) (d
 	if err != nil {
 		return domain.Product{}, ErrProductNotFound
 	}
-	// Both are read whether or not the product exists, so that a product
-	// that is withheld costs what a product that is missing costs.
-	product, found, err := s.deps.Products.Find(ctx, id)
+	seen, err := s.survey(ctx, query.Caller, id, "", "")
 	if err != nil {
-		return domain.Product{}, fmt.Errorf("read the product: %w", err)
-	}
-	roles, err := s.deps.Roles.RolesOf(ctx, id, query.Caller)
-	if err != nil {
-		return domain.Product{}, fmt.Errorf("read the roles of the caller: %w", err)
+		return domain.Product{}, err
 	}
 
-	if !found {
+	if !seen.productFound {
 		return domain.Product{}, ErrProductNotFound
 	}
-	if len(roles) == 0 && !s.deps.Administrators.Includes(query.Caller) {
+	if !s.knows(seen.standing, query.Caller) {
 		return domain.Product{}, s.refuse(ctx, refusal{ErrProductNotFound, ports.AuditEntry{
 			Actor: query.Caller, Action: ActionProductRead, Rule: ruleNoRole,
 			ProductID: id, ResourceType: resourceProduct, ResourceID: string(id),
 			CorrelationID: query.CorrelationID,
 		}})
 	}
-	return product, nil
+	return seen.product, nil
 }
 
 // CreateWorkspace is what the creation of a workspace needs.
@@ -255,10 +338,11 @@ type CreateWorkspace struct {
 
 // CreateWorkspace gives a product a workspace (FR-002, AC-09). Only an owner
 // of that product may. An owner of another product is a stranger to this
-// one: to a stranger the product does not exist.
+// one: to a stranger the product does not exist. A member of one of its
+// workspaces knows the product and may not give it another.
 //
-// The decision is made inside the transaction of the write, from the roles
-// as they are then (F07 §5.2). The workspace, the audit fact and the event
+// The decision is made inside the transaction of the write, from what the
+// caller holds then (F07 §5.2). The workspace, the audit fact and the event
 // commit together or not at all (INV-13).
 func (s *ProductGovernance) CreateWorkspace(ctx context.Context, command CreateWorkspace) (domain.Workspace, error) {
 	if err := known(command.Caller); err != nil {
@@ -272,27 +356,18 @@ func (s *ProductGovernance) CreateWorkspace(ctx context.Context, command CreateW
 	var workspace domain.Workspace
 	var refused *refusal
 	err = s.deps.Transactor.WithinTransaction(ctx, func(ctx context.Context) error {
-		product, found, err := s.deps.Products.Find(ctx, productID)
+		seen, err := s.survey(ctx, command.Caller, productID, "", "")
 		if err != nil {
-			return fmt.Errorf("read the product: %w", err)
+			return err
 		}
-		roles, err := s.deps.Roles.RolesOf(ctx, productID, command.Caller)
-		if err != nil {
-			return fmt.Errorf("read the roles of the caller: %w", err)
-		}
-		if !found {
+		if !seen.productFound {
 			return ErrProductNotFound
 		}
-		if !slices.Contains(roles, domain.RoleProductOwner) {
-			// Whoever may know the product exists is told it may not do
-			// this. To anyone else there is no such product.
-			refused = &refusal{ErrProductNotFound, ports.AuditEntry{
+		if !seen.standing.Owns() {
+			refused = s.notOwner(seen.standing, ports.AuditEntry{
 				Actor: command.Caller, Action: ActionWorkspaceManage, Rule: ruleNoRole,
 				ProductID: productID, ResourceType: resourceWorkspace, CorrelationID: command.CorrelationID,
-			}}
-			if len(roles) > 0 || s.deps.Administrators.Includes(command.Caller) {
-				refused.err = ErrForbidden
-			}
+			})
 			return refused.err
 		}
 
@@ -300,7 +375,7 @@ func (s *ProductGovernance) CreateWorkspace(ctx context.Context, command CreateW
 		if err != nil {
 			return fmt.Errorf("generate the identifier of the workspace: %w", err)
 		}
-		workspace, err = domain.NewWorkspace(id, product, command.Key, command.DisplayName, command.Caller, s.deps.Clock.Now())
+		workspace, err = domain.NewWorkspace(id, seen.product, command.Key, command.DisplayName, command.Caller, s.deps.Clock.Now())
 		if err != nil {
 			return err
 		}
@@ -333,9 +408,15 @@ type GetWorkspace struct {
 	WorkspaceID   string
 }
 
-// GetWorkspace returns a workspace to whoever holds a role in its product. A
-// platform administrator knows the product exists and nothing of what is
-// inside it: registering a product gives no view of its workspaces.
+// GetWorkspace returns a workspace to an owner of its product and to a
+// member of the workspace itself. Being a member of one workspace of a
+// product gives no view of another (F03 §2), and neither does registering
+// the product: a platform administrator knows the product exists and nothing
+// of what is inside it.
+//
+// Whoever may not read the workspace is answered as far as it may know: no
+// such product to a stranger, no such workspace to whoever knows the
+// product.
 func (s *ProductGovernance) GetWorkspace(ctx context.Context, query GetWorkspace) (domain.Workspace, error) {
 	if err := known(query.Caller); err != nil {
 		return domain.Workspace{}, err
@@ -344,47 +425,270 @@ func (s *ProductGovernance) GetWorkspace(ctx context.Context, query GetWorkspace
 	if err != nil {
 		return domain.Workspace{}, ErrProductNotFound
 	}
-	workspaceID, err := domain.ParseWorkspaceID(query.WorkspaceID)
+	// An identifier that is none names nothing. The product is read all the
+	// same: whether the caller is told that the product or that the
+	// workspace is missing depends on it.
+	workspaceID, _ := domain.ParseWorkspaceID(query.WorkspaceID)
+
+	seen, err := s.survey(ctx, query.Caller, productID, workspaceID, "")
 	if err != nil {
-		// Read the product all the same: whether the caller is told that the
-		// product or that the workspace is missing depends on it.
-		workspaceID = ""
+		return domain.Workspace{}, err
 	}
 
-	_, productFound, err := s.deps.Products.Find(ctx, productID)
-	if err != nil {
-		return domain.Workspace{}, fmt.Errorf("read the product: %w", err)
-	}
-	roles, err := s.deps.Roles.RolesOf(ctx, productID, query.Caller)
-	if err != nil {
-		return domain.Workspace{}, fmt.Errorf("read the roles of the caller: %w", err)
-	}
-	var workspace domain.Workspace
-	var workspaceFound bool
-	if workspaceID != "" {
-		if workspace, workspaceFound, err = s.deps.Workspaces.Find(ctx, productID, workspaceID); err != nil {
-			return domain.Workspace{}, fmt.Errorf("read the workspace: %w", err)
-		}
-	}
-
-	if !productFound {
+	if !seen.productFound {
 		return domain.Workspace{}, ErrProductNotFound
 	}
-	if len(roles) == 0 {
-		refused := refusal{ErrProductNotFound, ports.AuditEntry{
+	if !seen.standing.Owns() && !seen.standing.MemberOf(workspaceID) {
+		refused := refusal{ErrWorkspaceNotFound, ports.AuditEntry{
 			Actor: query.Caller, Action: ActionWorkspaceRead, Rule: ruleNoRole,
 			ProductID: productID, ResourceType: resourceWorkspace, CorrelationID: query.CorrelationID,
 		}}
-		if workspaceFound {
+		if seen.workspaceFound {
 			refused.entry.ResourceID = string(workspaceID)
 		}
-		if s.deps.Administrators.Includes(query.Caller) {
-			refused.err = ErrWorkspaceNotFound
+		if !s.knows(seen.standing, query.Caller) {
+			refused.err = ErrProductNotFound
 		}
 		return domain.Workspace{}, s.refuse(ctx, refused)
 	}
-	if !workspaceFound {
+	if !seen.workspaceFound {
 		return domain.Workspace{}, ErrWorkspaceNotFound
 	}
-	return workspace, nil
+	return seen.workspace, nil
+}
+
+// GrantMembership is what making a principal a member of a workspace needs.
+type GrantMembership struct {
+	Caller        domain.Principal
+	CorrelationID string
+	ProductID     string
+	WorkspaceID   string
+	// Member is the principal that becomes a member.
+	Member domain.Principal
+	// Role is the role the member holds in the workspace.
+	Role string
+}
+
+// GrantMembership makes a principal a member of one workspace of a product,
+// in one role (FR-003, AC-10). Only an owner of that product may. Whoever
+// may know the product exists and does not own it is told it may not; to
+// anyone else there is no such product. Neither answer depends on the
+// workspace.
+//
+// The decision is made inside the transaction of the write, from what the
+// caller holds then. The membership, the audit fact and the event commit
+// together or not at all (INV-13).
+func (s *ProductGovernance) GrantMembership(ctx context.Context, command GrantMembership) (domain.Membership, error) {
+	if err := known(command.Caller); err != nil {
+		return domain.Membership{}, err
+	}
+	productID, err := domain.ParseProductID(command.ProductID)
+	if err != nil {
+		return domain.Membership{}, ErrProductNotFound
+	}
+	workspaceID, _ := domain.ParseWorkspaceID(command.WorkspaceID)
+
+	var membership domain.Membership
+	var refused *refusal
+	err = s.deps.Transactor.WithinTransaction(ctx, func(ctx context.Context) error {
+		seen, err := s.survey(ctx, command.Caller, productID, workspaceID, "")
+		if err != nil {
+			return err
+		}
+		if !seen.productFound {
+			return ErrProductNotFound
+		}
+		if !seen.standing.Owns() {
+			refused = s.notOwner(seen.standing, ports.AuditEntry{
+				Actor: command.Caller, Action: ActionMemberGrant, Rule: ruleNoRole,
+				ProductID: productID, ResourceType: resourceMember, CorrelationID: command.CorrelationID,
+			})
+			return refused.err
+		}
+		if !seen.workspaceFound {
+			return ErrWorkspaceNotFound
+		}
+
+		id, err := domain.ParseMembershipID(s.deps.Identifiers.NewID())
+		if err != nil {
+			return fmt.Errorf("generate the identifier of the membership: %w", err)
+		}
+		membership, err = domain.GrantMembership(id, seen.product, seen.workspace,
+			command.Member, domain.Role(command.Role), command.Caller, s.deps.Clock.Now())
+		if err != nil {
+			return err
+		}
+		// A membership of a principal that can never authenticate would
+		// never be used.
+		if !s.deps.Issuers.Trusts(command.Member.Issuer) {
+			return ErrMemberIssuerNotTrusted
+		}
+		if err := s.deps.Memberships.Add(ctx, membership); err != nil {
+			return err
+		}
+		if err := s.deps.Audit.Record(ctx, ports.AuditEntry{
+			Actor: command.Caller, Action: ActionMemberGrant, Allowed: true, Rule: ruleMembersOfOwnProduct,
+			ProductID: productID, ResourceType: resourceMember, ResourceID: string(membership.ID),
+			CorrelationID: command.CorrelationID,
+		}); err != nil {
+			return err
+		}
+		return s.deps.Events.MembershipChanged(ctx, membership, command.CorrelationID)
+	})
+	if refused != nil {
+		return domain.Membership{}, s.refuse(ctx, *refused)
+	}
+	if err != nil {
+		return domain.Membership{}, fmt.Errorf("grant the membership: %w", err)
+	}
+	return membership, nil
+}
+
+// GetMembership asks for one membership of one workspace.
+type GetMembership struct {
+	Caller        domain.Principal
+	CorrelationID string
+	ProductID     string
+	WorkspaceID   string
+	MembershipID  string
+}
+
+// GetMembership returns a membership in force to an owner of its product.
+// The members of a workspace are the owner's to manage and nobody else's to
+// read, not even the member's own.
+//
+// Whoever does not own the product is answered as far as it may know: no
+// such product to a stranger, no such workspace to whoever may not read the
+// workspace, no such membership to a member of it.
+func (s *ProductGovernance) GetMembership(ctx context.Context, query GetMembership) (domain.Membership, error) {
+	if err := known(query.Caller); err != nil {
+		return domain.Membership{}, err
+	}
+	productID, err := domain.ParseProductID(query.ProductID)
+	if err != nil {
+		return domain.Membership{}, ErrProductNotFound
+	}
+	workspaceID, _ := domain.ParseWorkspaceID(query.WorkspaceID)
+	membershipID, _ := domain.ParseMembershipID(query.MembershipID)
+
+	seen, err := s.survey(ctx, query.Caller, productID, workspaceID, membershipID)
+	if err != nil {
+		return domain.Membership{}, err
+	}
+
+	if !seen.productFound {
+		return domain.Membership{}, ErrProductNotFound
+	}
+	if !seen.standing.Owns() {
+		refused := refusal{ErrMembershipNotFound, ports.AuditEntry{
+			Actor: query.Caller, Action: ActionMemberRead, Rule: ruleNoRole,
+			ProductID: productID, ResourceType: resourceMember, CorrelationID: query.CorrelationID,
+		}}
+		if seen.membershipFound {
+			refused.entry.ResourceID = string(membershipID)
+		}
+		switch {
+		case !s.knows(seen.standing, query.Caller):
+			refused.err = ErrProductNotFound
+		case !seen.standing.MemberOf(workspaceID):
+			refused.err = ErrWorkspaceNotFound
+		}
+		return domain.Membership{}, s.refuse(ctx, refused)
+	}
+	if !seen.workspaceFound {
+		return domain.Membership{}, ErrWorkspaceNotFound
+	}
+	if !seen.membershipFound {
+		return domain.Membership{}, ErrMembershipNotFound
+	}
+	return seen.membership, nil
+}
+
+// RevokeMembership names the membership to end.
+type RevokeMembership struct {
+	Caller        domain.Principal
+	CorrelationID string
+	ProductID     string
+	WorkspaceID   string
+	MembershipID  string
+}
+
+// RevokeMembership ends a membership (FR-003). Only an owner of the product
+// may, and whoever does not own it is answered as for a grant. A suspended
+// product takes no new member; its members can still be removed.
+//
+// From the moment the revocation commits the membership grants nothing:
+// every decision reads what a caller holds when it is made. A membership
+// that is not in force is not found, whoever ended it, so a revocation that
+// is sent twice finds nothing to do the second time.
+//
+// The decision is made inside the transaction of the write. The revocation,
+// the audit fact and the event commit together or not at all (INV-13).
+func (s *ProductGovernance) RevokeMembership(ctx context.Context, command RevokeMembership) error {
+	if err := known(command.Caller); err != nil {
+		return err
+	}
+	productID, err := domain.ParseProductID(command.ProductID)
+	if err != nil {
+		return ErrProductNotFound
+	}
+	workspaceID, _ := domain.ParseWorkspaceID(command.WorkspaceID)
+	membershipID, _ := domain.ParseMembershipID(command.MembershipID)
+
+	var refused *refusal
+	err = s.deps.Transactor.WithinTransaction(ctx, func(ctx context.Context) error {
+		seen, err := s.survey(ctx, command.Caller, productID, workspaceID, membershipID)
+		if err != nil {
+			return err
+		}
+		if !seen.productFound {
+			return ErrProductNotFound
+		}
+		if !seen.standing.Owns() {
+			entry := ports.AuditEntry{
+				Actor: command.Caller, Action: ActionMemberRevoke, Rule: ruleNoRole,
+				ProductID: productID, ResourceType: resourceMember, CorrelationID: command.CorrelationID,
+			}
+			if seen.membershipFound {
+				entry.ResourceID = string(membershipID)
+			}
+			refused = s.notOwner(seen.standing, entry)
+			return refused.err
+		}
+		if !seen.workspaceFound {
+			return ErrWorkspaceNotFound
+		}
+		if !seen.membershipFound {
+			return ErrMembershipNotFound
+		}
+
+		revoked, err := seen.membership.Revoke(command.Caller, s.deps.Clock.Now())
+		if err != nil {
+			return err
+		}
+		if err := s.deps.Memberships.Revoke(ctx, revoked); err != nil {
+			if errors.Is(err, ports.ErrMembershipGone) {
+				// Somebody else ended it between the read and the write.
+				// It is not in force, which is what was asked for, and the
+				// revocation that did it has its own record.
+				return ErrMembershipNotFound
+			}
+			return err
+		}
+		if err := s.deps.Audit.Record(ctx, ports.AuditEntry{
+			Actor: command.Caller, Action: ActionMemberRevoke, Allowed: true, Rule: ruleMembersOfOwnProduct,
+			ProductID: productID, ResourceType: resourceMember, ResourceID: string(revoked.ID),
+			CorrelationID: command.CorrelationID,
+		}); err != nil {
+			return err
+		}
+		return s.deps.Events.MembershipChanged(ctx, revoked, command.CorrelationID)
+	})
+	if refused != nil {
+		return s.refuse(ctx, *refused)
+	}
+	if err != nil {
+		return fmt.Errorf("revoke the membership: %w", err)
+	}
+	return nil
 }

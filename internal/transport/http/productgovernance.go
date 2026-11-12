@@ -19,6 +19,9 @@ type ProductGovernance interface {
 	GetProduct(ctx context.Context, query application.GetProduct) (domain.Product, error)
 	CreateWorkspace(ctx context.Context, command application.CreateWorkspace) (domain.Workspace, error)
 	GetWorkspace(ctx context.Context, query application.GetWorkspace) (domain.Workspace, error)
+	GrantMembership(ctx context.Context, command application.GrantMembership) (domain.Membership, error)
+	GetMembership(ctx context.Context, query application.GetMembership) (domain.Membership, error)
+	RevokeMembership(ctx context.Context, command application.RevokeMembership) error
 }
 
 // noStore is the cache directive of everything private: a product and what
@@ -131,6 +134,65 @@ func (o operations) GetWorkspace(ctx context.Context, request GetWorkspaceReques
 	return GetWorkspace200JSONResponse{Body: body, Headers: GetWorkspace200ResponseHeaders{CacheControl: noStore}}, nil
 }
 
+func (o operations) GrantMembership(ctx context.Context, request GrantMembershipRequestObject) (GrantMembershipResponseObject, error) {
+	principal, correlationID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	membership, err := o.governance.GrantMembership(ctx, application.GrantMembership{
+		Caller: principal, CorrelationID: correlationID, ProductID: request.ProductID, WorkspaceID: request.WorkspaceID,
+		Member: domain.Principal{Issuer: request.Body.Member.Issuer, Subject: request.Body.Member.Subject},
+		Role:   string(request.Body.Role),
+	})
+	if err != nil {
+		return nil, err
+	}
+	body, err := membershipOf(membership)
+	if err != nil {
+		return nil, err
+	}
+	return GrantMembership201JSONResponse{
+		Body: body,
+		Headers: GrantMembership201ResponseHeaders{
+			Location:     "/v1/products/" + body.ProductID + "/workspaces/" + body.WorkspaceID + "/memberships/" + body.MembershipID,
+			CacheControl: noStore,
+		},
+	}, nil
+}
+
+func (o operations) GetMembership(ctx context.Context, request GetMembershipRequestObject) (GetMembershipResponseObject, error) {
+	principal, correlationID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	membership, err := o.governance.GetMembership(ctx, application.GetMembership{
+		Caller: principal, CorrelationID: correlationID,
+		ProductID: request.ProductID, WorkspaceID: request.WorkspaceID, MembershipID: request.MembershipID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	body, err := membershipOf(membership)
+	if err != nil {
+		return nil, err
+	}
+	return GetMembership200JSONResponse{Body: body, Headers: GetMembership200ResponseHeaders{CacheControl: noStore}}, nil
+}
+
+func (o operations) RevokeMembership(ctx context.Context, request RevokeMembershipRequestObject) (RevokeMembershipResponseObject, error) {
+	principal, correlationID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := o.governance.RevokeMembership(ctx, application.RevokeMembership{
+		Caller: principal, CorrelationID: correlationID,
+		ProductID: request.ProductID, WorkspaceID: request.WorkspaceID, MembershipID: request.MembershipID,
+	}); err != nil {
+		return nil, err
+	}
+	return RevokeMembership204Response{}, nil
+}
+
 // productOf is the product as the contract shows it. The DTO is not the
 // model: what the contract does not declare, such as who registered the
 // product or its version, stays inside (F07 §3.1).
@@ -171,6 +233,31 @@ func workspaceOf(workspace domain.Workspace) (Workspace, error) {
 	}, nil
 }
 
+// membershipOf is the membership as the contract shows it: who holds which
+// role in which workspace, since when. Who granted it and its version stay
+// inside.
+//
+// The contract shows a membership in force and has no member that says
+// otherwise, so a revoked one is not sent, and neither is a role the
+// contract does not declare.
+func membershipOf(membership domain.Membership) (Membership, error) {
+	if !membership.InForce() {
+		return Membership{}, errors.New("the membership was revoked, and the contract shows none that is")
+	}
+	role := WorkspaceRole(membership.Role)
+	if !role.Valid() {
+		return Membership{}, fmt.Errorf("the membership grants the role %q, which the contract does not declare", membership.Role)
+	}
+	return Membership{
+		MembershipID: string(membership.ID),
+		ProductID:    string(membership.ProductID),
+		WorkspaceID:  string(membership.WorkspaceID),
+		Member:       Principal{Issuer: membership.Principal.Issuer, Subject: membership.Principal.Subject},
+		Role:         role,
+		GrantedAt:    membership.GrantedAt,
+	}, nil
+}
+
 // problemOf is the problem a failed use case is answered with. The second
 // result is false for a failure nobody expected, which is an internal error.
 //
@@ -184,15 +271,22 @@ func problemOf(err error) (Problem, bool) {
 		return problem(http.StatusNotFound, CodeProductNotFound, ""), true
 	case errors.Is(err, application.ErrWorkspaceNotFound):
 		return problem(http.StatusNotFound, CodeWorkspaceNotFound, ""), true
+	case errors.Is(err, application.ErrMembershipNotFound):
+		return problem(http.StatusNotFound, CodeMembershipNotFound, ""), true
 	case errors.Is(err, ports.ErrProductKeyTaken):
 		return problem(http.StatusConflict, CodeProductKeyTaken, "A product with this key is registered already."), true
 	case errors.Is(err, ports.ErrWorkspaceKeyTaken):
 		return problem(http.StatusConflict, CodeWorkspaceKeyTaken, "The product has a workspace with this key already."), true
+	case errors.Is(err, ports.ErrMembershipExists):
+		return problem(http.StatusConflict, CodeMembershipExists, "The principal holds this role in the workspace already."), true
 	case errors.Is(err, domain.ErrProductNotActive):
 		return problem(http.StatusConflict, CodeProductNotActive, "The product is suspended and takes no new work."), true
 	case errors.Is(err, application.ErrOwnerIssuerNotTrusted):
 		return problem(http.StatusUnprocessableEntity, CodeOwnerIssuerNotTrusted,
 			"An owner is named under an issuer this deployment does not trust."), true
+	case errors.Is(err, application.ErrMemberIssuerNotTrusted):
+		return problem(http.StatusUnprocessableEntity, CodeMemberIssuerNotTrusted,
+			"A member is named under an issuer this deployment does not trust."), true
 	case errors.Is(err, domain.ErrInvalid):
 		// The contract states the rules of the model, so the validator has
 		// refused such a request already. This is for the day the two differ.

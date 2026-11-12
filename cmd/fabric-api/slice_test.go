@@ -206,6 +206,28 @@ func (s *stack) register(administrator, key string, owners ...string) string {
 	return got.id("product_id")
 }
 
+// createWorkspace creates a workspace of the product as its owner and returns
+// its identifier.
+func (s *stack) createWorkspace(productID, owner, key string) string {
+	s.t.Helper()
+
+	got := s.call(http.MethodPost, "/v1/products/"+productID+"/workspaces", owner,
+		`{"workspace_key":"`+key+`","display_name":"Workspace `+key+`"}`)
+	if got.status != http.StatusCreated {
+		s.t.Fatalf("create the workspace %s: status %d %v", key, got.status, got.body)
+	}
+	return got.id("workspace_id")
+}
+
+// membership is the body of a grant: the subject of the issuer holds the
+// role.
+func (s *stack) membership(subject, role string) string {
+	body, _ := json.Marshal(map[string]any{
+		"member": map[string]string{"issuer": s.issuer.URL(), "subject": subject}, "role": role,
+	})
+	return string(body)
+}
+
 // audited is one row of the audit trail.
 type audited struct {
 	Subject      string
@@ -542,6 +564,222 @@ func TestAWorkspaceKeyIsTakenOncePerProduct(t *testing.T) {
 	}
 	if workspaces := s.count("productgovernance.workspace"); workspaces != 2 {
 		t.Errorf("%d workspaces, want 2", workspaces)
+	}
+}
+
+// DC-001, FR-003: an owner makes a principal a member of one workspace. The
+// membership lets its member into that workspace and its product and into
+// nothing else, it is on record who granted it, and from the moment it is
+// revoked it grants nothing. A grant and a revocation each leave their row,
+// their audit record and their event, and every refusal its audit record.
+func TestAMembershipLetsItsMemberInUntilItIsRevoked(t *testing.T) {
+	s := start(t, "platform-admin")
+	cargopai := s.register("platform-admin", "cargopai", "alice")
+	parcel := s.register("platform-admin", "parcel", "bob")
+	engineering := s.createWorkspace(cargopai, "alice", "api-engineering")
+	operations := s.createWorkspace(cargopai, "alice", "operations")
+	sorting := s.createWorkspace(parcel, "bob", "sorting")
+	workspaces := "/v1/products/" + cargopai + "/workspaces/"
+
+	granted := s.call(http.MethodPost, workspaces+engineering+"/memberships", "alice", s.membership("carol", "workspace_maintainer"))
+	if granted.status != http.StatusCreated {
+		t.Fatalf("grant: status %d %v", granted.status, granted.body)
+	}
+	membership := granted.id("membership_id")
+	location := workspaces + engineering + "/memberships/" + membership
+	if got := granted.header.Get("Location"); got != location {
+		t.Errorf("Location %q, want %q", got, location)
+	}
+	if granted.body["product_id"] != cargopai || granted.body["workspace_id"] != engineering || granted.body["role"] != "workspace_maintainer" ||
+		fmt.Sprint(granted.body["member"]) != fmt.Sprint(map[string]any{"issuer": s.issuer.URL(), "subject": "carol"}) {
+		t.Errorf("the membership is %v", granted.body)
+	}
+	if read := s.call(http.MethodGet, location, "alice", ""); read.status != http.StatusOK || fmt.Sprint(read.body) != fmt.Sprint(granted.body) {
+		t.Errorf("the owner reads %d %v, want what the grant answered: %v", read.status, read.body, granted.body)
+	}
+
+	type expectation struct {
+		method, path, body string
+		status             int
+		code               string
+	}
+	expect := func(when, subject string, expectations []expectation) {
+		t.Helper()
+		for _, e := range expectations {
+			if got := s.call(e.method, e.path, subject, e.body); got.status != e.status || got.code() != e.code {
+				t.Errorf("%s, %s: %s %s answered %d %v, want %d %s", when, subject, e.method, e.path, got.status, got.body, e.status, e.code)
+			}
+		}
+	}
+	another := s.membership("mallory", "internal_author")
+	expect("as a member", "carol", []expectation{
+		{http.MethodGet, "/v1/products/" + cargopai, "", http.StatusOK, ""},
+		{http.MethodGet, workspaces + engineering, "", http.StatusOK, ""},
+		// A member of one workspace is not a member of another (F03 §2).
+		{http.MethodGet, workspaces + operations, "", http.StatusNotFound, "WORKSPACE_NOT_FOUND"},
+		// A member manages nothing, and reads no membership, its own
+		// included.
+		{http.MethodPost, "/v1/products/" + cargopai + "/workspaces", `{"workspace_key":"hers","display_name":"Hers"}`, http.StatusForbidden, "FORBIDDEN"},
+		{http.MethodPost, workspaces + engineering + "/memberships", another, http.StatusForbidden, "FORBIDDEN"},
+		{http.MethodDelete, location, "", http.StatusForbidden, "FORBIDDEN"},
+		{http.MethodGet, location, "", http.StatusNotFound, "MEMBERSHIP_NOT_FOUND"},
+		// Nothing carries over to another product.
+		{http.MethodGet, "/v1/products/" + parcel, "", http.StatusNotFound, "PRODUCT_NOT_FOUND"},
+		{http.MethodGet, "/v1/products/" + parcel + "/workspaces/" + sorting, "", http.StatusNotFound, "PRODUCT_NOT_FOUND"},
+	})
+	// Owning another product or administering the platform is not owning
+	// this one.
+	expect("as the owner of another product", "bob", []expectation{
+		{http.MethodPost, workspaces + engineering + "/memberships", another, http.StatusNotFound, "PRODUCT_NOT_FOUND"},
+	})
+	expect("as the platform administrator", "platform-admin", []expectation{
+		{http.MethodPost, workspaces + engineering + "/memberships", another, http.StatusForbidden, "FORBIDDEN"},
+	})
+
+	revoked := s.call(http.MethodDelete, location, "alice", "")
+	if revoked.status != http.StatusNoContent || revoked.body != nil {
+		t.Fatalf("revoke: %d %v, want 204 and no body", revoked.status, revoked.body)
+	}
+	// From that moment the membership grants nothing. Holding nothing else
+	// in CargoPai, carol is a stranger to it.
+	expect("once revoked", "carol", []expectation{
+		{http.MethodGet, "/v1/products/" + cargopai, "", http.StatusNotFound, "PRODUCT_NOT_FOUND"},
+		{http.MethodGet, workspaces + engineering, "", http.StatusNotFound, "PRODUCT_NOT_FOUND"},
+	})
+	// The membership is not found any more, and is not revoked twice.
+	expect("once revoked", "alice", []expectation{
+		{http.MethodGet, location, "", http.StatusNotFound, "MEMBERSHIP_NOT_FOUND"},
+		{http.MethodDelete, location, "", http.StatusNotFound, "MEMBERSHIP_NOT_FOUND"},
+	})
+
+	// The record of the membership is kept and says who granted it and who
+	// revoked it.
+	var version int64
+	var grantedBy, revokedBy string
+	if err := s.owner.QueryRow(t.Context(), `
+		SELECT membership_version, granted_by_subject, coalesce(revoked_by_subject, '')
+		FROM productgovernance.workspace_membership WHERE membership_id = $1 AND revoked_at IS NOT NULL`, membership,
+	).Scan(&version, &grantedBy, &revokedBy); err != nil || version != 2 || grantedBy != "alice" || revokedBy != "alice" {
+		t.Errorf("the record of the membership is at version %d, granted by %q, revoked by %q (%v), want 2, alice, alice", version, grantedBy, revokedBy, err)
+	}
+
+	recorded := map[audited]int{}
+	for _, record := range s.audit() {
+		if record.Outcome == "DENIED" || strings.HasPrefix(record.Action, "member.") {
+			recorded[record]++
+		}
+	}
+	want := map[audited]int{
+		{"alice", "member.grant", "SUCCEEDED", "AC-10", cargopai, "Member", membership}:      1,
+		{"alice", "member.revoke", "SUCCEEDED", "AC-10", cargopai, "Member", membership}:     1,
+		{"carol", "workspace.read", "DENIED", "DENY-03", cargopai, "Workspace", operations}:  1,
+		{"carol", "workspace.manage", "DENIED", "DENY-03", cargopai, "Workspace", ""}:        1,
+		{"carol", "member.grant", "DENIED", "DENY-03", cargopai, "Member", ""}:               1,
+		{"carol", "member.revoke", "DENIED", "DENY-03", cargopai, "Member", membership}:      1,
+		{"carol", "member.read", "DENIED", "DENY-03", cargopai, "Member", membership}:        1,
+		{"carol", "product.read", "DENIED", "DENY-03", parcel, "Product", parcel}:            1,
+		{"carol", "workspace.read", "DENIED", "DENY-03", parcel, "Workspace", sorting}:       1,
+		{"bob", "member.grant", "DENIED", "DENY-03", cargopai, "Member", ""}:                 1,
+		{"platform-admin", "member.grant", "DENIED", "DENY-03", cargopai, "Member", ""}:      1,
+		{"carol", "product.read", "DENIED", "DENY-03", cargopai, "Product", cargopai}:        1,
+		{"carol", "workspace.read", "DENIED", "DENY-03", cargopai, "Workspace", engineering}: 1,
+	}
+	if fmt.Sprint(recorded) != fmt.Sprint(want) {
+		t.Errorf("the audit trail holds\n %v\nwant\n %v", recorded, want)
+	}
+
+	// One event for the grant and one for the revocation, in that order,
+	// each with the correlation identifier of its audit record.
+	type event struct {
+		Subject     string
+		Correlation string
+		InForce     string
+		Version     int64
+	}
+	rows, err := s.owner.Query(t.Context(), `
+		SELECT subject, correlation_id, payload->>'in_force', (payload->>'aggregate_version')::bigint
+		FROM bento.outbox WHERE event_type = 'fabric.productgovernance.membership.changed' ORDER BY enqueued_seq`)
+	if err != nil {
+		t.Fatalf("read the outbox: %v", err)
+	}
+	events, err := pgx.CollectRows(rows, pgx.RowToStructByPos[event])
+	if err != nil {
+		t.Fatalf("read the outbox: %v", err)
+	}
+	if len(events) != 2 || events[0].InForce != "true" || events[0].Version != 1 || events[1].InForce != "false" || events[1].Version != 2 {
+		t.Fatalf("the outbox holds %+v, want the grant and then the revocation", events)
+	}
+	for index, action := range []string{"member.grant", "member.revoke"} {
+		var recordedAction string
+		if err := s.owner.QueryRow(t.Context(),
+			`SELECT action FROM platformoperations.audit_record WHERE correlation_id = $1`, events[index].Correlation,
+		).Scan(&recordedAction); err != nil || recordedAction != action || events[index].Subject != "membership/"+membership {
+			t.Errorf("event %d is about %q and shares its correlation identifier with %q (%v), want the membership and %s",
+				index+1, events[index].Subject, recordedAction, err, action)
+		}
+	}
+}
+
+// A principal holds a role in a workspace once at a time, however the grants
+// arrive. Once the membership is revoked, the role can be granted again.
+func TestARoleIsHeldInAWorkspaceOnceAtATime(t *testing.T) {
+	s := start(t, "platform-admin")
+	cargopai := s.register("platform-admin", "cargopai", "alice")
+	memberships := "/v1/products/" + cargopai + "/workspaces/" + s.createWorkspace(cargopai, "alice", "api-engineering") + "/memberships"
+
+	first := s.call(http.MethodPost, memberships, "alice", s.membership("carol", "internal_author"))
+	if first.status != http.StatusCreated {
+		t.Fatalf("the first grant: %d %v", first.status, first.body)
+	}
+	if again := s.call(http.MethodPost, memberships, "alice", s.membership("carol", "internal_author")); again.status != http.StatusConflict || again.code() != "MEMBERSHIP_EXISTS" {
+		t.Errorf("the role again: %d %v, want 409 MEMBERSHIP_EXISTS", again.status, again.body)
+	}
+	if other := s.call(http.MethodPost, memberships, "alice", s.membership("carol", "workspace_maintainer")); other.status != http.StatusCreated {
+		t.Errorf("another role: %d %v, want 201", other.status, other.body)
+	}
+
+	// Several at once: one wins, the others find the role held.
+	const racers = 6
+	statuses := make(chan int, racers)
+	for range racers {
+		go func() {
+			statuses <- s.call(http.MethodPost, memberships, "alice", s.membership("dave", "internal_author")).status
+		}()
+	}
+	won := 0
+	for range racers {
+		switch status := <-statuses; status {
+		case http.StatusCreated:
+			won++
+		case http.StatusConflict:
+		default:
+			t.Errorf("a grant answered %d, want 201 or 409", status)
+		}
+	}
+	if won != 1 {
+		t.Errorf("%d grants of one role succeeded, want 1", won)
+	}
+
+	if got := s.call(http.MethodDelete, first.header.Get("Location"), "alice", ""); got.status != http.StatusNoContent {
+		t.Fatalf("revoke: %d %v", got.status, got.body)
+	}
+	regranted := s.call(http.MethodPost, memberships, "alice", s.membership("carol", "internal_author"))
+	if regranted.status != http.StatusCreated || regranted.id("membership_id") == first.id("membership_id") {
+		t.Errorf("the role once more: %d %v, want 201 and a new membership", regranted.status, regranted.body)
+	}
+
+	// A member nobody could authenticate as would never use the membership.
+	foreign := strings.Replace(s.membership("erin", "internal_author"), s.issuer.URL(), "https://other.example", 1)
+	if got := s.call(http.MethodPost, memberships, "alice", foreign); got.status != http.StatusUnprocessableEntity || got.code() != "MEMBER_ISSUER_NOT_TRUSTED" {
+		t.Errorf("a member under another issuer: %d %v, want 422 MEMBER_ISSUER_NOT_TRUSTED", got.status, got.body)
+	}
+
+	// carol's two roles and dave's are in force; the revoked one is kept.
+	var inForce, kept int
+	if err := s.owner.QueryRow(t.Context(),
+		`SELECT count(*) FILTER (WHERE revoked_at IS NULL), count(*) FROM productgovernance.workspace_membership`,
+	).Scan(&inForce, &kept); err != nil || inForce != 3 || kept != 4 {
+		t.Errorf("%d memberships in force of %d kept (%v), want 3 of 4", inForce, kept, err)
 	}
 }
 

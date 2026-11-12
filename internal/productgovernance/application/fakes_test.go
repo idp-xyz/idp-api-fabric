@@ -23,8 +23,11 @@ type world struct {
 	products   map[domain.ProductID]domain.Product
 	workspaces map[domain.WorkspaceID]domain.Workspace
 	roles      []domain.RoleAssignment
-	audited    []audited
-	events     []string
+	// memberships holds every membership, in force or revoked, as the table
+	// does.
+	memberships map[domain.MembershipID]domain.Membership
+	audited     []audited
+	events      []string
 
 	administrators []domain.Principal
 	issuers        []string
@@ -53,10 +56,19 @@ var (
 	admin   = domain.Principal{Issuer: trustedIssuer, Subject: "platform-admin"}
 	alice   = domain.Principal{Issuer: trustedIssuer, Subject: "alice"}
 	bob     = domain.Principal{Issuer: trustedIssuer, Subject: "bob"}
+	carol   = domain.Principal{Issuer: trustedIssuer, Subject: "carol"}
 	mallory = domain.Principal{Issuer: trustedIssuer, Subject: "mallory"}
 	cargo   = domain.OrganizationRef{IdentityProvider: trustedIssuer, Organization: "org-cargopai"}
 	started = time.Date(2026, 11, 11, 9, 0, 0, 0, time.UTC)
 )
+
+// wiring is the world as the ports of the use cases.
+func (w *world) wiring() Dependencies {
+	return Dependencies{
+		Transactor: w, Products: productStore{w}, Workspaces: workspaceStore{w}, Roles: roleStore{w},
+		Memberships: membershipStore{w}, Administrators: w, Issuers: w, Audit: w, Events: w, Clock: w, Identifiers: w,
+	}
+}
 
 func newWorld(t *testing.T) (*world, *ProductGovernance) {
 	t.Helper()
@@ -64,15 +76,13 @@ func newWorld(t *testing.T) (*world, *ProductGovernance) {
 	w := &world{
 		products:       map[domain.ProductID]domain.Product{},
 		workspaces:     map[domain.WorkspaceID]domain.Workspace{},
+		memberships:    map[domain.MembershipID]domain.Membership{},
 		administrators: []domain.Principal{admin},
 		issuers:        []string{trustedIssuer},
 		now:            started,
 		failing:        map[string]error{},
 	}
-	service, err := New(Dependencies{
-		Transactor: w, Products: productStore{w}, Workspaces: workspaceStore{w}, Roles: roleStore{w},
-		Administrators: w, Issuers: w, Audit: w, Events: w, Clock: w, Identifiers: w,
-	})
+	service, err := New(w.wiring())
 	if err != nil {
 		t.Fatalf("wire the use cases: %v", err)
 	}
@@ -87,7 +97,7 @@ func (w *world) WithinTransaction(ctx context.Context, fn func(ctx context.Conte
 		return fn(ctx)
 	}
 	w.transactions++
-	products, workspaces := maps.Clone(w.products), maps.Clone(w.workspaces)
+	products, workspaces, memberships := maps.Clone(w.products), maps.Clone(w.workspaces), maps.Clone(w.memberships)
 	roles, audit, events := slices.Clone(w.roles), slices.Clone(w.audited), slices.Clone(w.events)
 
 	err := fn(context.WithValue(ctx, inTransaction{}, true))
@@ -95,7 +105,8 @@ func (w *world) WithinTransaction(ctx context.Context, fn func(ctx context.Conte
 		err = w.fail("commit")
 	}
 	if err != nil {
-		w.products, w.workspaces, w.roles, w.audited, w.events = products, workspaces, roles, audit, events
+		w.products, w.workspaces, w.memberships = products, workspaces, memberships
+		w.roles, w.audited, w.events = roles, audit, events
 	}
 	return err
 }
@@ -141,6 +152,21 @@ func (w *world) WorkspaceCreated(ctx context.Context, workspace domain.Workspace
 		return fmt.Errorf("an event was announced outside a transaction")
 	}
 	w.events = append(w.events, "WorkspaceCreated "+string(workspace.ID)+" "+correlationID)
+	return nil
+}
+
+func (w *world) MembershipChanged(ctx context.Context, membership domain.Membership, correlationID string) error {
+	if err := w.fail("events"); err != nil {
+		return err
+	}
+	if !transacted(ctx) {
+		return fmt.Errorf("an event was announced outside a transaction")
+	}
+	change := "granted"
+	if !membership.InForce() {
+		change = "revoked"
+	}
+	w.events = append(w.events, "MembershipChanged "+string(membership.ID)+" "+change+" "+correlationID)
 	return nil
 }
 
@@ -208,6 +234,60 @@ func (s roleStore) RolesOf(_ context.Context, productID domain.ProductID, princi
 		}
 	}
 	return roles, nil
+}
+
+type membershipStore struct{ *world }
+
+func (s membershipStore) Add(ctx context.Context, membership domain.Membership) error {
+	if !transacted(ctx) {
+		return fmt.Errorf("a membership was written outside a transaction")
+	}
+	for _, existing := range s.memberships {
+		if existing.InForce() && existing.WorkspaceID == membership.WorkspaceID &&
+			existing.Principal == membership.Principal && existing.Role == membership.Role {
+			return ports.ErrMembershipExists
+		}
+	}
+	s.memberships[membership.ID] = membership
+	return nil
+}
+
+// Find finds a membership in force, under its own product and workspace.
+func (s membershipStore) Find(_ context.Context, productID domain.ProductID, workspaceID domain.WorkspaceID, id domain.MembershipID) (domain.Membership, bool, error) {
+	membership, found := s.memberships[id]
+	if !found || !membership.InForce() || membership.ProductID != productID || membership.WorkspaceID != workspaceID {
+		return domain.Membership{}, false, nil
+	}
+	return membership, true, nil
+}
+
+func (s membershipStore) Revoke(ctx context.Context, revoked domain.Membership) error {
+	if !transacted(ctx) {
+		return fmt.Errorf("a membership was revoked outside a transaction")
+	}
+	// "revoke" stands for a revocation that lost the race against another.
+	if err := s.fail("revoke"); err != nil {
+		return err
+	}
+	if _, found, _ := s.Find(ctx, revoked.ProductID, revoked.WorkspaceID, revoked.ID); !found {
+		return ports.ErrMembershipGone
+	}
+	s.memberships[revoked.ID] = revoked
+	return nil
+}
+
+// HeldBy returns the memberships in force of the principal in the product.
+func (s membershipStore) HeldBy(_ context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Membership, error) {
+	if err := s.fail("held"); err != nil {
+		return nil, err
+	}
+	var held []domain.Membership
+	for _, membership := range s.memberships {
+		if membership.InForce() && membership.ProductID == productID && membership.Principal == principal {
+			held = append(held, membership)
+		}
+	}
+	return held, nil
 }
 
 // refusals are the audit entries of refused attempts.
