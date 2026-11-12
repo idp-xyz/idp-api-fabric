@@ -222,6 +222,7 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 		Products:       governancedb.NewProducts(database.Framework),
 		Workspaces:     governancedb.NewWorkspaces(database.Framework),
 		Roles:          governancedb.NewRoleAssignments(database.Framework),
+		Memberships:    governancedb.NewMemberships(database.Framework),
 		Administrators: administrators,
 		Issuers:        static.NewIssuers(configured.identity.Issuer),
 		Audit:          auditTrail{record: recordAudit},

@@ -573,11 +573,23 @@ func TestEveryUseCaseRefusesARequestWithoutAPrincipal(t *testing.T) {
 	workspace := created(t, service, product, alice, "api")
 	w.quiet()
 
+	membership := joined(t, service, workspace, alice, bob, domain.RoleInternalAuthor)
+	w.quiet()
+
 	nobody := domain.Principal{}
-	_, errGetProduct := service.GetProduct(ctx, GetProduct{Caller: nobody, ProductID: string(product.ID)})
-	_, errCreate := service.CreateWorkspace(ctx, CreateWorkspace{Caller: nobody, ProductID: string(product.ID), Key: "other", DisplayName: "Other"})
-	_, errGetWorkspace := service.GetWorkspace(ctx, GetWorkspace{Caller: nobody, ProductID: string(product.ID), WorkspaceID: string(workspace.ID)})
-	for name, err := range map[string]error{"GetProduct": errGetProduct, "CreateWorkspace": errCreate, "GetWorkspace": errGetWorkspace} {
+	productID, workspaceID, membershipID := string(product.ID), string(workspace.ID), string(membership.ID)
+	_, errGetProduct := service.GetProduct(ctx, GetProduct{Caller: nobody, ProductID: productID})
+	_, errCreate := service.CreateWorkspace(ctx, CreateWorkspace{Caller: nobody, ProductID: productID, Key: "other", DisplayName: "Other"})
+	_, errGetWorkspace := service.GetWorkspace(ctx, GetWorkspace{Caller: nobody, ProductID: productID, WorkspaceID: workspaceID})
+	_, errGrant := service.GrantMembership(ctx, GrantMembership{
+		Caller: nobody, ProductID: productID, WorkspaceID: workspaceID, Member: carol, Role: string(domain.RoleInternalAuthor),
+	})
+	_, errGetMembership := service.GetMembership(ctx, GetMembership{Caller: nobody, ProductID: productID, WorkspaceID: workspaceID, MembershipID: membershipID})
+	errRevoke := service.RevokeMembership(ctx, RevokeMembership{Caller: nobody, ProductID: productID, WorkspaceID: workspaceID, MembershipID: membershipID})
+	for name, err := range map[string]error{
+		"GetProduct": errGetProduct, "CreateWorkspace": errCreate, "GetWorkspace": errGetWorkspace,
+		"GrantMembership": errGrant, "GetMembership": errGetMembership, "RevokeMembership": errRevoke,
+	} {
 		if !errors.Is(err, ErrForbidden) {
 			t.Errorf("%s: got %v, want %v", name, err, ErrForbidden)
 		}
@@ -585,14 +597,14 @@ func TestEveryUseCaseRefusesARequestWithoutAPrincipal(t *testing.T) {
 	if len(w.workspaces) != 1 || len(w.audited) != 0 {
 		t.Errorf("requests without a principal left %d workspaces and the audit entries %+v", len(w.workspaces), w.audited)
 	}
+	if len(w.memberships) != 1 || w.memberships[membership.ID] != membership {
+		t.Errorf("requests without a principal left the memberships %+v, want the one there was, in force", w.memberships)
+	}
 }
 
 func TestTheUseCasesAreWiredCompletelyOrNotAtAll(t *testing.T) {
 	w, _ := newWorld(t)
-	complete := Dependencies{
-		Transactor: w, Products: productStore{w}, Workspaces: workspaceStore{w}, Roles: roleStore{w},
-		Administrators: w, Issuers: w, Audit: w, Events: w, Clock: w, Identifiers: w,
-	}
+	complete := w.wiring()
 	if _, err := New(complete); err != nil {
 		t.Fatalf("a complete wiring was refused: %v", err)
 	}
@@ -602,6 +614,7 @@ func TestTheUseCasesAreWiredCompletelyOrNotAtAll(t *testing.T) {
 		"products":       func(d *Dependencies) { d.Products = nil },
 		"workspaces":     func(d *Dependencies) { d.Workspaces = nil },
 		"roles":          func(d *Dependencies) { d.Roles = nil },
+		"memberships":    func(d *Dependencies) { d.Memberships = nil },
 		"administrators": func(d *Dependencies) { d.Administrators = nil },
 		"issuers":        func(d *Dependencies) { d.Issuers = nil },
 		"audit":          func(d *Dependencies) { d.Audit = nil },
