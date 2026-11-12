@@ -36,6 +36,9 @@ type world struct {
 	nextID         int
 
 	transactions int
+	// asked are the pages the stores were asked for, in the order they
+	// were asked.
+	asked []ports.Page
 	// failing makes the named step fail, to see what a failure leaves behind.
 	failing map[string]error
 	// meanwhile runs when the owners of a product are locked, before they
@@ -275,6 +278,7 @@ func (s productStore) List(_ context.Context, page ports.Page) ([]domain.Product
 	if err := s.fail("list"); err != nil {
 		return nil, err
 	}
+	s.asked = append(s.asked, page)
 	return paged(slices.Collect(maps.Values(s.products)), ports.PositionOfProduct, page)
 }
 
@@ -283,6 +287,7 @@ func (s productStore) ListFor(_ context.Context, principal domain.Principal, pag
 	if err := s.fail("list"); err != nil {
 		return nil, err
 	}
+	s.asked = append(s.asked, page)
 	var held []domain.Product
 	for _, product := range s.products {
 		if s.holds(principal, product.ID) {
@@ -320,6 +325,7 @@ func (s workspaceStore) List(_ context.Context, productID domain.ProductID, page
 	if err := s.fail("list"); err != nil {
 		return nil, err
 	}
+	s.asked = append(s.asked, page)
 	var of []domain.Workspace
 	for _, workspace := range s.workspaces {
 		if workspace.ProductID == productID {
@@ -335,6 +341,7 @@ func (s workspaceStore) ListFor(_ context.Context, productID domain.ProductID, p
 	if err := s.fail("list"); err != nil {
 		return nil, err
 	}
+	s.asked = append(s.asked, page)
 	var of []domain.Workspace
 	for _, workspace := range s.workspaces {
 		member := slices.ContainsFunc(slices.Collect(maps.Values(s.memberships)), func(membership domain.Membership) bool {
@@ -407,6 +414,7 @@ func (s roleStore) List(_ context.Context, productID domain.ProductID, page port
 	if err := s.fail("list"); err != nil {
 		return nil, err
 	}
+	s.asked = append(s.asked, page)
 	var of []domain.RoleAssignment
 	for _, assignment := range s.roles {
 		if assignment.InForce() && assignment.ProductID == productID {
@@ -502,6 +510,7 @@ func (s membershipStore) List(_ context.Context, productID domain.ProductID, wor
 	if err := s.fail("list"); err != nil {
 		return nil, err
 	}
+	s.asked = append(s.asked, page)
 	var of []domain.Membership
 	for _, membership := range s.memberships {
 		if membership.InForce() && membership.ProductID == productID && membership.WorkspaceID == workspaceID {
