@@ -69,6 +69,20 @@ SELECT role_assignment_id, product_id, principal_issuer, principal_subject, role
 FROM productgovernance.product_role_assignment
 WHERE revoked_at IS NULL`
 
+// scanRoleAssignment reads one row of roleAssignmentInForce.
+func scanRoleAssignment(row interface{ Scan(dest ...any) error }) (domain.RoleAssignment, error) {
+	var assignment domain.RoleAssignment
+	var id, productID, role string
+	err := row.Scan(&id, &productID, &assignment.Principal.Issuer, &assignment.Principal.Subject, &role,
+		&assignment.Version, &assignment.GrantedAt, &assignment.GrantedBy.Issuer, &assignment.GrantedBy.Subject)
+	if err != nil {
+		return domain.RoleAssignment{}, err
+	}
+	assignment.ID, assignment.ProductID = domain.RoleAssignmentID(id), domain.ProductID(productID)
+	assignment.Role = domain.Role(role)
+	return assignment, nil
+}
+
 // The product is part of the condition, not something compared afterwards:
 // an assignment of another product is simply not there.
 const findRoleAssignment = roleAssignmentInForce + ` AND product_id = $1 AND role_assignment_id = $2`
@@ -80,20 +94,31 @@ func (s *RoleAssignments) Find(ctx context.Context, productID domain.ProductID, 
 	if err != nil {
 		return domain.RoleAssignment{}, false, fmt.Errorf("find a role assignment: %w", err)
 	}
-	var assignment domain.RoleAssignment
-	var assignmentID, ownerID, role string
-	err = reader.QueryRow(ctx, findRoleAssignment, string(productID), string(id)).Scan(
-		&assignmentID, &ownerID, &assignment.Principal.Issuer, &assignment.Principal.Subject, &role,
-		&assignment.Version, &assignment.GrantedAt, &assignment.GrantedBy.Issuer, &assignment.GrantedBy.Subject)
+	assignment, err := scanRoleAssignment(reader.QueryRow(ctx, findRoleAssignment, string(productID), string(id)))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.RoleAssignment{}, false, nil
 	}
 	if err != nil {
 		return domain.RoleAssignment{}, false, fmt.Errorf("find a role assignment: %w", err)
 	}
-	assignment.ID, assignment.ProductID = domain.RoleAssignmentID(assignmentID), domain.ProductID(ownerID)
-	assignment.Role = domain.Role(role)
 	return assignment, true, nil
+}
+
+// The assignments in force of one product, oldest first. The product is part
+// of the condition, as in a single read, and a row that carries a revocation
+// is never read: who held a role once is in no list.
+const listRoleAssignments = roleAssignmentInForce + ` AND product_id = $4 AND (granted_at, role_assignment_id) > ` + after + `
+ORDER BY granted_at, role_assignment_id
+LIMIT $3`
+
+// List returns one page of the assignments in force of the product, oldest
+// first.
+func (s *RoleAssignments) List(ctx context.Context, productID domain.ProductID, page ports.Page) ([]domain.RoleAssignment, error) {
+	assignments, err := list(ctx, s.framework, listRoleAssignments, scanRoleAssignment, page, string(productID))
+	if err != nil {
+		return nil, fmt.Errorf("list the role assignments of a product: %w", err)
+	}
+	return assignments, nil
 }
 
 // Only an assignment in force is revoked, so of two revocations at once one

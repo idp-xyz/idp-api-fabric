@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -226,6 +227,71 @@ func (s productStore) Find(_ context.Context, id domain.ProductID) (domain.Produ
 	return product, found, nil
 }
 
+// paged is the part of a list a page asks for: of items, in the order of the
+// list, those behind the position the page starts after, as many as the page
+// takes. Like the stores, it takes no page of less than one item.
+func paged[T any](items []T, position func(T) ports.Position, page ports.Page) ([]T, error) {
+	if page.Limit < 1 {
+		return nil, fmt.Errorf("a page of %d items was asked for", page.Limit)
+	}
+	order := func(a, b ports.Position) int {
+		if instants := a.At.Compare(b.At); instants != 0 {
+			return instants
+		}
+		return strings.Compare(a.ID, b.ID)
+	}
+	slices.SortFunc(items, func(a, b T) int { return order(position(a), position(b)) })
+	taken := []T{}
+	for _, item := range items {
+		if page.After != nil && order(position(item), *page.After) <= 0 {
+			continue
+		}
+		if len(taken) == page.Limit {
+			break
+		}
+		taken = append(taken, item)
+	}
+	return taken, nil
+}
+
+// holds reports whether the principal holds something in force in the
+// product: a role, or a membership of one of its workspaces.
+func (w *world) holds(principal domain.Principal, productID domain.ProductID) bool {
+	for _, assignment := range w.roles {
+		if assignment.InForce() && assignment.ProductID == productID && assignment.Principal == principal {
+			return true
+		}
+	}
+	for _, membership := range w.memberships {
+		if membership.InForce() && membership.ProductID == productID && membership.Principal == principal {
+			return true
+		}
+	}
+	return false
+}
+
+// List returns a page of every product.
+func (s productStore) List(_ context.Context, page ports.Page) ([]domain.Product, error) {
+	if err := s.fail("list"); err != nil {
+		return nil, err
+	}
+	return paged(slices.Collect(maps.Values(s.products)), ports.PositionOfProduct, page)
+}
+
+// ListFor returns a page of the products the principal holds something in.
+func (s productStore) ListFor(_ context.Context, principal domain.Principal, page ports.Page) ([]domain.Product, error) {
+	if err := s.fail("list"); err != nil {
+		return nil, err
+	}
+	var held []domain.Product
+	for _, product := range s.products {
+		if s.holds(principal, product.ID) {
+			held = append(held, product)
+		}
+	}
+	return paged(held, ports.PositionOfProduct, page)
+}
+
 type workspaceStore struct{ *world }
 
 func (s workspaceStore) Add(ctx context.Context, workspace domain.Workspace) error {
@@ -247,6 +313,38 @@ func (s workspaceStore) Find(_ context.Context, productID domain.ProductID, id d
 		return domain.Workspace{}, false, nil
 	}
 	return workspace, true, nil
+}
+
+// List returns a page of the workspaces of the product.
+func (s workspaceStore) List(_ context.Context, productID domain.ProductID, page ports.Page) ([]domain.Workspace, error) {
+	if err := s.fail("list"); err != nil {
+		return nil, err
+	}
+	var of []domain.Workspace
+	for _, workspace := range s.workspaces {
+		if workspace.ProductID == productID {
+			of = append(of, workspace)
+		}
+	}
+	return paged(of, ports.PositionOfWorkspace, page)
+}
+
+// ListFor returns a page of the workspaces of the product in which the
+// principal holds a membership in force.
+func (s workspaceStore) ListFor(_ context.Context, productID domain.ProductID, principal domain.Principal, page ports.Page) ([]domain.Workspace, error) {
+	if err := s.fail("list"); err != nil {
+		return nil, err
+	}
+	var of []domain.Workspace
+	for _, workspace := range s.workspaces {
+		member := slices.ContainsFunc(slices.Collect(maps.Values(s.memberships)), func(membership domain.Membership) bool {
+			return membership.InForce() && membership.WorkspaceID == workspace.ID && membership.Principal == principal
+		})
+		if workspace.ProductID == productID && member {
+			of = append(of, workspace)
+		}
+	}
+	return paged(of, ports.PositionOfWorkspace, page)
 }
 
 type roleStore struct{ *world }
@@ -302,6 +400,20 @@ func (s roleStore) RolesOf(_ context.Context, productID domain.ProductID, princi
 		}
 	}
 	return roles, nil
+}
+
+// List returns a page of the role assignments in force of the product.
+func (s roleStore) List(_ context.Context, productID domain.ProductID, page ports.Page) ([]domain.RoleAssignment, error) {
+	if err := s.fail("list"); err != nil {
+		return nil, err
+	}
+	var of []domain.RoleAssignment
+	for _, assignment := range s.roles {
+		if assignment.InForce() && assignment.ProductID == productID {
+			of = append(of, assignment)
+		}
+	}
+	return paged(of, ports.PositionOfRoleAssignment, page)
 }
 
 // LockOwners counts the owners in force of the product. Nothing runs beside
@@ -382,6 +494,21 @@ func (s membershipStore) HeldBy(_ context.Context, productID domain.ProductID, p
 		}
 	}
 	return held, nil
+}
+
+// List returns a page of the memberships in force of the workspace of the
+// product.
+func (s membershipStore) List(_ context.Context, productID domain.ProductID, workspaceID domain.WorkspaceID, page ports.Page) ([]domain.Membership, error) {
+	if err := s.fail("list"); err != nil {
+		return nil, err
+	}
+	var of []domain.Membership
+	for _, membership := range s.memberships {
+		if membership.InForce() && membership.ProductID == productID && membership.WorkspaceID == workspaceID {
+			of = append(of, membership)
+		}
+	}
+	return paged(of, ports.PositionOfMembership, page)
 }
 
 // refusals are the audit entries of refused attempts.
