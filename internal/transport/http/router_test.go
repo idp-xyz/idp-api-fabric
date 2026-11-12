@@ -76,6 +76,11 @@ func TestWhatTheContractDoesNotRouteIsAProblem(t *testing.T) {
 		// between.
 		{"a membership that cannot be changed", call{Method: http.MethodPatch, Target: memberships + "/" + membershipID, Token: "alice"},
 			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "GET, HEAD, DELETE"},
+		{"the owners of a product that cannot be listed yet", call{Method: http.MethodGet, Target: roleAssignments, Token: "alice"},
+			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "POST"},
+		// A role assignment is granted and revoked, as a membership is.
+		{"a role assignment that cannot be changed", call{Method: http.MethodPut, Target: roleAssignments + "/" + roleAssignmentID, Token: "alice"},
+			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "GET, HEAD, DELETE"},
 		// The mux would redirect these to the path it cleans them to. The
 		// contract routes neither, so neither is served nor redirected.
 		{"a path with a dot segment", call{Method: http.MethodGet, Target: "/v1/products/../healthz"},
@@ -106,6 +111,9 @@ const registration = `{"product_key":"cargopai","display_name":"CargoPai",` +
 // grant is the body of a grant of a membership: bob maintains the workspace.
 const grant = `{"member":{"issuer":"https://issuer.example","subject":"bob"},"role":"workspace_maintainer"}`
 
+// roleGrant is the body of a grant of a role in a product: bob owns it.
+const roleGrant = `{"principal":{"issuer":"https://issuer.example","subject":"bob"},"role":"product_owner"}`
+
 // protected are the operations that need a verified caller: every operation
 // but the two declared anonymous.
 var protected = []call{
@@ -116,6 +124,9 @@ var protected = []call{
 	{Method: http.MethodPost, Target: memberships, Body: grant},
 	{Method: http.MethodGet, Target: memberships + "/" + membershipID},
 	{Method: http.MethodDelete, Target: memberships + "/" + membershipID},
+	{Method: http.MethodPost, Target: roleAssignments, Body: roleGrant},
+	{Method: http.MethodGet, Target: roleAssignments + "/" + roleAssignmentID},
+	{Method: http.MethodDelete, Target: roleAssignments + "/" + roleAssignmentID},
 }
 
 func TestAProtectedOperationNeedsAVerifiedCaller(t *testing.T) {
@@ -193,6 +204,8 @@ func TestWhoSendsARequestIsAskedBeforeWhatItSays(t *testing.T) {
 		{Method: http.MethodPost, Target: "/v1/products/not-an-identifier/workspaces", Body: `{}`},
 		{Method: http.MethodPost, Target: memberships, Body: `{"role":"superuser"}`},
 		{Method: http.MethodDelete, Target: memberships + "/not-an-identifier"},
+		{Method: http.MethodPost, Target: roleAssignments, Body: `{"role":"superuser"}`},
+		{Method: http.MethodDelete, Target: roleAssignments + "/not-an-identifier"},
 	}
 	for _, c := range invalid {
 		wantProblem(t, s.do(t, c), http.StatusUnauthorized, CodeCredentialsMissing, "")
@@ -337,6 +350,36 @@ func TestARequestThatDoesNotMatchTheContractIsRefused(t *testing.T) {
 		{"a membership identifier that is none", call{Method: http.MethodGet, Target: memberships + "/canary"},
 			http.StatusBadRequest, CodeRequestInvalid, "The path parameter membership_id does not match the contract."},
 		{"a body where a revocation takes none", call{Method: http.MethodDelete, Target: memberships + "/" + membershipID, Body: `{"canary":true}`},
+			http.StatusBadRequest, CodeRequestInvalid, "The request does not match the contract."},
+		{"a role without a principal", call{Method: http.MethodPost, Target: roleAssignments, Body: `{"role":"product_owner"}`},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /principal (required)."},
+		{"a principal without a role", call{Method: http.MethodPost, Target: roleAssignments, Body: strings.Replace(roleGrant, `,"role":"product_owner"`, ``, 1)},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /role (required)."},
+		{"a role of a product nobody defined", call{Method: http.MethodPost, Target: roleAssignments, Body: strings.Replace(roleGrant, `"product_owner"`, `"canary"`, 1)},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /role (enum)."},
+		{"a role of a workspace in a product", call{Method: http.MethodPost, Target: roleAssignments, Body: strings.Replace(roleGrant, `"product_owner"`, `"workspace_maintainer"`, 1)},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /role (enum)."},
+		{"a principal without an issuer", call{Method: http.MethodPost, Target: roleAssignments, Body: strings.Replace(roleGrant, `"issuer":"https://issuer.example",`, ``, 1)},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /principal/issuer (required)."},
+		// The body of a grant of a membership names a member, not a
+		// principal: it is not the body of a grant of a role in a product.
+		{"a member where a principal is named", call{Method: http.MethodPost, Target: roleAssignments, Body: strings.Replace(grant, `"workspace_maintainer"`, `"product_owner"`, 1)},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		// A role assignment is in force until it is revoked, is granted by
+		// the caller and is of the product of the path. The request says
+		// none of the three.
+		{"a role that says when it ends", call{Method: http.MethodPost, Target: roleAssignments, Body: strings.Replace(roleGrant, `"role"`, `"expires_at":"2027-01-01T00:00:00Z","role"`, 1)},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		{"a role that says who grants it", call{Method: http.MethodPost, Target: roleAssignments,
+			Body: strings.Replace(roleGrant, `"role"`, `"granted_by":{"issuer":"https://issuer.example","subject":"canary"},"role"`, 1)},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		{"a role that names its product", call{Method: http.MethodPost, Target: roleAssignments, Body: strings.Replace(roleGrant, `"role"`, `"product_id":"`+productID+`","role"`, 1)},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		{"a role assignment identifier that is none", call{Method: http.MethodGet, Target: roleAssignments + "/canary"},
+			http.StatusBadRequest, CodeRequestInvalid, "The path parameter role_assignment_id does not match the contract."},
+		{"a role assignment identifier in upper case", call{Method: http.MethodDelete, Target: roleAssignments + "/" + strings.ToUpper(roleAssignmentID)},
+			http.StatusBadRequest, CodeRequestInvalid, "The path parameter role_assignment_id does not match the contract."},
+		{"a body where the revocation of a role takes none", call{Method: http.MethodDelete, Target: roleAssignments + "/" + roleAssignmentID, Body: `{"canary":true}`},
 			http.StatusBadRequest, CodeRequestInvalid, "The request does not match the contract."},
 	}
 	for _, c := range cases {

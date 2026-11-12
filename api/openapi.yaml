@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.3.1
+  version: 0.4.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -115,10 +115,11 @@ paths:
       summary: Read a product
       description: >-
         Returns the product to a platform administrator and to whoever holds
-        something in it: a role in the product, or a membership in force in
+        something in force in it: a role in the product, or a membership in
         one of its workspaces. To anyone else the product does not exist: the
         answer is 404 PRODUCT_NOT_FOUND, the same as for a product that is
-        missing.
+        missing. That includes whoever held something in it that was revoked
+        since.
       parameters:
         - $ref: '#/components/parameters/ProductId'
       responses:
@@ -140,6 +141,157 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/role-assignments:
+    post:
+      operationId: grantProductRole
+      summary: Make a principal hold a role in a product
+      description: >-
+        Makes the principal hold the role in the product, from now until the
+        assignment is revoked. A product has one role, product_owner. An
+        owner of the product may, and so may a platform administrator: naming
+        the owners of a product is part of registering it, and it is how a
+        product whose owner was mistyped is repaired. It gives the
+        administrator no view of what is inside the product. Whoever else may
+        know the product exists, as a member of one of its workspaces does,
+        is refused (403 FORBIDDEN); to anyone else there is no such product
+        (404 PRODUCT_NOT_FOUND), the same as for a product that is missing. A
+        role the principal holds in the product already is refused (409
+        ROLE_ASSIGNMENT_EXISTS), and so are a product that is suspended (409
+        PRODUCT_NOT_ACTIVE) and a principal under an issuer this deployment
+        does not trust (422 OWNER_ISSUER_NOT_TRUSTED).
+
+
+        The assignment, the audit record and the event are committed together
+        or not at all. A 503 OUTCOME_UNCERTAIN means it is not known which:
+        read before retrying.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductRoleGrant'
+      responses:
+        '201':
+          description: The principal holds the role in the product
+          headers:
+            Location:
+              description: Where the role assignment is read and revoked
+              required: true
+              schema:
+                type: string
+                format: uri-reference
+            Cache-Control:
+              description: A role assignment is private to the owners of its product
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductRoleAssignment'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/role-assignments/{role_assignment_id}:
+    get:
+      operationId: getProductRole
+      summary: Read a role assignment of a product
+      description: >-
+        Returns a role assignment in force to an owner of the product. Nobody
+        else reads one, and each is answered as far as it may know: a
+        stranger is told there is no such product (404 PRODUCT_NOT_FOUND),
+        and whoever knows the product and does not own it that there is no
+        such role assignment (404 ROLE_ASSIGNMENT_NOT_FOUND). That is a
+        member of one of its workspaces, and a platform administrator, who
+        names an owner and reads none. An assignment that was revoked grants
+        nothing and is not found either, and an assignment of another product
+        is not found under this one.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/RoleAssignmentId'
+      responses:
+        '200':
+          description: The role assignment
+          headers:
+            Cache-Control:
+              description: A role assignment is private to the owners of its product
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductRoleAssignment'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: revokeProductRole
+      summary: Revoke a role assignment of a product
+      description: >-
+        Ends the assignment: from the moment the revocation is committed it
+        grants nothing, and whoever is left with nothing in the product is a
+        stranger to it. Only an owner of the product may, and an owner may
+        revoke its own assignment. A platform administrator names owners and
+        removes none. Whoever may know the product exists and does not own
+        it, the administrator included, is refused (403 FORBIDDEN); to anyone
+        else there is no such product (404 PRODUCT_NOT_FOUND). A product
+        always has an owner: the last assignment in force that makes somebody
+        one is not revoked (409 LAST_OWNER), and of two owners who revoke
+        each other at the same time one stays. An assignment that is not in
+        force is not found (404 ROLE_ASSIGNMENT_NOT_FOUND), whoever ended it,
+        so a revocation that is sent again is answered so. The assignment is
+        kept as a record, with who revoked it and when, and the role can be
+        granted again as a new assignment.
+
+
+        The revocation, the audit record and the event are committed together
+        or not at all. A 503 OUTCOME_UNCERTAIN means it is not known which:
+        read before retrying.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/RoleAssignmentId'
+      responses:
+        '204':
+          description: The role assignment was revoked
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
           $ref: '#/components/responses/Problem'
         '503':
           $ref: '#/components/responses/Problem'
@@ -420,6 +572,13 @@ components:
       description: The identifier of the membership
       schema:
         $ref: '#/components/schemas/Identifier'
+    RoleAssignmentId:
+      name: role_assignment_id
+      in: path
+      required: true
+      description: The identifier of the role assignment
+      schema:
+        $ref: '#/components/schemas/Identifier'
   responses:
     Problem:
       description: RFC 9457 problem with a stable error code
@@ -530,9 +689,10 @@ components:
           $ref: '#/components/schemas/OrganizationRef'
         owners:
           description: >-
-            The principals that own the product from the start. An owner
-            manages the workspaces of the product. Each is named under an
-            issuer this deployment trusts.
+            The principals that own the product from the start, each under a
+            role assignment of its own. An owner manages the workspaces of
+            the product, their members and who else owns it. Each is named
+            under an issuer this deployment trusts.
           type: array
           minItems: 1
           maxItems: 10
@@ -556,6 +716,41 @@ components:
         owner_organization:
           $ref: '#/components/schemas/OrganizationRef'
         created_at:
+          type: string
+          format: date-time
+    ProductRole:
+      description: >-
+        What a principal is in a product. A product_owner manages the
+        workspaces of the product, their members and who else owns it. The
+        role says nothing about another product and nothing about the
+        platform.
+      type: string
+      enum: [product_owner]
+    ProductRoleGrant:
+      type: object
+      additionalProperties: false
+      required: [principal, role]
+      properties:
+        principal:
+          $ref: '#/components/schemas/Principal'
+        role:
+          $ref: '#/components/schemas/ProductRole'
+    ProductRoleAssignment:
+      description: >-
+        A principal that holds a role in one product. It is in force from
+        granted_at until it is revoked; a revoked assignment is not shown.
+      type: object
+      required: [role_assignment_id, product_id, principal, role, granted_at]
+      properties:
+        role_assignment_id:
+          $ref: '#/components/schemas/Identifier'
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        principal:
+          $ref: '#/components/schemas/Principal'
+        role:
+          $ref: '#/components/schemas/ProductRole'
+        granted_at:
           type: string
           format: date-time
     WorkspaceCreation:

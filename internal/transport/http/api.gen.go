@@ -49,6 +49,21 @@ func (e ProductStatus) Valid() bool {
 	}
 }
 
+// Defines values for ProductRole.
+const (
+	ProductRoleProductOwner ProductRole = "product_owner"
+)
+
+// Valid indicates whether the value is a known member of the ProductRole enum.
+func (e ProductRole) Valid() bool {
+	switch e {
+	case ProductRoleProductOwner:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceStatus.
 const (
 	WorkspaceStatusACTIVE WorkspaceStatus = "ACTIVE"
@@ -197,11 +212,40 @@ type ProductRegistration struct {
 	// OwnerOrganization A reference to the organization a product belongs to, in the identity or organization system that knows it. It is recorded as it is given; no permission is derived from it.
 	OwnerOrganization OrganizationRef `json:"owner_organization"`
 
-	// Owners The principals that own the product from the start. An owner manages the workspaces of the product. Each is named under an issuer this deployment trusts.
+	// Owners The principals that own the product from the start, each under a role assignment of its own. An owner manages the workspaces of the product, their members and who else owns it. Each is named under an issuer this deployment trusts.
 	Owners []Principal `json:"owners"`
 
 	// ProductKey Unique among all products
 	ProductKey Key `json:"product_key"`
+}
+
+// ProductRole What a principal is in a product. A product_owner manages the workspaces of the product, their members and who else owns it. The role says nothing about another product and nothing about the platform.
+type ProductRole string
+
+// ProductRoleAssignment A principal that holds a role in one product. It is in force from granted_at until it is revoked; a revoked assignment is not shown.
+type ProductRoleAssignment struct {
+	GrantedAt time.Time `json:"granted_at"`
+
+	// Principal A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
+	Principal Principal `json:"principal"`
+
+	// ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ProductID Identifier `json:"product_id"`
+
+	// Role What a principal is in a product. A product_owner manages the workspaces of the product, their members and who else owns it. The role says nothing about another product and nothing about the platform.
+	Role ProductRole `json:"role"`
+
+	// RoleAssignmentID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	RoleAssignmentID Identifier `json:"role_assignment_id"`
+}
+
+// ProductRoleGrant defines model for ProductRoleGrant.
+type ProductRoleGrant struct {
+	// Principal A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
+	Principal Principal `json:"principal"`
+
+	// Role What a principal is in a product. A product_owner manages the workspaces of the product, their members and who else owns it. The role says nothing about another product and nothing about the platform.
+	Role ProductRole `json:"role"`
 }
 
 // Reference A reference into another system, compared for equality and never interpreted: 1 to 255 characters, without control characters.
@@ -246,6 +290,9 @@ type MembershipID = Identifier
 // ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 type ProductID = Identifier
 
+// RoleAssignmentID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+type RoleAssignmentID = Identifier
+
 // WorkspaceID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 type WorkspaceID = Identifier
 
@@ -254,6 +301,9 @@ type Unauthenticated = Problem
 
 // RegisterProductJSONRequestBody defines body for RegisterProduct for application/json ContentType.
 type RegisterProductJSONRequestBody = ProductRegistration
+
+// GrantProductRoleJSONRequestBody defines body for GrantProductRole for application/json ContentType.
+type GrantProductRoleJSONRequestBody = ProductRoleGrant
 
 // CreateWorkspaceJSONRequestBody defines body for CreateWorkspace for application/json ContentType.
 type CreateWorkspaceJSONRequestBody = WorkspaceCreation
@@ -272,6 +322,15 @@ type ServerInterface interface {
 	// GetProduct Read a product
 	// (GET /v1/products/{product_id})
 	GetProduct(w http.ResponseWriter, r *http.Request, productID ProductID)
+	// GrantProductRole Make a principal hold a role in a product
+	// (POST /v1/products/{product_id}/role-assignments)
+	GrantProductRole(w http.ResponseWriter, r *http.Request, productID ProductID)
+	// RevokeProductRole Revoke a role assignment of a product
+	// (DELETE /v1/products/{product_id}/role-assignments/{role_assignment_id})
+	RevokeProductRole(w http.ResponseWriter, r *http.Request, productID ProductID, roleAssignmentID RoleAssignmentID)
+	// GetProductRole Read a role assignment of a product
+	// (GET /v1/products/{product_id}/role-assignments/{role_assignment_id})
+	GetProductRole(w http.ResponseWriter, r *http.Request, productID ProductID, roleAssignmentID RoleAssignmentID)
 	// CreateWorkspace Create a workspace of a product
 	// (POST /v1/products/{product_id}/workspaces)
 	CreateWorkspace(w http.ResponseWriter, r *http.Request, productID ProductID)
@@ -346,6 +405,102 @@ func (siw *ServerInterfaceWrapper) GetProduct(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetProduct(w, r, productID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GrantProductRole operation middleware
+func (siw *ServerInterfaceWrapper) GrantProductRole(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GrantProductRole(w, r, productID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeProductRole operation middleware
+func (siw *ServerInterfaceWrapper) RevokeProductRole(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "role_assignment_id" -------------
+	var roleAssignmentID RoleAssignmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "role_assignment_id", r.PathValue("role_assignment_id"), &roleAssignmentID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "role_assignment_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeProductRole(w, r, productID, roleAssignmentID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProductRole operation middleware
+func (siw *ServerInterfaceWrapper) GetProductRole(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "role_assignment_id" -------------
+	var roleAssignmentID RoleAssignmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "role_assignment_id", r.PathValue("role_assignment_id"), &roleAssignmentID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "role_assignment_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProductRole(w, r, productID, roleAssignmentID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -677,6 +832,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/version", wrapper.GetVersion)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products", wrapper.RegisterProduct)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}", wrapper.GetProduct)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/role-assignments", wrapper.GrantProductRole)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/products/{product_id}/role-assignments/{role_assignment_id}", wrapper.RevokeProductRole)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/role-assignments/{role_assignment_id}", wrapper.GetProductRole)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/workspaces", wrapper.CreateWorkspace)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/workspaces/{workspace_id}", wrapper.GetWorkspace)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/workspaces/{workspace_id}/memberships", wrapper.GrantMembership)
@@ -970,6 +1128,391 @@ type GetProductdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetProductdefaultApplicationProblemPlusJSONResponse) VisitGetProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantProductRoleRequestObject struct {
+	ProductID ProductID `json:"product_id"`
+	Body      *GrantProductRoleJSONRequestBody
+}
+
+type GrantProductRoleResponseObject interface {
+	VisitGrantProductRoleResponse(w http.ResponseWriter) error
+}
+
+type GrantProductRole201ResponseHeaders struct {
+	CacheControl string
+	Location     string
+}
+
+type GrantProductRole201JSONResponse struct {
+	Body    ProductRoleAssignment
+	Headers GrantProductRole201ResponseHeaders
+}
+
+func (response GrantProductRole201JSONResponse) VisitGrantProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantProductRole400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GrantProductRole400ApplicationProblemPlusJSONResponse) VisitGrantProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantProductRole401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GrantProductRole401ApplicationProblemPlusJSONResponse) VisitGrantProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantProductRole403ApplicationProblemPlusJSONResponse Problem
+
+func (response GrantProductRole403ApplicationProblemPlusJSONResponse) VisitGrantProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantProductRole404ApplicationProblemPlusJSONResponse Problem
+
+func (response GrantProductRole404ApplicationProblemPlusJSONResponse) VisitGrantProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantProductRole409ApplicationProblemPlusJSONResponse Problem
+
+func (response GrantProductRole409ApplicationProblemPlusJSONResponse) VisitGrantProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantProductRole422ApplicationProblemPlusJSONResponse Problem
+
+func (response GrantProductRole422ApplicationProblemPlusJSONResponse) VisitGrantProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantProductRole503ApplicationProblemPlusJSONResponse Problem
+
+func (response GrantProductRole503ApplicationProblemPlusJSONResponse) VisitGrantProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantProductRoledefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GrantProductRoledefaultApplicationProblemPlusJSONResponse) VisitGrantProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeProductRoleRequestObject struct {
+	ProductID        ProductID        `json:"product_id"`
+	RoleAssignmentID RoleAssignmentID `json:"role_assignment_id"`
+}
+
+type RevokeProductRoleResponseObject interface {
+	VisitRevokeProductRoleResponse(w http.ResponseWriter) error
+}
+
+type RevokeProductRole204Response struct {
+}
+
+func (response RevokeProductRole204Response) VisitRevokeProductRoleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeProductRole400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response RevokeProductRole400ApplicationProblemPlusJSONResponse) VisitRevokeProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeProductRole401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response RevokeProductRole401ApplicationProblemPlusJSONResponse) VisitRevokeProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeProductRole403ApplicationProblemPlusJSONResponse Problem
+
+func (response RevokeProductRole403ApplicationProblemPlusJSONResponse) VisitRevokeProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeProductRole404ApplicationProblemPlusJSONResponse Problem
+
+func (response RevokeProductRole404ApplicationProblemPlusJSONResponse) VisitRevokeProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeProductRole409ApplicationProblemPlusJSONResponse Problem
+
+func (response RevokeProductRole409ApplicationProblemPlusJSONResponse) VisitRevokeProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeProductRole503ApplicationProblemPlusJSONResponse Problem
+
+func (response RevokeProductRole503ApplicationProblemPlusJSONResponse) VisitRevokeProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeProductRoledefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response RevokeProductRoledefaultApplicationProblemPlusJSONResponse) VisitRevokeProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductRoleRequestObject struct {
+	ProductID        ProductID        `json:"product_id"`
+	RoleAssignmentID RoleAssignmentID `json:"role_assignment_id"`
+}
+
+type GetProductRoleResponseObject interface {
+	VisitGetProductRoleResponse(w http.ResponseWriter) error
+}
+
+type GetProductRole200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetProductRole200JSONResponse struct {
+	Body    ProductRoleAssignment
+	Headers GetProductRole200ResponseHeaders
+}
+
+func (response GetProductRole200JSONResponse) VisitGetProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductRole400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetProductRole400ApplicationProblemPlusJSONResponse) VisitGetProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductRole401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetProductRole401ApplicationProblemPlusJSONResponse) VisitGetProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductRole404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetProductRole404ApplicationProblemPlusJSONResponse) VisitGetProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductRole503ApplicationProblemPlusJSONResponse Problem
+
+func (response GetProductRole503ApplicationProblemPlusJSONResponse) VisitGetProductRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProductRoledefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetProductRoledefaultApplicationProblemPlusJSONResponse) VisitGetProductRoleResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -1674,6 +2217,15 @@ type StrictServerInterface interface {
 	// GetProduct Read a product
 	// (GET /v1/products/{product_id})
 	GetProduct(ctx context.Context, request GetProductRequestObject) (GetProductResponseObject, error)
+	// GrantProductRole Make a principal hold a role in a product
+	// (POST /v1/products/{product_id}/role-assignments)
+	GrantProductRole(ctx context.Context, request GrantProductRoleRequestObject) (GrantProductRoleResponseObject, error)
+	// RevokeProductRole Revoke a role assignment of a product
+	// (DELETE /v1/products/{product_id}/role-assignments/{role_assignment_id})
+	RevokeProductRole(ctx context.Context, request RevokeProductRoleRequestObject) (RevokeProductRoleResponseObject, error)
+	// GetProductRole Read a role assignment of a product
+	// (GET /v1/products/{product_id}/role-assignments/{role_assignment_id})
+	GetProductRole(ctx context.Context, request GetProductRoleRequestObject) (GetProductRoleResponseObject, error)
 	// CreateWorkspace Create a workspace of a product
 	// (POST /v1/products/{product_id}/workspaces)
 	CreateWorkspace(ctx context.Context, request CreateWorkspaceRequestObject) (CreateWorkspaceResponseObject, error)
@@ -1807,6 +2359,93 @@ func (sh *strictHandler) GetProduct(w http.ResponseWriter, r *http.Request, prod
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProductResponseObject); ok {
 		if err := validResponse.VisitGetProductResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GrantProductRole operation middleware
+func (sh *strictHandler) GrantProductRole(w http.ResponseWriter, r *http.Request, productID ProductID) {
+	var request GrantProductRoleRequestObject
+
+	request.ProductID = productID
+
+	var body GrantProductRoleJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GrantProductRole(ctx, request.(GrantProductRoleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GrantProductRole")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GrantProductRoleResponseObject); ok {
+		if err := validResponse.VisitGrantProductRoleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeProductRole operation middleware
+func (sh *strictHandler) RevokeProductRole(w http.ResponseWriter, r *http.Request, productID ProductID, roleAssignmentID RoleAssignmentID) {
+	var request RevokeProductRoleRequestObject
+
+	request.ProductID = productID
+	request.RoleAssignmentID = roleAssignmentID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeProductRole(ctx, request.(RevokeProductRoleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeProductRole")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeProductRoleResponseObject); ok {
+		if err := validResponse.VisitRevokeProductRoleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProductRole operation middleware
+func (sh *strictHandler) GetProductRole(w http.ResponseWriter, r *http.Request, productID ProductID, roleAssignmentID RoleAssignmentID) {
+	var request GetProductRoleRequestObject
+
+	request.ProductID = productID
+	request.RoleAssignmentID = roleAssignmentID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProductRole(ctx, request.(GetProductRoleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProductRole")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProductRoleResponseObject); ok {
+		if err := validResponse.VisitGetProductRoleResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
