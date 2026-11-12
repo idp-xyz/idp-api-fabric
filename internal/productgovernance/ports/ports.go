@@ -16,6 +16,14 @@ var (
 	// key already.
 	ErrWorkspaceKeyTaken = errors.New("the product has a workspace with this key already")
 
+	// ErrMembershipExists reports that the principal holds the role in the
+	// workspace already.
+	ErrMembershipExists = errors.New("the principal holds this role in the workspace already")
+
+	// ErrMembershipGone reports a membership that is not in force any more:
+	// it was revoked after it was read and before it could be changed.
+	ErrMembershipGone = errors.New("the membership is not in force any more")
+
 	// ErrOutcomeUncertain reports a transaction whose commit may or may not
 	// have happened. The caller must not assume either: it reads the state
 	// again before it decides what to do (F03 §9).
@@ -49,6 +57,28 @@ type RoleAssignments interface {
 	Add(ctx context.Context, assignments []domain.RoleAssignment) error
 	// RolesOf returns the roles the principal holds in the product now.
 	RolesOf(ctx context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Role, error)
+}
+
+// Memberships stores who is a member of which workspace, in which role. With
+// the role assignments it is the state authorization is decided from
+// (F05 §4.2).
+type Memberships interface {
+	// Add stores a new membership in the transaction ctx carries. It fails
+	// with ErrMembershipExists when the principal holds the role in the
+	// workspace already.
+	Add(ctx context.Context, membership domain.Membership) error
+	// Find returns the membership with the identifier if it is in force and
+	// belongs to the workspace of the product. A membership of another
+	// workspace or of another product is not found, and neither is one that
+	// was revoked: it grants nothing, and nothing can be done to it.
+	Find(ctx context.Context, productID domain.ProductID, workspaceID domain.WorkspaceID, id domain.MembershipID) (membership domain.Membership, found bool, err error)
+	// Revoke stores, in the transaction ctx carries, that the membership was
+	// revoked, when and by whom, as revoked says. It fails with
+	// ErrMembershipGone when the membership is not in force any more.
+	Revoke(ctx context.Context, revoked domain.Membership) error
+	// HeldBy returns the memberships the principal holds in the workspaces
+	// of the product now. One that was revoked is not among them.
+	HeldBy(ctx context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Membership, error)
 }
 
 // PlatformAdministrators knows who may register a product (AC-08). Who that
@@ -98,6 +128,9 @@ type AuditTrail interface {
 type Events interface {
 	ProductRegistered(ctx context.Context, product domain.Product, correlationID string) error
 	WorkspaceCreated(ctx context.Context, workspace domain.Workspace, correlationID string) error
+	// MembershipChanged announces a membership that was granted or revoked,
+	// as it is after the change.
+	MembershipChanged(ctx context.Context, membership domain.Membership, correlationID string) error
 }
 
 // Transactor owns the transaction boundary of a use case. It fails with

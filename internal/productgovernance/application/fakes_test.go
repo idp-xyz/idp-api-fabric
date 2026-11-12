@@ -144,6 +144,21 @@ func (w *world) WorkspaceCreated(ctx context.Context, workspace domain.Workspace
 	return nil
 }
 
+func (w *world) MembershipChanged(ctx context.Context, membership domain.Membership, correlationID string) error {
+	if err := w.fail("events"); err != nil {
+		return err
+	}
+	if !transacted(ctx) {
+		return fmt.Errorf("an event was announced outside a transaction")
+	}
+	change := "granted"
+	if !membership.InForce() {
+		change = "revoked"
+	}
+	w.events = append(w.events, "MembershipChanged "+string(membership.ID)+" "+change+" "+correlationID)
+	return nil
+}
+
 type productStore struct{ *world }
 
 func (s productStore) Add(ctx context.Context, product domain.Product) error {

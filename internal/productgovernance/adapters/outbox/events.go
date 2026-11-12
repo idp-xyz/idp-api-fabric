@@ -3,9 +3,10 @@
 // transaction of the write it reports and delivered later, at least once
 // (INV-13, F03 §12.1).
 //
-// The events are the candidates of F03 §12.2 in the envelope of the
-// framework. F04 has not frozen their contract: the types and the payloads
-// here are a first version, and each payload says which.
+// The events are the candidates of F03 §12.2, and MembershipChanged of
+// F03 §3.1, in the envelope of the framework. F04 has not frozen their
+// contract: the types and the payloads here are a first version, and each
+// payload says which.
 package outbox
 
 import (
@@ -28,6 +29,10 @@ const (
 
 	TypeProductRegistered eventing.EventType = "fabric.productgovernance.product.registered"
 	TypeWorkspaceCreated  eventing.EventType = "fabric.productgovernance.workspace.created"
+	// TypeMembershipChanged is MembershipChanged, the one event the context
+	// publishes about its members (F03 §3.1). Its payload says whether the
+	// membership is in force after the change.
+	TypeMembershipChanged eventing.EventType = "fabric.productgovernance.membership.changed"
 
 	// schemaVersion is the version of the payloads below. A change a
 	// consumer cannot ignore gets the next one.
@@ -103,12 +108,49 @@ func (e *Events) WorkspaceCreated(ctx context.Context, workspace domain.Workspac
 		})
 }
 
+// MembershipChanged announces a membership that was granted or revoked, as
+// it is after the change.
+//
+// The membership is what the event is about and what its version counts: 1
+// for the grant, 2 for the revocation, so a consumer that gets them out of
+// order can tell. It happened when the membership was granted or, once it is
+// revoked, when it was revoked.
+//
+// The payload names the workspace and the role and not the member. Who a
+// member is identifies a person; a consumer that needs it asks for the
+// membership, and is authorized like anyone else.
+func (e *Events) MembershipChanged(ctx context.Context, membership domain.Membership, correlationID string) error {
+	occurredAt := membership.GrantedAt
+	if !membership.InForce() {
+		occurredAt = membership.RevokedAt
+	}
+	id := e.ids.NewID()
+	return e.enqueue(ctx, id, TypeMembershipChanged, membership.ProductID, "membership/"+string(membership.ID), occurredAt, correlationID,
+		struct {
+			header
+			MembershipID string `json:"membership_id"`
+			WorkspaceID  string `json:"workspace_id"`
+			Role         string `json:"role"`
+			InForce      bool   `json:"in_force"`
+		}{
+			header: header{
+				EventID: id, SchemaVersion: schemaVersion, OccurredAt: occurredAt, CorrelationID: correlationID,
+				ProductID: string(membership.ProductID), AggregateID: string(membership.ID), AggregateVersion: membership.Version,
+			},
+			MembershipID: string(membership.ID),
+			WorkspaceID:  string(membership.WorkspaceID),
+			Role:         string(membership.Role),
+			InForce:      membership.InForce(),
+		})
+}
+
 // enqueue stores one event in the transaction ctx carries.
 //
 // An event is scoped to its product, and the product is also its partition:
 // the events of one product are delivered in the order they were stored, so
-// a consumer hears of a product before it hears of its workspaces. Nothing is
-// promised about the order across products.
+// a consumer hears of a product before it hears of its workspaces, and of a
+// workspace before it hears of its members. Nothing is promised about the
+// order across products.
 func (e *Events) enqueue(ctx context.Context, id string, eventType eventing.EventType, productID domain.ProductID,
 	subject string, occurredAt time.Time, correlationID string, payload any) error {
 	encoded, err := json.Marshal(payload)
