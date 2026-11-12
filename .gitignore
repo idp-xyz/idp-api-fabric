@@ -13,6 +13,10 @@ __pycache__/
 .env.*
 !.env.example
 
+# Private keys. fabric-devidp keeps its signing key outside the repository;
+# this is for the day someone points it inside.
+*.pem
+
 # Local multi-repository workspace only: the build resolves idp-bento-go
 # through its module path, never through a local checkout.
 go.work

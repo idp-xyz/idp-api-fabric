@@ -12,6 +12,7 @@ import (
 
 	bentopostgres "go.idp.xyz/idp-bento-go/postgres"
 
+	"go.idp.xyz/idp-api-fabric/internal/platform/db"
 	"go.idp.xyz/idp-api-fabric/internal/platform/db/migrate"
 	"go.idp.xyz/idp-api-fabric/internal/platform/db/pgtest"
 )
@@ -106,6 +107,49 @@ func TestRunAppliesNothingTwice(t *testing.T) {
 	if got, want := history(t, conn), planRows(t); !slices.Equal(got, want) {
 		t.Errorf("after a second run the history records\n %+v\nwant\n %+v", got, want)
 	}
+}
+
+// A database an older build migrated gets the steps that build did not carry,
+// and a process of this build runs on it once its role is granted what the
+// new tables need. Until then it refuses to start and says what is missing.
+func TestRunBringsADatabaseOfAnOlderBuildUpToDate(t *testing.T) {
+	database := pgtest.FreshDatabase(t)
+	conn := pgtest.Connect(t, database.Migrator)
+
+	plan, err := migrate.Plan()
+	if err != nil {
+		t.Fatalf("build the plan: %v", err)
+	}
+	// The plan of the build before Fabric had tables of its own.
+	older := plan[:len(bentopostgres.Migrations())]
+	if len(older) == len(plan) {
+		t.Fatal("the plan carries no Fabric migration; this test would pass vacuously")
+	}
+	if err := migrate.Apply(t.Context(), conn, quiet, older); err != nil {
+		t.Fatalf("migrate as the older build: %v", err)
+	}
+
+	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
+		t.Fatalf("migrate as this build: %v", err)
+	}
+	if got, want := history(t, conn), planRows(t); !slices.Equal(got, want) {
+		t.Errorf("the history records\n %+v\nwant every step of the plan, in order\n %+v", got, want)
+	}
+
+	if opened, err := db.Open(t.Context(), database.Application); !errors.Is(err, db.ErrNotGranted) {
+		if err == nil {
+			opened.Close()
+		}
+		t.Fatalf("before the grants: got %v, want %v", err, db.ErrNotGranted)
+	}
+	if err := migrate.Grant(t.Context(), conn, database.ApplicationRole); err != nil {
+		t.Fatalf("grant: %v", err)
+	}
+	opened, err := db.Open(t.Context(), database.Application)
+	if err != nil {
+		t.Fatalf("after the grants: %v", err)
+	}
+	opened.Close()
 }
 
 func TestRunRefusesAnAppliedArtifactThatChanged(t *testing.T) {

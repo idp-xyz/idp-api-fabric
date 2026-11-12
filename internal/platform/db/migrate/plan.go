@@ -8,13 +8,16 @@ package migrate
 
 import (
 	"fmt"
+	"slices"
 
 	bentopostgres "go.idp.xyz/idp-bento-go/postgres"
+
+	"go.idp.xyz/idp-api-fabric/migrations"
 )
 
-// The schemas the migration job creates before it applies the plan. The
-// framework's technical tables stay in a schema of their own, so a Fabric
-// migration never touches them.
+// The schemas this package owns. The framework's technical tables stay in a
+// schema of their own, so a Fabric migration never touches them. The tables of
+// a bounded context live in a schema named after the context.
 const (
 	SchemaBento   = "bento"
 	SchemaHistory = "fabric_migration"
@@ -51,9 +54,21 @@ type Step struct {
 }
 
 // Plan returns the ordered migrations Fabric applies. The framework's technical
-// tables come first; Fabric has no tables of its own yet, and its migrations
-// follow the framework steps once the first persistent slice lands.
+// tables come first. The tables Fabric owns follow, context by context, from
+// the SQL under migrations/ that this build carries.
 func Plan() ([]Step, error) {
+	steps, err := frameworkSteps()
+	if err != nil {
+		return nil, err
+	}
+	fabric, err := fabricSteps(migrations.Files())
+	if err != nil {
+		return nil, err
+	}
+	return append(steps, fabric...), nil
+}
+
+func frameworkSteps() ([]Step, error) {
 	assets := bentopostgres.Migrations()
 	steps := make([]Step, 0, len(assets))
 
@@ -76,9 +91,16 @@ func Plan() ([]Step, error) {
 	return steps, nil
 }
 
-// Schemas returns the schemas the migration job creates before it applies the
-// plan. The framework never creates its own, and the role an application
+// schemasOf returns the schemas a run creates before it applies plan: the one
+// of the history and the one of every step. Neither the framework nor a
+// Fabric migration creates its own schema, and the role an application
 // process connects with never holds the privilege to.
-func Schemas() []string {
-	return []string{SchemaHistory, SchemaBento}
+func schemasOf(plan []Step) []string {
+	schemas := []string{SchemaHistory}
+	for _, step := range plan {
+		if !slices.Contains(schemas, step.Schema) {
+			schemas = append(schemas, step.Schema)
+		}
+	}
+	return schemas
 }

@@ -114,6 +114,18 @@ func (d *Database) Close() {
 	d.Pool.Close()
 }
 
+// WithinTransaction runs fn in a transaction and commits when fn returns nil.
+// If ctx already carries a transaction, fn joins it and nothing is committed
+// here: a failure of fn then fails the whole transaction. Statements reach
+// the transaction through the context fn receives.
+//
+// It has the shape the ports of the bounded contexts declare, so that every
+// context is wired with the same transaction owner without importing the
+// framework.
+func (d *Database) WithinTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
+	return d.Framework.Transactor().WithinTransaction(ctx, fn)
+}
+
 // PoolConfig parses dsn into the configuration every Fabric pool is opened
 // with, so that a test reads the database the way a process does.
 func PoolConfig(dsn string) (*pgxpool.Config, error) {

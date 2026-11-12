@@ -81,7 +81,7 @@ func apply(ctx context.Context, conn *pgx.Conn, logger *slog.Logger, plan []Step
 	}
 	defer releaseRunLock(ctx, conn)
 
-	if err := prepare(ctx, conn); err != nil {
+	if err := prepare(ctx, conn, plan); err != nil {
 		return err
 	}
 	recorded, err := readHistory(ctx, conn)
@@ -117,10 +117,12 @@ func releaseRunLock(ctx context.Context, conn *pgx.Conn) {
 	_, _ = conn.Exec(ctx, `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, runLockKey)
 }
 
-func prepare(ctx context.Context, conn *pgx.Conn) error {
-	for _, schema := range Schemas() {
-		// Schema names are constants of this package, never input.
-		if _, err := conn.Exec(ctx, `CREATE SCHEMA IF NOT EXISTS `+schema); err != nil {
+func prepare(ctx context.Context, conn *pgx.Conn, plan []Step) error {
+	for _, schema := range schemasOf(plan) {
+		// A schema name is a constant of this package or the name of a
+		// directory this build carries, never input. It is quoted all the
+		// same.
+		if _, err := conn.Exec(ctx, `CREATE SCHEMA IF NOT EXISTS `+pgx.Identifier{schema}.Sanitize()); err != nil {
 			return fmt.Errorf("migrate: create schema %s: %w", schema, err)
 		}
 	}

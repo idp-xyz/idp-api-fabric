@@ -24,6 +24,10 @@ type TablePrivileges struct {
 //
 // The framework rows follow the statements idp-bento-go runs on its technical
 // tables. It deletes rows from outbox_partition only.
+//
+// Every table of a bounded context is listed here, with exactly the
+// statements Fabric runs on it today. A privilege is added with the first
+// statement that needs it, not before.
 func ApplicationPrivileges() []TablePrivileges {
 	return []TablePrivileges{
 		{SchemaBento, "outbox", []string{"SELECT", "INSERT", "UPDATE"}},
@@ -32,6 +36,14 @@ func ApplicationPrivileges() []TablePrivileges {
 		// A process reads the history when it starts, to refuse a database
 		// that was not migrated for its build.
 		{SchemaHistory, "applied_migration", []string{"SELECT"}},
+		// The audit trail is append-only for a process: it cannot read back,
+		// change or remove what it recorded (FR-062).
+		{"platformoperations", "audit_record", []string{"INSERT"}},
+		// Products, workspaces and role assignments are registered and read.
+		// No use case changes or removes one yet.
+		{"productgovernance", "product", []string{"SELECT", "INSERT"}},
+		{"productgovernance", "product_role_assignment", []string{"SELECT", "INSERT"}},
+		{"productgovernance", "workspace", []string{"SELECT", "INSERT"}},
 	}
 }
 
