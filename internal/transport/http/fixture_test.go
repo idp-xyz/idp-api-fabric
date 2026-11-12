@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -279,6 +280,22 @@ func (s *service) do(t *testing.T, c call) *httptest.ResponseRecorder {
 	return recorder
 }
 
+// declared routes a request to what the contract declares for it. The
+// contract is one document whatever the test, so it is loaded and routed
+// once: every answer of every test is checked against it, and with each
+// operation the contract gains there are more of them.
+var declared = sync.OnceValues(func() (routers.Router, error) {
+	contract, err := loadContract()
+	if err != nil {
+		return nil, fmt.Errorf("load the contract: %w", err)
+	}
+	router, err := gorillamux.NewRouter(contract)
+	if err != nil {
+		return nil, fmt.Errorf("route the contract: %w", err)
+	}
+	return router, nil
+})
+
 // checkAgainstContract fails the test if the answer is not one the contract
 // declares for the operation: its status, its headers and its body. An
 // answer to a request the contract does not route is not checked, since the
@@ -286,13 +303,9 @@ func (s *service) do(t *testing.T, c call) *httptest.ResponseRecorder {
 func checkAgainstContract(t *testing.T, c call, recorder *httptest.ResponseRecorder) {
 	t.Helper()
 
-	contract, err := loadContract()
+	router, err := declared()
 	if err != nil {
-		t.Fatalf("load the contract: %v", err)
-	}
-	router, err := gorillamux.NewRouter(contract)
-	if err != nil {
-		t.Fatalf("route the contract: %v", err)
+		t.Fatal(err)
 	}
 	method := c.Method
 	if method == http.MethodHead {
