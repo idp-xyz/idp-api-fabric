@@ -259,7 +259,15 @@ func (s *ProductGovernance) RegisterProduct(ctx context.Context, command Registe
 	if err != nil {
 		return domain.Product{}, err
 	}
-	owners, err := product.AssignFirstOwners(command.Owners, command.Caller)
+	// Each first owner holds its role under an identifier of its own, as a
+	// role assignment made later does.
+	assignmentIDs := make([]domain.RoleAssignmentID, len(command.Owners))
+	for index := range assignmentIDs {
+		if assignmentIDs[index], err = domain.ParseRoleAssignmentID(s.deps.Identifiers.NewID()); err != nil {
+			return domain.Product{}, fmt.Errorf("generate the identifier of a role assignment: %w", err)
+		}
+	}
+	owners, err := product.AssignFirstOwners(assignmentIDs, command.Owners, command.Caller)
 	if err != nil {
 		return domain.Product{}, err
 	}

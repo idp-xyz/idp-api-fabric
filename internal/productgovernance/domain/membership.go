@@ -122,6 +122,8 @@ func (m Membership) Revoke(by Principal, at time.Time) (Membership, error) {
 // product. Every decision about the product starts from it (F05 §4.2, §5.2);
 // nothing a token says adds to it.
 type Standing struct {
+	// Roles are the roles of the assignments in force of the principal. A
+	// role that was revoked is not among them.
 	Roles       []Role
 	Memberships []Membership
 }
@@ -141,8 +143,8 @@ func (s Standing) MemberOf(workspace WorkspaceID) bool {
 }
 
 // Stranger reports whether the principal holds nothing in the product: no
-// role in it and no membership in force in any of its workspaces. To a
-// stranger the product does not exist (F05 §5.2).
+// role in force in it and no membership in force in any of its workspaces.
+// To a stranger the product does not exist (F05 §5.2).
 func (s Standing) Stranger() bool {
 	return len(s.Roles) == 0 && !slices.ContainsFunc(s.Memberships, Membership.InForce)
 }

@@ -73,9 +73,13 @@ func TestRegisterProductStoresTheProductItsOwnersTheAuditFactAndTheEventTogether
 		t.Errorf("stored\n %+v\nwant\n %+v", stored, want)
 	}
 
+	// Each first owner holds its role under an identifier of its own, in
+	// force from the registration, granted by the registrant.
 	wantRoles := []domain.RoleAssignment{
-		{ProductID: product.ID, Principal: alice, Role: domain.RoleProductOwner, GrantedAt: started, GrantedBy: admin},
-		{ProductID: product.ID, Principal: bob, Role: domain.RoleProductOwner, GrantedAt: started, GrantedBy: admin},
+		{ID: "00000000-0000-4000-8000-000000000002", ProductID: product.ID, Principal: alice, Role: domain.RoleProductOwner,
+			Version: 1, GrantedAt: started, GrantedBy: admin},
+		{ID: "00000000-0000-4000-8000-000000000003", ProductID: product.ID, Principal: bob, Role: domain.RoleProductOwner,
+			Version: 1, GrantedAt: started, GrantedBy: admin},
 	}
 	if !slices.Equal(w.roles, wantRoles) {
 		t.Errorf("roles\n %+v\nwant\n %+v", w.roles, wantRoles)
@@ -300,8 +304,9 @@ func TestCreateWorkspaceStoresTheWorkspaceTheAuditFactAndTheEventTogether(t *tes
 		t.Fatalf("create: %v", err)
 	}
 
+	// The product and the role of its owner took the first two identifiers.
 	want := domain.Workspace{
-		ID: "00000000-0000-4000-8000-000000000002", ProductID: product.ID, Key: "api-engineering", DisplayName: "API engineering",
+		ID: "00000000-0000-4000-8000-000000000003", ProductID: product.ID, Key: "api-engineering", DisplayName: "API engineering",
 		Status: domain.WorkspaceActive, Version: 1, CreatedAt: w.now, CreatedBy: alice, UpdatedAt: w.now,
 	}
 	if workspace != want || w.workspaces[workspace.ID] != want {

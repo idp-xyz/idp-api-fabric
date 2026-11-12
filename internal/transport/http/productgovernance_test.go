@@ -475,7 +475,8 @@ func TestTheContractStatesTheRulesOfTheModel(t *testing.T) {
 			t.Errorf("the organization %q: the contract accepts it %t, the model %t", reference, contract, model)
 		}
 
-		_, err = product.AssignFirstOwners([]domain.Principal{{Issuer: issuer, Subject: reference}}, domain.Principal(admin))
+		_, err = product.AssignFirstOwners([]domain.RoleAssignmentID{"0f1e2d3c-4b5a-4968-8776-655443322110"},
+			[]domain.Principal{{Issuer: issuer, Subject: reference}}, domain.Principal(admin))
 		if contract, model := registerWith("cargopai", "CargoPai", "org-cargopai", reference), err == nil; contract != model {
 			t.Errorf("the subject %q of an owner: the contract accepts it %t, the model %t", reference, contract, model)
 		}

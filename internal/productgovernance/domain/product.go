@@ -90,22 +90,6 @@ func (p Product) AdmitNewWork() error {
 // checked against the product, the resource and its state (F05 §5.1).
 type Role string
 
-// RoleProductOwner manages the workspaces and the members of one product
-// (F05 §6, AC-09, AC-10). It says nothing about any other product and
-// nothing about the platform.
-const RoleProductOwner Role = "product_owner"
-
-// RoleAssignment grants a principal a role in one product. It is explicit,
-// held by the server and traceable to whoever granted it (FR-003); a token
-// never carries it (F05 §4.2).
-type RoleAssignment struct {
-	ProductID ProductID
-	Principal Principal
-	Role      Role
-	GrantedAt time.Time
-	GrantedBy Principal
-}
-
 // MaxFirstOwners bounds how many owners a product is registered with. The
 // contract of the API states the same bound.
 const MaxFirstOwners = 10
@@ -113,21 +97,30 @@ const MaxFirstOwners = 10
 // AssignFirstOwners makes owners the first owners of the product. A product
 // is registered with at least one: without an owner nobody could give it a
 // workspace or a member.
-func (p Product) AssignFirstOwners(owners []Principal, by Principal) ([]RoleAssignment, error) {
+//
+// Each of them holds the role of an owner under the identifier at its place
+// in ids, granted by whoever registers the product, at the time it is
+// registered.
+func (p Product) AssignFirstOwners(ids []RoleAssignmentID, owners []Principal, by Principal) ([]RoleAssignment, error) {
 	if len(owners) == 0 || len(owners) > MaxFirstOwners {
 		return nil, invalid("a product is registered with 1 to %d owners", MaxFirstOwners)
 	}
+	if len(ids) != len(owners) {
+		return nil, invalid("every first owner is assigned under an identifier of its own")
+	}
 	assignments := make([]RoleAssignment, 0, len(owners))
 	for index, owner := range owners {
-		if err := owner.Validate(); err != nil {
-			return nil, err
-		}
 		if slices.Contains(owners[:index], owner) {
 			return nil, invalid("a principal is named as an owner twice")
 		}
-		assignments = append(assignments, RoleAssignment{
-			ProductID: p.ID, Principal: owner, Role: RoleProductOwner, GrantedAt: p.CreatedAt, GrantedBy: by,
-		})
+		if slices.Contains(ids[:index], ids[index]) {
+			return nil, invalid("every first owner is assigned under an identifier of its own")
+		}
+		assignment, err := GrantProductRole(ids[index], p, owner, RoleProductOwner, by, p.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		assignments = append(assignments, assignment)
 	}
 	return assignments, nil
 }

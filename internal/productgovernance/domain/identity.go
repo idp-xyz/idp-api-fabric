@@ -45,6 +45,17 @@ func ParseMembershipID(value string) (MembershipID, error) {
 	return MembershipID(value), nil
 }
 
+// RoleAssignmentID identifies the assignment of a role in a product.
+type RoleAssignmentID string
+
+// ParseRoleAssignmentID accepts the canonical form of an identifier.
+func ParseRoleAssignmentID(value string) (RoleAssignmentID, error) {
+	if !identifier.MatchString(value) {
+		return "", invalid("a role assignment identifier is a UUID in its canonical form")
+	}
+	return RoleAssignmentID(value), nil
+}
+
 // KeyPattern is the pattern of a key. A key is the name people and
 // configuration use for an object: unique in its scope, short, and safe in a
 // URL or a file name. It is 2 to 63 lower case letters, digits and hyphens,

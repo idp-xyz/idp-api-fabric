@@ -231,7 +231,9 @@ func TestRolesAreHeldByAPrincipalInAProduct(t *testing.T) {
 	f.add(t, cargopai)
 	f.add(t, parcel)
 
-	owners, err := cargopai.AssignFirstOwners([]domain.Principal{alice, bob}, admin)
+	owners, err := cargopai.AssignFirstOwners(
+		[]domain.RoleAssignmentID{domain.RoleAssignmentID(ids.NewUUID()), domain.RoleAssignmentID(ids.NewUUID())},
+		[]domain.Principal{alice, bob}, admin)
 	if err != nil {
 		t.Fatalf("assign the owners: %v", err)
 	}
@@ -285,7 +287,7 @@ func TestRolesAreHeldByAPrincipalInAProduct(t *testing.T) {
 func TestAWriteNeedsATransaction(t *testing.T) {
 	f := newFixture(t)
 	cargopai := product(t, "cargopai")
-	owners, _ := cargopai.AssignFirstOwners([]domain.Principal{alice}, admin)
+	owners, _ := cargopai.AssignFirstOwners([]domain.RoleAssignmentID{domain.RoleAssignmentID(ids.NewUUID())}, []domain.Principal{alice}, admin)
 
 	for what, err := range map[string]error{
 		"a product":         f.products.Add(t.Context(), cargopai),
