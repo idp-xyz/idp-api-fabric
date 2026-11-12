@@ -155,8 +155,10 @@ paths:
         assignment is revoked. A product has one role, product_owner. An
         owner of the product may, and so may a platform administrator: naming
         the owners of a product is part of registering it, and it is how a
-        product whose owner was mistyped is repaired. It gives the
-        administrator no view of what is inside the product. Whoever else may
+        product whose owner was mistyped is repaired. Naming an owner gives
+        the administrator no view of what is inside the product. Nothing
+        keeps it from naming itself, here as at registration: it is then an
+        owner like any other, and the grant is on record. Whoever else may
         know the product exists, as a member of one of its workspaces does,
         is refused (403 FORBIDDEN); to anyone else there is no such product
         (404 PRODUCT_NOT_FOUND), the same as for a product that is missing. A

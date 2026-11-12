@@ -228,6 +228,40 @@ func TestAPlatformAdministratorNamesAnOwnerAndGetsNothingInsideTheProduct(t *tes
 	}
 }
 
+// Nothing keeps a platform administrator from naming itself an owner, here
+// as at registration. It is then an owner like any other. How it became one
+// is on record: the grant is the administrator's, under AC-08, and the
+// assignment names one principal as who holds the role and as who granted
+// it.
+func TestAnAdministratorThatNamesItselfAnOwnerIsOnRecordAsOne(t *testing.T) {
+	s := newTeam(t)
+
+	assignment, err := s.grantRole(admin, s.cargopai, admin)
+	if err != nil {
+		t.Fatalf("the administrator names itself an owner: %v", err)
+	}
+	if assignment.Principal != admin || assignment.GrantedBy != admin || s.w.roles[assignment.ID] != assignment {
+		t.Errorf("the assignment is %+v, stored as %+v, want the role of the administrator, granted by itself",
+			assignment, s.w.roles[assignment.ID])
+	}
+	wantAudit := []audited{{ports.AuditEntry{
+		Actor: admin, Action: "product_role.grant", Allowed: true, Rule: "AC-08",
+		ProductID: s.cargopai.ID, ResourceType: "RoleAssignment", ResourceID: string(assignment.ID), CorrelationID: "correlation-8",
+	}, true}}
+	if !slices.Equal(s.w.audited, wantAudit) {
+		t.Errorf("audited\n %+v\nwant, inside the transaction,\n %+v", s.w.audited, wantAudit)
+	}
+
+	// From then on it owns the product: it reads the role it holds and what
+	// is inside the product.
+	if got, err := s.role(admin, s.cargopai, assignment.ID); err != nil || got != assignment {
+		t.Errorf("the administrator reads its role: got %+v and %v, want %+v", got, err, assignment)
+	}
+	if _, err := s.workspace(admin, s.engineering); err != nil {
+		t.Errorf("the administrator, an owner now, reads a workspace: %v", err)
+	}
+}
+
 // An owner of the product and a platform administrator name an owner, and
 // nobody else. The answer to anyone else depends on the product alone: it is
 // the same whatever the request says.

@@ -756,9 +756,11 @@ type GrantProductRole struct {
 // an owner, the only one a product has (FR-003). An owner of that product
 // may (AC-10), and so may a platform administrator (AC-08): naming the
 // owners of a product is part of registering it, and it is the only way to
-// repair a product whose owner was mistyped. It gives the administrator
-// nothing inside the product. Whoever else may know the product exists is
-// told it may not; to anyone else there is no such product.
+// repair a product whose owner was mistyped. Naming an owner gives the
+// administrator nothing inside the product. Nothing keeps it from naming
+// itself, here as at registration: it is then an owner like any other, and
+// the grant is on record. Whoever else may know the product exists is told
+// it may not; to anyone else there is no such product.
 //
 // The decision is made inside the transaction of the write, from what the
 // caller holds then. The assignment, the audit fact and the event commit
