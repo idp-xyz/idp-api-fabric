@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.3.0
+  version: 0.3.1
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -114,9 +114,11 @@ paths:
       operationId: getProduct
       summary: Read a product
       description: >-
-        Returns the product to a platform administrator and to whoever holds a
-        role in it. To anyone else the product does not exist: the answer is
-        404 PRODUCT_NOT_FOUND, the same as for a product that is missing.
+        Returns the product to a platform administrator and to whoever holds
+        something in it: a role in the product, or a membership in force in
+        one of its workspaces. To anyone else the product does not exist: the
+        answer is 404 PRODUCT_NOT_FOUND, the same as for a product that is
+        missing.
       parameters:
         - $ref: '#/components/parameters/ProductId'
       responses:
@@ -178,7 +180,7 @@ paths:
                 type: string
                 format: uri-reference
             Cache-Control:
-              description: A workspace is private to the members of its product
+              description: A workspace is private to the owners of its product and to its members
               required: true
               schema:
                 type: string
@@ -208,11 +210,15 @@ paths:
       operationId: getWorkspace
       summary: Read a workspace of a product
       description: >-
-        Returns the workspace to whoever holds a role in its product. To a
-        stranger the product does not exist (404 PRODUCT_NOT_FOUND). A
-        platform administrator knows the product exists and nothing of what
-        is inside it (404 WORKSPACE_NOT_FOUND). A workspace of another product
-        is not found under this one.
+        Returns the workspace to an owner of its product and to a member of
+        the workspace itself. Whoever may not read it is answered as far as
+        it may know. To a stranger the product does not exist (404
+        PRODUCT_NOT_FOUND). Whoever knows the product exists and may not read
+        this workspace is told there is no such workspace (404
+        WORKSPACE_NOT_FOUND): a member of another workspace of the product,
+        and a platform administrator, who knows the product exists and
+        nothing of what is inside it. A workspace of another product is not
+        found under this one.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/WorkspaceId'
@@ -221,7 +227,7 @@ paths:
           description: The workspace
           headers:
             Cache-Control:
-              description: A workspace is private to the members of its product
+              description: A workspace is private to the owners of its product and to its members
               required: true
               schema:
                 type: string
