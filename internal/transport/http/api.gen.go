@@ -64,6 +64,24 @@ func (e WorkspaceStatus) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceRole.
+const (
+	WorkspaceRoleInternalAuthor      WorkspaceRole = "internal_author"
+	WorkspaceRoleWorkspaceMaintainer WorkspaceRole = "workspace_maintainer"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceRole enum.
+func (e WorkspaceRole) Valid() bool {
+	switch e {
+	case WorkspaceRoleInternalAuthor:
+		return true
+	case WorkspaceRoleWorkspaceMaintainer:
+		return true
+	default:
+		return false
+	}
+}
+
 // BuildInfo defines model for BuildInfo.
 type BuildInfo struct {
 	BuiltAt string `json:"built_at"`
@@ -87,6 +105,35 @@ type Identifier = string
 
 // Key The name people and configuration use for an object, unique in its scope: 2 to 63 lower case letters, digits and hyphens, starting with a letter and not ending with a hyphen. It is not the identity of the object.
 type Key = string
+
+// Membership A principal that holds a role in one workspace. It is in force from granted_at until it is revoked; a revoked membership is not shown.
+type Membership struct {
+	GrantedAt time.Time `json:"granted_at"`
+
+	// Member A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
+	Member Principal `json:"member"`
+
+	// MembershipID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	MembershipID Identifier `json:"membership_id"`
+
+	// ProductID The product the workspace belongs to
+	ProductID Identifier `json:"product_id"`
+
+	// Role What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions. Neither manages the workspace or its members, which is for the owners of the product, and neither says anything about another workspace.
+	Role WorkspaceRole `json:"role"`
+
+	// WorkspaceID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	WorkspaceID Identifier `json:"workspace_id"`
+}
+
+// MembershipGrant defines model for MembershipGrant.
+type MembershipGrant struct {
+	// Member A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
+	Member Principal `json:"member"`
+
+	// Role What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions. Neither manages the workspace or its members, which is for the owners of the product, and neither says anything about another workspace.
+	Role WorkspaceRole `json:"role"`
+}
 
 // OrganizationRef A reference to the organization a product belongs to, in the identity or organization system that knows it. It is recorded as it is given; no permission is derived from it.
 type OrganizationRef struct {
@@ -190,6 +237,12 @@ type WorkspaceCreation struct {
 	WorkspaceKey Key `json:"workspace_key"`
 }
 
+// WorkspaceRole What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions. Neither manages the workspace or its members, which is for the owners of the product, and neither says anything about another workspace.
+type WorkspaceRole string
+
+// MembershipID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+type MembershipID = Identifier
+
 // ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 type ProductID = Identifier
 
@@ -204,6 +257,9 @@ type RegisterProductJSONRequestBody = ProductRegistration
 
 // CreateWorkspaceJSONRequestBody defines body for CreateWorkspace for application/json ContentType.
 type CreateWorkspaceJSONRequestBody = WorkspaceCreation
+
+// GrantMembershipJSONRequestBody defines body for GrantMembership for application/json ContentType.
+type GrantMembershipJSONRequestBody = MembershipGrant
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -222,6 +278,15 @@ type ServerInterface interface {
 	// GetWorkspace Read a workspace of a product
 	// (GET /v1/products/{product_id}/workspaces/{workspace_id})
 	GetWorkspace(w http.ResponseWriter, r *http.Request, productID ProductID, workspaceID WorkspaceID)
+	// GrantMembership Make a principal a member of a workspace
+	// (POST /v1/products/{product_id}/workspaces/{workspace_id}/memberships)
+	GrantMembership(w http.ResponseWriter, r *http.Request, productID ProductID, workspaceID WorkspaceID)
+	// RevokeMembership Revoke a membership of a workspace
+	// (DELETE /v1/products/{product_id}/workspaces/{workspace_id}/memberships/{membership_id})
+	RevokeMembership(w http.ResponseWriter, r *http.Request, productID ProductID, workspaceID WorkspaceID, membershipID MembershipID)
+	// GetMembership Read a membership of a workspace
+	// (GET /v1/products/{product_id}/workspaces/{workspace_id}/memberships/{membership_id})
+	GetMembership(w http.ResponseWriter, r *http.Request, productID ProductID, workspaceID WorkspaceID, membershipID MembershipID)
 	// GetVersion Report the build identity
 	// (GET /version)
 	GetVersion(w http.ResponseWriter, r *http.Request)
@@ -342,6 +407,129 @@ func (siw *ServerInterfaceWrapper) GetWorkspace(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetWorkspace(w, r, productID, workspaceID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GrantMembership operation middleware
+func (siw *ServerInterfaceWrapper) GrantMembership(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workspace_id" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspace_id", r.PathValue("workspace_id"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspace_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GrantMembership(w, r, productID, workspaceID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeMembership operation middleware
+func (siw *ServerInterfaceWrapper) RevokeMembership(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workspace_id" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspace_id", r.PathValue("workspace_id"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspace_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "membership_id" -------------
+	var membershipID MembershipID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "membership_id", r.PathValue("membership_id"), &membershipID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "membership_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeMembership(w, r, productID, workspaceID, membershipID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMembership operation middleware
+func (siw *ServerInterfaceWrapper) GetMembership(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workspace_id" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspace_id", r.PathValue("workspace_id"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspace_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "membership_id" -------------
+	var membershipID MembershipID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "membership_id", r.PathValue("membership_id"), &membershipID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "membership_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMembership(w, r, productID, workspaceID, membershipID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -491,6 +679,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}", wrapper.GetProduct)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/workspaces", wrapper.CreateWorkspace)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/workspaces/{workspace_id}", wrapper.GetWorkspace)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/workspaces/{workspace_id}/memberships", wrapper.GrantMembership)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/products/{product_id}/workspaces/{workspace_id}/memberships/{membership_id}", wrapper.RevokeMembership)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/workspaces/{workspace_id}/memberships/{membership_id}", wrapper.GetMembership)
 
 	return m
 }
@@ -1052,6 +1243,380 @@ func (response GetWorkspacedefaultApplicationProblemPlusJSONResponse) VisitGetWo
 	return err
 }
 
+type GrantMembershipRequestObject struct {
+	ProductID   ProductID   `json:"product_id"`
+	WorkspaceID WorkspaceID `json:"workspace_id"`
+	Body        *GrantMembershipJSONRequestBody
+}
+
+type GrantMembershipResponseObject interface {
+	VisitGrantMembershipResponse(w http.ResponseWriter) error
+}
+
+type GrantMembership201ResponseHeaders struct {
+	CacheControl string
+	Location     string
+}
+
+type GrantMembership201JSONResponse struct {
+	Body    Membership
+	Headers GrantMembership201ResponseHeaders
+}
+
+func (response GrantMembership201JSONResponse) VisitGrantMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantMembership400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GrantMembership400ApplicationProblemPlusJSONResponse) VisitGrantMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantMembership401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GrantMembership401ApplicationProblemPlusJSONResponse) VisitGrantMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantMembership403ApplicationProblemPlusJSONResponse Problem
+
+func (response GrantMembership403ApplicationProblemPlusJSONResponse) VisitGrantMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantMembership404ApplicationProblemPlusJSONResponse Problem
+
+func (response GrantMembership404ApplicationProblemPlusJSONResponse) VisitGrantMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantMembership409ApplicationProblemPlusJSONResponse Problem
+
+func (response GrantMembership409ApplicationProblemPlusJSONResponse) VisitGrantMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantMembership422ApplicationProblemPlusJSONResponse Problem
+
+func (response GrantMembership422ApplicationProblemPlusJSONResponse) VisitGrantMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantMembership503ApplicationProblemPlusJSONResponse Problem
+
+func (response GrantMembership503ApplicationProblemPlusJSONResponse) VisitGrantMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantMembershipdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GrantMembershipdefaultApplicationProblemPlusJSONResponse) VisitGrantMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMembershipRequestObject struct {
+	ProductID    ProductID    `json:"product_id"`
+	WorkspaceID  WorkspaceID  `json:"workspace_id"`
+	MembershipID MembershipID `json:"membership_id"`
+}
+
+type RevokeMembershipResponseObject interface {
+	VisitRevokeMembershipResponse(w http.ResponseWriter) error
+}
+
+type RevokeMembership204Response struct {
+}
+
+func (response RevokeMembership204Response) VisitRevokeMembershipResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeMembership400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response RevokeMembership400ApplicationProblemPlusJSONResponse) VisitRevokeMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMembership401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response RevokeMembership401ApplicationProblemPlusJSONResponse) VisitRevokeMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMembership403ApplicationProblemPlusJSONResponse Problem
+
+func (response RevokeMembership403ApplicationProblemPlusJSONResponse) VisitRevokeMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMembership404ApplicationProblemPlusJSONResponse Problem
+
+func (response RevokeMembership404ApplicationProblemPlusJSONResponse) VisitRevokeMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMembership503ApplicationProblemPlusJSONResponse Problem
+
+func (response RevokeMembership503ApplicationProblemPlusJSONResponse) VisitRevokeMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMembershipdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response RevokeMembershipdefaultApplicationProblemPlusJSONResponse) VisitRevokeMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMembershipRequestObject struct {
+	ProductID    ProductID    `json:"product_id"`
+	WorkspaceID  WorkspaceID  `json:"workspace_id"`
+	MembershipID MembershipID `json:"membership_id"`
+}
+
+type GetMembershipResponseObject interface {
+	VisitGetMembershipResponse(w http.ResponseWriter) error
+}
+
+type GetMembership200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetMembership200JSONResponse struct {
+	Body    Membership
+	Headers GetMembership200ResponseHeaders
+}
+
+func (response GetMembership200JSONResponse) VisitGetMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMembership400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetMembership400ApplicationProblemPlusJSONResponse) VisitGetMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMembership401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetMembership401ApplicationProblemPlusJSONResponse) VisitGetMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMembership404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetMembership404ApplicationProblemPlusJSONResponse) VisitGetMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMembership503ApplicationProblemPlusJSONResponse Problem
+
+func (response GetMembership503ApplicationProblemPlusJSONResponse) VisitGetMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMembershipdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetMembershipdefaultApplicationProblemPlusJSONResponse) VisitGetMembershipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetVersionRequestObject struct {
 }
 
@@ -1115,6 +1680,15 @@ type StrictServerInterface interface {
 	// GetWorkspace Read a workspace of a product
 	// (GET /v1/products/{product_id}/workspaces/{workspace_id})
 	GetWorkspace(ctx context.Context, request GetWorkspaceRequestObject) (GetWorkspaceResponseObject, error)
+	// GrantMembership Make a principal a member of a workspace
+	// (POST /v1/products/{product_id}/workspaces/{workspace_id}/memberships)
+	GrantMembership(ctx context.Context, request GrantMembershipRequestObject) (GrantMembershipResponseObject, error)
+	// RevokeMembership Revoke a membership of a workspace
+	// (DELETE /v1/products/{product_id}/workspaces/{workspace_id}/memberships/{membership_id})
+	RevokeMembership(ctx context.Context, request RevokeMembershipRequestObject) (RevokeMembershipResponseObject, error)
+	// GetMembership Read a membership of a workspace
+	// (GET /v1/products/{product_id}/workspaces/{workspace_id}/memberships/{membership_id})
+	GetMembership(ctx context.Context, request GetMembershipRequestObject) (GetMembershipResponseObject, error)
 	// GetVersion Report the build identity
 	// (GET /version)
 	GetVersion(ctx context.Context, request GetVersionRequestObject) (GetVersionResponseObject, error)
@@ -1293,6 +1867,96 @@ func (sh *strictHandler) GetWorkspace(w http.ResponseWriter, r *http.Request, pr
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetWorkspaceResponseObject); ok {
 		if err := validResponse.VisitGetWorkspaceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GrantMembership operation middleware
+func (sh *strictHandler) GrantMembership(w http.ResponseWriter, r *http.Request, productID ProductID, workspaceID WorkspaceID) {
+	var request GrantMembershipRequestObject
+
+	request.ProductID = productID
+	request.WorkspaceID = workspaceID
+
+	var body GrantMembershipJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GrantMembership(ctx, request.(GrantMembershipRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GrantMembership")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GrantMembershipResponseObject); ok {
+		if err := validResponse.VisitGrantMembershipResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeMembership operation middleware
+func (sh *strictHandler) RevokeMembership(w http.ResponseWriter, r *http.Request, productID ProductID, workspaceID WorkspaceID, membershipID MembershipID) {
+	var request RevokeMembershipRequestObject
+
+	request.ProductID = productID
+	request.WorkspaceID = workspaceID
+	request.MembershipID = membershipID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeMembership(ctx, request.(RevokeMembershipRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeMembership")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeMembershipResponseObject); ok {
+		if err := validResponse.VisitRevokeMembershipResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMembership operation middleware
+func (sh *strictHandler) GetMembership(w http.ResponseWriter, r *http.Request, productID ProductID, workspaceID WorkspaceID, membershipID MembershipID) {
+	var request GetMembershipRequestObject
+
+	request.ProductID = productID
+	request.WorkspaceID = workspaceID
+	request.MembershipID = membershipID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMembership(ctx, request.(GetMembershipRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMembership")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMembershipResponseObject); ok {
+		if err := validResponse.VisitGetMembershipResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

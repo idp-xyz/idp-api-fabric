@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.2.0
+  version: 0.3.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -240,6 +240,147 @@ paths:
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/workspaces/{workspace_id}/memberships:
+    post:
+      operationId: grantMembership
+      summary: Make a principal a member of a workspace
+      description: >-
+        Makes the principal hold the role in the workspace, from now until the
+        membership is revoked. Only an owner of the product may. Whoever may
+        know the product exists and does not own it is refused (403
+        FORBIDDEN); to anyone else there is no such product (404
+        PRODUCT_NOT_FOUND). Neither answer says anything about the workspace.
+        A workspace the product does not have is not found (404
+        WORKSPACE_NOT_FOUND). A role the principal holds in the workspace
+        already is refused (409 MEMBERSHIP_EXISTS), and so are a product that
+        is suspended (409 PRODUCT_NOT_ACTIVE) and a member under an issuer
+        this deployment does not trust (422 MEMBER_ISSUER_NOT_TRUSTED).
+
+
+        The membership, the audit record and the event are committed together
+        or not at all. A 503 OUTCOME_UNCERTAIN means it is not known which:
+        read before retrying.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/WorkspaceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MembershipGrant'
+      responses:
+        '201':
+          description: The principal is a member of the workspace
+          headers:
+            Location:
+              description: Where the membership is read and revoked
+              required: true
+              schema:
+                type: string
+                format: uri-reference
+            Cache-Control:
+              description: A membership is private to the owners of its product
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Membership'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/workspaces/{workspace_id}/memberships/{membership_id}:
+    get:
+      operationId: getMembership
+      summary: Read a membership of a workspace
+      description: >-
+        Returns a membership in force to an owner of the product. Nobody else
+        reads one, its member included, and each is answered as far as it may
+        know: a stranger is told there is no such product (404
+        PRODUCT_NOT_FOUND), whoever knows the product and may not read the
+        workspace that there is no such workspace (404 WORKSPACE_NOT_FOUND),
+        and a member of the workspace that there is no such membership (404
+        MEMBERSHIP_NOT_FOUND). A membership that was revoked grants nothing
+        and is not found either.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/MembershipId'
+      responses:
+        '200':
+          description: The membership
+          headers:
+            Cache-Control:
+              description: A membership is private to the owners of its product
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Membership'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: revokeMembership
+      summary: Revoke a membership of a workspace
+      description: >-
+        Ends the membership: from the moment the revocation is committed it
+        grants nothing. Only an owner of the product may, and whoever does not
+        own it is answered as for a grant. A membership that is not in force
+        is not found (404 MEMBERSHIP_NOT_FOUND), whoever ended it, so a
+        revocation that is sent again is answered so. The membership is kept
+        as a record, with who revoked it and when, and the role can be granted
+        again as a new membership.
+
+
+        The revocation, the audit record and the event are committed together
+        or not at all. A 503 OUTCOME_UNCERTAIN means it is not known which:
+        read before retrying.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/MembershipId'
+      responses:
+        '204':
+          description: The membership was revoked
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
 components:
   securitySchemes:
     bearerToken:
@@ -264,6 +405,13 @@ components:
       in: path
       required: true
       description: The identifier of the workspace
+      schema:
+        $ref: '#/components/schemas/Identifier'
+    MembershipId:
+      name: membership_id
+      in: path
+      required: true
+      description: The identifier of the membership
       schema:
         $ref: '#/components/schemas/Identifier'
   responses:
@@ -431,6 +579,45 @@ components:
           type: string
           enum: [ACTIVE]
         created_at:
+          type: string
+          format: date-time
+    WorkspaceRole:
+      description: >-
+        What a member is in a workspace. A workspace_maintainer creates and
+        updates the API assets of the workspace; an internal_author writes and
+        reads its contract revisions. Neither manages the workspace or its
+        members, which is for the owners of the product, and neither says
+        anything about another workspace.
+      type: string
+      enum: [workspace_maintainer, internal_author]
+    MembershipGrant:
+      type: object
+      additionalProperties: false
+      required: [member, role]
+      properties:
+        member:
+          $ref: '#/components/schemas/Principal'
+        role:
+          $ref: '#/components/schemas/WorkspaceRole'
+    Membership:
+      description: >-
+        A principal that holds a role in one workspace. It is in force from
+        granted_at until it is revoked; a revoked membership is not shown.
+      type: object
+      required: [membership_id, product_id, workspace_id, member, role, granted_at]
+      properties:
+        membership_id:
+          $ref: '#/components/schemas/Identifier'
+        product_id:
+          description: The product the workspace belongs to
+          $ref: '#/components/schemas/Identifier'
+        workspace_id:
+          $ref: '#/components/schemas/Identifier'
+        member:
+          $ref: '#/components/schemas/Principal'
+        role:
+          $ref: '#/components/schemas/WorkspaceRole'
+        granted_at:
           type: string
           format: date-time
     Problem:

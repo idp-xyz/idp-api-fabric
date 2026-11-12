@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +30,13 @@ var productBody = map[string]any{
 var workspaceBody = map[string]any{
 	"workspace_id": workspaceID, "product_id": productID, "workspace_key": "api-engineering",
 	"display_name": "API engineering", "status": "ACTIVE", "created_at": "2026-11-11T09:00:00.123456Z",
+}
+
+// A membership is shown without who granted it and without its version.
+var membershipBody = map[string]any{
+	"membership_id": membershipID, "product_id": productID, "workspace_id": workspaceID,
+	"member": map[string]any{"issuer": issuer, "subject": "bob"}, "role": "workspace_maintainer",
+	"granted_at": "2026-11-11T09:00:00.123456Z",
 }
 
 func TestRegisterProductHandsTheRequestToTheUseCaseAsTheVerifiedCaller(t *testing.T) {
@@ -119,6 +128,58 @@ func TestTheOtherOperationsHandTheirRequestsToTheirUseCases(t *testing.T) {
 	}
 }
 
+func TestTheMembershipOperationsHandTheirRequestsToTheirUseCases(t *testing.T) {
+	s := newService(t)
+	membership := memberships + "/" + membershipID
+
+	granted := s.do(t, call{Method: http.MethodPost, Target: memberships, Token: "alice", Body: grant})
+	if granted.Code != http.StatusCreated || !reflect.DeepEqual(members(t, granted), membershipBody) {
+		t.Errorf("POST membership: %d %s", granted.Code, granted.Body)
+	}
+	if got := granted.Header().Get("Location"); got != membership {
+		t.Errorf("POST membership: Location %q, want %q", got, membership)
+	}
+	read := s.do(t, call{Method: http.MethodGet, Target: membership, Token: "alice"})
+	if read.Code != http.StatusOK || !reflect.DeepEqual(members(t, read), membershipBody) {
+		t.Errorf("GET membership: %d %s", read.Code, read.Body)
+	}
+	for name, response := range map[string]*httptest.ResponseRecorder{"POST": granted, "GET": read} {
+		if got := response.Header().Get("Cache-Control"); got != "no-store" {
+			t.Errorf("%s membership: Cache-Control %q, want no-store", name, got)
+		}
+	}
+	revoked := s.do(t, call{Method: http.MethodDelete, Target: membership, Token: "alice"})
+	if revoked.Code != http.StatusNoContent || revoked.Body.Len() != 0 {
+		t.Errorf("DELETE membership: %d %q, want 204 and no body", revoked.Code, revoked.Body)
+	}
+
+	g := s.governance
+	if len(g.granted) != 1 || len(g.membershipsRead) != 1 || len(g.revoked) != 1 {
+		t.Fatalf("the use cases were called %d, %d and %d times, want once each", len(g.granted), len(g.membershipsRead), len(g.revoked))
+	}
+	for _, id := range []*string{&g.granted[0].CorrelationID, &g.membershipsRead[0].CorrelationID, &g.revoked[0].CorrelationID} {
+		if !uuid.MatchString(*id) {
+			t.Errorf("correlation identifier %q, want one the server generated", *id)
+		}
+		*id = ""
+	}
+
+	// The caller is who the token is about. The member is who the body names.
+	caller := domain.Principal(alice)
+	if want := (application.GrantMembership{
+		Caller: caller, ProductID: productID, WorkspaceID: workspaceID,
+		Member: domain.Principal{Issuer: issuer, Subject: "bob"}, Role: "workspace_maintainer",
+	}); g.granted[0] != want {
+		t.Errorf("GrantMembership %+v, want %+v", g.granted[0], want)
+	}
+	if want := (application.GetMembership{Caller: caller, ProductID: productID, WorkspaceID: workspaceID, MembershipID: membershipID}); g.membershipsRead[0] != want {
+		t.Errorf("GetMembership %+v, want %+v", g.membershipsRead[0], want)
+	}
+	if want := (application.RevokeMembership{Caller: caller, ProductID: productID, WorkspaceID: workspaceID, MembershipID: membershipID}); g.revoked[0] != want {
+		t.Errorf("RevokeMembership %+v, want %+v", g.revoked[0], want)
+	}
+}
+
 // Every request gets an identifier of its own, and it is the server's: what
 // a caller sends is not written into the audit trail as one.
 func TestEveryRequestGetsItsOwnIdentifierFromTheServer(t *testing.T) {
@@ -147,6 +208,9 @@ func TestAFailureAUseCaseNamesIsAnsweredWithItsProblem(t *testing.T) {
 		"the caller may not":          {application.ErrForbidden, http.StatusForbidden, CodeForbidden, "The caller may not perform this action."},
 		"no such product":             {application.ErrProductNotFound, http.StatusNotFound, CodeProductNotFound, ""},
 		"no such workspace":           {application.ErrWorkspaceNotFound, http.StatusNotFound, CodeWorkspaceNotFound, ""},
+		"no such membership":          {application.ErrMembershipNotFound, http.StatusNotFound, CodeMembershipNotFound, ""},
+		"the role is held already":    {ports.ErrMembershipExists, http.StatusConflict, CodeMembershipExists, "The principal holds this role in the workspace already."},
+		"a member nobody can be":      {application.ErrMemberIssuerNotTrusted, http.StatusUnprocessableEntity, CodeMemberIssuerNotTrusted, "A member is named under an issuer this deployment does not trust."},
 		"the product key is taken":    {ports.ErrProductKeyTaken, http.StatusConflict, CodeProductKeyTaken, "A product with this key is registered already."},
 		"the workspace key is taken":  {ports.ErrWorkspaceKeyTaken, http.StatusConflict, CodeWorkspaceKeyTaken, "The product has a workspace with this key already."},
 		"the product is suspended":    {domain.ErrProductNotActive, http.StatusConflict, CodeProductNotActive, "The product is suspended and takes no new work."},
@@ -226,14 +290,19 @@ func TestWhatAnOperatorHasToKnowIsLogged(t *testing.T) {
 	}
 }
 
-// A status the contract does not declare is not sent: a caller would branch
-// on a value it was never told of.
-func TestAStatusTheContractDoesNotDeclareIsNotSent(t *testing.T) {
+// A status or a role the contract does not declare is not sent: a caller
+// would branch on a value it was never told of.
+func TestAValueTheContractDoesNotDeclareIsNotSent(t *testing.T) {
 	s := newService(t)
 	s.governance.product.Status = "ARCHIVED"
 	s.governance.workspace.Status = "ARCHIVED"
+	s.governance.membership.Role = "ARCHIVED"
 
 	for _, operation := range protected {
+		if operation.Method == http.MethodDelete {
+			// A revocation is answered without a body.
+			continue
+		}
 		operation.Token = "alice"
 		response := s.do(t, operation)
 		wantProblem(t, response, http.StatusInternalServerError, CodeInternalError, "")
@@ -242,6 +311,28 @@ func TestAStatusTheContractDoesNotDeclareIsNotSent(t *testing.T) {
 		}
 	}
 	if !strings.Contains(s.log.String(), "which the contract does not declare") {
+		t.Errorf("the log does not say what went wrong:\n%s", s.log)
+	}
+}
+
+// The contract shows a membership in force and has nothing to say that one
+// is not. A revoked membership is not sent as if it were in force.
+func TestARevokedMembershipIsNotSent(t *testing.T) {
+	s := newService(t)
+	revoked, err := maintainer().Revoke(domain.Principal(alice), createdAt.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("revoke the membership: %v", err)
+	}
+	s.governance.membership = revoked
+
+	for _, operation := range []call{
+		{Method: http.MethodPost, Target: memberships, Body: grant},
+		{Method: http.MethodGet, Target: memberships + "/" + membershipID},
+	} {
+		operation.Token = "alice"
+		wantProblem(t, s.do(t, operation), http.StatusInternalServerError, CodeInternalError, "")
+	}
+	if !strings.Contains(s.log.String(), "the membership was revoked") {
 		t.Errorf("the log does not say what went wrong:\n%s", s.log)
 	}
 }
@@ -258,7 +349,13 @@ func TestAnOperationReachedWithoutAPrincipalIsFailed(t *testing.T) {
 		_, errGet := o.GetProduct(ctx, GetProductRequestObject{ProductID: productID})
 		_, errCreate := o.CreateWorkspace(ctx, CreateWorkspaceRequestObject{ProductID: productID, Body: &WorkspaceCreation{}})
 		_, errGetWorkspace := o.GetWorkspace(ctx, GetWorkspaceRequestObject{ProductID: productID, WorkspaceID: workspaceID})
-		for operation, err := range map[string]error{"RegisterProduct": errRegister, "GetProduct": errGet, "CreateWorkspace": errCreate, "GetWorkspace": errGetWorkspace} {
+		_, errGrant := o.GrantMembership(ctx, GrantMembershipRequestObject{ProductID: productID, WorkspaceID: workspaceID, Body: &MembershipGrant{}})
+		_, errGetMembership := o.GetMembership(ctx, GetMembershipRequestObject{ProductID: productID, WorkspaceID: workspaceID, MembershipID: membershipID})
+		_, errRevoke := o.RevokeMembership(ctx, RevokeMembershipRequestObject{ProductID: productID, WorkspaceID: workspaceID, MembershipID: membershipID})
+		for operation, err := range map[string]error{
+			"RegisterProduct": errRegister, "GetProduct": errGet, "CreateWorkspace": errCreate, "GetWorkspace": errGetWorkspace,
+			"GrantMembership": errGrant, "GetMembership": errGetMembership, "RevokeMembership": errRevoke,
+		} {
 			if err == nil {
 				t.Errorf("%s with %s was served", operation, name)
 			}
@@ -299,6 +396,19 @@ func TestTheContractStatesTheRulesOfTheModel(t *testing.T) {
 	// authenticate.
 	if verifier, model := identity.SubjectMaxLength, domain.ReferenceMaxLength; verifier != model {
 		t.Errorf("the verifier bounds a subject at %d characters, the model a reference at %d", verifier, model)
+	}
+	var declared, modelled []string
+	for _, value := range schemas["WorkspaceRole"].Value.Enum {
+		role, _ := value.(string)
+		declared = append(declared, role)
+	}
+	for _, role := range domain.WorkspaceRoles() {
+		modelled = append(modelled, string(role))
+	}
+	slices.Sort(declared)
+	slices.Sort(modelled)
+	if !slices.Equal(declared, modelled) {
+		t.Errorf("the contract declares the roles of a workspace %v, the model %v", declared, modelled)
 	}
 
 	owner := domain.OrganizationRef{IdentityProvider: issuer, Organization: "org-cargopai"}

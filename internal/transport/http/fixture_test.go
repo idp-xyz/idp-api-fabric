@@ -53,8 +53,12 @@ func (tokens) Verify(_ context.Context, token string) (identity.Principal, error
 }
 
 const (
-	productID   = "1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6"
-	workspaceID = "7d2e9f10-3a4b-4c5d-8e6f-0a1b2c3d4e5f"
+	productID    = "1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6"
+	workspaceID  = "7d2e9f10-3a4b-4c5d-8e6f-0a1b2c3d4e5f"
+	membershipID = "3f8b1c2d-4e5a-4b6c-9d7e-8f9a0b1c2d3e"
+
+	// memberships is where the memberships of the workspace are granted.
+	memberships = "/v1/products/" + productID + "/workspaces/" + workspaceID + "/memberships"
 )
 
 var createdAt = time.Date(2026, 11, 11, 9, 0, 0, 123456000, time.UTC)
@@ -74,26 +78,40 @@ func engineering() domain.Workspace {
 	}
 }
 
+// maintainer is bob's membership of the workspace, as alice granted it.
+func maintainer() domain.Membership {
+	return domain.Membership{
+		ID: membershipID, ProductID: productID, WorkspaceID: workspaceID,
+		Principal: domain.Principal{Issuer: issuer, Subject: "bob"}, Role: domain.RoleWorkspaceMaintainer,
+		Version: 1, GrantedAt: createdAt, GrantedBy: domain.Principal(alice),
+	}
+}
+
 // governance stands in for the use cases of Product Governance. It keeps
 // what it was asked and answers what the test set. The real use cases are
 // tested where they live, and the whole of it in cmd/fabric-api.
 type governance struct {
-	product   domain.Product
-	workspace domain.Workspace
-	err       error
+	product    domain.Product
+	workspace  domain.Workspace
+	membership domain.Membership
+	err        error
 
-	registered   []application.RegisterProduct
-	productsRead []application.GetProduct
-	created      []application.CreateWorkspace
-	spacesRead   []application.GetWorkspace
+	registered      []application.RegisterProduct
+	productsRead    []application.GetProduct
+	created         []application.CreateWorkspace
+	spacesRead      []application.GetWorkspace
+	granted         []application.GrantMembership
+	membershipsRead []application.GetMembership
+	revoked         []application.RevokeMembership
 }
 
 func newGovernance() *governance {
-	return &governance{product: cargopai(), workspace: engineering()}
+	return &governance{product: cargopai(), workspace: engineering(), membership: maintainer()}
 }
 
 func (g *governance) calls() int {
-	return len(g.registered) + len(g.productsRead) + len(g.created) + len(g.spacesRead)
+	return len(g.registered) + len(g.productsRead) + len(g.created) + len(g.spacesRead) +
+		len(g.granted) + len(g.membershipsRead) + len(g.revoked)
 }
 
 func (g *governance) RegisterProduct(_ context.Context, command application.RegisterProduct) (domain.Product, error) {
@@ -114,6 +132,21 @@ func (g *governance) CreateWorkspace(_ context.Context, command application.Crea
 func (g *governance) GetWorkspace(_ context.Context, query application.GetWorkspace) (domain.Workspace, error) {
 	g.spacesRead = append(g.spacesRead, query)
 	return g.workspace, g.err
+}
+
+func (g *governance) GrantMembership(_ context.Context, command application.GrantMembership) (domain.Membership, error) {
+	g.granted = append(g.granted, command)
+	return g.membership, g.err
+}
+
+func (g *governance) GetMembership(_ context.Context, query application.GetMembership) (domain.Membership, error) {
+	g.membershipsRead = append(g.membershipsRead, query)
+	return g.membership, g.err
+}
+
+func (g *governance) RevokeMembership(_ context.Context, command application.RevokeMembership) error {
+	g.revoked = append(g.revoked, command)
+	return g.err
 }
 
 // service is the transport under test, with what it logged.
