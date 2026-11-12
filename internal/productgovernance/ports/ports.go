@@ -107,8 +107,8 @@ type Memberships interface {
 	HeldBy(ctx context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Membership, error)
 }
 
-// PlatformAdministrators knows who may register a product (AC-08). Who that
-// is belongs to the deployment, not to any product.
+// PlatformAdministrators knows who may register a product and name its
+// owners (AC-08). Who that is belongs to the deployment, not to any product.
 type PlatformAdministrators interface {
 	Includes(principal domain.Principal) bool
 }

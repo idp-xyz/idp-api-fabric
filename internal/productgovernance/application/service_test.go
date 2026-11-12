@@ -581,7 +581,9 @@ func TestEveryUseCaseRefusesARequestWithoutAPrincipal(t *testing.T) {
 	w.quiet()
 
 	membership := joined(t, service, workspace, alice, bob, domain.RoleInternalAuthor)
+	second := named(t, service, product, alice, bob)
 	w.quiet()
+	roles := maps.Clone(w.roles)
 
 	nobody := domain.Principal{}
 	productID, workspaceID, membershipID := string(product.ID), string(workspace.ID), string(membership.ID)
@@ -593,19 +595,28 @@ func TestEveryUseCaseRefusesARequestWithoutAPrincipal(t *testing.T) {
 	})
 	_, errGetMembership := service.GetMembership(ctx, GetMembership{Caller: nobody, ProductID: productID, WorkspaceID: workspaceID, MembershipID: membershipID})
 	errRevoke := service.RevokeMembership(ctx, RevokeMembership{Caller: nobody, ProductID: productID, WorkspaceID: workspaceID, MembershipID: membershipID})
+	_, errGrantRole := service.GrantProductRole(ctx, GrantProductRole{
+		Caller: nobody, ProductID: productID, Principal: carol, Role: string(domain.RoleProductOwner),
+	})
+	_, errGetRole := service.GetProductRole(ctx, GetProductRole{Caller: nobody, ProductID: productID, RoleAssignmentID: string(second.ID)})
+	errRevokeRole := service.RevokeProductRole(ctx, RevokeProductRole{Caller: nobody, ProductID: productID, RoleAssignmentID: string(second.ID)})
 	for name, err := range map[string]error{
 		"GetProduct": errGetProduct, "CreateWorkspace": errCreate, "GetWorkspace": errGetWorkspace,
 		"GrantMembership": errGrant, "GetMembership": errGetMembership, "RevokeMembership": errRevoke,
+		"GrantProductRole": errGrantRole, "GetProductRole": errGetRole, "RevokeProductRole": errRevokeRole,
 	} {
 		if !errors.Is(err, ErrForbidden) {
 			t.Errorf("%s: got %v, want %v", name, err, ErrForbidden)
 		}
 	}
-	if len(w.workspaces) != 1 || len(w.audited) != 0 {
-		t.Errorf("requests without a principal left %d workspaces and the audit entries %+v", len(w.workspaces), w.audited)
+	if len(w.workspaces) != 1 || len(w.audited) != 0 || w.transactions != 0 {
+		t.Errorf("requests without a principal left %d workspaces, the audit entries %+v and %d transactions", len(w.workspaces), w.audited, w.transactions)
 	}
 	if len(w.memberships) != 1 || w.memberships[membership.ID] != membership {
 		t.Errorf("requests without a principal left the memberships %+v, want the one there was, in force", w.memberships)
+	}
+	if !maps.Equal(w.roles, roles) {
+		t.Errorf("requests without a principal left the roles %+v, want them as they were", w.roles)
 	}
 }
 

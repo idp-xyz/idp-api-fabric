@@ -37,6 +37,13 @@ type world struct {
 	transactions int
 	// failing makes the named step fail, to see what a failure leaves behind.
 	failing map[string]error
+	// meanwhile runs when the owners of a product are locked, before they
+	// are counted. It stands for what another transaction committed while
+	// this one waited for the lock: this one reads it, and does not take it
+	// back when it fails.
+	meanwhile func()
+	// undo puts the world back as the transaction in progress found it.
+	undo func()
 }
 
 // audited is one audit entry and whether a transaction was open when it was
@@ -98,20 +105,28 @@ func (w *world) WithinTransaction(ctx context.Context, fn func(ctx context.Conte
 		return fn(ctx)
 	}
 	w.transactions++
-	products, workspaces := maps.Clone(w.products), maps.Clone(w.workspaces)
-	roles, memberships := maps.Clone(w.roles), maps.Clone(w.memberships)
-	audit, events := slices.Clone(w.audited), slices.Clone(w.events)
+	w.undo = w.checkpoint()
 
 	err := fn(context.WithValue(ctx, inTransaction{}, true))
 	if err == nil {
 		err = w.fail("commit")
 	}
 	if err != nil {
+		w.undo()
+	}
+	return err
+}
+
+// checkpoint returns what puts the world back as it is now.
+func (w *world) checkpoint() func() {
+	products, workspaces := maps.Clone(w.products), maps.Clone(w.workspaces)
+	roles, memberships := maps.Clone(w.roles), maps.Clone(w.memberships)
+	audit, events := slices.Clone(w.audited), slices.Clone(w.events)
+	return func() {
 		w.products, w.workspaces = products, workspaces
 		w.roles, w.memberships = roles, memberships
 		w.audited, w.events = audit, events
 	}
-	return err
 }
 
 func (w *world) Includes(principal domain.Principal) bool {
@@ -277,6 +292,9 @@ func (s roleStore) Revoke(ctx context.Context, revoked domain.RoleAssignment) er
 // RolesOf returns the roles of the assignments in force of the principal in
 // the product.
 func (s roleStore) RolesOf(_ context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Role, error) {
+	if err := s.fail("roles"); err != nil {
+		return nil, err
+	}
 	var roles []domain.Role
 	for _, assignment := range s.roles {
 		if assignment.InForce() && assignment.ProductID == productID && assignment.Principal == principal {
@@ -287,13 +305,21 @@ func (s roleStore) RolesOf(_ context.Context, productID domain.ProductID, princi
 }
 
 // LockOwners counts the owners in force of the product. Nothing runs beside
-// a test, so there is nobody to wait for.
+// a test, so there is nobody to wait for: what another transaction would
+// have committed in the meantime is what the test says.
 func (s roleStore) LockOwners(ctx context.Context, productID domain.ProductID) (int, error) {
 	if !transacted(ctx) {
 		return 0, fmt.Errorf("the owners of a product were locked outside a transaction")
 	}
 	if err := s.fail("lock"); err != nil {
 		return 0, err
+	}
+	if s.meanwhile != nil {
+		// What the other transaction committed stays, whatever becomes of
+		// this one. The lock is the first thing a revocation asks for, so
+		// nothing of its own is kept with it.
+		s.meanwhile()
+		s.undo = s.checkpoint()
 	}
 	owners := 0
 	for _, assignment := range s.roles {
