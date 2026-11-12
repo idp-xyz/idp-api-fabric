@@ -66,18 +66,22 @@ func TestWhatTheContractDoesNotRouteIsAProblem(t *testing.T) {
 		{"an unknown path", call{Method: http.MethodGet, Target: "/v1/slots"}, http.StatusNotFound, CodeRouteNotFound, ""},
 		{"a known path under another method", call{Method: http.MethodPost, Target: "/healthz"},
 			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "GET, HEAD"},
-		{"a collection that cannot be read yet", call{Method: http.MethodGet, Target: "/v1/products", Token: "alice"},
-			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "POST"},
+		// A collection is listed and added to. Nothing replaces or removes
+		// all of it at once.
+		{"the products that cannot be removed at once", call{Method: http.MethodDelete, Target: "/v1/products", Token: "alice"},
+			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "GET, HEAD, POST"},
+		{"the workspaces of a product that cannot be replaced at once", call{Method: http.MethodPut, Target: "/v1/products/" + productID + "/workspaces", Token: "alice"},
+			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "GET, HEAD, POST"},
 		{"a product that cannot be removed", call{Method: http.MethodDelete, Target: "/v1/products/" + productID, Token: "alice"},
 			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "GET, HEAD"},
-		{"the members of a workspace that cannot be listed yet", call{Method: http.MethodGet, Target: memberships, Token: "alice"},
-			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "POST"},
+		{"the members of a workspace that cannot be replaced at once", call{Method: http.MethodPut, Target: memberships, Token: "alice"},
+			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "GET, HEAD, POST"},
 		// A membership is granted and revoked. Nothing about it changes in
 		// between.
 		{"a membership that cannot be changed", call{Method: http.MethodPatch, Target: memberships + "/" + membershipID, Token: "alice"},
 			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "GET, HEAD, DELETE"},
-		{"the owners of a product that cannot be listed yet", call{Method: http.MethodGet, Target: roleAssignments, Token: "alice"},
-			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "POST"},
+		{"the owners of a product that cannot be removed at once", call{Method: http.MethodDelete, Target: roleAssignments, Token: "alice"},
+			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "GET, HEAD, POST"},
 		// A role assignment is granted and revoked, as a membership is.
 		{"a role assignment that cannot be changed", call{Method: http.MethodPut, Target: roleAssignments + "/" + roleAssignmentID, Token: "alice"},
 			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "GET, HEAD, DELETE"},
@@ -127,6 +131,10 @@ var protected = []call{
 	{Method: http.MethodPost, Target: roleAssignments, Body: roleGrant},
 	{Method: http.MethodGet, Target: roleAssignments + "/" + roleAssignmentID},
 	{Method: http.MethodDelete, Target: roleAssignments + "/" + roleAssignmentID},
+	{Method: http.MethodGet, Target: "/v1/products"},
+	{Method: http.MethodGet, Target: "/v1/products/" + productID + "/workspaces"},
+	{Method: http.MethodGet, Target: memberships},
+	{Method: http.MethodGet, Target: roleAssignments},
 }
 
 func TestAProtectedOperationNeedsAVerifiedCaller(t *testing.T) {
@@ -206,6 +214,11 @@ func TestWhoSendsARequestIsAskedBeforeWhatItSays(t *testing.T) {
 		{Method: http.MethodDelete, Target: memberships + "/not-an-identifier"},
 		{Method: http.MethodPost, Target: roleAssignments, Body: `{"role":"superuser"}`},
 		{Method: http.MethodDelete, Target: roleAssignments + "/not-an-identifier"},
+		{Method: http.MethodGet, Target: "/v1/products?page_size=0"},
+		{Method: http.MethodGet, Target: "/v1/products/not-an-identifier/workspaces?page_size=1"},
+		{Method: http.MethodGet, Target: memberships + "?page_token=not.a.token"},
+		// This one matches the contract and is still no token of the list.
+		{Method: http.MethodGet, Target: roleAssignments + "?page_token=bm90LWEtdG9rZW4"},
 	}
 	for _, c := range invalid {
 		wantProblem(t, s.do(t, c), http.StatusUnauthorized, CodeCredentialsMissing, "")
@@ -381,6 +394,66 @@ func TestARequestThatDoesNotMatchTheContractIsRefused(t *testing.T) {
 			http.StatusBadRequest, CodeRequestInvalid, "The path parameter role_assignment_id does not match the contract."},
 		{"a body where the revocation of a role takes none", call{Method: http.MethodDelete, Target: roleAssignments + "/" + roleAssignmentID, Body: `{"canary":true}`},
 			http.StatusBadRequest, CodeRequestInvalid, "The request does not match the contract."},
+		// A page holds 1 to 100 items, and its size is a whole number.
+		{"a page of no item", call{Method: http.MethodGet, Target: products + "?page_size=0"},
+			http.StatusBadRequest, CodeRequestInvalid, "The query parameter page_size does not match the contract."},
+		{"a page of more items than the largest", call{Method: http.MethodGet, Target: workspaces + "?page_size=101"},
+			http.StatusBadRequest, CodeRequestInvalid, "The query parameter page_size does not match the contract."},
+		{"a page of less than no item", call{Method: http.MethodGet, Target: memberships + "?page_size=-1"},
+			http.StatusBadRequest, CodeRequestInvalid, "The query parameter page_size does not match the contract."},
+		{"a page size that is no number", call{Method: http.MethodGet, Target: roleAssignments + "?page_size=canary"},
+			http.StatusBadRequest, CodeRequestInvalid, "The query parameter page_size does not match the contract."},
+		{"a page size that is no whole number", call{Method: http.MethodGet, Target: products + "?page_size=1.5"},
+			http.StatusBadRequest, CodeRequestInvalid, "The query parameter page_size does not match the contract."},
+		{"a page size that is a whole number written as a decimal", call{Method: http.MethodGet, Target: products + "?page_size=2.0"},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		{"a page size beyond any number", call{Method: http.MethodGet, Target: products + "?page_size=99999999999999999999999"},
+			http.StatusBadRequest, CodeRequestInvalid, "The query parameter page_size does not match the contract."},
+		// The validator takes a parameter without a value for one that was
+		// not sent, and would serve the default size.
+		{"a page size without a value", call{Method: http.MethodGet, Target: products + "?page_size="},
+			http.StatusBadRequest, CodeRequestInvalid, "The query parameter page_size does not match the contract."},
+		{"two page sizes", call{Method: http.MethodGet, Target: products + "?page_size=1&page_size=2"},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		// A page token is what a page handed out: 1 to 512 characters of
+		// base64url, without padding.
+		{"a page token without a value", call{Method: http.MethodGet, Target: products + "?page_token="},
+			http.StatusBadRequest, CodeRequestInvalid, "The query parameter page_token does not match the contract."},
+		{"a page token of characters no token has", call{Method: http.MethodGet, Target: workspaces + "?page_token=canary.canary"},
+			http.StatusBadRequest, CodeRequestInvalid, "The query parameter page_token does not match the contract."},
+		{"a page token with the padding of base64", call{Method: http.MethodGet, Target: memberships + "?page_token=Y2FuYXJ5%3D%3D"},
+			http.StatusBadRequest, CodeRequestInvalid, "The query parameter page_token does not match the contract."},
+		{"a page token with a space", call{Method: http.MethodGet, Target: memberships + "?page_token=Y2Fu%20YXJ5"},
+			http.StatusBadRequest, CodeRequestInvalid, "The query parameter page_token does not match the contract."},
+		{"a page token longer than any", call{Method: http.MethodGet, Target: roleAssignments + "?page_token=" + strings.Repeat("a", 513)},
+			http.StatusBadRequest, CodeRequestInvalid, "The query parameter page_token does not match the contract."},
+		{"two page tokens", call{Method: http.MethodGet, Target: products + "?page_token=YQ&page_token=Yg"},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		// A page is asked for in the words of the contract and no other. A
+		// parameter the operation does not declare is not passed over: the
+		// request would be served as another one than was sent.
+		{"an offset where a list takes a token", call{Method: http.MethodGet, Target: products + "?offset=10"},
+			http.StatusBadRequest, CodeRequestInvalid, "The request has a query parameter the operation does not declare."},
+		{"a page size under another name", call{Method: http.MethodGet, Target: workspaces + "?pageSize=10"},
+			http.StatusBadRequest, CodeRequestInvalid, "The request has a query parameter the operation does not declare."},
+		{"a page size in upper case", call{Method: http.MethodGet, Target: memberships + "?PAGE_SIZE=10"},
+			http.StatusBadRequest, CodeRequestInvalid, "The request has a query parameter the operation does not declare."},
+		{"a parameter nobody declared beside one that is", call{Method: http.MethodGet, Target: roleAssignments + "?page_size=10&canary=1"},
+			http.StatusBadRequest, CodeRequestInvalid, "The request has a query parameter the operation does not declare."},
+		{"a parameter nobody declared, without a value", call{Method: http.MethodGet, Target: products + "?canary"},
+			http.StatusBadRequest, CodeRequestInvalid, "The request has a query parameter the operation does not declare."},
+		{"a query where a read takes none", call{Method: http.MethodGet, Target: products + "/" + productID + "?page_size=10"},
+			http.StatusBadRequest, CodeRequestInvalid, "The request has a query parameter the operation does not declare."},
+		{"a query where a registration takes none", call{Method: http.MethodPost, Target: products + "?canary=1", Body: registration},
+			http.StatusBadRequest, CodeRequestInvalid, "The request has a query parameter the operation does not declare."},
+		{"a query where a revocation takes none", call{Method: http.MethodDelete, Target: memberships + "/" + membershipID + "?canary=1"},
+			http.StatusBadRequest, CodeRequestInvalid, "The request has a query parameter the operation does not declare."},
+		{"a query where the health check takes none", call{Method: http.MethodGet, Target: "/healthz?canary=1"},
+			http.StatusBadRequest, CodeRequestInvalid, "The request has a query parameter the operation does not declare."},
+		{"a query that cannot be read", call{Method: http.MethodGet, Target: products + "?page_size=%zz"},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		{"a query in two parts by a semicolon", call{Method: http.MethodGet, Target: products + "?page_size=1;page_token=YQ"},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -486,6 +559,11 @@ func (failing) GetVersion(context.Context, GetVersionRequestObject) (GetVersionR
 	return nil, nil
 }
 
+// Its list of products fails as well: that is an operation with a query.
+func (f failing) ListProducts(context.Context, ListProductsRequestObject) (ListProductsResponseObject, error) {
+	return nil, f.cause
+}
+
 func TestAFailureNobodyExpectedIsAnInternalErrorWhoseCauseIsLoggedAndNotSent(t *testing.T) {
 	cause := errors.New("connect to 10.0.0.7: password authentication failed for user fabric_app")
 	cases := []struct {
@@ -493,8 +571,11 @@ func TestAFailureNobodyExpectedIsAnInternalErrorWhoseCauseIsLoggedAndNotSent(t *
 		target string
 		logged string
 	}{
-		{"the operation returns an error", "/healthz?token=in-the-query", cause.Error()},
-		{"the operation returns neither a response nor an error", "/version?token=in-the-query", "GetVersion returned neither"},
+		{"the operation returns an error", "/healthz", cause.Error()},
+		{"the operation returns neither a response nor an error", "/version", "GetVersion returned neither"},
+		// The query of a request is not written to the log, whatever it
+		// carries.
+		{"an operation with a query returns an error", "/v1/products?page_size=7&page_token=in-the-query", cause.Error()},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -505,7 +586,9 @@ func TestAFailureNobodyExpectedIsAnInternalErrorWhoseCauseIsLoggedAndNotSent(t *
 			}
 
 			recorder := httptest.NewRecorder()
-			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, c.target, nil))
+			request := httptest.NewRequest(http.MethodGet, c.target, nil)
+			request.Header.Set("Authorization", "Bearer alice")
+			handler.ServeHTTP(recorder, request)
 
 			traceID := wantProblem(t, recorder, http.StatusInternalServerError, CodeInternalError, "")
 			if strings.Contains(recorder.Body.String(), "10.0.0.7") {

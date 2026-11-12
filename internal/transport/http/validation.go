@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -42,10 +44,11 @@ type validation struct {
 	logger *slog.Logger
 }
 
-// validated returns next behind the validator of contract. A request is
-// checked in this order: who sends it, its parameters, its body. A request
-// that fails is answered here and does not reach next.
-func (v validation) validated(contract *openapi3.T, authenticate openapi3filter.AuthenticationFunc, next http.Handler) (http.Handler, error) {
+// validated returns mux behind the validator of contract. A request is
+// checked in this order: who sends it, its parameters, its body, and then
+// that its query says nothing its operation does not declare. A request that
+// fails is answered here and does not reach an operation.
+func (v validation) validated(contract *openapi3.T, authenticate openapi3filter.AuthenticationFunc, mux *http.ServeMux) (http.Handler, error) {
 	// The validator builds this router itself and panics if it cannot. It is
 	// built here first, so that a contract it cannot route is an error.
 	if _, err := gorillamux.NewRouter(contract); err != nil {
@@ -59,7 +62,79 @@ func (v validation) validated(contract *openapi3.T, authenticate openapi3filter.
 		},
 		ErrorHandlerWithOpts:  v.refuse,
 		SilenceServersWarning: true,
-	})(next), nil
+	})(v.queried(declaredQuery(contract), mux)), nil
+}
+
+// declaredQuery lists the query parameters every operation of the contract
+// declares, under what the mux routes the operation by: its method and its
+// path.
+func declaredQuery(contract *openapi3.T) map[string][]string {
+	declared := make(map[string][]string)
+	for path, item := range contract.Paths.Map() {
+		for method, operation := range item.Operations() {
+			names := []string{}
+			for _, parameters := range []openapi3.Parameters{item.Parameters, operation.Parameters} {
+				for _, parameter := range parameters {
+					if parameter.Value != nil && parameter.Value.In == openapi3.ParameterInQuery {
+						names = append(names, parameter.Value.Name)
+					}
+				}
+			}
+			declared[method+" "+path] = names
+		}
+	}
+	return declared
+}
+
+// queried serves a request whose query says what its operation declares, and
+// nothing else.
+//
+// The validator checks the parameters the contract declares and looks at no
+// other, and it takes a parameter that is sent without a value for one that
+// is not sent. A list would then be read with a size, or from a place, the
+// caller did not mean: "pageSize" where the contract says page_size, or an
+// offset, which no list has. Such a request is refused instead of being
+// served as another one.
+//
+// It runs behind the validator, so whoever sends the request has been asked
+// first. The name of a parameter the operation does not declare comes from
+// the request, and is not repeated.
+func (v validation) queried(declared map[string][]string, mux *http.ServeMux) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, pattern := mux.Handler(r)
+		names, routed := declared[pattern]
+		if !routed {
+			// The mux routes what the contract does not declare: the two
+			// were not made from one document.
+			v.internal(w, r, "a routed request has no operation in the contract", nil)
+			return
+		}
+		// What is looked at is the query as it was sent: the validator has
+		// rewritten the one of the request by now.
+		sent := r.URL.RawQuery
+		if state := stateOf(r.Context()); state != nil {
+			sent = state.query
+		}
+		query, err := url.ParseQuery(sent)
+		if err != nil {
+			answer(w, r, problem(http.StatusBadRequest, CodeRequestInvalid, "The query of the request cannot be read."))
+			return
+		}
+		for name, values := range query {
+			if !slices.Contains(names, name) {
+				answer(w, r, problem(http.StatusBadRequest, CodeRequestInvalid,
+					"The request has a query parameter the operation does not declare."))
+				return
+			}
+			if slices.Contains(values, "") {
+				// The name is one of the contract.
+				answer(w, r, problem(http.StatusBadRequest, CodeRequestInvalid,
+					fmt.Sprintf("The query parameter %s does not match the contract.", name)))
+				return
+			}
+		}
+		mux.ServeHTTP(w, r)
+	})
 }
 
 // refuse answers a request the validator did not let through.

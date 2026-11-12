@@ -12,9 +12,12 @@ const ProblemContentType = "application/problem+json"
 // never on title or detail.
 const (
 	// What the transport itself answers.
-	CodeRouteNotFound        = "ROUTE_NOT_FOUND"
-	CodeMethodNotAllowed     = "METHOD_NOT_ALLOWED"
-	CodeRequestInvalid       = "REQUEST_INVALID"
+	CodeRouteNotFound    = "ROUTE_NOT_FOUND"
+	CodeMethodNotAllowed = "METHOD_NOT_ALLOWED"
+	CodeRequestInvalid   = "REQUEST_INVALID"
+	// The page token matches the contract and is no token of the list it
+	// was sent to. The caller reads the list again from the start.
+	CodePageTokenInvalid     = "PAGE_TOKEN_INVALID"
 	CodeRequestTooLarge      = "REQUEST_TOO_LARGE"
 	CodeUnsupportedMediaType = "UNSUPPORTED_MEDIA_TYPE"
 	CodeInternalError        = "INTERNAL_ERROR"

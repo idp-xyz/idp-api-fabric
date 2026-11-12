@@ -268,8 +268,9 @@ func (s *stack) nameOwner(productID, caller, subject string) string {
 
 // ownership is where the role of the subject in the product is read and
 // revoked. A registration answers with the product, not with the role
-// assignments of its first owners, and no operation lists them yet: the
-// identifier of such an assignment is read where an operator would find it.
+// assignments of its first owners: an owner finds those in the list of the
+// owners of the product. Where a test needs one without asking as an owner,
+// the identifier is read where an operator would find it.
 func (s *stack) ownership(productID, subject string) string {
 	s.t.Helper()
 

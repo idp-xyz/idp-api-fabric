@@ -8,7 +8,8 @@
 //
 // A request passes, in this order: the router, which answers what the
 // contract does not route; the validator, which checks who sends the request,
-// then its parameters, then its body, against the contract; the operation.
+// then its parameters, then its body, against the contract; the check that
+// its query says nothing the operation does not declare; the operation.
 // The transport establishes who the caller is. Whether the caller may do what
 // it asks is decided by the use case, never here (F05 §7).
 package http

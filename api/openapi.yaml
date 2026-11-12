@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.4.0
+  version: 0.5.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -11,6 +11,20 @@ info:
 
     Every error is an RFC 9457 problem. Callers branch on its error_code,
     never on its title or detail.
+
+
+    A list is read a page at a time, in an order that is fixed: oldest first,
+    by the instant an item was created or granted, and what is of one instant
+    by its identifier. Neither ever changes, so an item keeps its place for as
+    long as it is listed. A page holds at most 100 items and says where the
+    next one starts. It starts behind a position, not at an offset: an offset
+    shifts whenever an item before it is added or ends, which repeats or skips
+    items, and it costs more the further into the list it is. Each page is
+    read from what is there when it is read. What was in the list before the
+    first page was read and is still in it after the last is returned exactly
+    once; what is added, or ends, in between may or may not be returned. No
+    list says how many items it has: that would say how much there is that the
+    caller may not read.
 # An operation needs a verified caller unless it says otherwise. A new
 # operation is therefore private until its declaration makes it public.
 security:
@@ -55,6 +69,40 @@ paths:
         default:
           $ref: '#/components/responses/Problem'
   /v1/products:
+    get:
+      operationId: listProducts
+      summary: List the products
+      description: >-
+        Returns the products the caller may read, those getProduct returns to
+        it: every product to a platform administrator, and to anybody else
+        the products it holds something in force in, a role in the product or
+        a membership in one of its workspaces. Whoever holds nothing gets an
+        empty list, and nobody is refused.
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: A page of the products
+          headers:
+            Cache-Control:
+              description: A product is private to its members
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
     post:
       operationId: registerProduct
       summary: Register a product
@@ -147,6 +195,49 @@ paths:
         default:
           $ref: '#/components/responses/Problem'
   /v1/products/{product_id}/role-assignments:
+    get:
+      operationId: listProductRoles
+      summary: List the role assignments of a product
+      description: >-
+        Returns the role assignments in force of the product to an owner of
+        it. It is where an owner finds the assignment of another: that of an
+        owner named when the product was registered is in no other answer.
+        Nobody else lists them. Whoever may know the product exists and does
+        not own it is refused (403 FORBIDDEN): a member of one of its
+        workspaces, and a platform administrator, who names an owner and
+        reads none. To anyone else there is no such product (404
+        PRODUCT_NOT_FOUND), the same as for a product that is missing. An
+        assignment that was revoked is in no list.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: A page of the role assignments in force
+          headers:
+            Cache-Control:
+              description: A role assignment is private to the owners of its product
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductRoleAssignmentList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
     post:
       operationId: grantProductRole
       summary: Make a principal hold a role in a product
@@ -300,6 +391,50 @@ paths:
         default:
           $ref: '#/components/responses/Problem'
   /v1/products/{product_id}/workspaces:
+    get:
+      operationId: listWorkspaces
+      summary: List the workspaces of a product
+      description: >-
+        Returns the workspaces of the product the caller may read, those
+        getWorkspace returns to it: every workspace to an owner of the
+        product, and to a member the workspaces it is a member of. A member
+        is not told that there are others. Whoever holds nothing in the
+        product reads none of its workspaces and is answered as far as it may
+        know. To a stranger there is no such product (404 PRODUCT_NOT_FOUND),
+        the same as for a product that is missing. A platform administrator,
+        who knows the product exists and nothing of what is inside it, is
+        refused (403 FORBIDDEN): an empty list would say that the product has
+        no workspace.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: A page of the workspaces the caller may read
+          headers:
+            Cache-Control:
+              description: A workspace is private to the owners of its product and to its members
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
     post:
       operationId: createWorkspace
       summary: Create a workspace of a product
@@ -401,6 +536,50 @@ paths:
         default:
           $ref: '#/components/responses/Problem'
   /v1/products/{product_id}/workspaces/{workspace_id}/memberships:
+    get:
+      operationId: listMemberships
+      summary: List the members of a workspace
+      description: >-
+        Returns the memberships in force of the workspace to an owner of the
+        product. Nobody else lists them, and each is answered as far as it
+        may know: a stranger is told there is no such product (404
+        PRODUCT_NOT_FOUND), whoever knows the product and may not read the
+        workspace that there is no such workspace (404 WORKSPACE_NOT_FOUND),
+        and a member of the workspace, who knows it has members, is refused
+        (403 FORBIDDEN). A workspace the product does not have is not found
+        (404 WORKSPACE_NOT_FOUND), and a membership that was revoked is in no
+        list.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: A page of the memberships in force
+          headers:
+            Cache-Control:
+              description: A membership is private to the owners of its product
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MembershipList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
     post:
       operationId: grantMembership
       summary: Make a principal a member of a workspace
@@ -581,6 +760,32 @@ components:
       description: The identifier of the role assignment
       schema:
         $ref: '#/components/schemas/Identifier'
+    PageSize:
+      name: page_size
+      in: query
+      description: >-
+        How many items the page holds at most. A list is read to its end by
+        asking for the page that follows, never by asking for a larger one.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    PageToken:
+      name: page_token
+      in: query
+      description: >-
+        Where the page starts: the next_page_token of the page before, as it
+        was given. Without it the list starts at its beginning. The token is
+        opaque. It names a position in one list and grants nothing: what the
+        caller may read is decided again with every page, from what it holds
+        then. One that is not a token of this list is refused (400
+        PAGE_TOKEN_INVALID).
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 512
+        pattern: '^[A-Za-z0-9_-]+$'
   responses:
     Problem:
       description: RFC 9457 problem with a stable error code
@@ -823,6 +1028,69 @@ components:
         granted_at:
           type: string
           format: date-time
+    NextPageToken:
+      description: >-
+        The page_token of the page that follows this one, to be sent back as
+        it is. A page carries it for as long as items follow: the last page
+        of a list has none, also when it is full.
+      type: string
+      minLength: 1
+      maxLength: 512
+      pattern: '^[A-Za-z0-9_-]+$'
+    ProductList:
+      description: One page of the products the caller may read, oldest first.
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Product'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
+    WorkspaceList:
+      description: >-
+        One page of the workspaces of a product the caller may read, oldest
+        first.
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Workspace'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
+    MembershipList:
+      description: >-
+        One page of the memberships in force of a workspace, in the order
+        they were granted.
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Membership'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
+    ProductRoleAssignmentList:
+      description: >-
+        One page of the role assignments in force of a product, in the order
+        they were granted.
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ProductRoleAssignment'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
     Problem:
       description: >-
         The error body of every operation. Callers branch on error_code, never
