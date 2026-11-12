@@ -51,6 +51,8 @@ func NewHandler(config Config) (http.Handler, error) {
 
 // newHandler routes the operations of the contract to server, behind the
 // validator, and answers everything else, and every failure, as a problem.
+// A panic is such a failure: it is answered as an internal error, unless the
+// answer had started, and then the connection is cut.
 func newHandler(logger *slog.Logger, verifier TokenVerifier, server StrictServerInterface) (http.Handler, error) {
 	contract, err := loadContract()
 	if err != nil {
@@ -72,7 +74,7 @@ func newHandler(logger *slog.Logger, verifier TokenVerifier, server StrictServer
 	if err != nil {
 		return nil, err
 	}
-	return begin(ids.NewUUID, problemFallback{mux: mux, routed: prepare(validated)}), nil
+	return begin(ids.NewUUID, logger, problemFallback{mux: mux, routed: prepare(validated)}), nil
 }
 
 // requireResponse fails an operation that returns neither a response nor an

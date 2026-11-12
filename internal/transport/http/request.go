@@ -2,7 +2,10 @@ package http
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"net/http"
+	"runtime/debug"
 
 	"go.idp.xyz/idp-api-fabric/internal/platform/identity"
 )
@@ -40,12 +43,80 @@ func stateOf(ctx context.Context) *requestState {
 	return state
 }
 
-// begin gives every request its state.
-func begin(newID func() string, next http.Handler) http.Handler {
+// begin gives every request its state, and stands between a panic and the
+// caller.
+//
+// An operation that panics has answered nothing. Left to the server, the
+// connection would be cut and the stack written to a log that knows nothing
+// of the request. Here the caller gets the internal error that any failure
+// nobody expected gets, and the log line carries the identifier of the
+// request. What panicked is logged and never sent.
+//
+// An answer that has started cannot be taken back or followed by another.
+// The connection is cut then, which is how the caller learns that what it
+// received is not whole.
+func begin(newID func() string, logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		state := &requestState{correlationID: newID()}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), stateKey{}, state)))
+		r = r.WithContext(context.WithValue(r.Context(), stateKey{}, state))
+		answered := &answerWriter{ResponseWriter: w}
+
+		defer func() {
+			recovered := recover()
+			if recovered == nil {
+				return
+			}
+			// A handler that panics with http.ErrAbortHandler asks for the
+			// connection to be cut and for nothing to be logged. It gets
+			// both from the server.
+			if recovered == http.ErrAbortHandler {
+				panic(recovered)
+			}
+			logger.ErrorContext(r.Context(), "an operation panicked",
+				"correlation_id", state.correlationID, "method", r.Method, "path", r.URL.Path,
+				"answer_started", answered.started, "panic", fmt.Sprint(recovered), "stack", string(debug.Stack()))
+			if answered.started {
+				panic(http.ErrAbortHandler)
+			}
+			answer(answered, r, problem(http.StatusInternalServerError, CodeInternalError, ""))
+		}()
+		next.ServeHTTP(answered, r)
 	})
+}
+
+// answerWriter knows whether the answer has started: once its status has
+// gone out, nothing takes it back.
+type answerWriter struct {
+	http.ResponseWriter
+	started bool
+}
+
+func (w *answerWriter) WriteHeader(status int) {
+	// An informational response announces the answer; it is not the answer.
+	if status >= http.StatusOK {
+		w.started = true
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *answerWriter) Write(p []byte) (int, error) {
+	w.started = true
+	return w.ResponseWriter.Write(p)
+}
+
+// Unwrap hands out the writer beneath, for http.ResponseController and for
+// serverWriter.
+func (w *answerWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// serverWriter is the writer the server made, beneath whatever wraps it.
+func serverWriter(w http.ResponseWriter) http.ResponseWriter {
+	for {
+		wrapper, wraps := w.(interface{ Unwrap() http.ResponseWriter })
+		if !wraps {
+			return w
+		}
+		w = wrapper.Unwrap()
+	}
 }
 
 // prepare makes a routed request ready for the validator.
@@ -55,7 +126,10 @@ func begin(newID func() string, next http.Handler) http.Handler {
 // drops the body of the answer by itself, since it still knows the request
 // was a HEAD. Serving it apart from GET would mean serving it unvalidated.
 //
-// A body is bounded before anyone reads it.
+// A body is bounded before anyone reads it. The bound is given the writer of
+// the server itself: it tells that writer to close the connection once a
+// body has run over, so that the rest of it is not read either, and a
+// wrapper it does not know would swallow that.
 func prepare(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodHead {
@@ -63,7 +137,7 @@ func prepare(next http.Handler) http.Handler {
 			r.Method = http.MethodGet
 		}
 		if r.Body != nil && r.Body != http.NoBody {
-			r.Body = http.MaxBytesReader(w, r.Body, requestBodyMaxBytes)
+			r.Body = http.MaxBytesReader(serverWriter(w), r.Body, requestBodyMaxBytes)
 		}
 		next.ServeHTTP(w, r)
 	})
