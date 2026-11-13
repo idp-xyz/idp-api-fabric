@@ -27,6 +27,10 @@ var (
 	// and nothing can be done to it.
 	ErrMembershipNotFound = errors.New("no such membership")
 
+	// ErrRoleAssignmentNotFound is ErrProductNotFound for a role assignment.
+	// As with a membership, one that was revoked is not found either.
+	ErrRoleAssignmentNotFound = errors.New("no such role assignment")
+
 	// ErrOwnerIssuerNotTrusted reports an owner named under an identity
 	// provider whose principals cannot authenticate here.
 	ErrOwnerIssuerNotTrusted = errors.New("an owner is named under an issuer this deployment does not trust")
@@ -51,19 +55,30 @@ const (
 	ActionMemberGrant     = "member.grant"
 	ActionMemberRevoke    = "member.revoke"
 	ActionMemberRead      = "member.read"
+
+	// The access matrix of F05 names no action on the roles of a product.
+	// These are named after the event that announces such a role.
+	ActionProductRoleGrant  = "product_role.grant"
+	ActionProductRoleRevoke = "product_role.revoke"
+	ActionProductRoleRead   = "product_role.read"
 )
 
 // The rules a decision is recorded under, as the access matrix of F05 names
 // them. A read that is allowed is not recorded, so the read actions need no
 // permit rule here.
 const (
-	// rulePlatformAdministrator permits product.register (AC-08).
+	// rulePlatformAdministrator permits product.register (AC-08). Naming
+	// the owners of a product is part of registering it: an administrator
+	// that names one afterwards is recorded under the same rule.
 	rulePlatformAdministrator = "AC-08"
 	// ruleProductOwner permits workspace.manage (AC-09).
 	ruleProductOwner = "AC-09"
 	// ruleMembersOfOwnProduct permits member.grant (AC-10). The matrix has
 	// no row for revoking a membership: whoever may grant one may revoke
-	// one, and member.revoke is recorded under the same rule.
+	// one, and member.revoke is recorded under the same rule. It has none
+	// for the owners of a product either: an owner that names or removes an
+	// owner manages who holds what in its own product, and is recorded
+	// under this rule as well.
 	ruleMembersOfOwnProduct = "AC-10"
 	// ruleNoRole refuses whoever holds no role that permits the action
 	// (DENY-03, missing_active_membership_or_grant).
@@ -76,6 +91,9 @@ const (
 	// resourceMember is what the access matrix calls the resource of
 	// member.grant. Its identifier is that of the membership.
 	resourceMember = "Member"
+	// resourceRoleAssignment is the resource of the actions on the roles of
+	// a product. Its identifier is that of the role assignment.
+	resourceRoleAssignment = "RoleAssignment"
 )
 
 // Dependencies are the ports the use cases are wired with. All are required.
@@ -158,7 +176,7 @@ func known(caller domain.Principal) error {
 
 // scene is what a use case reads before it decides: the product, what the
 // caller holds in it and, as far as the request names them, the workspace
-// and the membership.
+// and the membership, or the role assignment.
 type scene struct {
 	product      domain.Product
 	productFound bool
@@ -168,6 +186,8 @@ type scene struct {
 	workspaceFound  bool
 	membership      domain.Membership
 	membershipFound bool
+	assignment      domain.RoleAssignment
+	assignmentFound bool
 }
 
 // survey reads the scene of a request. An empty identifier names nothing and
@@ -200,6 +220,23 @@ func (s *ProductGovernance) survey(ctx context.Context, caller domain.Principal,
 	if workspaceID != "" && membershipID != "" {
 		if seen.membership, seen.membershipFound, err = s.deps.Memberships.Find(ctx, productID, workspaceID, membershipID); err != nil {
 			return scene{}, fmt.Errorf("read the membership: %w", err)
+		}
+	}
+	return seen, nil
+}
+
+// surveyAssignment is survey for a request that names a role assignment of
+// the product. As there, an empty identifier names nothing and is not looked
+// up, and all of it is read whatever the answer will be.
+func (s *ProductGovernance) surveyAssignment(ctx context.Context, caller domain.Principal,
+	productID domain.ProductID, assignmentID domain.RoleAssignmentID) (scene, error) {
+	seen, err := s.survey(ctx, caller, productID, "", "")
+	if err != nil {
+		return scene{}, err
+	}
+	if assignmentID != "" {
+		if seen.assignment, seen.assignmentFound, err = s.deps.Roles.Find(ctx, productID, assignmentID); err != nil {
+			return scene{}, fmt.Errorf("read the role assignment: %w", err)
 		}
 	}
 	return seen, nil
@@ -259,7 +296,15 @@ func (s *ProductGovernance) RegisterProduct(ctx context.Context, command Registe
 	if err != nil {
 		return domain.Product{}, err
 	}
-	owners, err := product.AssignFirstOwners(command.Owners, command.Caller)
+	// Each first owner holds its role under an identifier of its own, as a
+	// role assignment made later does.
+	assignmentIDs := make([]domain.RoleAssignmentID, len(command.Owners))
+	for index := range assignmentIDs {
+		if assignmentIDs[index], err = domain.ParseRoleAssignmentID(s.deps.Identifiers.NewID()); err != nil {
+			return domain.Product{}, fmt.Errorf("generate the identifier of a role assignment: %w", err)
+		}
+	}
+	owners, err := product.AssignFirstOwners(assignmentIDs, command.Owners, command.Caller)
 	if err != nil {
 		return domain.Product{}, err
 	}
@@ -273,8 +318,10 @@ func (s *ProductGovernance) RegisterProduct(ctx context.Context, command Registe
 		if err := s.deps.Products.Add(ctx, product); err != nil {
 			return err
 		}
-		if err := s.deps.Roles.Add(ctx, owners); err != nil {
-			return err
+		for _, owner := range owners {
+			if err := s.deps.Roles.Add(ctx, owner); err != nil {
+				return err
+			}
 		}
 		if err := s.deps.Audit.Record(ctx, ports.AuditEntry{
 			Actor: command.Caller, Action: ActionProductRegister, Allowed: true, Rule: rulePlatformAdministrator,
@@ -689,6 +736,251 @@ func (s *ProductGovernance) RevokeMembership(ctx context.Context, command Revoke
 	}
 	if err != nil {
 		return fmt.Errorf("revoke the membership: %w", err)
+	}
+	return nil
+}
+
+// GrantProductRole is what making a principal hold a role in a product
+// needs.
+type GrantProductRole struct {
+	Caller        domain.Principal
+	CorrelationID string
+	ProductID     string
+	// Principal is who gets the role.
+	Principal domain.Principal
+	// Role is the role the principal holds in the product.
+	Role string
+}
+
+// GrantProductRole makes a principal hold a role in a product: the role of
+// an owner, the only one a product has (FR-003). An owner of that product
+// may (AC-10), and so may a platform administrator (AC-08): naming the
+// owners of a product is part of registering it, and it is the only way to
+// repair a product whose owner was mistyped. Naming an owner gives the
+// administrator nothing inside the product. Nothing keeps it from naming
+// itself, here as at registration: it is then an owner like any other, and
+// the grant is on record. Whoever else may know the product exists is told
+// it may not; to anyone else there is no such product.
+//
+// The decision is made inside the transaction of the write, from what the
+// caller holds then. The assignment, the audit fact and the event commit
+// together or not at all (INV-13).
+func (s *ProductGovernance) GrantProductRole(ctx context.Context, command GrantProductRole) (domain.RoleAssignment, error) {
+	if err := known(command.Caller); err != nil {
+		return domain.RoleAssignment{}, err
+	}
+	productID, err := domain.ParseProductID(command.ProductID)
+	if err != nil {
+		return domain.RoleAssignment{}, ErrProductNotFound
+	}
+
+	var assignment domain.RoleAssignment
+	var refused *refusal
+	err = s.deps.Transactor.WithinTransaction(ctx, func(ctx context.Context) error {
+		seen, err := s.survey(ctx, command.Caller, productID, "", "")
+		if err != nil {
+			return err
+		}
+		if !seen.productFound {
+			return ErrProductNotFound
+		}
+		// An owner acts as one, whatever else it is: an administrator that
+		// owns the product is recorded under the rule of the owners.
+		rule := ruleMembersOfOwnProduct
+		if !seen.standing.Owns() {
+			if !s.deps.Administrators.Includes(command.Caller) {
+				refused = s.notOwner(seen.standing, ports.AuditEntry{
+					Actor: command.Caller, Action: ActionProductRoleGrant, Rule: ruleNoRole,
+					ProductID: productID, ResourceType: resourceRoleAssignment, CorrelationID: command.CorrelationID,
+				})
+				return refused.err
+			}
+			rule = rulePlatformAdministrator
+		}
+
+		id, err := domain.ParseRoleAssignmentID(s.deps.Identifiers.NewID())
+		if err != nil {
+			return fmt.Errorf("generate the identifier of the role assignment: %w", err)
+		}
+		assignment, err = domain.GrantProductRole(id, seen.product,
+			command.Principal, domain.Role(command.Role), command.Caller, s.deps.Clock.Now())
+		if err != nil {
+			return err
+		}
+		// A role of a principal that can never authenticate would never be
+		// used.
+		if !s.deps.Issuers.Trusts(command.Principal.Issuer) {
+			return ErrOwnerIssuerNotTrusted
+		}
+		if err := s.deps.Roles.Add(ctx, assignment); err != nil {
+			return err
+		}
+		if err := s.deps.Audit.Record(ctx, ports.AuditEntry{
+			Actor: command.Caller, Action: ActionProductRoleGrant, Allowed: true, Rule: rule,
+			ProductID: productID, ResourceType: resourceRoleAssignment, ResourceID: string(assignment.ID),
+			CorrelationID: command.CorrelationID,
+		}); err != nil {
+			return err
+		}
+		return s.deps.Events.ProductRoleChanged(ctx, assignment, command.CorrelationID)
+	})
+	if refused != nil {
+		return domain.RoleAssignment{}, s.refuse(ctx, *refused)
+	}
+	if err != nil {
+		return domain.RoleAssignment{}, fmt.Errorf("grant the role: %w", err)
+	}
+	return assignment, nil
+}
+
+// GetProductRole asks for one role assignment of one product.
+type GetProductRole struct {
+	Caller           domain.Principal
+	CorrelationID    string
+	ProductID        string
+	RoleAssignmentID string
+}
+
+// GetProductRole returns a role assignment in force to an owner of its
+// product. Who owns a product is the owners' to manage and nobody else's to
+// read: a platform administrator names an owner and reads none.
+//
+// Whoever does not own the product is answered as far as it may know: no
+// such product to a stranger, no such role assignment to whoever knows the
+// product.
+func (s *ProductGovernance) GetProductRole(ctx context.Context, query GetProductRole) (domain.RoleAssignment, error) {
+	if err := known(query.Caller); err != nil {
+		return domain.RoleAssignment{}, err
+	}
+	productID, err := domain.ParseProductID(query.ProductID)
+	if err != nil {
+		return domain.RoleAssignment{}, ErrProductNotFound
+	}
+	// An identifier that is none names nothing. The rest is read all the
+	// same: what the caller is told depends on it.
+	assignmentID, _ := domain.ParseRoleAssignmentID(query.RoleAssignmentID)
+
+	seen, err := s.surveyAssignment(ctx, query.Caller, productID, assignmentID)
+	if err != nil {
+		return domain.RoleAssignment{}, err
+	}
+
+	if !seen.productFound {
+		return domain.RoleAssignment{}, ErrProductNotFound
+	}
+	if !seen.standing.Owns() {
+		refused := refusal{ErrRoleAssignmentNotFound, ports.AuditEntry{
+			Actor: query.Caller, Action: ActionProductRoleRead, Rule: ruleNoRole,
+			ProductID: productID, ResourceType: resourceRoleAssignment, CorrelationID: query.CorrelationID,
+		}}
+		if seen.assignmentFound {
+			refused.entry.ResourceID = string(assignmentID)
+		}
+		if !s.knows(seen.standing, query.Caller) {
+			refused.err = ErrProductNotFound
+		}
+		return domain.RoleAssignment{}, s.refuse(ctx, refused)
+	}
+	if !seen.assignmentFound {
+		return domain.RoleAssignment{}, ErrRoleAssignmentNotFound
+	}
+	return seen.assignment, nil
+}
+
+// RevokeProductRole names the role assignment to end.
+type RevokeProductRole struct {
+	Caller           domain.Principal
+	CorrelationID    string
+	ProductID        string
+	RoleAssignmentID string
+}
+
+// RevokeProductRole ends a role assignment (FR-003). Only an owner of the
+// product may, its own assignment included: a platform administrator names
+// owners and removes none. Whoever does not own the product and may know it
+// exists is told it may not; to anyone else there is no such product. A
+// suspended product takes no new owner; its owners can still be removed.
+//
+// A product always has an owner: the last assignment in force that makes
+// somebody one is not revoked (domain.ErrLastOwner). The owners in force are
+// locked before anything is read. What the caller holds, and how many owners
+// there are, is then read where no other revocation can end one of them: of
+// two owners who revoke each other at once, the second finds that it owns
+// the product no more.
+//
+// From the moment the revocation commits the assignment grants nothing:
+// every decision reads what a caller holds when it is made. An assignment
+// that is not in force is not found, whoever ended it, so a revocation that
+// is sent twice finds nothing to do the second time.
+//
+// The decision is made inside the transaction of the write. The revocation,
+// the audit fact and the event commit together or not at all (INV-13).
+func (s *ProductGovernance) RevokeProductRole(ctx context.Context, command RevokeProductRole) error {
+	if err := known(command.Caller); err != nil {
+		return err
+	}
+	productID, err := domain.ParseProductID(command.ProductID)
+	if err != nil {
+		return ErrProductNotFound
+	}
+	assignmentID, _ := domain.ParseRoleAssignmentID(command.RoleAssignmentID)
+
+	var refused *refusal
+	err = s.deps.Transactor.WithinTransaction(ctx, func(ctx context.Context) error {
+		owners, err := s.deps.Roles.LockOwners(ctx, productID)
+		if err != nil {
+			return fmt.Errorf("lock the owners of the product: %w", err)
+		}
+		seen, err := s.surveyAssignment(ctx, command.Caller, productID, assignmentID)
+		if err != nil {
+			return err
+		}
+		if !seen.productFound {
+			return ErrProductNotFound
+		}
+		if !seen.standing.Owns() {
+			entry := ports.AuditEntry{
+				Actor: command.Caller, Action: ActionProductRoleRevoke, Rule: ruleNoRole,
+				ProductID: productID, ResourceType: resourceRoleAssignment, CorrelationID: command.CorrelationID,
+			}
+			if seen.assignmentFound {
+				entry.ResourceID = string(assignmentID)
+			}
+			refused = s.notOwner(seen.standing, entry)
+			return refused.err
+		}
+		if !seen.assignmentFound {
+			return ErrRoleAssignmentNotFound
+		}
+
+		revoked, err := seen.assignment.Revoke(command.Caller, s.deps.Clock.Now(), owners)
+		if err != nil {
+			return err
+		}
+		if err := s.deps.Roles.Revoke(ctx, revoked); err != nil {
+			if errors.Is(err, ports.ErrRoleAssignmentGone) {
+				// It was ended between the read and the write, by something
+				// that did not lock the owners first. It is not in force,
+				// which is what was asked for, and this revocation leaves
+				// no record of its own.
+				return ErrRoleAssignmentNotFound
+			}
+			return err
+		}
+		if err := s.deps.Audit.Record(ctx, ports.AuditEntry{
+			Actor: command.Caller, Action: ActionProductRoleRevoke, Allowed: true, Rule: ruleMembersOfOwnProduct,
+			ProductID: productID, ResourceType: resourceRoleAssignment, ResourceID: string(revoked.ID),
+			CorrelationID: command.CorrelationID,
+		}); err != nil {
+			return err
+		}
+		return s.deps.Events.ProductRoleChanged(ctx, revoked, command.CorrelationID)
+	})
+	if refused != nil {
+		return s.refuse(ctx, *refused)
+	}
+	if err != nil {
+		return fmt.Errorf("revoke the role: %w", err)
 	}
 	return nil
 }

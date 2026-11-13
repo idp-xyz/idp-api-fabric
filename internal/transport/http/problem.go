@@ -27,16 +27,19 @@ const (
 	CodeIdentityProviderUnavailable = "IDENTITY_PROVIDER_UNAVAILABLE"
 
 	// What the caller may do, and what there is.
-	CodeForbidden          = "FORBIDDEN"
-	CodeProductNotFound    = "PRODUCT_NOT_FOUND"
-	CodeWorkspaceNotFound  = "WORKSPACE_NOT_FOUND"
-	CodeMembershipNotFound = "MEMBERSHIP_NOT_FOUND"
+	CodeForbidden              = "FORBIDDEN"
+	CodeProductNotFound        = "PRODUCT_NOT_FOUND"
+	CodeWorkspaceNotFound      = "WORKSPACE_NOT_FOUND"
+	CodeMembershipNotFound     = "MEMBERSHIP_NOT_FOUND"
+	CodeRoleAssignmentNotFound = "ROLE_ASSIGNMENT_NOT_FOUND"
 
 	// What the state does not allow.
-	CodeProductKeyTaken   = "PRODUCT_KEY_TAKEN"
-	CodeWorkspaceKeyTaken = "WORKSPACE_KEY_TAKEN"
-	CodeMembershipExists  = "MEMBERSHIP_EXISTS"
-	CodeProductNotActive  = "PRODUCT_NOT_ACTIVE"
+	CodeProductKeyTaken      = "PRODUCT_KEY_TAKEN"
+	CodeWorkspaceKeyTaken    = "WORKSPACE_KEY_TAKEN"
+	CodeMembershipExists     = "MEMBERSHIP_EXISTS"
+	CodeRoleAssignmentExists = "ROLE_ASSIGNMENT_EXISTS"
+	CodeLastOwner            = "LAST_OWNER"
+	CodeProductNotActive     = "PRODUCT_NOT_ACTIVE"
 
 	// What matches the contract and still cannot be done.
 	CodeOwnerIssuerNotTrusted  = "OWNER_ISSUER_NOT_TRUSTED"

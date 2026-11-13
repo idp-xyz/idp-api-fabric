@@ -3,9 +3,12 @@ package migrate_test
 import (
 	"errors"
 	"log/slog"
+	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -142,6 +145,155 @@ func TestRunBringsADatabaseOfAnOlderBuildUpToDate(t *testing.T) {
 		}
 		t.Fatalf("before the grants: got %v, want %v", err, db.ErrNotGranted)
 	}
+	if err := migrate.Grant(t.Context(), conn, database.ApplicationRole); err != nil {
+		t.Fatalf("grant: %v", err)
+	}
+	opened, err := db.Open(t.Context(), database.Application)
+	if err != nil {
+		t.Fatalf("after the grants: %v", err)
+	}
+	opened.Close()
+}
+
+// roleAssignmentRevocation is the step that made a role assignment a record
+// that ends. The build before it wrote an assignment once, without an
+// identifier, and never changed it.
+const roleAssignmentRevocation = "productgovernance/003_role_assignment_revocation"
+
+var canonicalUUID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// A database the build before role assignments could end has migrated and
+// written to is brought up to date with what it holds. Every assignment gets
+// an identifier of its own and stays in force, as it was granted, and what
+// that build still writes while this one is rolled out is an assignment like
+// the others. A process of this build refuses to start, and says what is
+// missing, until its role is granted what ending an assignment needs.
+func TestRunGivesTheRoleAssignmentsOfTheBuildBeforeTheirIdentifiers(t *testing.T) {
+	database := pgtest.FreshDatabase(t)
+	conn := pgtest.Connect(t, database.Migrator)
+	role := pgx.Identifier{database.ApplicationRole}.Sanitize()
+
+	plan, err := migrate.Plan()
+	if err != nil {
+		t.Fatalf("build the plan: %v", err)
+	}
+	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool { return step.ID == roleAssignmentRevocation })
+	if len(before) != len(plan)-1 {
+		t.Fatalf("the plan does not carry %s; this test would pass vacuously", roleAssignmentRevocation)
+	}
+	if err := migrate.Apply(t.Context(), conn, quiet, before); err != nil {
+		t.Fatalf("migrate as the build before: %v", err)
+	}
+	// What that build granted: it had no statement that changed an
+	// assignment.
+	if err := migrate.Grant(t.Context(), conn, database.ApplicationRole); err != nil {
+		t.Fatalf("grant: %v", err)
+	}
+	if _, err := conn.Exec(t.Context(), `REVOKE UPDATE ON productgovernance.product_role_assignment FROM `+role); err != nil {
+		t.Fatalf("take back what that build did not grant: %v", err)
+	}
+
+	// Two products as a process of that build registered them, with the
+	// statements it ran: the first has two owners.
+	const (
+		cargopai = "1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6"
+		parcel   = "2d0b5f8c-63e1-4a9f-87b2-a1d4e3f5a6b7"
+
+		registerProduct = `
+			INSERT INTO productgovernance.product
+			    (product_id, product_key, display_name, status, owner_identity_provider, owner_organization,
+			     aggregate_version, created_at, created_by_issuer, created_by_subject, updated_at)
+			VALUES ($1, $2, $2, 'ACTIVE', 'https://issuer.example', 'org', 1, $3, 'https://issuer.example', 'platform-admin', $3)`
+		assignOwner = `
+			INSERT INTO productgovernance.product_role_assignment
+			    (product_id, principal_issuer, principal_subject, role, granted_at, granted_by_issuer, granted_by_subject)
+			VALUES ($1, 'https://issuer.example', $2, 'product_owner', $3, 'https://issuer.example', 'platform-admin')`
+	)
+	registered := time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC)
+	app := pgtest.Connect(t, database.Application)
+	for _, product := range []struct{ id, key string }{{cargopai, "cargopai"}, {parcel, "parcel"}} {
+		if _, err := app.Exec(t.Context(), registerProduct, product.id, product.key, registered); err != nil {
+			t.Fatalf("register %s as the build before: %v", product.key, err)
+		}
+	}
+	for _, owner := range []struct{ product, subject string }{{cargopai, "alice"}, {cargopai, "bob"}, {parcel, "alice"}} {
+		if _, err := app.Exec(t.Context(), assignOwner, owner.product, owner.subject, registered); err != nil {
+			t.Fatalf("make %s an owner as the build before: %v", owner.subject, err)
+		}
+	}
+
+	// A process of this build does not start, and says what its role lacks,
+	// whether or not the database was migrated already. One run of
+	// fabric-migrate -apply -grant-to gives it both.
+	const missing = "UPDATE on productgovernance.product_role_assignment"
+	refused := func(when string) {
+		t.Helper()
+
+		opened, err := db.Open(t.Context(), database.Application)
+		if err == nil {
+			opened.Close()
+		}
+		if !errors.Is(err, db.ErrNotGranted) || !strings.Contains(err.Error(), missing) {
+			t.Fatalf("%s: got %v, want %v naming %q", when, err, db.ErrNotGranted, missing)
+		}
+	}
+	refused("on the database as the build before left it")
+
+	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
+		t.Fatalf("migrate as this build: %v", err)
+	}
+	if got, want := history(t, conn), planRows(t); !slices.Equal(got, want) {
+		t.Errorf("the history records\n %+v\nwant every step of the plan, in order\n %+v", got, want)
+	}
+
+	// That build is still running while this one is rolled out, and names
+	// another owner the way it does.
+	if _, err := app.Exec(t.Context(), assignOwner, parcel, "carol", registered.Add(time.Hour)); err != nil {
+		t.Fatalf("make carol an owner as the build before, after the migration: %v", err)
+	}
+
+	type assignment struct {
+		ID        string
+		Product   string
+		Subject   string
+		Version   int64
+		GrantedAt time.Time
+		GrantedBy string
+		InForce   bool
+	}
+	rows, err := conn.Query(t.Context(), `
+		SELECT role_assignment_id::text, product_id::text, principal_subject, role_assignment_version, granted_at, granted_by_subject,
+		       revoked_at IS NULL AND revoked_by_issuer IS NULL AND revoked_by_subject IS NULL
+		FROM productgovernance.product_role_assignment WHERE role = 'product_owner'
+		ORDER BY product_id, principal_subject`)
+	if err != nil {
+		t.Fatalf("read the role assignments: %v", err)
+	}
+	assignments, err := pgx.CollectRows(rows, pgx.RowToStructByPos[assignment])
+	if err != nil {
+		t.Fatalf("read the role assignments: %v", err)
+	}
+	want := []assignment{
+		{Product: cargopai, Subject: "alice", Version: 1, GrantedAt: registered, GrantedBy: "platform-admin", InForce: true},
+		{Product: cargopai, Subject: "bob", Version: 1, GrantedAt: registered, GrantedBy: "platform-admin", InForce: true},
+		{Product: parcel, Subject: "alice", Version: 1, GrantedAt: registered, GrantedBy: "platform-admin", InForce: true},
+		{Product: parcel, Subject: "carol", Version: 1, GrantedAt: registered.Add(time.Hour), GrantedBy: "platform-admin", InForce: true},
+	}
+	identifiers := make(map[string]bool)
+	for index := range assignments {
+		got := &assignments[index]
+		if !canonicalUUID.MatchString(got.ID) || identifiers[got.ID] {
+			t.Errorf("the assignment of %s in %s has the identifier %q, want a UUID of its own", got.Subject, got.Product, got.ID)
+		}
+		identifiers[got.ID] = true
+		// What is compared below is what the row held before.
+		got.ID, got.GrantedAt = "", got.GrantedAt.UTC()
+	}
+	if !slices.Equal(assignments, want) {
+		t.Errorf("the role assignments are\n %+v\nwant them as they were granted, in force at their first version\n %+v", assignments, want)
+	}
+
+	refused("once it is migrated, before the grants")
 	if err := migrate.Grant(t.Context(), conn, database.ApplicationRole); err != nil {
 		t.Fatalf("grant: %v", err)
 	}

@@ -210,6 +210,10 @@ func TestOpenRefusesARoleThatWasGrantedLessThanAProcessNeeds(t *testing.T) {
 			`REVOKE INSERT ON platformoperations.audit_record FROM `, "INSERT on platformoperations.audit_record"},
 		"the use of the schema of a context was revoked": {
 			`REVOKE USAGE ON SCHEMA platformoperations FROM `, "USAGE on schema platformoperations"},
+		// What a build before this one granted on the table: it wrote a role
+		// assignment once and never ended one.
+		"the privilege to end a role assignment was never granted": {
+			`REVOKE UPDATE ON productgovernance.product_role_assignment FROM `, "UPDATE on productgovernance.product_role_assignment"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

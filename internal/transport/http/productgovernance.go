@@ -22,6 +22,9 @@ type ProductGovernance interface {
 	GrantMembership(ctx context.Context, command application.GrantMembership) (domain.Membership, error)
 	GetMembership(ctx context.Context, query application.GetMembership) (domain.Membership, error)
 	RevokeMembership(ctx context.Context, command application.RevokeMembership) error
+	GrantProductRole(ctx context.Context, command application.GrantProductRole) (domain.RoleAssignment, error)
+	GetProductRole(ctx context.Context, query application.GetProductRole) (domain.RoleAssignment, error)
+	RevokeProductRole(ctx context.Context, command application.RevokeProductRole) error
 }
 
 // noStore is the cache directive of everything private: a product and what
@@ -193,6 +196,65 @@ func (o operations) RevokeMembership(ctx context.Context, request RevokeMembersh
 	return RevokeMembership204Response{}, nil
 }
 
+func (o operations) GrantProductRole(ctx context.Context, request GrantProductRoleRequestObject) (GrantProductRoleResponseObject, error) {
+	principal, correlationID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	assignment, err := o.governance.GrantProductRole(ctx, application.GrantProductRole{
+		Caller: principal, CorrelationID: correlationID, ProductID: request.ProductID,
+		Principal: domain.Principal{Issuer: request.Body.Principal.Issuer, Subject: request.Body.Principal.Subject},
+		Role:      string(request.Body.Role),
+	})
+	if err != nil {
+		return nil, err
+	}
+	body, err := roleAssignmentOf(assignment)
+	if err != nil {
+		return nil, err
+	}
+	return GrantProductRole201JSONResponse{
+		Body: body,
+		Headers: GrantProductRole201ResponseHeaders{
+			Location:     "/v1/products/" + body.ProductID + "/role-assignments/" + body.RoleAssignmentID,
+			CacheControl: noStore,
+		},
+	}, nil
+}
+
+func (o operations) GetProductRole(ctx context.Context, request GetProductRoleRequestObject) (GetProductRoleResponseObject, error) {
+	principal, correlationID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	assignment, err := o.governance.GetProductRole(ctx, application.GetProductRole{
+		Caller: principal, CorrelationID: correlationID,
+		ProductID: request.ProductID, RoleAssignmentID: request.RoleAssignmentID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	body, err := roleAssignmentOf(assignment)
+	if err != nil {
+		return nil, err
+	}
+	return GetProductRole200JSONResponse{Body: body, Headers: GetProductRole200ResponseHeaders{CacheControl: noStore}}, nil
+}
+
+func (o operations) RevokeProductRole(ctx context.Context, request RevokeProductRoleRequestObject) (RevokeProductRoleResponseObject, error) {
+	principal, correlationID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := o.governance.RevokeProductRole(ctx, application.RevokeProductRole{
+		Caller: principal, CorrelationID: correlationID,
+		ProductID: request.ProductID, RoleAssignmentID: request.RoleAssignmentID,
+	}); err != nil {
+		return nil, err
+	}
+	return RevokeProductRole204Response{}, nil
+}
+
 // productOf is the product as the contract shows it. The DTO is not the
 // model: what the contract does not declare, such as who registered the
 // product or its version, stays inside (F07 §3.1).
@@ -258,6 +320,30 @@ func membershipOf(membership domain.Membership) (Membership, error) {
 	}, nil
 }
 
+// roleAssignmentOf is the role assignment as the contract shows it: who
+// holds which role in which product, since when. Who granted it and its
+// version stay inside.
+//
+// As with a membership, the contract shows an assignment in force and has no
+// member that says otherwise: a revoked one is not sent, and neither is a
+// role the contract does not declare.
+func roleAssignmentOf(assignment domain.RoleAssignment) (ProductRoleAssignment, error) {
+	if !assignment.InForce() {
+		return ProductRoleAssignment{}, errors.New("the role assignment was revoked, and the contract shows none that is")
+	}
+	role := ProductRole(assignment.Role)
+	if !role.Valid() {
+		return ProductRoleAssignment{}, fmt.Errorf("the role assignment grants the role %q, which the contract does not declare", assignment.Role)
+	}
+	return ProductRoleAssignment{
+		RoleAssignmentID: string(assignment.ID),
+		ProductID:        string(assignment.ProductID),
+		Principal:        Principal{Issuer: assignment.Principal.Issuer, Subject: assignment.Principal.Subject},
+		Role:             role,
+		GrantedAt:        assignment.GrantedAt,
+	}, nil
+}
+
 // problemOf is the problem a failed use case is answered with. The second
 // result is false for a failure nobody expected, which is an internal error.
 //
@@ -273,12 +359,18 @@ func problemOf(err error) (Problem, bool) {
 		return problem(http.StatusNotFound, CodeWorkspaceNotFound, ""), true
 	case errors.Is(err, application.ErrMembershipNotFound):
 		return problem(http.StatusNotFound, CodeMembershipNotFound, ""), true
+	case errors.Is(err, application.ErrRoleAssignmentNotFound):
+		return problem(http.StatusNotFound, CodeRoleAssignmentNotFound, ""), true
 	case errors.Is(err, ports.ErrProductKeyTaken):
 		return problem(http.StatusConflict, CodeProductKeyTaken, "A product with this key is registered already."), true
 	case errors.Is(err, ports.ErrWorkspaceKeyTaken):
 		return problem(http.StatusConflict, CodeWorkspaceKeyTaken, "The product has a workspace with this key already."), true
 	case errors.Is(err, ports.ErrMembershipExists):
 		return problem(http.StatusConflict, CodeMembershipExists, "The principal holds this role in the workspace already."), true
+	case errors.Is(err, ports.ErrRoleAssignmentExists):
+		return problem(http.StatusConflict, CodeRoleAssignmentExists, "The principal holds this role in the product already."), true
+	case errors.Is(err, domain.ErrLastOwner):
+		return problem(http.StatusConflict, CodeLastOwner, "The product has no other owner, and always has one."), true
 	case errors.Is(err, domain.ErrProductNotActive):
 		return problem(http.StatusConflict, CodeProductNotActive, "The product is suspended and takes no new work."), true
 	case errors.Is(err, application.ErrOwnerIssuerNotTrusted):

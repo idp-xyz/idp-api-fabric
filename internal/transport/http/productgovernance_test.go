@@ -39,6 +39,14 @@ var membershipBody = map[string]any{
 	"granted_at": "2026-11-11T09:00:00.123456Z",
 }
 
+// A role assignment is shown as a membership is: without who granted it and
+// without its version.
+var roleAssignmentBody = map[string]any{
+	"role_assignment_id": roleAssignmentID, "product_id": productID,
+	"principal": map[string]any{"issuer": issuer, "subject": "bob"}, "role": "product_owner",
+	"granted_at": "2026-11-11T09:00:00.123456Z",
+}
+
 func TestRegisterProductHandsTheRequestToTheUseCaseAsTheVerifiedCaller(t *testing.T) {
 	s := newService(t)
 
@@ -180,6 +188,60 @@ func TestTheMembershipOperationsHandTheirRequestsToTheirUseCases(t *testing.T) {
 	}
 }
 
+func TestTheRoleOperationsHandTheirRequestsToTheirUseCases(t *testing.T) {
+	s := newService(t)
+	assignment := roleAssignments + "/" + roleAssignmentID
+
+	granted := s.do(t, call{Method: http.MethodPost, Target: roleAssignments, Token: "alice", Body: roleGrant})
+	if granted.Code != http.StatusCreated || !reflect.DeepEqual(members(t, granted), roleAssignmentBody) {
+		t.Errorf("POST role assignment: %d %s", granted.Code, granted.Body)
+	}
+	if got := granted.Header().Get("Location"); got != assignment {
+		t.Errorf("POST role assignment: Location %q, want %q", got, assignment)
+	}
+	read := s.do(t, call{Method: http.MethodGet, Target: assignment, Token: "alice"})
+	if read.Code != http.StatusOK || !reflect.DeepEqual(members(t, read), roleAssignmentBody) {
+		t.Errorf("GET role assignment: %d %s", read.Code, read.Body)
+	}
+	for name, response := range map[string]*httptest.ResponseRecorder{"POST": granted, "GET": read} {
+		if got := response.Header().Get("Cache-Control"); got != "no-store" {
+			t.Errorf("%s role assignment: Cache-Control %q, want no-store", name, got)
+		}
+	}
+	revoked := s.do(t, call{Method: http.MethodDelete, Target: assignment, Token: "alice"})
+	if revoked.Code != http.StatusNoContent || revoked.Body.Len() != 0 {
+		t.Errorf("DELETE role assignment: %d %q, want 204 and no body", revoked.Code, revoked.Body)
+	}
+
+	g := s.governance
+	if len(g.rolesGranted) != 1 || len(g.rolesRead) != 1 || len(g.rolesRevoked) != 1 || g.calls() != 3 {
+		t.Fatalf("the use cases were called %d, %d and %d times of %d calls, want once each and no other",
+			len(g.rolesGranted), len(g.rolesRead), len(g.rolesRevoked), g.calls())
+	}
+	for _, id := range []*string{&g.rolesGranted[0].CorrelationID, &g.rolesRead[0].CorrelationID, &g.rolesRevoked[0].CorrelationID} {
+		if !uuid.MatchString(*id) {
+			t.Errorf("correlation identifier %q, want one the server generated", *id)
+		}
+		*id = ""
+	}
+
+	// The caller is who the token is about. Who gets the role is who the
+	// body names.
+	caller := domain.Principal(alice)
+	if want := (application.GrantProductRole{
+		Caller: caller, ProductID: productID,
+		Principal: domain.Principal{Issuer: issuer, Subject: "bob"}, Role: "product_owner",
+	}); g.rolesGranted[0] != want {
+		t.Errorf("GrantProductRole %+v, want %+v", g.rolesGranted[0], want)
+	}
+	if want := (application.GetProductRole{Caller: caller, ProductID: productID, RoleAssignmentID: roleAssignmentID}); g.rolesRead[0] != want {
+		t.Errorf("GetProductRole %+v, want %+v", g.rolesRead[0], want)
+	}
+	if want := (application.RevokeProductRole{Caller: caller, ProductID: productID, RoleAssignmentID: roleAssignmentID}); g.rolesRevoked[0] != want {
+		t.Errorf("RevokeProductRole %+v, want %+v", g.rolesRevoked[0], want)
+	}
+}
+
 // Every request gets an identifier of its own, and it is the server's: what
 // a caller sends is not written into the audit trail as one.
 func TestEveryRequestGetsItsOwnIdentifierFromTheServer(t *testing.T) {
@@ -209,7 +271,10 @@ func TestAFailureAUseCaseNamesIsAnsweredWithItsProblem(t *testing.T) {
 		"no such product":             {application.ErrProductNotFound, http.StatusNotFound, CodeProductNotFound, ""},
 		"no such workspace":           {application.ErrWorkspaceNotFound, http.StatusNotFound, CodeWorkspaceNotFound, ""},
 		"no such membership":          {application.ErrMembershipNotFound, http.StatusNotFound, CodeMembershipNotFound, ""},
+		"no such role assignment":     {application.ErrRoleAssignmentNotFound, http.StatusNotFound, CodeRoleAssignmentNotFound, ""},
 		"the role is held already":    {ports.ErrMembershipExists, http.StatusConflict, CodeMembershipExists, "The principal holds this role in the workspace already."},
+		"the product has the owner":   {ports.ErrRoleAssignmentExists, http.StatusConflict, CodeRoleAssignmentExists, "The principal holds this role in the product already."},
+		"the last owner":              {fmt.Errorf("revoke the role: %w", domain.ErrLastOwner), http.StatusConflict, CodeLastOwner, "The product has no other owner, and always has one."},
 		"a member nobody can be":      {application.ErrMemberIssuerNotTrusted, http.StatusUnprocessableEntity, CodeMemberIssuerNotTrusted, "A member is named under an issuer this deployment does not trust."},
 		"the product key is taken":    {ports.ErrProductKeyTaken, http.StatusConflict, CodeProductKeyTaken, "A product with this key is registered already."},
 		"the workspace key is taken":  {ports.ErrWorkspaceKeyTaken, http.StatusConflict, CodeWorkspaceKeyTaken, "The product has a workspace with this key already."},
@@ -297,6 +362,7 @@ func TestAValueTheContractDoesNotDeclareIsNotSent(t *testing.T) {
 	s.governance.product.Status = "ARCHIVED"
 	s.governance.workspace.Status = "ARCHIVED"
 	s.governance.membership.Role = "ARCHIVED"
+	s.governance.assignment.Role = "ARCHIVED"
 
 	for _, operation := range protected {
 		if operation.Method == http.MethodDelete {
@@ -337,6 +403,28 @@ func TestARevokedMembershipIsNotSent(t *testing.T) {
 	}
 }
 
+// Neither is a revoked role assignment: whoever read it would take its
+// principal for an owner.
+func TestARevokedRoleAssignmentIsNotSent(t *testing.T) {
+	s := newService(t)
+	revoked, err := ownership().Revoke(domain.Principal(alice), createdAt.Add(time.Hour), 2)
+	if err != nil {
+		t.Fatalf("revoke the role assignment: %v", err)
+	}
+	s.governance.assignment = revoked
+
+	for _, operation := range []call{
+		{Method: http.MethodPost, Target: roleAssignments, Body: roleGrant},
+		{Method: http.MethodGet, Target: roleAssignments + "/" + roleAssignmentID},
+	} {
+		operation.Token = "alice"
+		wantProblem(t, s.do(t, operation), http.StatusInternalServerError, CodeInternalError, "")
+	}
+	if !strings.Contains(s.log.String(), "the role assignment was revoked") {
+		t.Errorf("the log does not say what went wrong:\n%s", s.log)
+	}
+}
+
 // An operation of Product Governance is never served without a verified
 // caller, even if it were wired around the validator.
 func TestAnOperationReachedWithoutAPrincipalIsFailed(t *testing.T) {
@@ -352,9 +440,13 @@ func TestAnOperationReachedWithoutAPrincipalIsFailed(t *testing.T) {
 		_, errGrant := o.GrantMembership(ctx, GrantMembershipRequestObject{ProductID: productID, WorkspaceID: workspaceID, Body: &MembershipGrant{}})
 		_, errGetMembership := o.GetMembership(ctx, GetMembershipRequestObject{ProductID: productID, WorkspaceID: workspaceID, MembershipID: membershipID})
 		_, errRevoke := o.RevokeMembership(ctx, RevokeMembershipRequestObject{ProductID: productID, WorkspaceID: workspaceID, MembershipID: membershipID})
+		_, errGrantRole := o.GrantProductRole(ctx, GrantProductRoleRequestObject{ProductID: productID, Body: &ProductRoleGrant{}})
+		_, errGetRole := o.GetProductRole(ctx, GetProductRoleRequestObject{ProductID: productID, RoleAssignmentID: roleAssignmentID})
+		_, errRevokeRole := o.RevokeProductRole(ctx, RevokeProductRoleRequestObject{ProductID: productID, RoleAssignmentID: roleAssignmentID})
 		for operation, err := range map[string]error{
 			"RegisterProduct": errRegister, "GetProduct": errGet, "CreateWorkspace": errCreate, "GetWorkspace": errGetWorkspace,
 			"GrantMembership": errGrant, "GetMembership": errGetMembership, "RevokeMembership": errRevoke,
+			"GrantProductRole": errGrantRole, "GetProductRole": errGetRole, "RevokeProductRole": errRevokeRole,
 		} {
 			if err == nil {
 				t.Errorf("%s with %s was served", operation, name)
@@ -397,18 +489,45 @@ func TestTheContractStatesTheRulesOfTheModel(t *testing.T) {
 	if verifier, model := identity.SubjectMaxLength, domain.ReferenceMaxLength; verifier != model {
 		t.Errorf("the verifier bounds a subject at %d characters, the model a reference at %d", verifier, model)
 	}
-	var declared, modelled []string
-	for _, value := range schemas["WorkspaceRole"].Value.Enum {
-		role, _ := value.(string)
-		declared = append(declared, role)
-	}
-	for _, role := range domain.WorkspaceRoles() {
-		modelled = append(modelled, string(role))
-	}
-	slices.Sort(declared)
-	slices.Sort(modelled)
-	if !slices.Equal(declared, modelled) {
-		t.Errorf("the contract declares the roles of a workspace %v, the model %v", declared, modelled)
+	// The roles the contract declares are the roles the model knows, of a
+	// workspace and of a product, and a grant and what it answers name
+	// their role through that declaration and no other.
+	for _, roles := range []struct {
+		of      string
+		schema  string
+		model   []domain.Role
+		grant   string
+		granted string
+	}{
+		{"a workspace", "WorkspaceRole", domain.WorkspaceRoles(), "MembershipGrant", "Membership"},
+		{"a product", "ProductRole", domain.ProductRoles(), "ProductRoleGrant", "ProductRoleAssignment"},
+	} {
+		if schemas[roles.schema] == nil {
+			t.Errorf("the contract declares no %s", roles.schema)
+			continue
+		}
+		var declared, modelled []string
+		for _, value := range schemas[roles.schema].Value.Enum {
+			role, _ := value.(string)
+			declared = append(declared, role)
+		}
+		for _, role := range roles.model {
+			modelled = append(modelled, string(role))
+		}
+		slices.Sort(declared)
+		slices.Sort(modelled)
+		if len(modelled) == 0 || !slices.Equal(declared, modelled) {
+			t.Errorf("the contract declares the roles of %s %v, the model %v", roles.of, declared, modelled)
+		}
+		for _, object := range []string{roles.grant, roles.granted} {
+			if schemas[object] == nil || schemas[object].Value.Properties["role"] == nil {
+				t.Errorf("the contract declares no role of %s", object)
+				continue
+			}
+			if got, want := schemas[object].Value.Properties["role"].Ref, "#/components/schemas/"+roles.schema; got != want {
+				t.Errorf("the role of %s is declared by %q, want %q", object, got, want)
+			}
+		}
 	}
 
 	owner := domain.OrganizationRef{IdentityProvider: issuer, Organization: "org-cargopai"}
@@ -475,9 +594,44 @@ func TestTheContractStatesTheRulesOfTheModel(t *testing.T) {
 			t.Errorf("the organization %q: the contract accepts it %t, the model %t", reference, contract, model)
 		}
 
-		_, err = product.AssignFirstOwners([]domain.Principal{{Issuer: issuer, Subject: reference}}, domain.Principal(admin))
+		_, err = product.AssignFirstOwners([]domain.RoleAssignmentID{"0f1e2d3c-4b5a-4968-8776-655443322110"},
+			[]domain.Principal{{Issuer: issuer, Subject: reference}}, domain.Principal(admin))
 		if contract, model := registerWith("cargopai", "CargoPai", "org-cargopai", reference), err == nil; contract != model {
 			t.Errorf("the subject %q of an owner: the contract accepts it %t, the model %t", reference, contract, model)
+		}
+	}
+
+	// A role is granted in a product or in a workspace, never in both: what
+	// the contract lets through as the role of a grant is what the model
+	// grants there.
+	workspace, err := domain.NewWorkspace(workspaceID, product, "api-engineering", "API engineering", domain.Principal(alice), at)
+	if err != nil {
+		t.Fatalf("create the workspace: %v", err)
+	}
+	bob := domain.Principal{Issuer: issuer, Subject: "bob"}
+	grantWith := func(target, named, role string) (contractAccepts bool) {
+		t.Helper()
+		body, err := json.Marshal(map[string]any{named: map[string]any{"issuer": issuer, "subject": "bob"}, "role": role})
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := newService(t).do(t, call{Method: http.MethodPost, Target: target, Token: "alice", Body: string(body)})
+		if response.Code != http.StatusCreated && response.Code != http.StatusBadRequest {
+			t.Fatalf("status %d for the role %q at %s: %s", response.Code, role, target, response.Body)
+		}
+		return response.Code == http.StatusCreated
+	}
+	for _, role := range []string{
+		"product_owner", "workspace_maintainer", "internal_author", "", "owner", "platform_admin",
+		"PRODUCT_OWNER", "product_owner ", " product_owner", "product-owner", "Internal_Author", "internal_author\n",
+	} {
+		_, err := domain.GrantProductRole(roleAssignmentID, product, bob, domain.Role(role), domain.Principal(alice), at)
+		if contract, model := grantWith(roleAssignments, "principal", role), err == nil; contract != model {
+			t.Errorf("the role %q in a product: the contract accepts it %t, the model %t", role, contract, model)
+		}
+		_, err = domain.GrantMembership(membershipID, product, workspace, bob, domain.Role(role), domain.Principal(alice), at)
+		if contract, model := grantWith(memberships, "member", role), err == nil; contract != model {
+			t.Errorf("the role %q in a workspace: the contract accepts it %t, the model %t", role, contract, model)
 		}
 	}
 }

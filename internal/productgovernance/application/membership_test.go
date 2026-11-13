@@ -753,33 +753,42 @@ func TestARefusalAboutAMembershipStandsWhetherOrNotItCouldBeAudited(t *testing.T
 // What a caller holds decides every answer. When it cannot be read, nobody
 // is let in and nobody is told there is nothing: the request fails.
 func TestNobodyIsLetInWhenWhatTheyHoldCannotBeRead(t *testing.T) {
-	down := errors.New("the memberships cannot be read")
-	s := newTeam(t)
-	before := maps.Clone(s.w.memberships)
-	s.w.failing["held"] = down
+	down := errors.New("what the caller holds cannot be read")
+	for what, step := range map[string]string{"the memberships": "held", "the roles": "roles"} {
+		t.Run(what, func(t *testing.T) {
+			s := newBoard(t)
+			memberships, roles := maps.Clone(s.w.memberships), maps.Clone(s.w.roles)
+			s.w.failing[step] = down
 
-	for _, caller := range []domain.Principal{alice, carol, mallory, admin} {
-		_, errProduct := s.product(caller, s.cargopai)
-		_, errWorkspace := s.workspace(caller, s.engineering)
-		_, errCreate := s.service.CreateWorkspace(ctx, CreateWorkspace{Caller: caller, ProductID: string(s.cargopai.ID), Key: "other", DisplayName: "Other"})
-		_, errGrant := s.grant(caller, s.engineering, bob, domain.RoleInternalAuthor)
-		_, errGet := s.membership(caller, s.engineering, s.maintainer.ID)
-		errRevoke := s.revoke(caller, s.engineering, s.maintainer.ID)
-		for name, err := range map[string]error{
-			"GetProduct": errProduct, "GetWorkspace": errWorkspace, "CreateWorkspace": errCreate,
-			"GrantMembership": errGrant, "GetMembership": errGet, "RevokeMembership": errRevoke,
-		} {
-			if !errors.Is(err, down) {
-				t.Errorf("%s as %s: got %v, want the failure", name, caller.Subject, err)
-			}
-			for _, answer := range []error{ErrForbidden, ErrProductNotFound, ErrWorkspaceNotFound, ErrMembershipNotFound} {
-				if errors.Is(err, answer) {
-					t.Errorf("%s as %s: the failure is answered as %v", name, caller.Subject, answer)
+			for _, caller := range []domain.Principal{alice, carol, mallory, admin} {
+				_, errProduct := s.product(caller, s.cargopai)
+				_, errWorkspace := s.workspace(caller, s.engineering)
+				_, errCreate := s.service.CreateWorkspace(ctx, CreateWorkspace{Caller: caller, ProductID: string(s.cargopai.ID), Key: "other", DisplayName: "Other"})
+				_, errGrant := s.grant(caller, s.engineering, bob, domain.RoleInternalAuthor)
+				_, errGet := s.membership(caller, s.engineering, s.maintainer.ID)
+				errRevoke := s.revoke(caller, s.engineering, s.maintainer.ID)
+				_, errGrantRole := s.grantRole(caller, s.cargopai, bob)
+				_, errGetRole := s.role(caller, s.cargopai, s.second.ID)
+				errRevokeRole := s.revokeRole(caller, s.cargopai, s.second.ID)
+				for name, err := range map[string]error{
+					"GetProduct": errProduct, "GetWorkspace": errWorkspace, "CreateWorkspace": errCreate,
+					"GrantMembership": errGrant, "GetMembership": errGet, "RevokeMembership": errRevoke,
+					"GrantProductRole": errGrantRole, "GetProductRole": errGetRole, "RevokeProductRole": errRevokeRole,
+				} {
+					if !errors.Is(err, down) {
+						t.Errorf("%s as %s: got %v, want the failure", name, caller.Subject, err)
+					}
+					for _, answer := range []error{ErrForbidden, ErrProductNotFound, ErrWorkspaceNotFound, ErrMembershipNotFound, ErrRoleAssignmentNotFound} {
+						if errors.Is(err, answer) {
+							t.Errorf("%s as %s: the failure is answered as %v", name, caller.Subject, answer)
+						}
+					}
 				}
 			}
-		}
-	}
-	if !maps.Equal(s.w.memberships, before) || len(s.w.workspaces) != 3 || len(s.w.audited) != 0 || len(s.w.events) != 0 {
-		t.Errorf("failed requests left memberships %+v, %d workspaces, audit %+v, events %v", s.w.memberships, len(s.w.workspaces), s.w.audited, s.w.events)
+			if !maps.Equal(s.w.memberships, memberships) || !maps.Equal(s.w.roles, roles) || len(s.w.workspaces) != 3 || len(s.w.audited) != 0 || len(s.w.events) != 0 {
+				t.Errorf("failed requests left memberships %+v, roles %+v, %d workspaces, audit %+v, events %v",
+					s.w.memberships, s.w.roles, len(s.w.workspaces), s.w.audited, s.w.events)
+			}
+		})
 	}
 }

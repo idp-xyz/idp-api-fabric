@@ -53,12 +53,15 @@ func (tokens) Verify(_ context.Context, token string) (identity.Principal, error
 }
 
 const (
-	productID    = "1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6"
-	workspaceID  = "7d2e9f10-3a4b-4c5d-8e6f-0a1b2c3d4e5f"
-	membershipID = "3f8b1c2d-4e5a-4b6c-9d7e-8f9a0b1c2d3e"
+	productID        = "1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6"
+	workspaceID      = "7d2e9f10-3a4b-4c5d-8e6f-0a1b2c3d4e5f"
+	membershipID     = "3f8b1c2d-4e5a-4b6c-9d7e-8f9a0b1c2d3e"
+	roleAssignmentID = "5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d"
 
 	// memberships is where the memberships of the workspace are granted.
 	memberships = "/v1/products/" + productID + "/workspaces/" + workspaceID + "/memberships"
+	// roleAssignments is where the roles of the product are granted.
+	roleAssignments = "/v1/products/" + productID + "/role-assignments"
 )
 
 var createdAt = time.Date(2026, 11, 11, 9, 0, 0, 123456000, time.UTC)
@@ -87,6 +90,15 @@ func maintainer() domain.Membership {
 	}
 }
 
+// ownership is bob's role of an owner of the product, as alice granted it.
+func ownership() domain.RoleAssignment {
+	return domain.RoleAssignment{
+		ID: roleAssignmentID, ProductID: productID,
+		Principal: domain.Principal{Issuer: issuer, Subject: "bob"}, Role: domain.RoleProductOwner,
+		Version: 1, GrantedAt: createdAt, GrantedBy: domain.Principal(alice),
+	}
+}
+
 // governance stands in for the use cases of Product Governance. It keeps
 // what it was asked and answers what the test set. The real use cases are
 // tested where they live, and the whole of it in cmd/fabric-api.
@@ -94,6 +106,7 @@ type governance struct {
 	product    domain.Product
 	workspace  domain.Workspace
 	membership domain.Membership
+	assignment domain.RoleAssignment
 	err        error
 
 	registered      []application.RegisterProduct
@@ -103,15 +116,19 @@ type governance struct {
 	granted         []application.GrantMembership
 	membershipsRead []application.GetMembership
 	revoked         []application.RevokeMembership
+	rolesGranted    []application.GrantProductRole
+	rolesRead       []application.GetProductRole
+	rolesRevoked    []application.RevokeProductRole
 }
 
 func newGovernance() *governance {
-	return &governance{product: cargopai(), workspace: engineering(), membership: maintainer()}
+	return &governance{product: cargopai(), workspace: engineering(), membership: maintainer(), assignment: ownership()}
 }
 
 func (g *governance) calls() int {
 	return len(g.registered) + len(g.productsRead) + len(g.created) + len(g.spacesRead) +
-		len(g.granted) + len(g.membershipsRead) + len(g.revoked)
+		len(g.granted) + len(g.membershipsRead) + len(g.revoked) +
+		len(g.rolesGranted) + len(g.rolesRead) + len(g.rolesRevoked)
 }
 
 func (g *governance) RegisterProduct(_ context.Context, command application.RegisterProduct) (domain.Product, error) {
@@ -146,6 +163,21 @@ func (g *governance) GetMembership(_ context.Context, query application.GetMembe
 
 func (g *governance) RevokeMembership(_ context.Context, command application.RevokeMembership) error {
 	g.revoked = append(g.revoked, command)
+	return g.err
+}
+
+func (g *governance) GrantProductRole(_ context.Context, command application.GrantProductRole) (domain.RoleAssignment, error) {
+	g.rolesGranted = append(g.rolesGranted, command)
+	return g.assignment, g.err
+}
+
+func (g *governance) GetProductRole(_ context.Context, query application.GetProductRole) (domain.RoleAssignment, error) {
+	g.rolesRead = append(g.rolesRead, query)
+	return g.assignment, g.err
+}
+
+func (g *governance) RevokeProductRole(_ context.Context, command application.RevokeProductRole) error {
+	g.rolesRevoked = append(g.rolesRevoked, command)
 	return g.err
 }
 

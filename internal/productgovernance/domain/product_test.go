@@ -2,6 +2,8 @@ package domain
 
 import (
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -231,22 +233,36 @@ func TestAnOrganizationIsReferredToInAtMost255Characters(t *testing.T) {
 	}
 }
 
+// identifiers are the identifiers of count role assignments, told apart at a
+// glance.
+func identifiers(count int) []RoleAssignmentID {
+	ids := make([]RoleAssignmentID, count)
+	for index := range ids {
+		ids[index] = RoleAssignmentID(fmt.Sprintf("00000000-0000-4000-8000-%012d", index+1))
+	}
+	return ids
+}
+
+// The first owners are role assignments like any other: each has its own
+// identifier and is in force. The registrant granted them, at the time of
+// the registration.
 func TestTheFirstOwnersAreGrantedByTheRegistrantAtRegistration(t *testing.T) {
 	product := registered(t)
 
-	assignments, err := product.AssignFirstOwners([]Principal{alice, bob}, admin)
+	assignments, err := product.AssignFirstOwners([]RoleAssignmentID{assignmentID, otherAssignmentID}, []Principal{alice, bob}, admin)
 	if err != nil {
 		t.Fatalf("assign the owners: %v", err)
 	}
-	if len(assignments) != 2 {
-		t.Fatalf("%d assignments, want 2", len(assignments))
+	want := []RoleAssignment{
+		{ID: assignmentID, ProductID: productID, Principal: alice, Role: RoleProductOwner, Version: 1, GrantedAt: product.CreatedAt, GrantedBy: admin},
+		{ID: otherAssignmentID, ProductID: productID, Principal: bob, Role: RoleProductOwner, Version: 1, GrantedAt: product.CreatedAt, GrantedBy: admin},
 	}
-	for index, principal := range []Principal{alice, bob} {
-		want := RoleAssignment{
-			ProductID: productID, Principal: principal, Role: RoleProductOwner, GrantedAt: product.CreatedAt, GrantedBy: admin,
-		}
-		if assignments[index] != want {
-			t.Errorf("assignment %d is %+v, want %+v", index, assignments[index], want)
+	if !slices.Equal(assignments, want) {
+		t.Fatalf("assignments\n %+v\nwant\n %+v", assignments, want)
+	}
+	for _, assignment := range assignments {
+		if !assignment.InForce() {
+			t.Errorf("the assignment of %s is not in force", assignment.Principal.Subject)
 		}
 	}
 }
@@ -258,25 +274,33 @@ func TestAProductIsRegisteredWithOneToTenDistinctOwners(t *testing.T) {
 	for index := range eleven {
 		eleven[index] = Principal{Issuer: alice.Issuer, Subject: "owner-" + string(rune('a'+index))}
 	}
-	cases := map[string][]Principal{
-		"no owner":                       nil,
-		"eleven owners":                  eleven,
-		"the same owner twice":           {alice, bob, alice},
-		"an owner that is no principal":  {alice, {Issuer: alice.Issuer}},
-		"an owner with a control letter": {{Issuer: alice.Issuer, Subject: "al\x00ice"}},
+	cases := map[string]struct {
+		ids    []RoleAssignmentID
+		owners []Principal
+	}{
+		"no owner":                       {nil, nil},
+		"eleven owners":                  {identifiers(11), eleven},
+		"the same owner twice":           {identifiers(3), []Principal{alice, bob, alice}},
+		"an owner that is no principal":  {identifiers(2), []Principal{alice, {Issuer: alice.Issuer}}},
+		"an owner with a control letter": {identifiers(1), []Principal{{Issuer: alice.Issuer, Subject: "al\x00ice"}}},
+		// An assignment is identified, and by nothing another one is.
+		"an owner without an identifier":   {identifiers(1), []Principal{alice, bob}},
+		"an identifier without an owner":   {identifiers(3), []Principal{alice, bob}},
+		"one identifier for two owners":    {[]RoleAssignmentID{assignmentID, assignmentID}, []Principal{alice, bob}},
+		"an identifier that is not a UUID": {[]RoleAssignmentID{assignmentID, "owner-2"}, []Principal{alice, bob}},
 	}
-	for name, owners := range cases {
+	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			if assignments, err := product.AssignFirstOwners(owners, admin); !errors.Is(err, ErrInvalid) {
+			if assignments, err := product.AssignFirstOwners(c.ids, c.owners, admin); !errors.Is(err, ErrInvalid) {
 				t.Fatalf("got %+v and %v, want %v", assignments, err, ErrInvalid)
 			}
 		})
 	}
-	if _, err := product.AssignFirstOwners(eleven[:10], admin); err != nil {
+	if _, err := product.AssignFirstOwners(identifiers(10), eleven[:10], admin); err != nil {
 		t.Errorf("ten owners were refused: %v", err)
 	}
 	// The same subject under another issuer is another principal.
-	if _, err := product.AssignFirstOwners([]Principal{alice, {Issuer: "https://other.example", Subject: alice.Subject}}, admin); err != nil {
+	if _, err := product.AssignFirstOwners(identifiers(2), []Principal{alice, {Issuer: "https://other.example", Subject: alice.Subject}}, admin); err != nil {
 		t.Errorf("one subject under two issuers was refused: %v", err)
 	}
 }

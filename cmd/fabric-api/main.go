@@ -17,7 +17,9 @@
 //
 // IDP_FABRIC_PLATFORM_ADMIN_SUBJECTS names who administers the platform: a
 // JSON array of subjects of that issuer, as in ["alice","ops-bot"]. Only an
-// administrator registers a product. Unset, nobody does.
+// administrator registers a product. An administrator also names an owner of
+// a product afterwards, which is how a product whose owner was mistyped is
+// repaired, and has no other say inside one. Unset, nobody does.
 //
 // IDP_FABRIC_HTTP_ADDR sets the listen address. The default is loopback only:
 // the control plane is private (F02 §4.1), so reaching it from another host is

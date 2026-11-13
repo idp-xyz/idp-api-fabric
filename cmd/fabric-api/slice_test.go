@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -17,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"go.idp.xyz/idp-api-fabric/internal/platform/db"
+	"go.idp.xyz/idp-api-fabric/internal/platform/db/migrate"
 	"go.idp.xyz/idp-api-fabric/internal/platform/db/pgtest"
 	"go.idp.xyz/idp-api-fabric/internal/platform/identity"
 	"go.idp.xyz/idp-api-fabric/internal/platform/identity/devissuer"
@@ -33,9 +35,10 @@ const audience = "fabric-api"
 
 // stack is a running fabric-api on a database of its own.
 type stack struct {
-	t      *testing.T
-	issuer *devissuer.Issuer
-	server *httptest.Server
+	t        *testing.T
+	issuer   *devissuer.Issuer
+	server   *httptest.Server
+	database pgtest.Database
 	// owner reads what the application role cannot: the audit trail and the
 	// outbox.
 	owner *pgx.Conn
@@ -63,8 +66,16 @@ func (b *lockedBuffer) String() string {
 // signingKey is generated once: it is slow under the race detector.
 var signingKey = sync.OnceValues(devissuer.GenerateKey)
 
-// start runs fabric-api with the subjects as platform administrators.
+// start runs fabric-api with the subjects as platform administrators, on a
+// database migrated for this build.
 func start(t *testing.T, administrators ...string) *stack {
+	t.Helper()
+
+	return startOn(t, provider(t), pgtest.MigratedDatabase(t), administrators...)
+}
+
+// provider runs the development issuer, the identity provider of a test.
+func provider(t *testing.T) *devissuer.Issuer {
 	t.Helper()
 
 	key, err := signingKey()
@@ -72,15 +83,21 @@ func start(t *testing.T, administrators ...string) *stack {
 		t.Fatalf("generate the signing key: %v", err)
 	}
 	keys := http.NewServeMux()
-	provider := httptest.NewServer(keys)
-	t.Cleanup(provider.Close)
-	issuer, err := devissuer.New(provider.URL, key)
+	server := httptest.NewServer(keys)
+	t.Cleanup(server.Close)
+	issuer, err := devissuer.New(server.URL, key)
 	if err != nil {
 		t.Fatalf("build the issuer: %v", err)
 	}
 	keys.Handle("/", issuer.Handler())
+	return issuer
+}
 
-	database := pgtest.MigratedDatabase(t)
+// startOn runs fabric-api behind the issuer, on a database that is prepared
+// already.
+func startOn(t *testing.T, issuer *devissuer.Issuer, database pgtest.Database, administrators ...string) *stack {
+	t.Helper()
+
 	fabric, err := db.Open(t.Context(), database.Application)
 	if err != nil {
 		t.Fatalf("open the database: %v", err)
@@ -103,7 +120,7 @@ func start(t *testing.T, administrators ...string) *stack {
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
-	return &stack{t: t, issuer: issuer, server: server, owner: pgtest.Connect(t, database.Migrator), log: log}
+	return &stack{t: t, issuer: issuer, server: server, database: database, owner: pgtest.Connect(t, database.Migrator), log: log}
 }
 
 // token is an access token of the issuer for the subject, addressed to this
@@ -226,6 +243,132 @@ func (s *stack) membership(subject, role string) string {
 		"member": map[string]string{"issuer": s.issuer.URL(), "subject": subject}, "role": role,
 	})
 	return string(body)
+}
+
+// role is the body of a grant of a role in a product: the subject of the
+// issuer owns it.
+func (s *stack) role(subject string) string {
+	body, _ := json.Marshal(map[string]any{
+		"principal": map[string]string{"issuer": s.issuer.URL(), "subject": subject}, "role": "product_owner",
+	})
+	return string(body)
+}
+
+// nameOwner makes the subject an owner of the product, as the caller, and
+// returns where its role assignment is read and revoked.
+func (s *stack) nameOwner(productID, caller, subject string) string {
+	s.t.Helper()
+
+	got := s.call(http.MethodPost, "/v1/products/"+productID+"/role-assignments", caller, s.role(subject))
+	if got.status != http.StatusCreated {
+		s.t.Fatalf("make %s an owner: status %d %v", subject, got.status, got.body)
+	}
+	return got.header.Get("Location")
+}
+
+// ownership is where the role of the subject in the product is read and
+// revoked. A registration answers with the product, not with the role
+// assignments of its first owners, and no operation lists them yet: the
+// identifier of such an assignment is read where an operator would find it.
+func (s *stack) ownership(productID, subject string) string {
+	s.t.Helper()
+
+	var id string
+	if err := s.owner.QueryRow(s.t.Context(),
+		`SELECT role_assignment_id::text FROM productgovernance.product_role_assignment
+		 WHERE product_id = $1 AND principal_subject = $2 AND role = 'product_owner' AND revoked_at IS NULL`,
+		productID, subject).Scan(&id); err != nil {
+		s.t.Fatalf("find the role of %s in the product: %v", subject, err)
+	}
+	return "/v1/products/" + productID + "/role-assignments/" + id
+}
+
+// owners are the subjects that own the product now, in order.
+func (s *stack) owners(productID string) []string {
+	s.t.Helper()
+
+	rows, err := s.owner.Query(s.t.Context(),
+		`SELECT principal_subject FROM productgovernance.product_role_assignment
+		 WHERE product_id = $1 AND role = 'product_owner' AND revoked_at IS NULL ORDER BY principal_subject`, productID)
+	if err != nil {
+		s.t.Fatalf("read the owners of the product: %v", err)
+	}
+	subjects, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		s.t.Fatalf("read the owners of the product: %v", err)
+	}
+	return subjects
+}
+
+// last is the identifier a location ends with.
+func last(location string) string {
+	return location[strings.LastIndex(location, "/")+1:]
+}
+
+// exchange is one request and what it is answered.
+type exchange struct {
+	method, path, body string
+	status             int
+	code               string
+}
+
+// expect sends each request as the subject and checks what it is answered.
+func (s *stack) expect(when, subject string, exchanges []exchange) {
+	s.t.Helper()
+
+	for _, e := range exchanges {
+		if got := s.call(e.method, e.path, subject, e.body); got.status != e.status || got.code() != e.code {
+			s.t.Errorf("%s, %s: %s %s answered %d %v, want %d %s", when, subject, e.method, e.path, got.status, got.body, e.status, e.code)
+		}
+	}
+}
+
+// sameAnswer reports whether what is answered for something that exists and
+// is withheld is what is answered for something that is missing, member for
+// member, apart from the identifier of the request.
+func sameAnswer(withheld, absent answer) bool {
+	members := func(body map[string]any) string {
+		kept := maps.Clone(body)
+		delete(kept, "trace_id")
+		return fmt.Sprint(kept)
+	}
+	return withheld.status == absent.status && members(withheld.body) == members(absent.body)
+}
+
+// waiting returns once that many sessions of the database wait for a lock:
+// the requests a test sent have reached the rows they compete for.
+func (s *stack) waiting(sessions int) {
+	s.t.Helper()
+
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		var blocked int
+		if err := s.owner.QueryRow(s.t.Context(),
+			`SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+		).Scan(&blocked); err != nil {
+			s.t.Fatalf("count the sessions that wait for a lock: %v", err)
+		}
+		if blocked == sessions {
+			return
+		}
+		if time.Now().After(deadline) {
+			s.t.Fatalf("%d sessions wait for a lock, want %d", blocked, sessions)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// recorded counts the audit records for which keep says so.
+func (s *stack) recorded(keep func(audited) bool) map[audited]int {
+	s.t.Helper()
+
+	records := map[audited]int{}
+	for _, record := range s.audit() {
+		if keep(record) {
+			records[record]++
+		}
+	}
+	return records
 }
 
 // audited is one row of the audit trail.
@@ -1035,5 +1178,785 @@ func TestAnAdministratorNobodyCouldBeKeepsTheServiceFromStarting(t *testing.T) {
 	if _, err := compose(fabric, verifier, configured, slog.New(slog.DiscardHandler)); err == nil ||
 		!strings.Contains(err.Error(), "IDP_FABRIC_PLATFORM_ADMIN_SUBJECTS") {
 		t.Fatalf("got %v, want an error that names the setting", err)
+	}
+}
+
+// The repair of a product whose owner was mistyped when it was registered.
+// Nobody can authenticate as "alcie", so nobody could give the product a
+// workspace or another owner. The platform administrator names alice an
+// owner, and that is all it does: alice removes the owner that was never
+// anybody. The administrator reads no role assignment and removes none.
+func TestAProductWhoseOwnerWasMistypedIsRepaired(t *testing.T) {
+	s := start(t, "platform-admin")
+	cargopai := s.register("platform-admin", "cargopai", "alcie")
+	product, assignments := "/v1/products/"+cargopai, "/v1/products/"+cargopai+"/role-assignments"
+	mistyped := s.ownership(cargopai, "alcie")
+	workspace := `{"workspace_key":"api","display_name":"API"}`
+
+	s.expect("before the repair", "alice", []exchange{
+		{http.MethodGet, product, "", http.StatusNotFound, "PRODUCT_NOT_FOUND"},
+		{http.MethodPost, product + "/workspaces", workspace, http.StatusNotFound, "PRODUCT_NOT_FOUND"},
+	})
+	// The administrator registered the product. It reads no role assignment
+	// of it and removes no owner, the one it mistyped included.
+	s.expect("before the repair", "platform-admin", []exchange{
+		{http.MethodGet, mistyped, "", http.StatusNotFound, "ROLE_ASSIGNMENT_NOT_FOUND"},
+		{http.MethodDelete, mistyped, "", http.StatusForbidden, "FORBIDDEN"},
+	})
+
+	granted := s.call(http.MethodPost, assignments, "platform-admin", s.role("alice"))
+	if granted.status != http.StatusCreated {
+		t.Fatalf("the administrator names alice an owner: status %d %v", granted.status, granted.body)
+	}
+	location := assignments + "/" + granted.id("role_assignment_id")
+	if got := granted.header.Get("Location"); got != location {
+		t.Errorf("Location %q, want %q", got, location)
+	}
+	if got := granted.header.Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control %q, want no-store", got)
+	}
+	if len(granted.body) != 5 || granted.body["product_id"] != cargopai || granted.body["role"] != "product_owner" || granted.body["granted_at"] == nil ||
+		fmt.Sprint(granted.body["principal"]) != fmt.Sprint(map[string]any{"issuer": s.issuer.URL(), "subject": "alice"}) {
+		t.Errorf("the role assignment is %v", granted.body)
+	}
+
+	// Naming an owner gave the administrator nothing: it does not read the
+	// assignment it just made, removes nobody and manages nothing inside.
+	s.expect("after it named an owner", "platform-admin", []exchange{
+		{http.MethodGet, location, "", http.StatusNotFound, "ROLE_ASSIGNMENT_NOT_FOUND"},
+		{http.MethodDelete, location, "", http.StatusForbidden, "FORBIDDEN"},
+		{http.MethodDelete, mistyped, "", http.StatusForbidden, "FORBIDDEN"},
+		{http.MethodPost, product + "/workspaces", workspace, http.StatusForbidden, "FORBIDDEN"},
+	})
+
+	// alice owns the product. She reads her role and the one that was
+	// mistyped, and removes the owner that was never anybody.
+	read := s.call(http.MethodGet, location, "alice", "")
+	if read.status != http.StatusOK || fmt.Sprint(read.body) != fmt.Sprint(granted.body) || read.header.Get("Cache-Control") != "no-store" {
+		t.Errorf("alice reads her role: %d %v, want what the grant answered, not to be stored: %v", read.status, read.body, granted.body)
+	}
+	wrong := s.call(http.MethodGet, mistyped, "alice", "")
+	if wrong.status != http.StatusOK || fmt.Sprint(wrong.body["principal"]) != fmt.Sprint(map[string]any{"issuer": s.issuer.URL(), "subject": "alcie"}) {
+		t.Errorf("alice reads the mistyped role: %d %v", wrong.status, wrong.body)
+	}
+	if revoked := s.call(http.MethodDelete, mistyped, "alice", ""); revoked.status != http.StatusNoContent || revoked.body != nil {
+		t.Fatalf("alice removes the mistyped owner: %d %v, want 204 and no body", revoked.status, revoked.body)
+	}
+	// The assignment is not found any more, and is not revoked twice.
+	s.expect("after the repair", "alice", []exchange{
+		{http.MethodGet, mistyped, "", http.StatusNotFound, "ROLE_ASSIGNMENT_NOT_FOUND"},
+		{http.MethodDelete, mistyped, "", http.StatusNotFound, "ROLE_ASSIGNMENT_NOT_FOUND"},
+		{http.MethodGet, product, "", http.StatusOK, ""},
+	})
+	created := s.createWorkspace(cargopai, "alice", "api")
+
+	// The product has the owner it was meant to have. The mistyped one is
+	// kept as a record that says who granted it and who revoked it.
+	type kept struct {
+		Subject   string
+		Version   int64
+		GrantedBy string
+		RevokedBy string
+	}
+	rows, err := s.owner.Query(t.Context(), `
+		SELECT principal_subject, role_assignment_version, granted_by_subject, coalesce(revoked_by_subject, '')
+		FROM productgovernance.product_role_assignment WHERE product_id = $1 ORDER BY principal_subject`, cargopai)
+	if err != nil {
+		t.Fatalf("read the role assignments: %v", err)
+	}
+	records, err := pgx.CollectRows(rows, pgx.RowToStructByPos[kept])
+	if err != nil {
+		t.Fatalf("read the role assignments: %v", err)
+	}
+	if want := []kept{{"alcie", 2, "platform-admin", "alice"}, {"alice", 1, "platform-admin", ""}}; !slices.Equal(records, want) {
+		t.Errorf("the role assignments are\n %+v\nwant\n %+v", records, want)
+	}
+
+	// Every write and every refusal of what exists is on record, under the
+	// rule that decided it. The revocation that found nothing left none.
+	wrongID, rightID := last(mistyped), last(location)
+	want := map[audited]int{
+		{"platform-admin", "product.register", "SUCCEEDED", "AC-08", cargopai, "Product", cargopai}:         1,
+		{"alice", "product.read", "DENIED", "DENY-03", cargopai, "Product", cargopai}:                       1,
+		{"alice", "workspace.manage", "DENIED", "DENY-03", cargopai, "Workspace", ""}:                       1,
+		{"platform-admin", "product_role.read", "DENIED", "DENY-03", cargopai, "RoleAssignment", wrongID}:   1,
+		{"platform-admin", "product_role.revoke", "DENIED", "DENY-03", cargopai, "RoleAssignment", wrongID}: 2,
+		{"platform-admin", "product_role.grant", "SUCCEEDED", "AC-08", cargopai, "RoleAssignment", rightID}: 1,
+		{"platform-admin", "product_role.read", "DENIED", "DENY-03", cargopai, "RoleAssignment", rightID}:   1,
+		{"platform-admin", "product_role.revoke", "DENIED", "DENY-03", cargopai, "RoleAssignment", rightID}: 1,
+		{"platform-admin", "workspace.manage", "DENIED", "DENY-03", cargopai, "Workspace", ""}:              1,
+		{"alice", "product_role.revoke", "SUCCEEDED", "AC-10", cargopai, "RoleAssignment", wrongID}:         1,
+		{"alice", "workspace.manage", "SUCCEEDED", "AC-09", cargopai, "Workspace", created}:                 1,
+	}
+	if got := s.recorded(func(audited) bool { return true }); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("the audit trail holds\n %v\nwant\n %v", got, want)
+	}
+
+	// The owner that was named at registration was announced with its
+	// product, and its role is announced when it ends. The one that was
+	// named afterwards is announced when it is named.
+	type event struct {
+		Type    string
+		Subject string
+		InForce string
+		Version int64
+	}
+	rows, err = s.owner.Query(t.Context(), `
+		SELECT event_type, subject, coalesce(payload->>'in_force', ''), (payload->>'aggregate_version')::bigint
+		FROM bento.outbox ORDER BY enqueued_seq`)
+	if err != nil {
+		t.Fatalf("read the outbox: %v", err)
+	}
+	events, err := pgx.CollectRows(rows, pgx.RowToStructByPos[event])
+	if err != nil {
+		t.Fatalf("read the outbox: %v", err)
+	}
+	wantEvents := []event{
+		{"fabric.productgovernance.product.registered", "product/" + cargopai, "", 1},
+		{"fabric.productgovernance.product_role.changed", "product_role/" + rightID, "true", 1},
+		{"fabric.productgovernance.product_role.changed", "product_role/" + wrongID, "false", 2},
+		{"fabric.productgovernance.workspace.created", "workspace/" + created, "", 1},
+	}
+	if !slices.Equal(events, wantEvents) {
+		t.Errorf("the outbox holds\n %+v\nwant\n %+v", events, wantEvents)
+	}
+}
+
+// An owner of a product names another owner and removes one. Whoever does
+// not own the product is answered as far as it may know, and a role
+// assignment of one product is not reached from another. A grant and a
+// revocation each leave their row, their audit record and their event, and
+// every refusal its audit record, under the identifier of its request.
+func TestTheOwnersOfAProductNameAndRemoveOwners(t *testing.T) {
+	s := start(t, "platform-admin")
+	cargopai := s.register("platform-admin", "cargopai", "alice")
+	parcel := s.register("platform-admin", "parcel", "bob")
+	engineering := s.createWorkspace(cargopai, "alice", "api-engineering")
+	if got := s.call(http.MethodPost, "/v1/products/"+cargopai+"/workspaces/"+engineering+"/memberships", "alice",
+		s.membership("carol", "workspace_maintainer")); got.status != http.StatusCreated {
+		t.Fatalf("make carol a member: %d %v", got.status, got.body)
+	}
+	assignments := "/v1/products/" + cargopai + "/role-assignments"
+	const missing = "00000000-0000-4000-8000-000000000000"
+
+	granted := s.call(http.MethodPost, assignments, "alice", s.role("dave"))
+	if granted.status != http.StatusCreated {
+		t.Fatalf("grant: status %d %v", granted.status, granted.body)
+	}
+	id := granted.id("role_assignment_id")
+	location := assignments + "/" + id
+	if got := granted.header.Get("Location"); got != location {
+		t.Errorf("Location %q, want %q", got, location)
+	}
+
+	// dave is an owner as alice is: he reads the assignment and manages the
+	// product.
+	if read := s.call(http.MethodGet, location, "dave", ""); read.status != http.StatusOK || fmt.Sprint(read.body) != fmt.Sprint(granted.body) {
+		t.Errorf("the new owner reads %d %v, want what the grant answered: %v", read.status, read.body, granted.body)
+	}
+	s.createWorkspace(cargopai, "dave", "operations")
+
+	another := s.role("mallory")
+	// A member of a workspace knows the product and has no say over who
+	// owns it.
+	s.expect("as a member of a workspace", "carol", []exchange{
+		{http.MethodPost, assignments, another, http.StatusForbidden, "FORBIDDEN"},
+		{http.MethodDelete, location, "", http.StatusForbidden, "FORBIDDEN"},
+		{http.MethodGet, location, "", http.StatusNotFound, "ROLE_ASSIGNMENT_NOT_FOUND"},
+	})
+	// To a stranger there is no such product. The answer is the one a
+	// product that is missing gets, member for member.
+	for _, stranger := range []string{"bob", "mallory"} {
+		for what, request := range map[string]struct{ method, path, body string }{
+			"names an owner":          {http.MethodPost, assignments, another},
+			"reads a role assignment": {http.MethodGet, location, ""},
+			"removes an owner":        {http.MethodDelete, location, ""},
+		} {
+			withheld := s.call(request.method, request.path, stranger, request.body)
+			absent := s.call(request.method, strings.Replace(request.path, cargopai, missing, 1), stranger, request.body)
+			if withheld.status != http.StatusNotFound || withheld.code() != "PRODUCT_NOT_FOUND" || !sameAnswer(withheld, absent) {
+				t.Errorf("%s %s: %d %v; in a missing product: %d %v", stranger, what, withheld.status, withheld.body, absent.status, absent.body)
+			}
+		}
+	}
+	// The owner of Parcel does not reach a role assignment of CargoPai by
+	// putting its identifier under his own product.
+	elsewhere := "/v1/products/" + parcel + "/role-assignments/" + id
+	s.expect("under another product", "bob", []exchange{
+		{http.MethodGet, elsewhere, "", http.StatusNotFound, "ROLE_ASSIGNMENT_NOT_FOUND"},
+		{http.MethodDelete, elsewhere, "", http.StatusNotFound, "ROLE_ASSIGNMENT_NOT_FOUND"},
+	})
+
+	// The administrator removes nobody. The refusal and its audit record
+	// carry the identifier of the request.
+	refused := s.call(http.MethodDelete, location, "platform-admin", "")
+	if refused.status != http.StatusForbidden || refused.code() != "FORBIDDEN" {
+		t.Errorf("the administrator removes an owner: %d %v, want 403 FORBIDDEN", refused.status, refused.body)
+	}
+	var action, outcome string
+	if err := s.owner.QueryRow(t.Context(),
+		`SELECT action, outcome FROM platformoperations.audit_record WHERE correlation_id = $1`, refused.id("trace_id"),
+	).Scan(&action, &outcome); err != nil || action != "product_role.revoke" || outcome != "DENIED" {
+		t.Errorf("the refusal %q is recorded as %q %q (%v), want product_role.revoke DENIED under its identifier", refused.id("trace_id"), action, outcome, err)
+	}
+
+	revoked := s.call(http.MethodDelete, location, "alice", "")
+	if revoked.status != http.StatusNoContent || revoked.body != nil {
+		t.Fatalf("revoke: %d %v, want 204 and no body", revoked.status, revoked.body)
+	}
+	// From that moment the role grants nothing. The assignment is not found
+	// any more, and is not revoked twice.
+	s.expect("once revoked", "dave", []exchange{
+		{http.MethodGet, "/v1/products/" + cargopai, "", http.StatusNotFound, "PRODUCT_NOT_FOUND"},
+	})
+	s.expect("once revoked", "alice", []exchange{
+		{http.MethodGet, location, "", http.StatusNotFound, "ROLE_ASSIGNMENT_NOT_FOUND"},
+		{http.MethodDelete, location, "", http.StatusNotFound, "ROLE_ASSIGNMENT_NOT_FOUND"},
+	})
+
+	// The record of the assignment is kept and says who granted it and who
+	// revoked it.
+	var version int64
+	var grantedBy, revokedBy string
+	if err := s.owner.QueryRow(t.Context(), `
+		SELECT role_assignment_version, granted_by_subject, coalesce(revoked_by_subject, '')
+		FROM productgovernance.product_role_assignment WHERE role_assignment_id = $1 AND revoked_at IS NOT NULL`, id,
+	).Scan(&version, &grantedBy, &revokedBy); err != nil || version != 2 || grantedBy != "alice" || revokedBy != "alice" {
+		t.Errorf("the record of the assignment is at version %d, granted by %q, revoked by %q (%v), want 2, alice, alice", version, grantedBy, revokedBy, err)
+	}
+
+	want := map[audited]int{
+		{"alice", "product_role.grant", "SUCCEEDED", "AC-10", cargopai, "RoleAssignment", id}:          1,
+		{"alice", "product_role.revoke", "SUCCEEDED", "AC-10", cargopai, "RoleAssignment", id}:         1,
+		{"carol", "product_role.grant", "DENIED", "DENY-03", cargopai, "RoleAssignment", ""}:           1,
+		{"carol", "product_role.revoke", "DENIED", "DENY-03", cargopai, "RoleAssignment", id}:          1,
+		{"carol", "product_role.read", "DENIED", "DENY-03", cargopai, "RoleAssignment", id}:            1,
+		{"bob", "product_role.grant", "DENIED", "DENY-03", cargopai, "RoleAssignment", ""}:             1,
+		{"bob", "product_role.read", "DENIED", "DENY-03", cargopai, "RoleAssignment", id}:              1,
+		{"bob", "product_role.revoke", "DENIED", "DENY-03", cargopai, "RoleAssignment", id}:            1,
+		{"mallory", "product_role.grant", "DENIED", "DENY-03", cargopai, "RoleAssignment", ""}:         1,
+		{"mallory", "product_role.read", "DENIED", "DENY-03", cargopai, "RoleAssignment", id}:          1,
+		{"mallory", "product_role.revoke", "DENIED", "DENY-03", cargopai, "RoleAssignment", id}:        1,
+		{"platform-admin", "product_role.revoke", "DENIED", "DENY-03", cargopai, "RoleAssignment", id}: 1,
+	}
+	got := s.recorded(func(record audited) bool { return strings.HasPrefix(record.Action, "product_role.") })
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("the audit trail holds\n %v\nwant\n %v", got, want)
+	}
+
+	// One event for the grant and one for the revocation, in that order, in
+	// the partition of the product. Each names the assignment and its role
+	// and not who holds it, and carries the correlation identifier of its
+	// audit record.
+	type event struct {
+		Subject     string
+		Scope       string
+		Partition   string
+		Correlation string
+		InForce     string
+		Version     int64
+		Role        string
+		Assignment  string
+		Payload     string
+	}
+	rows, err := s.owner.Query(t.Context(), `
+		SELECT subject, scope, partition_key, correlation_id, payload->>'in_force', (payload->>'aggregate_version')::bigint,
+		       payload->>'role', payload->>'role_assignment_id', payload::text
+		FROM bento.outbox WHERE event_type = 'fabric.productgovernance.product_role.changed' ORDER BY enqueued_seq`)
+	if err != nil {
+		t.Fatalf("read the outbox: %v", err)
+	}
+	events, err := pgx.CollectRows(rows, pgx.RowToStructByPos[event])
+	if err != nil {
+		t.Fatalf("read the outbox: %v", err)
+	}
+	if len(events) != 2 || events[0].InForce != "true" || events[0].Version != 1 || events[1].InForce != "false" || events[1].Version != 2 {
+		t.Fatalf("the outbox holds %+v, want the grant and then the revocation", events)
+	}
+	for index, action := range []string{"product_role.grant", "product_role.revoke"} {
+		stored := events[index]
+		if stored.Subject != "product_role/"+id || stored.Scope != cargopai || stored.Partition != cargopai ||
+			stored.Role != "product_owner" || stored.Assignment != id {
+			t.Errorf("event %d is %+v, want it about the assignment, scoped to the product and in its partition", index+1, stored)
+		}
+		if strings.Contains(stored.Payload, "dave") || strings.Contains(stored.Payload, "alice") || !strings.Contains(stored.Payload, stored.Correlation) {
+			t.Errorf("the payload of event %d is %s, want the correlation identifier and nobody's name", index+1, stored.Payload)
+		}
+		var recordedAction string
+		if err := s.owner.QueryRow(t.Context(),
+			`SELECT action FROM platformoperations.audit_record WHERE correlation_id = $1`, stored.Correlation,
+		).Scan(&recordedAction); err != nil || recordedAction != action {
+			t.Errorf("event %d shares its correlation identifier with %q (%v), want %s", index+1, recordedAction, err, action)
+		}
+	}
+}
+
+// A principal holds a role in a product once at a time, however the grants
+// arrive and whoever sends them. Once the assignment is revoked, the role
+// can be granted again. A suspended product takes no new owner.
+func TestARoleIsHeldInAProductOnceAtATime(t *testing.T) {
+	s := start(t, "platform-admin")
+	cargopai := s.register("platform-admin", "cargopai", "alice")
+	assignments := "/v1/products/" + cargopai + "/role-assignments"
+
+	first := s.call(http.MethodPost, assignments, "alice", s.role("bob"))
+	if first.status != http.StatusCreated {
+		t.Fatalf("the first grant: %d %v", first.status, first.body)
+	}
+	// Whoever asks, an owner or the administrator, and whoever is named:
+	// the owner that was just named, or the one named at registration.
+	for _, again := range []struct{ caller, subject string }{
+		{"alice", "bob"}, {"bob", "bob"}, {"platform-admin", "bob"}, {"platform-admin", "alice"}, {"bob", "alice"},
+	} {
+		if got := s.call(http.MethodPost, assignments, again.caller, s.role(again.subject)); got.status != http.StatusConflict || got.code() != "ROLE_ASSIGNMENT_EXISTS" {
+			t.Errorf("%s names %s an owner again: %d %v, want 409 ROLE_ASSIGNMENT_EXISTS", again.caller, again.subject, got.status, got.body)
+		}
+	}
+
+	// Several at once, from an owner and from the administrator: one wins,
+	// the others find the role held.
+	const racers = 6
+	statuses := make(chan int, racers)
+	for index := range racers {
+		caller := []string{"alice", "platform-admin"}[index%2]
+		go func() {
+			statuses <- s.call(http.MethodPost, assignments, caller, s.role("carol")).status
+		}()
+	}
+	won := 0
+	for range racers {
+		switch status := <-statuses; status {
+		case http.StatusCreated:
+			won++
+		case http.StatusConflict:
+		default:
+			t.Errorf("a grant answered %d, want 201 or 409", status)
+		}
+	}
+	if won != 1 {
+		t.Errorf("%d grants of one role succeeded, want 1", won)
+	}
+
+	if got := s.call(http.MethodDelete, first.header.Get("Location"), "alice", ""); got.status != http.StatusNoContent {
+		t.Fatalf("revoke: %d %v", got.status, got.body)
+	}
+	regranted := s.call(http.MethodPost, assignments, "alice", s.role("bob"))
+	if regranted.status != http.StatusCreated || regranted.id("role_assignment_id") == first.id("role_assignment_id") {
+		t.Errorf("the role once more: %d %v, want 201 and a new assignment", regranted.status, regranted.body)
+	}
+
+	// A principal nobody could authenticate as would never use the role.
+	foreign := strings.Replace(s.role("erin"), s.issuer.URL(), "https://other.example", 1)
+	for _, caller := range []string{"alice", "platform-admin"} {
+		if got := s.call(http.MethodPost, assignments, caller, foreign); got.status != http.StatusUnprocessableEntity || got.code() != "OWNER_ISSUER_NOT_TRUSTED" {
+			t.Errorf("%s names an owner under another issuer: %d %v, want 422 OWNER_ISSUER_NOT_TRUSTED", caller, got.status, got.body)
+		}
+	}
+
+	// INV-01: a suspended product takes no new owner, and lets its owners
+	// go. No operation suspends a product yet: its status is set where an
+	// operator would set it.
+	if _, err := s.owner.Exec(t.Context(), `UPDATE productgovernance.product SET status = 'SUSPENDED' WHERE product_id = $1`, cargopai); err != nil {
+		t.Fatalf("suspend the product: %v", err)
+	}
+	for _, caller := range []string{"alice", "platform-admin"} {
+		if got := s.call(http.MethodPost, assignments, caller, s.role("dave")); got.status != http.StatusConflict || got.code() != "PRODUCT_NOT_ACTIVE" {
+			t.Errorf("%s names an owner of a suspended product: %d %v, want 409 PRODUCT_NOT_ACTIVE", caller, got.status, got.body)
+		}
+	}
+	if got := s.call(http.MethodDelete, regranted.header.Get("Location"), "alice", ""); got.status != http.StatusNoContent {
+		t.Errorf("revoke an owner of a suspended product: %d %v, want 204", got.status, got.body)
+	}
+
+	// alice and carol own the product; the two assignments bob held are
+	// kept beside theirs.
+	if got, want := s.owners(cargopai), []string{"alice", "carol"}; !slices.Equal(got, want) {
+		t.Errorf("the owners are %v, want %v", got, want)
+	}
+	if kept := s.count("productgovernance.product_role_assignment"); kept != 4 {
+		t.Errorf("%d role assignments are kept, want 4", kept)
+	}
+	// What the state did not allow was not a refusal of the caller: only
+	// the three grants and the two revocations that took effect left an
+	// audit record and an event.
+	changes := 0
+	for record, count := range s.recorded(func(record audited) bool { return strings.HasPrefix(record.Action, "product_role.") }) {
+		if record.Outcome != "SUCCEEDED" {
+			t.Errorf("the audit trail holds %+v, want no refusal", record)
+		}
+		changes += count
+	}
+	var events int
+	if err := s.owner.QueryRow(t.Context(),
+		`SELECT count(*) FROM bento.outbox WHERE event_type = 'fabric.productgovernance.product_role.changed'`).Scan(&events); err != nil {
+		t.Fatalf("count the events: %v", err)
+	}
+	if changes != 5 || events != 5 {
+		t.Errorf("%d audit records and %d events of role assignments, want 5 and 5", changes, events)
+	}
+}
+
+// A product always has an owner. The last one is not removed, by itself or
+// by anybody, and two owners who remove each other at the same time leave
+// one of them: the second request waits for the first, and when it goes on
+// its caller owns the product no more.
+func TestAProductAlwaysHasAnOwner(t *testing.T) {
+	s := start(t, "platform-admin")
+	cargopai := s.register("platform-admin", "cargopai", "alice")
+	alices := s.ownership(cargopai, "alice")
+
+	// alice is the only owner. She cannot give up her role, and the
+	// administrator cannot take it from her.
+	if got := s.call(http.MethodDelete, alices, "alice", ""); got.status != http.StatusConflict || got.code() != "LAST_OWNER" {
+		t.Fatalf("the last owner removes itself: %d %v, want 409 LAST_OWNER", got.status, got.body)
+	}
+	if got := s.call(http.MethodDelete, alices, "platform-admin", ""); got.status != http.StatusForbidden || got.code() != "FORBIDDEN" {
+		t.Errorf("the administrator removes the last owner: %d %v, want 403 FORBIDDEN", got.status, got.body)
+	}
+	if got, want := s.owners(cargopai), []string{"alice"}; !slices.Equal(got, want) {
+		t.Fatalf("the owners are %v, want %v", got, want)
+	}
+
+	// With a second owner, each may remove the other, and both try at once.
+	// A third session holds the rows of the owners, so that both requests
+	// have come to where they lock them before either goes on.
+	bobs := s.nameOwner(cargopai, "alice", "bob")
+	gate := pgtest.Connect(t, s.database.Migrator)
+	held, err := gate.Begin(t.Context())
+	if err != nil {
+		t.Fatalf("begin the transaction that holds the owners: %v", err)
+	}
+	defer func() { _ = held.Rollback(t.Context()) }()
+	if _, err := held.Exec(t.Context(),
+		`SELECT 1 FROM productgovernance.product_role_assignment WHERE product_id = $1 FOR UPDATE`, cargopai); err != nil {
+		t.Fatalf("hold the owners: %v", err)
+	}
+	type outcome struct {
+		caller string
+		answer answer
+	}
+	outcomes := make(chan outcome, 2)
+	go func() { outcomes <- outcome{"alice", s.call(http.MethodDelete, bobs, "alice", "")} }()
+	go func() { outcomes <- outcome{"bob", s.call(http.MethodDelete, alices, "bob", "")} }()
+	s.waiting(2)
+	if err := held.Rollback(t.Context()); err != nil {
+		t.Fatalf("let the two requests go on: %v", err)
+	}
+	served, waited := <-outcomes, <-outcomes
+	if served.answer.status != http.StatusNoContent {
+		served, waited = waited, served
+	}
+	// The request that waited is answered as that of somebody who does not
+	// own the product, which its caller is by then: not as an owner who
+	// would be the last.
+	if served.answer.status != http.StatusNoContent || waited.answer.status != http.StatusNotFound || waited.answer.code() != "PRODUCT_NOT_FOUND" {
+		t.Fatalf("%s was answered %d %v and %s %d %v, want 204 for one and 404 PRODUCT_NOT_FOUND for the other",
+			served.caller, served.answer.status, served.answer.body, waited.caller, waited.answer.status, waited.answer.body)
+	}
+	if got, want := s.owners(cargopai), []string{served.caller}; !slices.Equal(got, want) {
+		t.Errorf("the owners are %v, want the one whose request was served: %v", got, want)
+	}
+
+	// The one that is left is the last owner, and stays.
+	kept := map[string]string{"alice": alices, "bob": bobs}[served.caller]
+	removed := map[string]string{"alice": bobs, "bob": alices}[served.caller]
+	if got := s.call(http.MethodDelete, kept, served.caller, ""); got.status != http.StatusConflict || got.code() != "LAST_OWNER" {
+		t.Errorf("the owner that is left removes itself: %d %v, want 409 LAST_OWNER", got.status, got.body)
+	}
+
+	// The request that waited is on record as a refusal of its caller. That
+	// a product keeps its last owner is not one, and left no record.
+	want := map[audited]int{
+		{"alice", "product_role.grant", "SUCCEEDED", "AC-10", cargopai, "RoleAssignment", last(bobs)}:            1,
+		{"platform-admin", "product_role.revoke", "DENIED", "DENY-03", cargopai, "RoleAssignment", last(alices)}: 1,
+		{served.caller, "product_role.revoke", "SUCCEEDED", "AC-10", cargopai, "RoleAssignment", last(removed)}:  1,
+		{waited.caller, "product_role.revoke", "DENIED", "DENY-03", cargopai, "RoleAssignment", last(kept)}:      1,
+	}
+	got := s.recorded(func(record audited) bool { return strings.HasPrefix(record.Action, "product_role.") })
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("the audit trail holds\n %v\nwant\n %v", got, want)
+	}
+
+	// With nothing that holds them, however the two requests fall: one is
+	// served, and the other finds that it owns nothing.
+	for round := range 4 {
+		product := s.register("platform-admin", fmt.Sprintf("parcel-%d", round), "carol", "dave")
+		carols, daves := s.ownership(product, "carol"), s.ownership(product, "dave")
+		answers := make(chan answer, 2)
+		go func() { answers <- s.call(http.MethodDelete, daves, "carol", "") }()
+		go func() { answers <- s.call(http.MethodDelete, carols, "dave", "") }()
+		done, refused := 0, 0
+		for range 2 {
+			switch got := <-answers; {
+			case got.status == http.StatusNoContent:
+				done++
+			case got.status == http.StatusNotFound && got.code() == "PRODUCT_NOT_FOUND":
+				refused++
+			default:
+				t.Errorf("round %d: a revocation answered %d %v, want 204 or 404 PRODUCT_NOT_FOUND", round+1, got.status, got.body)
+			}
+		}
+		if owners := s.owners(product); done != 1 || refused != 1 || len(owners) != 1 {
+			t.Errorf("round %d: %d revocations were served, %d refused, and the owners are %v, want 1, 1 and one owner", round+1, done, refused, owners)
+		}
+	}
+
+	// An owner gives up its own role when another owner stays, and is a
+	// stranger to the product from then on.
+	express := s.register("platform-admin", "express", "erin")
+	erins := s.ownership(express, "erin")
+	s.nameOwner(express, "erin", "frank")
+	if got := s.call(http.MethodDelete, erins, "erin", ""); got.status != http.StatusNoContent {
+		t.Fatalf("an owner gives up its role: %d %v, want 204", got.status, got.body)
+	}
+	s.expect("once she gave up her role", "erin", []exchange{
+		{http.MethodGet, "/v1/products/" + express, "", http.StatusNotFound, "PRODUCT_NOT_FOUND"},
+	})
+	if got, want := s.owners(express), []string{"frank"}; !slices.Equal(got, want) {
+		t.Errorf("the owners are %v, want %v", got, want)
+	}
+}
+
+// A role that is revoked grants nothing from the moment the revocation is
+// committed. The next request of its former holder is answered from what it
+// holds then, under the very token it used before: a token says who the
+// caller is, never what it may do. Whoever holds nothing else is a stranger
+// to the product. Whoever is still a member of a workspace keeps what the
+// membership gives, and no more.
+func TestARevokedOwnerLosesWhatTheRoleGaveAtOnce(t *testing.T) {
+	s := start(t, "platform-admin")
+	cargopai := s.register("platform-admin", "cargopai", "alice")
+	engineering := s.createWorkspace(cargopai, "alice", "api-engineering")
+	operations := s.createWorkspace(cargopai, "alice", "operations")
+	product := "/v1/products/" + cargopai
+	workspaces, assignments := product+"/workspaces/", product+"/role-assignments"
+	const missing = "00000000-0000-4000-8000-000000000000"
+
+	// bob and dave own the product with alice. bob also maintains one of
+	// its workspaces.
+	alices := s.ownership(cargopai, "alice")
+	bobs, daves := s.nameOwner(cargopai, "alice", "bob"), s.nameOwner(cargopai, "alice", "dave")
+	joined := s.call(http.MethodPost, workspaces+engineering+"/memberships", "alice", s.membership("bob", "workspace_maintainer"))
+	if joined.status != http.StatusCreated {
+		t.Fatalf("make bob a member: %d %v", joined.status, joined.body)
+	}
+	membership := joined.header.Get("Location")
+
+	// The tokens they hold now are the ones they go on using. As an owner,
+	// each reads every workspace and every owner.
+	tokens := map[string]string{"bob": s.token("bob"), "dave": s.token("dave")}
+	for subject, token := range tokens {
+		for _, path := range []string{workspaces + operations, alices} {
+			if got := s.callWith(http.MethodGet, path, token, ""); got.status != http.StatusOK {
+				t.Fatalf("%s, an owner, reads %s: %d %v", subject, path, got.status, got.body)
+			}
+		}
+	}
+
+	for _, location := range []string{bobs, daves} {
+		if got := s.call(http.MethodDelete, location, "alice", ""); got.status != http.StatusNoContent {
+			t.Fatalf("revoke %s: %d %v", location, got.status, got.body)
+		}
+	}
+
+	another, owner := s.membership("mallory", "internal_author"), s.role("mallory")
+	create := `{"workspace_key":"his","display_name":"His"}`
+	// dave holds nothing else. He is a stranger: every answer is the one a
+	// product that is missing gets.
+	for _, request := range []struct{ method, path, body string }{
+		{http.MethodGet, product, ""},
+		{http.MethodGet, workspaces + engineering, ""},
+		{http.MethodPost, product + "/workspaces", create},
+		{http.MethodPost, workspaces + engineering + "/memberships", another},
+		{http.MethodGet, membership, ""},
+		{http.MethodDelete, membership, ""},
+		{http.MethodPost, assignments, owner},
+		{http.MethodGet, alices, ""},
+		{http.MethodDelete, alices, ""},
+	} {
+		withheld := s.callWith(request.method, request.path, tokens["dave"], request.body)
+		absent := s.callWith(request.method, strings.Replace(request.path, cargopai, missing, 1), tokens["dave"], request.body)
+		if withheld.status != http.StatusNotFound || withheld.code() != "PRODUCT_NOT_FOUND" || !sameAnswer(withheld, absent) {
+			t.Errorf("dave, once revoked: %s %s answered %d %v; in a missing product: %d %v",
+				request.method, request.path, withheld.status, withheld.body, absent.status, absent.body)
+		}
+	}
+
+	// bob is still a member of a workspace. He keeps that workspace and its
+	// product, and nothing of what the role gave him.
+	for _, e := range []exchange{
+		{http.MethodGet, product, "", http.StatusOK, ""},
+		{http.MethodGet, workspaces + engineering, "", http.StatusOK, ""},
+		{http.MethodGet, workspaces + operations, "", http.StatusNotFound, "WORKSPACE_NOT_FOUND"},
+		{http.MethodPost, product + "/workspaces", create, http.StatusForbidden, "FORBIDDEN"},
+		{http.MethodPost, workspaces + engineering + "/memberships", another, http.StatusForbidden, "FORBIDDEN"},
+		{http.MethodGet, membership, "", http.StatusNotFound, "MEMBERSHIP_NOT_FOUND"},
+		{http.MethodDelete, membership, "", http.StatusForbidden, "FORBIDDEN"},
+		{http.MethodPost, assignments, owner, http.StatusForbidden, "FORBIDDEN"},
+		{http.MethodGet, alices, "", http.StatusNotFound, "ROLE_ASSIGNMENT_NOT_FOUND"},
+		{http.MethodDelete, alices, "", http.StatusForbidden, "FORBIDDEN"},
+	} {
+		if got := s.callWith(e.method, e.path, tokens["bob"], e.body); got.status != e.status || got.code() != e.code {
+			t.Errorf("bob, once revoked: %s %s answered %d %v, want %d %s", e.method, e.path, got.status, got.body, e.status, e.code)
+		}
+	}
+
+	// Nothing of what they were refused happened.
+	if got, want := s.owners(cargopai), []string{"alice"}; !slices.Equal(got, want) {
+		t.Errorf("the owners are %v, want %v", got, want)
+	}
+	if spaces, members := s.count("productgovernance.workspace"), s.count("productgovernance.workspace_membership"); spaces != 2 || members != 1 {
+		t.Errorf("%d workspaces and %d memberships, want the 2 and the 1 there were", spaces, members)
+	}
+
+	// Named again, dave is let in again under the same token: what counts
+	// is what is in force.
+	if again := s.nameOwner(cargopai, "alice", "dave"); again == daves {
+		t.Error("the role granted again is the assignment that was revoked")
+	}
+	if got := s.callWith(http.MethodGet, workspaces+operations, tokens["dave"], ""); got.status != http.StatusOK {
+		t.Errorf("dave, named an owner again, reads a workspace: %d %v, want 200", got.status, got.body)
+	}
+}
+
+// roleAssignmentRevocation is the migration that made a role assignment a
+// record that ends.
+const roleAssignmentRevocation = "productgovernance/003_role_assignment_revocation"
+
+// The owners that the build before this one named keep their product
+// through the migration. That build wrote a role assignment once, without
+// an identifier, and never ended one. Migrated, each of its rows is an
+// assignment in force that is read and revoked like any other.
+func TestTheOwnersABuildBeforeNamedKeepTheirProductThroughTheMigration(t *testing.T) {
+	database := pgtest.FreshDatabase(t)
+	conn := pgtest.Connect(t, database.Migrator)
+	quiet := slog.New(slog.DiscardHandler)
+
+	// Product Governance as the build before left it. Run applies the whole
+	// plan of this build, so the schema of the context is taken back to
+	// what its migrations made of it before the one under test, and the
+	// history with it.
+	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if _, err := conn.Exec(t.Context(), `
+		DROP SCHEMA productgovernance CASCADE;
+		CREATE SCHEMA productgovernance;
+		DELETE FROM fabric_migration.applied_migration WHERE target_schema = 'productgovernance'`); err != nil {
+		t.Fatalf("take the schema of Product Governance back: %v", err)
+	}
+	plan, err := migrate.Plan()
+	if err != nil {
+		t.Fatalf("build the plan: %v", err)
+	}
+	carried := false
+	for _, step := range plan {
+		if step.Schema != "productgovernance" {
+			continue
+		}
+		if step.ID >= roleAssignmentRevocation {
+			carried = carried || step.ID == roleAssignmentRevocation
+			continue
+		}
+		if _, err := conn.Exec(t.Context(), step.SQL); err != nil {
+			t.Fatalf("apply %s as the build before did: %v", step.ID, err)
+		}
+		if _, err := conn.Exec(t.Context(),
+			`INSERT INTO fabric_migration.applied_migration (migration_id, origin, canonical_checksum, target_schema)
+			 VALUES ($1, $2, $3, $4)`, step.ID, string(step.Origin), step.Checksum, step.Schema); err != nil {
+			t.Fatalf("record %s: %v", step.ID, err)
+		}
+	}
+	if !carried {
+		t.Fatalf("the plan does not carry %s; this test would pass vacuously", roleAssignmentRevocation)
+	}
+
+	// CargoPai as a process of that build registered it, with the statements
+	// it ran: alice and bob own it.
+	issuer := provider(t)
+	const cargopai = "1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6"
+	registered := time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC)
+	if _, err := conn.Exec(t.Context(), `
+		INSERT INTO productgovernance.product
+		    (product_id, product_key, display_name, status, owner_identity_provider, owner_organization,
+		     aggregate_version, created_at, created_by_issuer, created_by_subject, updated_at)
+		VALUES ($1, 'cargopai', 'CargoPai', 'ACTIVE', $2, 'org-cargopai', 1, $3, $2, 'platform-admin', $3)`,
+		cargopai, issuer.URL(), registered); err != nil {
+		t.Fatalf("register the product as the build before: %v", err)
+	}
+	for _, subject := range []string{"alice", "bob"} {
+		if _, err := conn.Exec(t.Context(), `
+			INSERT INTO productgovernance.product_role_assignment
+			    (product_id, principal_issuer, principal_subject, role, granted_at, granted_by_issuer, granted_by_subject)
+			VALUES ($1, $2, $3, 'product_owner', $4, $2, 'platform-admin')`, cargopai, issuer.URL(), subject, registered); err != nil {
+			t.Fatalf("make %s an owner as the build before: %v", subject, err)
+		}
+	}
+
+	// The deployment of this build: fabric-migrate -apply -grant-to, then
+	// the process.
+	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
+		t.Fatalf("migrate as this build: %v", err)
+	}
+	if err := migrate.Grant(t.Context(), conn, database.ApplicationRole); err != nil {
+		t.Fatalf("grant: %v", err)
+	}
+	s := startOn(t, issuer, database, "platform-admin")
+	product := "/v1/products/" + cargopai
+
+	// Both still own the product, each under an identifier of its own.
+	alices, bobs := s.ownership(cargopai, "alice"), s.ownership(cargopai, "bob")
+	for subject, location := range map[string]string{"alice": alices, "bob": bobs} {
+		if _, err := governancedomain.ParseRoleAssignmentID(last(location)); err != nil {
+			t.Errorf("the role of %s has the identifier %q: %v", subject, last(location), err)
+		}
+	}
+	if alices == bobs {
+		t.Error("the two owners share one role assignment")
+	}
+	if got := s.call(http.MethodGet, product, "bob", ""); got.status != http.StatusOK || got.body["product_key"] != "cargopai" {
+		t.Errorf("an owner of before reads the product: %d %v", got.status, got.body)
+	}
+	s.createWorkspace(cargopai, "alice", "api")
+
+	// The assignment is read as it was granted then.
+	read := s.call(http.MethodGet, alices, "bob", "")
+	want := map[string]any{
+		"role_assignment_id": last(alices), "product_id": cargopai,
+		"principal": map[string]any{"issuer": issuer.URL(), "subject": "alice"}, "role": "product_owner",
+		"granted_at": "2026-11-01T08:00:00Z",
+	}
+	if read.status != http.StatusOK || fmt.Sprint(read.body) != fmt.Sprint(want) {
+		t.Errorf("an owner reads a role of before: %d %v, want %v", read.status, read.body, want)
+	}
+
+	// It is revoked like any other, and what holds for the owners this
+	// build names holds for these: the last one stays, and another is named
+	// beside them.
+	if got := s.call(http.MethodDelete, alices, "bob", ""); got.status != http.StatusNoContent {
+		t.Fatalf("revoke a role of before: %d %v, want 204", got.status, got.body)
+	}
+	s.expect("once her role is revoked", "alice", []exchange{
+		{http.MethodGet, product, "", http.StatusNotFound, "PRODUCT_NOT_FOUND"},
+	})
+	if got := s.call(http.MethodDelete, bobs, "bob", ""); got.status != http.StatusConflict || got.code() != "LAST_OWNER" {
+		t.Errorf("the last owner of before removes itself: %d %v, want 409 LAST_OWNER", got.status, got.body)
+	}
+	s.nameOwner(cargopai, "bob", "carol")
+	if got, want := s.owners(cargopai), []string{"bob", "carol"}; !slices.Equal(got, want) {
+		t.Errorf("the owners are %v, want %v", got, want)
+	}
+
+	// The record of the revoked role says who granted it, long before, and
+	// who revoked it.
+	var version int64
+	var grantedBy, revokedBy string
+	var grantedAt time.Time
+	if err := s.owner.QueryRow(t.Context(), `
+		SELECT role_assignment_version, granted_by_subject, coalesce(revoked_by_subject, ''), granted_at
+		FROM productgovernance.product_role_assignment WHERE role_assignment_id = $1`, last(alices),
+	).Scan(&version, &grantedBy, &revokedBy, &grantedAt); err != nil || version != 2 || grantedBy != "platform-admin" || revokedBy != "bob" || !grantedAt.Equal(registered) {
+		t.Errorf("the record is at version %d, granted by %q at %s, revoked by %q (%v), want 2, the administrator at %s, bob",
+			version, grantedBy, grantedAt, revokedBy, err, registered)
 	}
 }

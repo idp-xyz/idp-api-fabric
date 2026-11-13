@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -73,11 +74,16 @@ func TestRegisterProductStoresTheProductItsOwnersTheAuditFactAndTheEventTogether
 		t.Errorf("stored\n %+v\nwant\n %+v", stored, want)
 	}
 
-	wantRoles := []domain.RoleAssignment{
-		{ProductID: product.ID, Principal: alice, Role: domain.RoleProductOwner, GrantedAt: started, GrantedBy: admin},
-		{ProductID: product.ID, Principal: bob, Role: domain.RoleProductOwner, GrantedAt: started, GrantedBy: admin},
+	// Each first owner holds its role under an identifier of its own, in
+	// force from the registration, granted by the registrant.
+	const first, second = "00000000-0000-4000-8000-000000000002", "00000000-0000-4000-8000-000000000003"
+	wantRoles := map[domain.RoleAssignmentID]domain.RoleAssignment{
+		first: {ID: first, ProductID: product.ID, Principal: alice, Role: domain.RoleProductOwner,
+			Version: 1, GrantedAt: started, GrantedBy: admin},
+		second: {ID: second, ProductID: product.ID, Principal: bob, Role: domain.RoleProductOwner,
+			Version: 1, GrantedAt: started, GrantedBy: admin},
 	}
-	if !slices.Equal(w.roles, wantRoles) {
+	if !maps.Equal(w.roles, wantRoles) {
 		t.Errorf("roles\n %+v\nwant\n %+v", w.roles, wantRoles)
 	}
 
@@ -300,8 +306,9 @@ func TestCreateWorkspaceStoresTheWorkspaceTheAuditFactAndTheEventTogether(t *tes
 		t.Fatalf("create: %v", err)
 	}
 
+	// The product and the role of its owner took the first two identifiers.
 	want := domain.Workspace{
-		ID: "00000000-0000-4000-8000-000000000002", ProductID: product.ID, Key: "api-engineering", DisplayName: "API engineering",
+		ID: "00000000-0000-4000-8000-000000000003", ProductID: product.ID, Key: "api-engineering", DisplayName: "API engineering",
 		Status: domain.WorkspaceActive, Version: 1, CreatedAt: w.now, CreatedBy: alice, UpdatedAt: w.now,
 	}
 	if workspace != want || w.workspaces[workspace.ID] != want {
@@ -574,7 +581,9 @@ func TestEveryUseCaseRefusesARequestWithoutAPrincipal(t *testing.T) {
 	w.quiet()
 
 	membership := joined(t, service, workspace, alice, bob, domain.RoleInternalAuthor)
+	second := named(t, service, product, alice, bob)
 	w.quiet()
+	roles := maps.Clone(w.roles)
 
 	nobody := domain.Principal{}
 	productID, workspaceID, membershipID := string(product.ID), string(workspace.ID), string(membership.ID)
@@ -586,19 +595,28 @@ func TestEveryUseCaseRefusesARequestWithoutAPrincipal(t *testing.T) {
 	})
 	_, errGetMembership := service.GetMembership(ctx, GetMembership{Caller: nobody, ProductID: productID, WorkspaceID: workspaceID, MembershipID: membershipID})
 	errRevoke := service.RevokeMembership(ctx, RevokeMembership{Caller: nobody, ProductID: productID, WorkspaceID: workspaceID, MembershipID: membershipID})
+	_, errGrantRole := service.GrantProductRole(ctx, GrantProductRole{
+		Caller: nobody, ProductID: productID, Principal: carol, Role: string(domain.RoleProductOwner),
+	})
+	_, errGetRole := service.GetProductRole(ctx, GetProductRole{Caller: nobody, ProductID: productID, RoleAssignmentID: string(second.ID)})
+	errRevokeRole := service.RevokeProductRole(ctx, RevokeProductRole{Caller: nobody, ProductID: productID, RoleAssignmentID: string(second.ID)})
 	for name, err := range map[string]error{
 		"GetProduct": errGetProduct, "CreateWorkspace": errCreate, "GetWorkspace": errGetWorkspace,
 		"GrantMembership": errGrant, "GetMembership": errGetMembership, "RevokeMembership": errRevoke,
+		"GrantProductRole": errGrantRole, "GetProductRole": errGetRole, "RevokeProductRole": errRevokeRole,
 	} {
 		if !errors.Is(err, ErrForbidden) {
 			t.Errorf("%s: got %v, want %v", name, err, ErrForbidden)
 		}
 	}
-	if len(w.workspaces) != 1 || len(w.audited) != 0 {
-		t.Errorf("requests without a principal left %d workspaces and the audit entries %+v", len(w.workspaces), w.audited)
+	if len(w.workspaces) != 1 || len(w.audited) != 0 || w.transactions != 0 {
+		t.Errorf("requests without a principal left %d workspaces, the audit entries %+v and %d transactions", len(w.workspaces), w.audited, w.transactions)
 	}
 	if len(w.memberships) != 1 || w.memberships[membership.ID] != membership {
 		t.Errorf("requests without a principal left the memberships %+v, want the one there was, in force", w.memberships)
+	}
+	if !maps.Equal(w.roles, roles) {
+		t.Errorf("requests without a principal left the roles %+v, want them as they were", w.roles)
 	}
 }
 
