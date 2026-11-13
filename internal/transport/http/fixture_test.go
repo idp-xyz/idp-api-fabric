@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"go.idp.xyz/idp-api-fabric/internal/platform/identity"
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/application"
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/domain"
+	"go.idp.xyz/idp-api-fabric/internal/productgovernance/ports"
 )
 
 var testBuild = buildinfo.Info{Version: "v-test", Commit: "c-test", BuiltAt: "t-test"}
@@ -108,27 +110,38 @@ type governance struct {
 	membership domain.Membership
 	assignment domain.RoleAssignment
 	err        error
+	// A list answers a page of so many items, each the one above of its
+	// kind, and says that the next page starts behind next. With no item
+	// the page holds no list at all, as a store that found nothing may
+	// return it.
+	items int
+	next  *ports.Position
 
-	registered      []application.RegisterProduct
-	productsRead    []application.GetProduct
-	created         []application.CreateWorkspace
-	spacesRead      []application.GetWorkspace
-	granted         []application.GrantMembership
-	membershipsRead []application.GetMembership
-	revoked         []application.RevokeMembership
-	rolesGranted    []application.GrantProductRole
-	rolesRead       []application.GetProductRole
-	rolesRevoked    []application.RevokeProductRole
+	registered        []application.RegisterProduct
+	productsRead      []application.GetProduct
+	created           []application.CreateWorkspace
+	spacesRead        []application.GetWorkspace
+	granted           []application.GrantMembership
+	membershipsRead   []application.GetMembership
+	revoked           []application.RevokeMembership
+	rolesGranted      []application.GrantProductRole
+	rolesRead         []application.GetProductRole
+	rolesRevoked      []application.RevokeProductRole
+	productsListed    []application.ListProducts
+	spacesListed      []application.ListWorkspaces
+	membershipsListed []application.ListMemberships
+	rolesListed       []application.ListProductRoles
 }
 
 func newGovernance() *governance {
-	return &governance{product: cargopai(), workspace: engineering(), membership: maintainer(), assignment: ownership()}
+	return &governance{product: cargopai(), workspace: engineering(), membership: maintainer(), assignment: ownership(), items: 1}
 }
 
 func (g *governance) calls() int {
 	return len(g.registered) + len(g.productsRead) + len(g.created) + len(g.spacesRead) +
 		len(g.granted) + len(g.membershipsRead) + len(g.revoked) +
-		len(g.rolesGranted) + len(g.rolesRead) + len(g.rolesRevoked)
+		len(g.rolesGranted) + len(g.rolesRead) + len(g.rolesRevoked) +
+		len(g.productsListed) + len(g.spacesListed) + len(g.membershipsListed) + len(g.rolesListed)
 }
 
 func (g *governance) RegisterProduct(_ context.Context, command application.RegisterProduct) (domain.Product, error) {
@@ -179,6 +192,39 @@ func (g *governance) GetProductRole(_ context.Context, query application.GetProd
 func (g *governance) RevokeProductRole(_ context.Context, command application.RevokeProductRole) error {
 	g.rolesRevoked = append(g.rolesRevoked, command)
 	return g.err
+}
+
+// page is the page a list of the stand-in answers: so many times the item,
+// and where the next page starts.
+func page[T any](g *governance, item T) application.Page[T] {
+	if g.err != nil {
+		return application.Page[T]{}
+	}
+	var items []T
+	for range g.items {
+		items = append(items, item)
+	}
+	return application.Page[T]{Items: items, Next: g.next}
+}
+
+func (g *governance) ListProducts(_ context.Context, query application.ListProducts) (application.Page[domain.Product], error) {
+	g.productsListed = append(g.productsListed, query)
+	return page(g, g.product), g.err
+}
+
+func (g *governance) ListWorkspaces(_ context.Context, query application.ListWorkspaces) (application.Page[domain.Workspace], error) {
+	g.spacesListed = append(g.spacesListed, query)
+	return page(g, g.workspace), g.err
+}
+
+func (g *governance) ListMemberships(_ context.Context, query application.ListMemberships) (application.Page[domain.Membership], error) {
+	g.membershipsListed = append(g.membershipsListed, query)
+	return page(g, g.membership), g.err
+}
+
+func (g *governance) ListProductRoles(_ context.Context, query application.ListProductRoles) (application.Page[domain.RoleAssignment], error) {
+	g.rolesListed = append(g.rolesListed, query)
+	return page(g, g.assignment), g.err
 }
 
 // service is the transport under test, with what it logged.
@@ -234,6 +280,22 @@ func (s *service) do(t *testing.T, c call) *httptest.ResponseRecorder {
 	return recorder
 }
 
+// declared routes a request to what the contract declares for it. The
+// contract is one document whatever the test, so it is loaded and routed
+// once: every answer of every test is checked against it, and with each
+// operation the contract gains there are more of them.
+var declared = sync.OnceValues(func() (routers.Router, error) {
+	contract, err := loadContract()
+	if err != nil {
+		return nil, fmt.Errorf("load the contract: %w", err)
+	}
+	router, err := gorillamux.NewRouter(contract)
+	if err != nil {
+		return nil, fmt.Errorf("route the contract: %w", err)
+	}
+	return router, nil
+})
+
 // checkAgainstContract fails the test if the answer is not one the contract
 // declares for the operation: its status, its headers and its body. An
 // answer to a request the contract does not route is not checked, since the
@@ -241,13 +303,9 @@ func (s *service) do(t *testing.T, c call) *httptest.ResponseRecorder {
 func checkAgainstContract(t *testing.T, c call, recorder *httptest.ResponseRecorder) {
 	t.Helper()
 
-	contract, err := loadContract()
+	router, err := declared()
 	if err != nil {
-		t.Fatalf("load the contract: %v", err)
-	}
-	router, err := gorillamux.NewRouter(contract)
-	if err != nil {
-		t.Fatalf("route the contract: %v", err)
+		t.Fatal(err)
 	}
 	method := c.Method
 	if method == http.MethodHead {

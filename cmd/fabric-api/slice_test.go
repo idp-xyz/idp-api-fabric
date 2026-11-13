@@ -268,8 +268,9 @@ func (s *stack) nameOwner(productID, caller, subject string) string {
 
 // ownership is where the role of the subject in the product is read and
 // revoked. A registration answers with the product, not with the role
-// assignments of its first owners, and no operation lists them yet: the
-// identifier of such an assignment is read where an operator would find it.
+// assignments of its first owners: an owner finds those in the list of the
+// owners of the product. Where a test needs one without asking as an owner,
+// the identifier is read where an operator would find it.
 func (s *stack) ownership(productID, subject string) string {
 	s.t.Helper()
 
@@ -1773,6 +1774,9 @@ func TestARevokedOwnerLosesWhatTheRoleGaveAtOnce(t *testing.T) {
 		{http.MethodPost, assignments, owner},
 		{http.MethodGet, alices, ""},
 		{http.MethodDelete, alices, ""},
+		{http.MethodGet, product + "/workspaces", ""},
+		{http.MethodGet, workspaces + engineering + "/memberships", ""},
+		{http.MethodGet, assignments, ""},
 	} {
 		withheld := s.callWith(request.method, request.path, tokens["dave"], request.body)
 		absent := s.callWith(request.method, strings.Replace(request.path, cargopai, missing, 1), tokens["dave"], request.body)
@@ -1795,6 +1799,13 @@ func TestARevokedOwnerLosesWhatTheRoleGaveAtOnce(t *testing.T) {
 		{http.MethodPost, assignments, owner, http.StatusForbidden, "FORBIDDEN"},
 		{http.MethodGet, alices, "", http.StatusNotFound, "ROLE_ASSIGNMENT_NOT_FOUND"},
 		{http.MethodDelete, alices, "", http.StatusForbidden, "FORBIDDEN"},
+		// He lists the product and his workspace, and neither the members
+		// of that workspace nor the owners of the product.
+		{http.MethodGet, "/v1/products", "", http.StatusOK, ""},
+		{http.MethodGet, product + "/workspaces", "", http.StatusOK, ""},
+		{http.MethodGet, workspaces + engineering + "/memberships", "", http.StatusForbidden, "FORBIDDEN"},
+		{http.MethodGet, workspaces + operations + "/memberships", "", http.StatusNotFound, "WORKSPACE_NOT_FOUND"},
+		{http.MethodGet, assignments, "", http.StatusForbidden, "FORBIDDEN"},
 	} {
 		if got := s.callWith(e.method, e.path, tokens["bob"], e.body); got.status != e.status || got.code() != e.code {
 			t.Errorf("bob, once revoked: %s %s answered %d %v, want %d %s", e.method, e.path, got.status, got.body, e.status, e.code)

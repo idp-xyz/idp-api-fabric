@@ -177,8 +177,12 @@ func TestRunGivesTheRoleAssignmentsOfTheBuildBeforeTheirIdentifiers(t *testing.T
 	if err != nil {
 		t.Fatalf("build the plan: %v", err)
 	}
-	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool { return step.ID == roleAssignmentRevocation })
-	if len(before) != len(plan)-1 {
+	// The plan of the build before: without that step, and without what
+	// Product Governance added after it, which builds on it.
+	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool {
+		return step.Schema == "productgovernance" && step.ID >= roleAssignmentRevocation
+	})
+	if !slices.ContainsFunc(plan, func(step migrate.Step) bool { return step.ID == roleAssignmentRevocation }) {
 		t.Fatalf("the plan does not carry %s; this test would pass vacuously", roleAssignmentRevocation)
 	}
 	if err := migrate.Apply(t.Context(), conn, quiet, before); err != nil {

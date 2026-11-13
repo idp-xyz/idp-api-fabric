@@ -82,10 +82,27 @@ func (s *Products) Add(ctx context.Context, product domain.Product) error {
 	return nil
 }
 
-const findProduct = `
+// The columns of a product.
+const selectProduct = `
 SELECT product_id, product_key, display_name, status, owner_identity_provider, owner_organization,
        aggregate_version, created_at, created_by_issuer, created_by_subject, updated_at
-FROM productgovernance.product
+FROM productgovernance.product`
+
+// scanProduct reads one row of selectProduct.
+func scanProduct(row interface{ Scan(dest ...any) error }) (domain.Product, error) {
+	var product domain.Product
+	var id, status string
+	err := row.Scan(&id, &product.Key, &product.DisplayName, &status,
+		&product.Owner.IdentityProvider, &product.Owner.Organization,
+		&product.Version, &product.CreatedAt, &product.CreatedBy.Issuer, &product.CreatedBy.Subject, &product.UpdatedAt)
+	if err != nil {
+		return domain.Product{}, err
+	}
+	product.ID, product.Status = domain.ProductID(id), domain.ProductStatus(status)
+	return product, nil
+}
+
+const findProduct = selectProduct + `
 WHERE product_id = $1`
 
 // Find returns the product with the identifier, if there is one.
@@ -94,20 +111,58 @@ func (s *Products) Find(ctx context.Context, id domain.ProductID) (domain.Produc
 	if err != nil {
 		return domain.Product{}, false, fmt.Errorf("find a product: %w", err)
 	}
-	var product domain.Product
-	var productID, status string
-	err = reader.QueryRow(ctx, findProduct, string(id)).Scan(
-		&productID, &product.Key, &product.DisplayName, &status,
-		&product.Owner.IdentityProvider, &product.Owner.Organization,
-		&product.Version, &product.CreatedAt, &product.CreatedBy.Issuer, &product.CreatedBy.Subject, &product.UpdatedAt)
+	product, err := scanProduct(reader.QueryRow(ctx, findProduct, string(id)))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Product{}, false, nil
 	}
 	if err != nil {
 		return domain.Product{}, false, fmt.Errorf("find a product: %w", err)
 	}
-	product.ID, product.Status = domain.ProductID(productID), domain.ProductStatus(status)
 	return product, true, nil
+}
+
+// Every product, oldest first.
+const listProducts = selectProduct + `
+WHERE (created_at, product_id) > ` + after + `
+ORDER BY created_at, product_id
+LIMIT $3`
+
+// List returns one page of all the products, oldest first.
+func (s *Products) List(ctx context.Context, page ports.Page) ([]domain.Product, error) {
+	products, err := list(ctx, s.framework, listProducts, scanProduct, page)
+	if err != nil {
+		return nil, fmt.Errorf("list the products: %w", err)
+	}
+	return products, nil
+}
+
+// The products a principal holds something in: a role assignment in force,
+// or a membership in force of one of the workspaces. A principal is its
+// issuer and its subject together, and what was revoked is not held.
+//
+// What the principal holds is found by the principal, across the products,
+// and the products are read from that: somebody holds something in a few
+// products, however many there are. A product in which it holds several
+// things is listed once.
+const listProductsFor = selectProduct + `
+WHERE product_id IN (
+        SELECT product_id FROM productgovernance.product_role_assignment
+        WHERE principal_issuer = $4 AND principal_subject = $5 AND revoked_at IS NULL
+        UNION ALL
+        SELECT product_id FROM productgovernance.workspace_membership
+        WHERE principal_issuer = $4 AND principal_subject = $5 AND revoked_at IS NULL)
+  AND (created_at, product_id) > ` + after + `
+ORDER BY created_at, product_id
+LIMIT $3`
+
+// ListFor returns one page of the products the principal holds something in
+// now, oldest first.
+func (s *Products) ListFor(ctx context.Context, principal domain.Principal, page ports.Page) ([]domain.Product, error) {
+	products, err := list(ctx, s.framework, listProductsFor, scanProduct, page, principal.Issuer, principal.Subject)
+	if err != nil {
+		return nil, fmt.Errorf("list the products of a principal: %w", err)
+	}
+	return products, nil
 }
 
 // Workspaces stores workspaces in productgovernance.workspace.
@@ -145,12 +200,29 @@ func (s *Workspaces) Add(ctx context.Context, workspace domain.Workspace) error 
 	return nil
 }
 
-// The product is part of the condition, not something compared afterwards: a
-// workspace of another product is simply not there.
-const findWorkspace = `
+// The columns of a workspace.
+const selectWorkspace = `
 SELECT workspace_id, product_id, workspace_key, display_name, status,
        aggregate_version, created_at, created_by_issuer, created_by_subject, updated_at
-FROM productgovernance.workspace
+FROM productgovernance.workspace`
+
+// scanWorkspace reads one row of selectWorkspace.
+func scanWorkspace(row interface{ Scan(dest ...any) error }) (domain.Workspace, error) {
+	var workspace domain.Workspace
+	var id, productID, status string
+	err := row.Scan(&id, &productID, &workspace.Key, &workspace.DisplayName, &status,
+		&workspace.Version, &workspace.CreatedAt, &workspace.CreatedBy.Issuer, &workspace.CreatedBy.Subject, &workspace.UpdatedAt)
+	if err != nil {
+		return domain.Workspace{}, err
+	}
+	workspace.ID, workspace.ProductID = domain.WorkspaceID(id), domain.ProductID(productID)
+	workspace.Status = domain.WorkspaceStatus(status)
+	return workspace, nil
+}
+
+// The product is part of the condition, not something compared afterwards: a
+// workspace of another product is simply not there.
+const findWorkspace = selectWorkspace + `
 WHERE product_id = $1 AND workspace_id = $2`
 
 // Find returns the workspace with the identifier if it belongs to the
@@ -160,18 +232,53 @@ func (s *Workspaces) Find(ctx context.Context, productID domain.ProductID, id do
 	if err != nil {
 		return domain.Workspace{}, false, fmt.Errorf("find a workspace: %w", err)
 	}
-	var workspace domain.Workspace
-	var workspaceID, ownerID, status string
-	err = reader.QueryRow(ctx, findWorkspace, string(productID), string(id)).Scan(
-		&workspaceID, &ownerID, &workspace.Key, &workspace.DisplayName, &status,
-		&workspace.Version, &workspace.CreatedAt, &workspace.CreatedBy.Issuer, &workspace.CreatedBy.Subject, &workspace.UpdatedAt)
+	workspace, err := scanWorkspace(reader.QueryRow(ctx, findWorkspace, string(productID), string(id)))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Workspace{}, false, nil
 	}
 	if err != nil {
 		return domain.Workspace{}, false, fmt.Errorf("find a workspace: %w", err)
 	}
-	workspace.ID, workspace.ProductID = domain.WorkspaceID(workspaceID), domain.ProductID(ownerID)
-	workspace.Status = domain.WorkspaceStatus(status)
 	return workspace, true, nil
+}
+
+// The workspaces of one product, oldest first. As in a single read, the
+// product is part of the condition: a workspace of another product is simply
+// not there.
+const listWorkspaces = selectWorkspace + `
+WHERE product_id = $4 AND (created_at, workspace_id) > ` + after + `
+ORDER BY created_at, workspace_id
+LIMIT $3`
+
+// List returns one page of the workspaces of the product, oldest first.
+func (s *Workspaces) List(ctx context.Context, productID domain.ProductID, page ports.Page) ([]domain.Workspace, error) {
+	workspaces, err := list(ctx, s.framework, listWorkspaces, scanWorkspace, page, string(productID))
+	if err != nil {
+		return nil, fmt.Errorf("list the workspaces of a product: %w", err)
+	}
+	return workspaces, nil
+}
+
+// The workspaces of one product a principal is a member of: those in which
+// it holds a membership in force, in whichever role. A workspace in which it
+// holds two roles is listed once, and one in which its membership was
+// revoked is not listed.
+const listWorkspacesFor = selectWorkspace + `
+WHERE product_id = $4
+  AND workspace_id IN (
+        SELECT workspace_id FROM productgovernance.workspace_membership
+        WHERE product_id = $4 AND principal_issuer = $5 AND principal_subject = $6 AND revoked_at IS NULL)
+  AND (created_at, workspace_id) > ` + after + `
+ORDER BY created_at, workspace_id
+LIMIT $3`
+
+// ListFor returns one page of the workspaces of the product the principal is
+// a member of now, oldest first.
+func (s *Workspaces) ListFor(ctx context.Context, productID domain.ProductID, principal domain.Principal, page ports.Page) ([]domain.Workspace, error) {
+	workspaces, err := list(ctx, s.framework, listWorkspacesFor, scanWorkspace, page,
+		string(productID), principal.Issuer, principal.Subject)
+	if err != nil {
+		return nil, fmt.Errorf("list the workspaces of a principal: %w", err)
+	}
+	return workspaces, nil
 }

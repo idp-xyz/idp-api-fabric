@@ -25,6 +25,10 @@ type ProductGovernance interface {
 	GrantProductRole(ctx context.Context, command application.GrantProductRole) (domain.RoleAssignment, error)
 	GetProductRole(ctx context.Context, query application.GetProductRole) (domain.RoleAssignment, error)
 	RevokeProductRole(ctx context.Context, command application.RevokeProductRole) error
+	ListProducts(ctx context.Context, query application.ListProducts) (application.Page[domain.Product], error)
+	ListWorkspaces(ctx context.Context, query application.ListWorkspaces) (application.Page[domain.Workspace], error)
+	ListMemberships(ctx context.Context, query application.ListMemberships) (application.Page[domain.Membership], error)
+	ListProductRoles(ctx context.Context, query application.ListProductRoles) (application.Page[domain.RoleAssignment], error)
 }
 
 // noStore is the cache directive of everything private: a product and what
@@ -255,6 +259,112 @@ func (o operations) RevokeProductRole(ctx context.Context, request RevokeProduct
 	return RevokeProductRole204Response{}, nil
 }
 
+// The four lists are read alike. What the request says of the page is read
+// first: a token that is none is answered before any use case is asked, as a
+// request that does not match the contract is. Who may read the list is for
+// the use case, with every page.
+
+func (o operations) ListProducts(ctx context.Context, request ListProductsRequestObject) (ListProductsResponseObject, error) {
+	principal, correlationID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	size, after, err := paging(listOfProducts, request.Params.PageSize, request.Params.PageToken)
+	if err != nil {
+		return nil, err
+	}
+	page, err := o.governance.ListProducts(ctx, application.ListProducts{
+		Caller: principal, CorrelationID: correlationID, PageSize: size, After: after,
+	})
+	if err != nil {
+		return nil, err
+	}
+	items, err := listed(page.Items, productOf)
+	if err != nil {
+		return nil, err
+	}
+	return ListProducts200JSONResponse{
+		Body:    ProductList{Items: items, NextPageToken: nextPageToken(listOfProducts, page.Next)},
+		Headers: ListProducts200ResponseHeaders{CacheControl: noStore},
+	}, nil
+}
+
+func (o operations) ListWorkspaces(ctx context.Context, request ListWorkspacesRequestObject) (ListWorkspacesResponseObject, error) {
+	principal, correlationID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	size, after, err := paging(listOfWorkspaces, request.Params.PageSize, request.Params.PageToken)
+	if err != nil {
+		return nil, err
+	}
+	page, err := o.governance.ListWorkspaces(ctx, application.ListWorkspaces{
+		Caller: principal, CorrelationID: correlationID, ProductID: request.ProductID, PageSize: size, After: after,
+	})
+	if err != nil {
+		return nil, err
+	}
+	items, err := listed(page.Items, workspaceOf)
+	if err != nil {
+		return nil, err
+	}
+	return ListWorkspaces200JSONResponse{
+		Body:    WorkspaceList{Items: items, NextPageToken: nextPageToken(listOfWorkspaces, page.Next)},
+		Headers: ListWorkspaces200ResponseHeaders{CacheControl: noStore},
+	}, nil
+}
+
+func (o operations) ListMemberships(ctx context.Context, request ListMembershipsRequestObject) (ListMembershipsResponseObject, error) {
+	principal, correlationID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	size, after, err := paging(listOfMemberships, request.Params.PageSize, request.Params.PageToken)
+	if err != nil {
+		return nil, err
+	}
+	page, err := o.governance.ListMemberships(ctx, application.ListMemberships{
+		Caller: principal, CorrelationID: correlationID,
+		ProductID: request.ProductID, WorkspaceID: request.WorkspaceID, PageSize: size, After: after,
+	})
+	if err != nil {
+		return nil, err
+	}
+	items, err := listed(page.Items, membershipOf)
+	if err != nil {
+		return nil, err
+	}
+	return ListMemberships200JSONResponse{
+		Body:    MembershipList{Items: items, NextPageToken: nextPageToken(listOfMemberships, page.Next)},
+		Headers: ListMemberships200ResponseHeaders{CacheControl: noStore},
+	}, nil
+}
+
+func (o operations) ListProductRoles(ctx context.Context, request ListProductRolesRequestObject) (ListProductRolesResponseObject, error) {
+	principal, correlationID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	size, after, err := paging(listOfRoleAssignments, request.Params.PageSize, request.Params.PageToken)
+	if err != nil {
+		return nil, err
+	}
+	page, err := o.governance.ListProductRoles(ctx, application.ListProductRoles{
+		Caller: principal, CorrelationID: correlationID, ProductID: request.ProductID, PageSize: size, After: after,
+	})
+	if err != nil {
+		return nil, err
+	}
+	items, err := listed(page.Items, roleAssignmentOf)
+	if err != nil {
+		return nil, err
+	}
+	return ListProductRoles200JSONResponse{
+		Body:    ProductRoleAssignmentList{Items: items, NextPageToken: nextPageToken(listOfRoleAssignments, page.Next)},
+		Headers: ListProductRoles200ResponseHeaders{CacheControl: noStore},
+	}, nil
+}
+
 // productOf is the product as the contract shows it. The DTO is not the
 // model: what the contract does not declare, such as who registered the
 // product or its version, stays inside (F07 §3.1).
@@ -351,6 +461,9 @@ func roleAssignmentOf(assignment domain.RoleAssignment) (ProductRoleAssignment, 
 // exists and is withheld, and that it does not exist, are one answer.
 func problemOf(err error) (Problem, bool) {
 	switch {
+	case errors.Is(err, errPageTokenInvalid):
+		return problem(http.StatusBadRequest, CodePageTokenInvalid,
+			"The page token is not one of this list. Read the list again from its start."), true
 	case errors.Is(err, application.ErrForbidden):
 		return problem(http.StatusForbidden, CodeForbidden, "The caller may not perform this action."), true
 	case errors.Is(err, application.ErrProductNotFound):

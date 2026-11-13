@@ -104,6 +104,24 @@ func (s *Memberships) Find(ctx context.Context, productID domain.ProductID, work
 	return membership, true, nil
 }
 
+// The memberships in force of one workspace, oldest first. The product and
+// the workspace are part of the condition, as in a single read, and a row
+// that carries a revocation is never read: who was a member once is in no
+// list.
+const listMemberships = membershipInForce + ` AND product_id = $4 AND workspace_id = $5 AND (granted_at, membership_id) > ` + after + `
+ORDER BY granted_at, membership_id
+LIMIT $3`
+
+// List returns one page of the memberships in force of the workspace of the
+// product, oldest first.
+func (s *Memberships) List(ctx context.Context, productID domain.ProductID, workspaceID domain.WorkspaceID, page ports.Page) ([]domain.Membership, error) {
+	memberships, err := list(ctx, s.framework, listMemberships, scanMembership, page, string(productID), string(workspaceID))
+	if err != nil {
+		return nil, fmt.Errorf("list the memberships of a workspace: %w", err)
+	}
+	return memberships, nil
+}
+
 // Only a membership in force is revoked, so of two revocations at once one
 // changes the row and the other finds nothing to change. Nothing but the
 // revocation and the version is written: what was granted, to whom and by

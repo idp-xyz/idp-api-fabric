@@ -394,6 +394,7 @@ func TestARevokedMembershipIsNotSent(t *testing.T) {
 	for _, operation := range []call{
 		{Method: http.MethodPost, Target: memberships, Body: grant},
 		{Method: http.MethodGet, Target: memberships + "/" + membershipID},
+		{Method: http.MethodGet, Target: memberships},
 	} {
 		operation.Token = "alice"
 		wantProblem(t, s.do(t, operation), http.StatusInternalServerError, CodeInternalError, "")
@@ -416,6 +417,7 @@ func TestARevokedRoleAssignmentIsNotSent(t *testing.T) {
 	for _, operation := range []call{
 		{Method: http.MethodPost, Target: roleAssignments, Body: roleGrant},
 		{Method: http.MethodGet, Target: roleAssignments + "/" + roleAssignmentID},
+		{Method: http.MethodGet, Target: roleAssignments},
 	} {
 		operation.Token = "alice"
 		wantProblem(t, s.do(t, operation), http.StatusInternalServerError, CodeInternalError, "")
@@ -443,10 +445,16 @@ func TestAnOperationReachedWithoutAPrincipalIsFailed(t *testing.T) {
 		_, errGrantRole := o.GrantProductRole(ctx, GrantProductRoleRequestObject{ProductID: productID, Body: &ProductRoleGrant{}})
 		_, errGetRole := o.GetProductRole(ctx, GetProductRoleRequestObject{ProductID: productID, RoleAssignmentID: roleAssignmentID})
 		_, errRevokeRole := o.RevokeProductRole(ctx, RevokeProductRoleRequestObject{ProductID: productID, RoleAssignmentID: roleAssignmentID})
+		_, errListProducts := o.ListProducts(ctx, ListProductsRequestObject{})
+		_, errListWorkspaces := o.ListWorkspaces(ctx, ListWorkspacesRequestObject{ProductID: productID})
+		_, errListMemberships := o.ListMemberships(ctx, ListMembershipsRequestObject{ProductID: productID, WorkspaceID: workspaceID})
+		_, errListRoles := o.ListProductRoles(ctx, ListProductRolesRequestObject{ProductID: productID})
 		for operation, err := range map[string]error{
 			"RegisterProduct": errRegister, "GetProduct": errGet, "CreateWorkspace": errCreate, "GetWorkspace": errGetWorkspace,
 			"GrantMembership": errGrant, "GetMembership": errGetMembership, "RevokeMembership": errRevoke,
 			"GrantProductRole": errGrantRole, "GetProductRole": errGetRole, "RevokeProductRole": errRevokeRole,
+			"ListProducts": errListProducts, "ListWorkspaces": errListWorkspaces,
+			"ListMemberships": errListMemberships, "ListProductRoles": errListRoles,
 		} {
 			if err == nil {
 				t.Errorf("%s with %s was served", operation, name)
@@ -479,6 +487,26 @@ func TestTheContractStatesTheRulesOfTheModel(t *testing.T) {
 	}
 	if got := schemas["ProductRegistration"].Value.Properties["owners"].Value.MaxItems; got == nil || *got != domain.MaxFirstOwners {
 		t.Errorf("the contract allows %v first owners, the model %d", got, domain.MaxFirstOwners)
+	}
+	// A page holds as many items as the use cases give in one, and as many
+	// by default as they choose when the request names no size.
+	size := contract.Components.Parameters["PageSize"].Value.Schema.Value
+	if size.Min == nil || *size.Min != 1 || size.Max == nil || *size.Max != application.MaxPageSize ||
+		fmt.Sprint(size.Default) != fmt.Sprint(application.DefaultPageSize) {
+		t.Errorf("the contract takes a page of %v to %v items, %v by default; the use cases 1 to %d, %d by default",
+			size.Min, size.Max, size.Default, application.MaxPageSize, application.DefaultPageSize)
+	}
+	for _, list := range []string{"ProductList", "WorkspaceList", "MembershipList", "ProductRoleAssignmentList"} {
+		if schemas[list] == nil || schemas[list].Value.Properties["items"] == nil {
+			t.Errorf("the contract declares no items of %s", list)
+			continue
+		}
+		if got := schemas[list].Value.Properties["items"].Value.MaxItems; got == nil || *got != application.MaxPageSize {
+			t.Errorf("the contract bounds %s at %v items, the use cases a page at %d", list, got, application.MaxPageSize)
+		}
+		if !slices.Contains(schemas[list].Value.Required, "items") || slices.Contains(schemas[list].Value.Required, "next_page_token") {
+			t.Errorf("%s requires %v, want the items always and the token only when a page follows", list, schemas[list].Value.Required)
+		}
 	}
 	if got := schemas["Reference"].Value.MaxLength; got == nil || *got != domain.ReferenceMaxLength {
 		t.Errorf("the contract bounds a reference at %v characters, the model at %d", got, domain.ReferenceMaxLength)

@@ -37,6 +37,52 @@ var (
 	ErrOutcomeUncertain = errors.New("it is not known whether the change was committed")
 )
 
+// Position is the place of an item in a list: the instant the list is
+// ordered by and the identifier of the item, which tells apart the items of
+// one instant. Neither ever changes, so an item keeps its place for as long
+// as it is listed.
+//
+// A list is ordered oldest first: products and workspaces by the instant
+// they were created, memberships and role assignments by the instant they
+// were granted, and each then by its identifier.
+type Position struct {
+	// At is the instant, as the store keeps it: to the microsecond.
+	At time.Time
+	// ID is the identifier of the item, in its canonical form.
+	ID string
+}
+
+// PositionOfProduct is the place of the product in a list of products.
+func PositionOfProduct(product domain.Product) Position {
+	return Position{At: product.CreatedAt, ID: string(product.ID)}
+}
+
+// PositionOfWorkspace is the place of the workspace in a list of workspaces.
+func PositionOfWorkspace(workspace domain.Workspace) Position {
+	return Position{At: workspace.CreatedAt, ID: string(workspace.ID)}
+}
+
+// PositionOfMembership is the place of the membership in a list of
+// memberships.
+func PositionOfMembership(membership domain.Membership) Position {
+	return Position{At: membership.GrantedAt, ID: string(membership.ID)}
+}
+
+// PositionOfRoleAssignment is the place of the assignment in a list of role
+// assignments.
+func PositionOfRoleAssignment(assignment domain.RoleAssignment) Position {
+	return Position{At: assignment.GrantedAt, ID: string(assignment.ID)}
+}
+
+// Page is the part of a list one read asks for.
+type Page struct {
+	// After is the position of the item the page starts behind: the last
+	// one of the page before. Nil starts the list.
+	After *Position
+	// Limit is how many items the page takes at most. It is at least 1.
+	Limit int
+}
+
 // Products stores the products.
 type Products interface {
 	// Add stores a new product in the transaction ctx carries. It fails with
@@ -44,6 +90,13 @@ type Products interface {
 	Add(ctx context.Context, product domain.Product) error
 	// Find returns the product with the identifier, if there is one.
 	Find(ctx context.Context, id domain.ProductID) (product domain.Product, found bool, err error)
+	// List returns one page of all the products, in the order of the list.
+	List(ctx context.Context, page Page) ([]domain.Product, error)
+	// ListFor returns one page of the products the principal holds
+	// something in now: a role assignment in force, or a membership in
+	// force of one of the workspaces. A product in which it holds nothing,
+	// or only what was revoked, is not among them.
+	ListFor(ctx context.Context, principal domain.Principal, page Page) ([]domain.Product, error)
 }
 
 // Workspaces stores the workspaces.
@@ -55,6 +108,13 @@ type Workspaces interface {
 	// product. A workspace of another product is not found: the product a
 	// caller names is checked, never trusted.
 	Find(ctx context.Context, productID domain.ProductID, id domain.WorkspaceID) (workspace domain.Workspace, found bool, err error)
+	// List returns one page of the workspaces of the product, in the order
+	// of the list. A workspace of another product is not among them.
+	List(ctx context.Context, productID domain.ProductID, page Page) ([]domain.Workspace, error)
+	// ListFor returns one page of the workspaces of the product the
+	// principal is a member of now, in whichever role. A workspace in which
+	// its membership was revoked is not among them.
+	ListFor(ctx context.Context, productID domain.ProductID, principal domain.Principal, page Page) ([]domain.Workspace, error)
 }
 
 // RoleAssignments stores who holds which role in which product. It is the
@@ -76,6 +136,10 @@ type RoleAssignments interface {
 	// RolesOf returns the roles the principal holds in the product now. The
 	// role of an assignment that was revoked is not among them.
 	RolesOf(ctx context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Role, error)
+	// List returns one page of the assignments in force of the product, in
+	// the order of the list. An assignment of another product is not among
+	// them, and neither is one that was revoked.
+	List(ctx context.Context, productID domain.ProductID, page Page) ([]domain.RoleAssignment, error)
 	// LockOwners locks the assignments in force that make somebody an owner
 	// of the product, for the transaction ctx carries, and returns how many
 	// they are. It waits for a transaction that locked them before. Until
@@ -105,6 +169,11 @@ type Memberships interface {
 	// HeldBy returns the memberships the principal holds in the workspaces
 	// of the product now. One that was revoked is not among them.
 	HeldBy(ctx context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Membership, error)
+	// List returns one page of the memberships in force of the workspace of
+	// the product, in the order of the list. A membership of another
+	// workspace or of another product is not among them, and neither is
+	// one that was revoked.
+	List(ctx context.Context, productID domain.ProductID, workspaceID domain.WorkspaceID, page Page) ([]domain.Membership, error)
 }
 
 // PlatformAdministrators knows who may register a product and name its

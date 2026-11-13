@@ -32,6 +32,11 @@ type requestState struct {
 	// refusal is why authentication failed, for the answer to say the right
 	// thing: the validator reports only that it did.
 	refusal authenticationRefusal
+
+	// query is the query of the request as it was sent. The validator
+	// rewrites the one of the request when it fills in a default, and what
+	// it could not read is gone by then.
+	query string
 }
 
 type stateKey struct{}
@@ -130,6 +135,9 @@ func serverWriter(w http.ResponseWriter) http.ResponseWriter {
 // the server itself: it tells that writer to close the connection once a
 // body has run over, so that the rest of it is not read either, and a
 // wrapper it does not know would swallow that.
+//
+// The query is kept as it was sent, for the check that it says nothing the
+// operation does not declare: the validator rewrites the query it is given.
 func prepare(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodHead {
@@ -138,6 +146,9 @@ func prepare(next http.Handler) http.Handler {
 		}
 		if r.Body != nil && r.Body != http.NoBody {
 			r.Body = http.MaxBytesReader(serverWriter(w), r.Body, requestBodyMaxBytes)
+		}
+		if state := stateOf(r.Context()); state != nil {
+			state.query = r.URL.RawQuery
 		}
 		next.ServeHTTP(w, r)
 	})
