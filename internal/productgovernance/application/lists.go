@@ -302,3 +302,54 @@ func (s *ProductGovernance) ListProductRoles(ctx context.Context, query ListProd
 	}
 	return pageOf(assignments, size, ports.PositionOfRoleAssignment), nil
 }
+
+// ListAudienceConfigs asks for a page of the audience configurations of one
+// product.
+type ListAudienceConfigs struct {
+	Caller        domain.Principal
+	CorrelationID string
+	ProductID     string
+	PageSize      int
+	After         *ports.Position
+}
+
+// ListAudienceConfigs returns a page of the configurations in force of a
+// product to whoever may read one of them: a platform administrator and
+// whoever holds something in the product. A product that documents its APIs
+// for no audience has an empty list, which is what a new product has.
+//
+// To anyone else the product does not exist.
+func (s *ProductGovernance) ListAudienceConfigs(ctx context.Context, query ListAudienceConfigs) (Page[domain.AudienceConfig], error) {
+	if err := known(query.Caller); err != nil {
+		return Page[domain.AudienceConfig]{}, err
+	}
+	productID, err := domain.ParseProductID(query.ProductID)
+	if err != nil {
+		return Page[domain.AudienceConfig]{}, ErrProductNotFound
+	}
+	seen, err := s.survey(ctx, query.Caller, productID, "", "")
+	if err != nil {
+		return Page[domain.AudienceConfig]{}, err
+	}
+
+	if !seen.productFound {
+		return Page[domain.AudienceConfig]{}, ErrProductNotFound
+	}
+	if !s.knows(seen.standing, query.Caller) {
+		return Page[domain.AudienceConfig]{}, s.refuse(ctx, refusal{ErrProductNotFound,
+			audienceConfigEntry(query.Caller, ActionAudienceConfigRead, productID, seen, query.CorrelationID)})
+	}
+
+	page, size, err := paging(query.PageSize, query.After, func(id string) error {
+		_, err := domain.ParseAudienceConfigID(id)
+		return err
+	})
+	if err != nil {
+		return Page[domain.AudienceConfig]{}, err
+	}
+	configs, err := s.deps.AudienceConfigs.List(ctx, productID, page)
+	if err != nil {
+		return Page[domain.AudienceConfig]{}, fmt.Errorf("list the audience configurations: %w", err)
+	}
+	return pageOf(configs, size, ports.PositionOfAudienceConfig), nil
+}

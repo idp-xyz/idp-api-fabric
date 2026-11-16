@@ -181,9 +181,12 @@ func TestAListIsReadAPageAtATimeAndSaysWhetherAnotherFollows(t *testing.T) {
 // values that are not valid, whichever list is read.
 func TestAListRefusesAPageItCannotBe(t *testing.T) {
 	s := newBoard(t)
+	partners := configured(t, s.service, s.cargopai, alice, domain.AudiencePartner, domain.EnvironmentSandbox, "")
+	s.w.quiet()
 	position := map[string]ports.Position{
 		"products": ports.PositionOfProduct(s.cargopai), "workspaces": ports.PositionOfWorkspace(s.engineering),
 		"memberships": ports.PositionOfMembership(s.maintainer), "role assignments": ports.PositionOfRoleAssignment(s.first),
+		"audience configurations": ports.PositionOfAudienceConfig(partners),
 	}
 	lists := map[string]func(size int, after *ports.Position) (int, error){
 		"products": func(size int, after *ports.Position) (int, error) {
@@ -200,6 +203,10 @@ func TestAListRefusesAPageItCannotBe(t *testing.T) {
 		},
 		"role assignments": func(size int, after *ports.Position) (int, error) {
 			page, err := s.listRoles(alice, s.cargopai, size, after)
+			return len(page.Items), err
+		},
+		"audience configurations": func(size int, after *ports.Position) (int, error) {
+			page, err := s.listConfigs(carol, s.cargopai, size, after)
 			return len(page.Items), err
 		},
 	}

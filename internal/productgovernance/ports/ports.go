@@ -278,6 +278,10 @@ type Events interface {
 	// ProductRoleChanged announces a role assignment that was granted or
 	// revoked, as it is after the change.
 	ProductRoleChanged(ctx context.Context, assignment domain.RoleAssignment, correlationID string) error
+	// AudienceConfigChanged announces an audience configuration that was
+	// added, whose entry changed, or that was removed, as it is after the
+	// change.
+	AudienceConfigChanged(ctx context.Context, config domain.AudienceConfig, correlationID string) error
 }
 
 // Transactor owns the transaction boundary of a use case. It fails with

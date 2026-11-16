@@ -220,17 +220,18 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 		return nil, fmt.Errorf("IDP_FABRIC_PLATFORM_ADMIN_SUBJECTS: %w", err)
 	}
 	productGovernance, err := governance.New(governance.Dependencies{
-		Transactor:     governancedb.NewTransactions(database.WithinTransaction),
-		Products:       governancedb.NewProducts(database.Framework),
-		Workspaces:     governancedb.NewWorkspaces(database.Framework),
-		Roles:          governancedb.NewRoleAssignments(database.Framework),
-		Memberships:    governancedb.NewMemberships(database.Framework),
-		Administrators: administrators,
-		Issuers:        static.NewIssuers(configured.identity.Issuer),
-		Audit:          auditTrail{record: recordAudit},
-		Events:         events,
-		Clock:          clock,
-		Identifiers:    identifiers,
+		Transactor:      governancedb.NewTransactions(database.WithinTransaction),
+		Products:        governancedb.NewProducts(database.Framework),
+		Workspaces:      governancedb.NewWorkspaces(database.Framework),
+		Roles:           governancedb.NewRoleAssignments(database.Framework),
+		Memberships:     governancedb.NewMemberships(database.Framework),
+		AudienceConfigs: governancedb.NewAudienceConfigs(database.Framework),
+		Administrators:  administrators,
+		Issuers:         static.NewIssuers(configured.identity.Issuer),
+		Audit:           auditTrail{record: recordAudit},
+		Events:          events,
+		Clock:           clock,
+		Identifiers:     identifiers,
 	})
 	if err != nil {
 		return nil, err
