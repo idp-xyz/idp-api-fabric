@@ -3,10 +3,11 @@
 // transaction of the write it reports and delivered later, at least once
 // (INV-13, F03 §12.1).
 //
-// The events are the candidates of F03 §12.2, and MembershipChanged of
-// F03 §3.1 with its counterpart for the roles of a product, in the envelope
-// of the framework. F04 has not frozen their contract: the types and the
-// payloads here are a first version, and each payload says which.
+// The events are the candidates of F03 §12.2, MembershipChanged of F03 §3.1
+// with its counterpart for the roles of a product, and one more of that kind
+// for the audiences a product documents its APIs for, in the envelope of the
+// framework. F04 has not frozen their contract: the types and the payloads
+// here are a first version, and each payload says which.
 package outbox
 
 import (
@@ -38,6 +39,11 @@ const (
 	// and for its revocation, whose payload says whether the assignment is
 	// in force after the change.
 	TypeProductRoleChanged eventing.EventType = "fabric.productgovernance.product_role.changed"
+	// TypeAudienceConfigChanged is the one event of an audience
+	// configuration: for its addition, for every change of its entry and
+	// for its removal. Its payload says whether the configuration is in
+	// force after the change.
+	TypeAudienceConfigChanged eventing.EventType = "fabric.productgovernance.audience_config.changed"
 
 	// schemaVersion is the version of the payloads below. A change a
 	// consumer cannot ignore gets the next one.
@@ -180,6 +186,42 @@ func (e *Events) ProductRoleChanged(ctx context.Context, assignment domain.RoleA
 			RoleAssignmentID: string(assignment.ID),
 			Role:             string(assignment.Role),
 			InForce:          assignment.InForce(),
+		})
+}
+
+// AudienceConfigChanged announces an audience configuration that was added,
+// whose entry changed, or that was removed, as it is after the change.
+//
+// The configuration is what the event is about and what its version counts,
+// so a consumer that gets them out of order can tell. It happened when the
+// configuration was added or its entry last changed or, once it is removed,
+// when it was removed.
+//
+// The payload names the audience and the environment and not the entry: that
+// is content of the configuration, and a consumer that needs it asks for the
+// configuration, and is authorized like anyone else.
+func (e *Events) AudienceConfigChanged(ctx context.Context, config domain.AudienceConfig, correlationID string) error {
+	occurredAt := config.UpdatedAt
+	if !config.InForce() {
+		occurredAt = config.RemovedAt
+	}
+	id := e.ids.NewID()
+	return e.enqueue(ctx, id, TypeAudienceConfigChanged, config.ProductID, "audience_config/"+string(config.ID), occurredAt, correlationID,
+		struct {
+			header
+			AudienceConfigID string `json:"audience_config_id"`
+			Audience         string `json:"audience"`
+			Environment      string `json:"environment"`
+			InForce          bool   `json:"in_force"`
+		}{
+			header: header{
+				EventID: id, SchemaVersion: schemaVersion, OccurredAt: occurredAt, CorrelationID: correlationID,
+				ProductID: string(config.ProductID), AggregateID: string(config.ID), AggregateVersion: config.Version,
+			},
+			AudienceConfigID: string(config.ID),
+			Audience:         string(config.Audience),
+			Environment:      string(config.Environment),
+			InForce:          config.InForce(),
 		})
 }
 

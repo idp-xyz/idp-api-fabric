@@ -160,6 +160,29 @@ func TestRunBringsADatabaseOfAnOlderBuildUpToDate(t *testing.T) {
 // identifier, and never changed it.
 const roleAssignmentRevocation = "productgovernance/003_role_assignment_revocation"
 
+// grantOnWhatIsThere grants role what ApplicationPrivileges says of the
+// tables the database holds, as a build before this one granted them: a
+// table that came after it is not there, and that build granted nothing on
+// it.
+func grantOnWhatIsThere(t *testing.T, conn *pgx.Conn, role string) {
+	t.Helper()
+
+	grantee := pgx.Identifier{role}.Sanitize()
+	for _, table := range migrate.ApplicationPrivileges() {
+		if !exists(t, conn, table.Schema+"."+table.Table) {
+			continue
+		}
+		for _, statement := range []string{
+			`GRANT USAGE ON SCHEMA ` + table.Schema + ` TO ` + grantee,
+			`GRANT ` + strings.Join(table.Privileges, ", ") + ` ON ` + table.Schema + `.` + table.Table + ` TO ` + grantee,
+		} {
+			if _, err := conn.Exec(t.Context(), statement); err != nil {
+				t.Fatalf("%s: %v", statement, err)
+			}
+		}
+	}
+}
+
 var canonicalUUID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // A database the build before role assignments could end has migrated and
@@ -188,11 +211,9 @@ func TestRunGivesTheRoleAssignmentsOfTheBuildBeforeTheirIdentifiers(t *testing.T
 	if err := migrate.Apply(t.Context(), conn, quiet, before); err != nil {
 		t.Fatalf("migrate as the build before: %v", err)
 	}
-	// What that build granted: it had no statement that changed an
-	// assignment.
-	if err := migrate.Grant(t.Context(), conn, database.ApplicationRole); err != nil {
-		t.Fatalf("grant: %v", err)
-	}
+	// What that build granted: on the tables it had, and no statement that
+	// changed an assignment.
+	grantOnWhatIsThere(t, conn, database.ApplicationRole)
 	if _, err := conn.Exec(t.Context(), `REVOKE UPDATE ON productgovernance.product_role_assignment FROM `+role); err != nil {
 		t.Fatalf("take back what that build did not grant: %v", err)
 	}
@@ -226,22 +247,23 @@ func TestRunGivesTheRoleAssignmentsOfTheBuildBeforeTheirIdentifiers(t *testing.T
 		}
 	}
 
-	// A process of this build does not start, and says what its role lacks,
-	// whether or not the database was migrated already. One run of
-	// fabric-migrate -apply -grant-to gives it both.
+	// A process of this build does not start on the database as that build
+	// left it: what Product Governance added after that build is not there.
+	// Migrated, it still does not start, and says what its role lacks. One
+	// run of fabric-migrate -apply -grant-to gives it both.
 	const missing = "UPDATE on productgovernance.product_role_assignment"
-	refused := func(when string) {
+	refused := func(when string, want error, naming string) {
 		t.Helper()
 
 		opened, err := db.Open(t.Context(), database.Application)
 		if err == nil {
 			opened.Close()
 		}
-		if !errors.Is(err, db.ErrNotGranted) || !strings.Contains(err.Error(), missing) {
-			t.Fatalf("%s: got %v, want %v naming %q", when, err, db.ErrNotGranted, missing)
+		if !errors.Is(err, want) || !strings.Contains(err.Error(), naming) {
+			t.Fatalf("%s: got %v, want %v naming %q", when, err, want, naming)
 		}
 	}
-	refused("on the database as the build before left it")
+	refused("on the database as the build before left it", db.ErrNotMigrated, "does not exist")
 
 	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
 		t.Fatalf("migrate as this build: %v", err)
@@ -297,7 +319,7 @@ func TestRunGivesTheRoleAssignmentsOfTheBuildBeforeTheirIdentifiers(t *testing.T
 		t.Errorf("the role assignments are\n %+v\nwant them as they were granted, in force at their first version\n %+v", assignments, want)
 	}
 
-	refused("once it is migrated, before the grants")
+	refused("once it is migrated, before the grants", db.ErrNotGranted, missing)
 	if err := migrate.Grant(t.Context(), conn, database.ApplicationRole); err != nil {
 		t.Fatalf("grant: %v", err)
 	}

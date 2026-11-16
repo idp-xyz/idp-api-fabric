@@ -42,6 +42,12 @@ func ApplicationPrivileges() []TablePrivileges {
 		// Products and workspaces are registered and read. No use case
 		// changes or removes one yet.
 		{"productgovernance", "product", []string{"SELECT", "INSERT"}},
+		// An audience configuration is added, read, changed and removed.
+		// Changing its entry and removing it are UPDATEs, and a trigger of
+		// the table refuses every other one. The privilege is also what
+		// locks a configuration while it is changed. Removing one keeps its
+		// row: no statement deletes a configuration.
+		{"productgovernance", "product_audience_config", []string{"SELECT", "INSERT", "UPDATE"}},
 		// A role assignment is granted, read and ended. Ending it is an
 		// UPDATE, and a trigger of the table refuses every other one. The
 		// privilege is also what locks the owners of a product while a
