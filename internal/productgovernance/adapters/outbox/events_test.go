@@ -30,6 +30,10 @@ const (
 
 	partnerPortal = "https://developers.cargopai.example/partner"
 	partnerDocs   = "https://partners.cargopai.example/docs"
+
+	brandName   = "CargoPai Developers"
+	brandLogo   = "https://static.cargopai.example/brand/logo.svg"
+	brandColour = "#0A7B3C"
 )
 
 var (
@@ -123,6 +127,18 @@ func partners(t *testing.T) (configured, changed, removed domain.AudienceConfig)
 		t.Fatalf("remove the configuration: %v", err)
 	}
 	return configured, changed, removed
+}
+
+// rebranded is CargoPai once alice has given it a brand of its own.
+func rebranded(t *testing.T) domain.Product {
+	t.Helper()
+
+	product, _ := cargopai(t)
+	changed, err := product.ChangeBrand(domain.Brand{Name: brandName, LogoURL: brandLogo, PrimaryColor: brandColour}, alice, created.Add(5*time.Hour))
+	if err != nil {
+		t.Fatalf("change the brand: %v", err)
+	}
+	return changed
 }
 
 // stored is one row of the outbox, as far as these events fill it.
@@ -482,6 +498,61 @@ func TestAnAudienceConfigurationIsAnnouncedWhenItIsAddedChangedAndRemoved(t *tes
 	}
 }
 
+// A change of the brand of a product is an event of the product: the product
+// is its subject, as it is the subject of its registration, and what the
+// version of the event counts. It happened when the brand was changed, and
+// its payload is the header alone.
+func TestAChangeOfTheBrandOfAProductIsAnnounced(t *testing.T) {
+	database := pgtest.MigratedDatabase(t)
+	fabric, err := db.Open(t.Context(), database.Application)
+	if err != nil {
+		t.Fatalf("open the database: %v", err)
+	}
+	t.Cleanup(fabric.Close)
+	owner := pgtest.Connect(t, database.Migrator)
+
+	store, err := bentooutbox.NewStore(fabric.Framework)
+	if err != nil {
+		t.Fatalf("build the outbox: %v", err)
+	}
+	events, err := outbox.NewEvents(store, fixedClock{}, &eventIDs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := rebranded(t)
+
+	err = fabric.WithinTransaction(t.Context(), func(ctx context.Context) error {
+		return events.ProductBrandChanged(ctx, changed, "correlation-10")
+	})
+	if err != nil {
+		t.Fatalf("store the event: %v", err)
+	}
+
+	want := []stored{{
+		Source: "idp-api-fabric/productgovernance", EventID: "00000000-0000-4000-8000-0000000000e1",
+		EventType: "fabric.productgovernance.product.brand_changed", EventVersion: 1,
+		Scope: string(productID), Subject: "product/" + string(productID), PartitionKey: string(productID),
+		Status: "PENDING", OccurredAt: created.Add(5 * time.Hour), RecordedAt: recordedAt,
+		CorrelationID: "correlation-10", ContentType: "application/json",
+		Payload: map[string]any{
+			"event_id": "00000000-0000-4000-8000-0000000000e1", "schema_version": float64(1),
+			"occurred_at": "2026-11-11T14:00:00.123456Z", "correlation_id": "correlation-10",
+			"product_id": string(productID), "aggregate_id": string(productID), "aggregate_version": float64(2),
+		},
+	}}
+	if got := outboxRows(t, owner); !reflect.DeepEqual(got, want) {
+		t.Errorf("the outbox holds\n %+v\nwant\n %+v", got, want)
+	}
+
+	events, _ = outbox.NewEvents(store, fixedClock{}, &eventIDs{})
+	if err := events.ProductBrandChanged(t.Context(), changed, "no-transaction"); !errors.Is(err, bentopostgres.ErrTransactionRequired) {
+		t.Errorf("outside a transaction: got %v, want %v", err, bentopostgres.ErrTransactionRequired)
+	}
+	if rows := outboxRows(t, owner); len(rows) != 1 {
+		t.Errorf("the outbox holds %d events, want 1", len(rows))
+	}
+}
+
 // capture keeps what is enqueued, without a database.
 type capture struct {
 	envelopes []eventing.Envelope
@@ -497,9 +568,9 @@ func (c *capture) Enqueue(_ context.Context, envelope eventing.Envelope) error {
 }
 
 // An event carries references and never the content of what it reports: no
-// display name, no principal, no entry of the documentation. That holds for
-// the member of a membership and for the owner of a product too: who it is
-// identifies a person.
+// display name, no principal, no entry of the documentation, nothing of a
+// brand. That holds for the member of a membership and for the owner of a
+// product too: who it is identifies a person.
 func TestAnEventIsAValidEnvelopeOfReferences(t *testing.T) {
 	product, workspace := cargopai(t)
 	granted, revoked := member(t)
@@ -533,9 +604,12 @@ func TestAnEventIsAValidEnvelopeOfReferences(t *testing.T) {
 			t.Fatalf("announce the audience configuration at version %d: %v", config.Version, err)
 		}
 	}
+	if err := events.ProductBrandChanged(t.Context(), rebranded(t), "correlation-8"); err != nil {
+		t.Fatalf("announce the brand: %v", err)
+	}
 
-	if len(writer.envelopes) != 9 {
-		t.Fatalf("%d envelopes, want 9", len(writer.envelopes))
+	if len(writer.envelopes) != 10 {
+		t.Fatalf("%d envelopes, want 10", len(writer.envelopes))
 	}
 	for _, envelope := range writer.envelopes {
 		if err := envelope.Validate(); err != nil {
@@ -550,7 +624,8 @@ func TestAnEventIsAValidEnvelopeOfReferences(t *testing.T) {
 				t.Errorf("the payload of %s lacks %s (F03 §9)", envelope.Type, member)
 			}
 		}
-		for _, withheld := range []string{"CargoPai", "API engineering", admin.Subject, alice.Subject, bob.Subject, partnerPortal, partnerDocs} {
+		for _, withheld := range []string{"CargoPai", "API engineering", admin.Subject, alice.Subject, bob.Subject, partnerPortal, partnerDocs,
+			brandName, brandLogo, brandColour} {
 			if json.Valid(envelope.Payload) && containsValue(payload, withheld) {
 				t.Errorf("the payload of %s carries %q", envelope.Type, withheld)
 			}

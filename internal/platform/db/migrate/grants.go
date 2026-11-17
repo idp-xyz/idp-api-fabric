@@ -39,9 +39,11 @@ func ApplicationPrivileges() []TablePrivileges {
 		// The audit trail is append-only for a process: it cannot read back,
 		// change or remove what it recorded (FR-062).
 		{"platformoperations", "audit_record", []string{"INSERT"}},
-		// Products and workspaces are registered and read. No use case
-		// changes or removes one yet.
-		{"productgovernance", "product", []string{"SELECT", "INSERT"}},
+		// A product is registered and read, and its brand is changed.
+		// Changing the brand is an UPDATE, and a trigger of the table
+		// refuses the role every other one. The privilege is also what locks
+		// a product while its brand is changed. No statement removes one.
+		{"productgovernance", "product", []string{"SELECT", "INSERT", "UPDATE"}},
 		// An audience configuration is added, read, changed and removed.
 		// Changing its entry and removing it are UPDATEs, and a trigger of
 		// the table refuses every other one. The privilege is also what
@@ -53,6 +55,8 @@ func ApplicationPrivileges() []TablePrivileges {
 		// privilege is also what locks the owners of a product while a
 		// revocation counts them. No statement removes a role assignment.
 		{"productgovernance", "product_role_assignment", []string{"SELECT", "INSERT", "UPDATE"}},
+		// A workspace is created and read. No use case changes or removes
+		// one yet.
 		{"productgovernance", "workspace", []string{"SELECT", "INSERT"}},
 		// A membership is granted, read and ended. Ending it is an UPDATE,
 		// and a trigger of the table refuses every other one. No statement

@@ -4,10 +4,11 @@
 // (INV-13, F03 §12.1).
 //
 // The events are the candidates of F03 §12.2, MembershipChanged of F03 §3.1
-// with its counterpart for the roles of a product, and one more of that kind
-// for the audiences a product documents its APIs for, in the envelope of the
-// framework. F04 has not frozen their contract: the types and the payloads
-// here are a first version, and each payload says which.
+// with its counterpart for the roles of a product, one more of that kind for
+// the audiences a product documents its APIs for, and one for a change of
+// the brand of a product, in the envelope of the framework. F04 has not
+// frozen their contract: the types and the payloads here are a first
+// version, and each payload says which.
 package outbox
 
 import (
@@ -29,7 +30,11 @@ const (
 	Source = "idp-api-fabric/productgovernance"
 
 	TypeProductRegistered eventing.EventType = "fabric.productgovernance.product.registered"
-	TypeWorkspaceCreated  eventing.EventType = "fabric.productgovernance.workspace.created"
+	// TypeProductBrandChanged is the event of a product whose brand an
+	// owner changed. Like the registration it is about the product, and the
+	// version of the product orders the two.
+	TypeProductBrandChanged eventing.EventType = "fabric.productgovernance.product.brand_changed"
+	TypeWorkspaceCreated    eventing.EventType = "fabric.productgovernance.workspace.created"
 	// TypeMembershipChanged is MembershipChanged, the one event the context
 	// publishes about its members (F03 §3.1). Its payload says whether the
 	// membership is in force after the change.
@@ -98,6 +103,23 @@ func (e *Events) ProductRegistered(ctx context.Context, product domain.Product, 
 			},
 			ProductKey: product.Key,
 			Owner:      organization{product.Owner.IdentityProvider, product.Owner.Organization},
+		})
+}
+
+// ProductBrandChanged announces a product whose brand was changed, as it is
+// after the change. The product is what the event is about and what its
+// version counts, so a consumer that gets two changes out of order can tell.
+// It happened when the product changed last.
+//
+// The payload is the header alone. The name, the logo and the colour are
+// content of the product: a consumer that needs them asks for the product,
+// and is authorized like anyone else.
+func (e *Events) ProductBrandChanged(ctx context.Context, product domain.Product, correlationID string) error {
+	id := e.ids.NewID()
+	return e.enqueue(ctx, id, TypeProductBrandChanged, product.ID, "product/"+string(product.ID), product.UpdatedAt, correlationID,
+		header{
+			EventID: id, SchemaVersion: schemaVersion, OccurredAt: product.UpdatedAt, CorrelationID: correlationID,
+			ProductID: string(product.ID), AggregateID: string(product.ID), AggregateVersion: product.Version,
 		})
 }
 

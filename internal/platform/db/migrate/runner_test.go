@@ -212,10 +212,12 @@ func TestRunGivesTheRoleAssignmentsOfTheBuildBeforeTheirIdentifiers(t *testing.T
 		t.Fatalf("migrate as the build before: %v", err)
 	}
 	// What that build granted: on the tables it had, and no statement that
-	// changed an assignment.
+	// changed an assignment or a product.
 	grantOnWhatIsThere(t, conn, database.ApplicationRole)
-	if _, err := conn.Exec(t.Context(), `REVOKE UPDATE ON productgovernance.product_role_assignment FROM `+role); err != nil {
-		t.Fatalf("take back what that build did not grant: %v", err)
+	for _, table := range []string{"product_role_assignment", "product"} {
+		if _, err := conn.Exec(t.Context(), `REVOKE UPDATE ON productgovernance.`+table+` FROM `+role); err != nil {
+			t.Fatalf("take back what that build did not grant on %s: %v", table, err)
+		}
 	}
 
 	// Two products as a process of that build registered them, with the
@@ -328,6 +330,153 @@ func TestRunGivesTheRoleAssignmentsOfTheBuildBeforeTheirIdentifiers(t *testing.T
 		t.Fatalf("after the grants: %v", err)
 	}
 	opened.Close()
+}
+
+// productBrand is the step that gave a product its brand. The build before
+// it registered a product and never changed one.
+const productBrand = "productgovernance/006_product_brand"
+
+// A database the build before the brand has migrated and written to is
+// brought up to date with what it holds. Every product stays as it was
+// registered, and its row says nothing of a brand, which reads as its
+// display name. What that build still registers while this one is rolled out
+// is a product like the others. A process of this build refuses to start,
+// and says what is missing, until its role is granted what changing a brand
+// needs: one run of fabric-migrate -apply -grant-to gives it the step and
+// the grant.
+func TestRunLeavesTheProductsOfTheBuildBeforeTheBrandAsTheyWereRegistered(t *testing.T) {
+	database := pgtest.FreshDatabase(t)
+	conn := pgtest.Connect(t, database.Migrator)
+	role := pgx.Identifier{database.ApplicationRole}.Sanitize()
+
+	plan, err := migrate.Plan()
+	if err != nil {
+		t.Fatalf("build the plan: %v", err)
+	}
+	// The plan of the build before: without that step, and without what
+	// Product Governance may add after it.
+	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool {
+		return step.Schema == "productgovernance" && step.ID >= productBrand
+	})
+	if len(before) == len(plan) {
+		t.Fatalf("the plan does not carry %s; this test would pass vacuously", productBrand)
+	}
+	if err := migrate.Apply(t.Context(), conn, quiet, before); err != nil {
+		t.Fatalf("migrate as the build before: %v", err)
+	}
+	// What that build granted: on the tables it had, and no statement that
+	// changed a product.
+	grantOnWhatIsThere(t, conn, database.ApplicationRole)
+	if _, err := conn.Exec(t.Context(), `REVOKE UPDATE ON productgovernance.product FROM `+role); err != nil {
+		t.Fatalf("take back what that build did not grant: %v", err)
+	}
+
+	// A product as a process of that build registers it, with the statement
+	// it runs, and a change of its brand with the statement of this build.
+	const (
+		cargopai = "1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6"
+		parcel   = "2d0b5f8c-63e1-4a9f-87b2-a1d4e3f5a6b7"
+
+		registerProduct = `
+			INSERT INTO productgovernance.product
+			    (product_id, product_key, display_name, status, owner_identity_provider, owner_organization,
+			     aggregate_version, created_at, created_by_issuer, created_by_subject, updated_at)
+			VALUES ($1, $2, $2, 'ACTIVE', 'https://issuer.example', 'org', 1, $3, 'https://issuer.example', 'platform-admin', $3)`
+		changeBrand = `
+			UPDATE productgovernance.product
+			SET brand_name = 'CargoPai Developers', updated_at = $2,
+			    updated_by_issuer = 'https://issuer.example', updated_by_subject = 'alice', aggregate_version = 2
+			WHERE product_id = $1 AND aggregate_version = 1`
+	)
+	registered := time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC)
+	app := pgtest.Connect(t, database.Application)
+	if _, err := app.Exec(t.Context(), registerProduct, cargopai, "cargopai", registered); err != nil {
+		t.Fatalf("register cargopai as the build before: %v", err)
+	}
+
+	// A process of this build does not start on the database as that build
+	// left it, nor once it is migrated: either way its role lacks what
+	// changing a brand needs, and that is what it is told. The privileges
+	// are read before the history, so the answer names the one command that
+	// brings both.
+	refused := func(when string) {
+		t.Helper()
+
+		opened, err := db.Open(t.Context(), database.Application)
+		if err == nil {
+			opened.Close()
+		}
+		if !errors.Is(err, db.ErrNotGranted) || !strings.HasSuffix(err.Error(), ": missing UPDATE on productgovernance.product") {
+			t.Fatalf("%s: got %v, want %v naming UPDATE on productgovernance.product and nothing else", when, err, db.ErrNotGranted)
+		}
+	}
+	refused("on the database as the build before left it")
+
+	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
+		t.Fatalf("migrate as this build: %v", err)
+	}
+	if got, want := history(t, conn), planRows(t); !slices.Equal(got, want) {
+		t.Errorf("the history records\n %+v\nwant every step of the plan, in order\n %+v", got, want)
+	}
+
+	// That build is still running while this one is rolled out, and
+	// registers another product the way it does.
+	if _, err := app.Exec(t.Context(), registerProduct, parcel, "parcel", registered.Add(time.Hour)); err != nil {
+		t.Fatalf("register parcel as the build before, after the migration: %v", err)
+	}
+
+	type product struct {
+		Key       string
+		Name      string
+		Status    string
+		Version   int64
+		UpdatedAt time.Time
+		// SaysNothing is whether the row is silent about a brand and about
+		// who changed the product last.
+		SaysNothing bool
+	}
+	rows, err := conn.Query(t.Context(), `
+		SELECT product_key, display_name, status, aggregate_version, updated_at,
+		       brand_name IS NULL AND brand_logo_url IS NULL AND brand_primary_color IS NULL
+		       AND updated_by_issuer IS NULL AND updated_by_subject IS NULL
+		FROM productgovernance.product ORDER BY product_key`)
+	if err != nil {
+		t.Fatalf("read the products: %v", err)
+	}
+	products, err := pgx.CollectRows(rows, pgx.RowToStructByPos[product])
+	if err != nil {
+		t.Fatalf("read the products: %v", err)
+	}
+	for index := range products {
+		products[index].UpdatedAt = products[index].UpdatedAt.UTC()
+	}
+	want := []product{
+		{Key: "cargopai", Name: "cargopai", Status: "ACTIVE", Version: 1, UpdatedAt: registered, SaysNothing: true},
+		{Key: "parcel", Name: "parcel", Status: "ACTIVE", Version: 1, UpdatedAt: registered.Add(time.Hour), SaysNothing: true},
+	}
+	if !slices.Equal(products, want) {
+		t.Errorf("the products are\n %+v\nwant them as they were registered, their rows silent about a brand\n %+v", products, want)
+	}
+
+	// Migrated and not granted, the role cannot change a brand, and a
+	// process says so before it serves anything.
+	if _, err := app.Exec(t.Context(), changeBrand, cargopai, registered.Add(2*time.Hour)); sqlState(err) != insufficientPrivilege {
+		t.Errorf("a change of the brand before the grants: got %v, want it refused for lack of privilege", err)
+	}
+	refused("once it is migrated, before the grants")
+	if err := migrate.Grant(t.Context(), conn, database.ApplicationRole); err != nil {
+		t.Fatalf("grant: %v", err)
+	}
+	opened, err := db.Open(t.Context(), database.Application)
+	if err != nil {
+		t.Fatalf("after the grants: %v", err)
+	}
+	opened.Close()
+
+	// Granted, it changes the brand of a product that build registered.
+	if changed, err := app.Exec(t.Context(), changeBrand, cargopai, registered.Add(2*time.Hour)); err != nil || changed.RowsAffected() != 1 {
+		t.Errorf("a change of the brand after the grants: %v (%v), want one product changed", changed, err)
+	}
 }
 
 func TestRunRefusesAnAppliedArtifactThatChanged(t *testing.T) {

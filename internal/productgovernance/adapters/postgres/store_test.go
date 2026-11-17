@@ -327,17 +327,15 @@ func TestTheSchemaHoldsItsOwnLine(t *testing.T) {
 }
 
 // A process registers a product and a workspace and reads them. It has no
-// statement that changes or removes one, or that removes a role assignment,
-// and its role holds no privilege to. What it may change of a role
-// assignment, the table decides.
-func TestTheApplicationRoleCanRegisterAndReadAndNothingElse(t *testing.T) {
+// statement that changes a workspace, or that removes a product, a workspace
+// or a role assignment, and its role holds no privilege to. What it may
+// change of a product and of a role assignment, the table decides.
+func TestTheApplicationRoleHoldsNoPrivilegeAProcessHasNoStatementFor(t *testing.T) {
 	f := newFixture(t)
 	cargopai := product(t, "cargopai")
 	f.add(t, cargopai, workspace(t, cargopai, "api-engineering"))
 
 	refused := []string{
-		`UPDATE productgovernance.product SET status = 'SUSPENDED'`,
-		`UPDATE productgovernance.product SET product_key = 'renamed'`,
 		`DELETE FROM productgovernance.product`,
 		`UPDATE productgovernance.workspace SET product_id = gen_random_uuid()`,
 		`DELETE FROM productgovernance.workspace`,

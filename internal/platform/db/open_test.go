@@ -214,6 +214,9 @@ func TestOpenRefusesARoleThatWasGrantedLessThanAProcessNeeds(t *testing.T) {
 		// assignment once and never ended one.
 		"the privilege to end a role assignment was never granted": {
 			`REVOKE UPDATE ON productgovernance.product_role_assignment FROM `, "UPDATE on productgovernance.product_role_assignment"},
+		// Nor did it change a product: its brand came later.
+		"the privilege to change the brand of a product was never granted": {
+			`REVOKE UPDATE ON productgovernance.product FROM `, "missing UPDATE on productgovernance.product"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
