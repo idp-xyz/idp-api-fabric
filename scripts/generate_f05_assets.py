@@ -58,6 +58,14 @@ matrix_rows_raw=[
  ('product_owner_or_member','Workspace','workspace.list','internal','product.same & (role.product_owner OR row.has_current_membership); filter_before_paging','control-plane','DENY_OR_404'),
  ('product_owner','WorkspaceMembership','member.list','internal','role.product_owner & product.same & workspace.same & row.in_force','control-plane','DENY_OR_404'),
  ('product_owner','RoleAssignment','product_role.list','internal','role.product_owner & product.same & row.in_force','control-plane','DENY_OR_404'),
+ # Audience and brand operations in F05 section 6.3. Writes reuse AC-09;
+ # authorization refusals reuse DENY-03.
+ ('product_owner','ProductAudienceConfig','audience_config.configure','internal','role.product_owner & product.same & product.active & pair.available','control-plane','DENY_OR_404'),
+ ('authenticated','ProductAudienceConfig','audience_config.read','internal','product.same & (role.platform_admin OR product.has_current_role_or_membership) & row.in_force','control-plane','DENY_OR_404'),
+ ('authenticated','ProductAudienceConfig','audience_config.list','internal','product.same & (role.platform_admin OR product.has_current_role_or_membership) & row.in_force; filter_before_paging','control-plane','DENY_OR_404'),
+ ('product_owner','ProductAudienceConfig','audience_config.change','internal','role.product_owner & product.same & product.active & row.in_force & cas.match','control-plane','DENY_OR_404'),
+ ('product_owner','ProductAudienceConfig','audience_config.remove','internal','role.product_owner & product.same & row.in_force','control-plane','DENY_OR_404'),
+ ('product_owner','Product','product.change_brand','internal','role.product_owner & product.same & product.active & cas.match','control-plane','DENY_OR_404'),
 ]
 m=[]
 for i,(principal,res,action,channel,conditions,pep,fail) in enumerate(matrix_rows_raw,1):
