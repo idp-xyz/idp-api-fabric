@@ -744,18 +744,39 @@ func TestTheSchemaHoldsTheLineOfAnAudienceConfiguration(t *testing.T) {
 			       created_at, created_by_issuer, created_by_subject, %s, updated_by_issuer, updated_by_subject
 			FROM productgovernance.product_audience_config WHERE audience_config_id = $1`
 	)
+
+	// A new entry, counted, and a removal, counted, are what the table takes
+	// of a configuration in force. The cases below that say what a change
+	// does besides are built on one of the two, so that each is refused for
+	// what it adds and for nothing else. A statement that only moved a
+	// configuration to another product would prove nothing: it changes no
+	// entry, and the table refuses it for that already.
+	for name, taken := range map[string]string{"a new entry": update + entered + counted, "a removal": update + removal + counted} {
+		attempt, err := f.app.Begin(t.Context())
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		if _, err := attempt.Exec(t.Context(), taken, string(held.ID)); err != nil {
+			t.Errorf("%s, counted: got %v, want the table to take it", name, err)
+		}
+		if err := attempt.Rollback(t.Context()); err != nil {
+			t.Fatalf("roll back: %v", err)
+		}
+	}
+
 	statements := []struct {
 		name      string
 		statement string
 		id        domain.AudienceConfigID
 		state     string
 	}{
-		{"move it to another product", update + `product_id = '` + string(parcel.ID) + `'` + counted, held.ID, integrityViolation},
-		{"open it to another audience", update + `audience = 'public'` + counted, held.ID, integrityViolation},
-		{"move it to another environment", update + `environment = 'production'` + counted, held.ID, integrityViolation},
-		{"change its identifier", update + `audience_config_id = gen_random_uuid()` + counted, held.ID, integrityViolation},
-		{"change who configured it", update + `created_by_subject = 'mallory'` + counted, held.ID, integrityViolation},
-		{"change when it was configured", update + `created_at = created_at - interval '1 year'` + counted, held.ID, integrityViolation},
+		{"move it to another product", update + entered + `, product_id = '` + string(parcel.ID) + `'` + counted, held.ID, integrityViolation},
+		{"open it to another audience", update + entered + `, audience = 'public'` + counted, held.ID, integrityViolation},
+		{"move it to another environment", update + entered + `, environment = 'production'` + counted, held.ID, integrityViolation},
+		{"change its identifier", update + entered + `, audience_config_id = gen_random_uuid()` + counted, held.ID, integrityViolation},
+		{"change under which issuer it was configured", update + entered + `, created_by_issuer = 'https://elsewhere.example'` + counted, held.ID, integrityViolation},
+		{"change who configured it", update + entered + `, created_by_subject = 'mallory'` + counted, held.ID, integrityViolation},
+		{"change when it was configured", update + entered + `, created_at = created_at - interval '1 year'` + counted, held.ID, integrityViolation},
 		{"change its entry without counting the change", update + entered + ` WHERE audience_config_id = $1`, held.ID, integrityViolation},
 		{"count a change that did not happen", update + `updated_at = updated_at + interval '1 hour'` + counted, held.ID, integrityViolation},
 		{"skip a version", update + entered + `, audience_config_version = audience_config_version + 2 WHERE audience_config_id = $1`, held.ID, integrityViolation},
@@ -770,7 +791,15 @@ func TestTheSchemaHoldsTheLineOfAnAudienceConfiguration(t *testing.T) {
 			held.ID, checkViolation},
 		{"remove it and change its entry", update + removal + `, docs_url = 'https://elsewhere.example/'` + counted, held.ID, integrityViolation},
 		{"remove it and change who changed it last", update + removal + `, updated_by_subject = 'mallory'` + counted, held.ID, integrityViolation},
-		{"bring a removed one back", update + `removed_at = NULL, removed_by_issuer = NULL, removed_by_subject = NULL` + counted, gone.ID, integrityViolation},
+		// A removed one changes in no way at all. Each of the first three
+		// would be a change the table takes if a removed row were held to no
+		// more than a row in force is. The one that brings it back is the
+		// last of them: the two before it are tried on a row that is still
+		// removed.
+		{"count a change of a removed one that did not happen", update + `audience_config_version = audience_config_version + 1 WHERE audience_config_id = $1`,
+			gone.ID, integrityViolation},
+		{"remove a removed one again", update + `removed_at = removed_at + interval '1 hour', removed_by_subject = 'mallory'` + counted, gone.ID, integrityViolation},
+		{"bring a removed one back", update + entered + `, removed_at = NULL, removed_by_issuer = NULL, removed_by_subject = NULL` + counted, gone.ID, integrityViolation},
 		{"change the entry of a removed one", update + entered + counted, gone.ID, integrityViolation},
 		{"configure the pair twice at a time", fmt.Sprintf(copied, `product_id`, `audience`, `environment`, `1`, `updated_at`), held.ID, uniqueViolation},
 		{"configure it for a product nobody stored", fmt.Sprintf(copied, `gen_random_uuid()`, `'internal'`, `environment`, `1`, `updated_at`), held.ID, foreignKeyViolation},

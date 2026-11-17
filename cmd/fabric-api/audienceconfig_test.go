@@ -113,9 +113,37 @@ func TestAudienceConfigLifecycleOverHTTP(t *testing.T) {
 }
 
 // A revocation that already holds the owner assignment wins against an
-// audience write. A plain read of the role would see the uncommitted
-// assignment as active and let the request through.
-func TestAudienceUpdateWaitsForOwnerRevocation(t *testing.T) {
+// audience write: the write waits for it and is refused once it commits. A
+// plain read of the role would see the uncommitted assignment as active and
+// let the request through. Adding a configuration, changing its entry and
+// removing it each lock the assignments of their caller, so each is tried.
+func TestAudienceWritesWaitForOwnerRevocation(t *testing.T) {
+	writes := map[string]audienceWrite{
+		"a new configuration":  {method: http.MethodPost, onList: true, body: `{"audience":"public","environment":"production"}`},
+		"a change of an entry": {method: http.MethodPut, body: `{"docs_url":"https://docs.example/wrong"}`, conditional: true},
+		"a removal":            {method: http.MethodDelete},
+	}
+	for name, write := range writes {
+		t.Run(name, func(t *testing.T) { write.waitsForOwnerRevocation(t) })
+	}
+}
+
+// audienceWrite is a write of an audience configuration, as the request that
+// asks for it.
+type audienceWrite struct {
+	method string
+	// onList says that the request goes to the list, where a configuration
+	// is added, and not to the configuration there is.
+	onList bool
+	body   string
+	// conditional says that the request carries the ETag of the
+	// configuration there is.
+	conditional bool
+}
+
+// waitsForOwnerRevocation sends the write as an owner whose assignment a
+// transaction that has not committed yet revokes.
+func (w audienceWrite) waitsForOwnerRevocation(t *testing.T) {
 	s := start(t, "platform-admin")
 	product := s.register("platform-admin", "cargopai", "alice", "bob")
 	workspace := s.createWorkspace(product, "alice", "engineering")
@@ -143,12 +171,18 @@ func TestAudienceUpdateWaitsForOwnerRevocation(t *testing.T) {
 	}
 
 	location, token := created.header.Get("Location"), s.token("bob")
+	target := location
+	if w.onList {
+		target = configs
+	}
 	headers := make(http.Header)
-	headers.Set("If-Match", created.header.Get("ETag"))
+	if w.conditional {
+		headers.Set("If-Match", created.header.Get("ETag"))
+	}
 	done := make(chan answer, 1)
 	go func() {
 		defer close(done)
-		done <- s.callWithHeaders(http.MethodPut, location, token, `{"docs_url":"https://docs.example/wrong"}`, headers)
+		done <- s.callWithHeaders(w.method, target, token, w.body, headers)
 	}()
 	s.waiting(1)
 	if err := revoking.Commit(ctx); err != nil {
@@ -158,8 +192,13 @@ func TestAudienceUpdateWaitsForOwnerRevocation(t *testing.T) {
 	if got.status != http.StatusForbidden || got.code() != "FORBIDDEN" {
 		t.Fatalf("revoked owner is still a member: status %d, body %v, want 403", got.status, got.body)
 	}
+	// The write left nothing: the configuration there was is as it was, and
+	// it is the only one.
 	read := s.call(http.MethodGet, location, "alice", "")
 	if read.status != http.StatusOK || read.header.Get("ETag") != `"1"` || read.body["docs_url"] != created.body["docs_url"] {
-		t.Fatalf("revoked owner's update changed the entry: status %d, headers %v, body %v", read.status, read.header, read.body)
+		t.Fatalf("revoked owner's write changed the configuration: status %d, headers %v, body %v", read.status, read.header, read.body)
+	}
+	if items, next := s.page(configs, "alice"); len(items) != 1 || next != "" {
+		t.Fatalf("revoked owner's write left the configurations %v and a token %q, want the one there was", items, next)
 	}
 }
