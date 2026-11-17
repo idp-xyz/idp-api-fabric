@@ -18,10 +18,12 @@ import (
 // the page before, wherever the rows around it are by then.
 //
 // The position is compared as a row, the way the order compares it, and
-// every list has an index in that order (migration 004). PostgreSQL enters
-// the index behind the position, so a page costs what it returns, however
-// far into the list it is. An offset would cost what it skips, and would
-// repeat or skip a row whenever one before it is added or ends.
+// unfiltered lists have an index in that order (migration 004). PostgreSQL
+// enters that index behind the position, so a page costs what it returns.
+// A filtered list may assemble the principal's visible set before paging;
+// its cost also depends on that set, not just the number of returned rows.
+// An offset would cost what it skips, and would repeat or skip a row
+// whenever one before it is added or ends.
 //
 // after is the position a page starts behind, as the first two parameters of
 // every list statement; the third is how many rows the page takes, and the

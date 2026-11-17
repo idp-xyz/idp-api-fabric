@@ -263,13 +263,24 @@ func (s *Workspaces) List(ctx context.Context, productID domain.ProductID, page 
 // it holds a membership in force, in whichever role. A workspace in which it
 // holds two roles is listed once, and one in which its membership was
 // revoked is not listed.
-const listWorkspacesFor = selectWorkspace + `
-WHERE product_id = $4
-  AND workspace_id IN (
-        SELECT workspace_id FROM productgovernance.workspace_membership
-        WHERE product_id = $4 AND principal_issuer = $5 AND principal_subject = $6 AND revoked_at IS NULL)
-  AND (created_at, workspace_id) > ` + after + `
-ORDER BY created_at, workspace_id
+//
+// Materialize the member's distinct workspace IDs before applying the page
+// limit, then look each workspace up by its primary key. The inner LIMIT 1
+// keeps this a bounded lookup rather than an ordered scan of the product.
+// Otherwise the
+// planner can walk workspace_list_order and probe a membership for every
+// workspace, hoping to fill the page. At the end of a sparse member's list
+// there are fewer than Limit matches, so it probes the rest of the product.
+// This work scales with the member's visible set instead of an early page
+// being fast and the last one scanning thousands of unrelated workspaces.
+const listWorkspacesFor = `WITH visible_workspaces AS MATERIALIZED (
+    SELECT DISTINCT workspace_id FROM productgovernance.workspace_membership
+    WHERE product_id = $4 AND principal_issuer = $5 AND principal_subject = $6 AND revoked_at IS NULL)
+SELECT visible.* FROM visible_workspaces AS membership
+CROSS JOIN LATERAL (` + selectWorkspace + `
+    WHERE product_id = $4 AND workspace_id = membership.workspace_id LIMIT 1) AS visible
+WHERE (visible.created_at, visible.workspace_id) > ` + after + `
+ORDER BY visible.created_at, visible.workspace_id
 LIMIT $3`
 
 // ListFor returns one page of the workspaces of the product the principal is
