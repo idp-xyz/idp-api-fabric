@@ -126,6 +126,28 @@
 
 ## 6. 内部/外部双门户权限矩阵
 
+### 6.1 已实现的产品负责人和列表权限（PR #6 / #7，2026-11-17 同步）
+
+以下是管理 API 的实现事实。身份由配置的 IdP 的 issuer×subject 确认，角色/成员关系逐次从数据库读取。这里的“平台管理员”来自部署配置，不等同于 Platform Security Admin；只有显式取得产品负责人角色才有产品内部权限。完整操作级设计矩阵见 `governance/policies/F05_Access_Matrix.csv`：新增 AC-36…43 对应本节八条操作规则，仍保持 PROPOSED。矩阵编号用于设计索引；运行时审计沿用下面的 AC-08、AC-10、DENY-03，不将新增编号冒充实际审计字段。
+
+| 操作 | 允许范围 | 拒绝与边界 | 运行时审计 |
+|---|---|---|---|
+| `POST …/role-assignments`（AC-36/37） | 产品负责人、平台管理员；产品 ACTIVE，主体签发方受信任 | 管理员可把自己加成负责人，保留授予证据；其余已知产品的成员 403，陌生人 404 `PRODUCT_NOT_FOUND` | 成功：负责人 AC-10、管理员 AC-08，`product_role.grant`；拒绝 DENY-03 |
+| `GET …/role-assignments/{id}`（AC-38） | 该产品负责人 | 管理员/成员得到 404 `ROLE_ASSIGNMENT_NOT_FOUND`；陌生人 404 `PRODUCT_NOT_FOUND`；跨产品与已撤销分配不可读 | 成功不记；拒绝 DENY-03、`product_role.read` |
+| `DELETE …/role-assignments/{id}`（AC-39） | 该产品负责人，包括尚有其他负责人时撤销自己 | 管理员不能撤销；已知产品的非负责人 403，陌生人 404；最后一位负责人返回 409 `LAST_OWNER`；已撤销分配 404 | 成功 AC-10、`product_role.revoke`；授权拒绝 DENY-03；状态冲突不算授权拒绝 |
+| `GET /v1/products`（AC-40） | 管理员看全部；其他已认证主体仅看持有有效角色/成员关系的产品 | 没有可见产品时是空列表，不泄露总数 | 成功不记，无对象级拒绝 |
+| `GET …/workspaces`（AC-41） | 负责人看全部；成员仅看自己所属 Workspace | 管理员无产品角色时 403；陌生人 404 `PRODUCT_NOT_FOUND` | 成功不记；拒绝 DENY-03、`workspace.read` |
+| `GET …/workspaces/{id}/memberships`（AC-42） | 该产品负责人 | 本 Workspace 成员 403；管理员/其他 Workspace 成员 404 `WORKSPACE_NOT_FOUND`；陌生人 404 `PRODUCT_NOT_FOUND` | 成功不记；拒绝 DENY-03、`member.read` |
+| `GET …/role-assignments`（AC-43） | 该产品负责人 | 管理员/成员 403，陌生人 404 `PRODUCT_NOT_FOUND` | 成功不记；拒绝 DENY-03、`product_role.read` |
+
+表中的省略前缀是 `/v1/products/{product_id}`。授予、撤销的分配事实、成功审计和 Outbox 同事务提交；授权拒绝单独留证，审计失败仍拒绝并记录运维错误。重复授予返回 409 `ROLE_ASSIGNMENT_EXISTS`；重复撤销返回 404，不再产生成功事件。暂停产品拒绝新增负责人但允许撤销；暂停/停用的管理接口尚未实现。
+
+负责人列表已补齐“管理员修正登记时填错的负责人”的闭环：管理员新增正确负责人，正确负责人列出分配并撤销错误分配，全程无需查数据库。撤销后使用原 JWT 的下一页请求立即重新授权，令牌不能维持已撤销的权限。平台管理员自我授予目前没有双人审批或专门告警，这些尚未实现，不应从此矩阵推导具备这些能力。数据库并发、迁移与旧进程下线约束见 F03 §5.5；分页格式、过滤和参数校验见 F04 §3.1.1。
+
+负载记录见[四类列表压测](../tests/performance/README.md)，功能回归覆盖在 `cmd/fabric-api/slice_test.go`、`lists_test.go` 及各层测试中。该证据使用真实 PostgreSQL 与本地替代 IdP，不是生产 IAM 联调、渗透测试或 SEC-01…36 的正式验收，原设计验收状态保持 NOT_RUN。
+
+### 6.2 其余双门户角色设计
+
 `governance/policies/F05_Access_Matrix.csv` 是本章的可机读设计清单，覆盖私有列表/详情/搜索/历史、下载、审批、发布、撤销、运营、API Explorer、外部开发者和服务身份。**矩阵里的 Role 是设计角色，非已经创建的 IAM 角色；`ALLOW_IF` 永远包含服务端范围及对象状态检查，不代表无条件 Permit。**
 
 | 角色 | 可以申请的核心操作 | 不可隐含获得的权力 |

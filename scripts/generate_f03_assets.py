@@ -28,7 +28,7 @@ def output(file:str,header:list[str],body:list[list[str]]):
     print('Generated',file,'rows=',len(body))
 
 # Logical model table is explicitly owned by F03 Markdown; CSV is a regenerated index.
-model=extract_table_between('### 5.4 数据字典的伴随机器资产','## 6. 数据权威、制品摘要与可追溯发布链')
+model=extract_table_between('### 5.4 数据字典的伴随机器资产','### 5.5 Product Governance 已实现的物理模型')
 fields=['BC','Aggregate','Entity','PrimaryKey','RequiredReferences','Uniqueness','Cardinality','DataRetention','Phase']
 assert model[0]==fields,(model[0],fields)
 assert len(model[1:])>=35 and all(len(row)==len(fields) for row in model[1:])

@@ -492,6 +492,94 @@
         "stepup.valid",
         "purpose.approved"
       ]
+    },
+    {
+      "rule_id": "AC-36",
+      "principal_role": "platform_admin",
+      "action": "product_role.grant",
+      "resource": "RoleAssignment",
+      "when_all": [
+        "role.platform_admin",
+        "product.active",
+        "principal.issuer_trusted"
+      ]
+    },
+    {
+      "rule_id": "AC-37",
+      "principal_role": "product_owner",
+      "action": "product_role.grant",
+      "resource": "RoleAssignment",
+      "when_all": [
+        "role.product_owner",
+        "product.same",
+        "product.active",
+        "principal.issuer_trusted"
+      ]
+    },
+    {
+      "rule_id": "AC-38",
+      "principal_role": "product_owner",
+      "action": "product_role.read",
+      "resource": "RoleAssignment",
+      "when_all": [
+        "role.product_owner",
+        "product.same",
+        "assignment.in_force"
+      ]
+    },
+    {
+      "rule_id": "AC-39",
+      "principal_role": "product_owner",
+      "action": "product_role.revoke",
+      "resource": "RoleAssignment",
+      "when_all": [
+        "role.product_owner",
+        "product.same",
+        "assignment.in_force",
+        "locked_owners.more_than_one"
+      ]
+    },
+    {
+      "rule_id": "AC-40",
+      "principal_role": "authenticated",
+      "action": "product.list",
+      "resource": "Product",
+      "when_all": [
+        "role.platform_admin OR row.has_current_role_or_membership; filter_before_paging"
+      ]
+    },
+    {
+      "rule_id": "AC-41",
+      "principal_role": "product_owner_or_member",
+      "action": "workspace.list",
+      "resource": "Workspace",
+      "when_all": [
+        "product.same",
+        "(role.product_owner OR row.has_current_membership); filter_before_paging"
+      ]
+    },
+    {
+      "rule_id": "AC-42",
+      "principal_role": "product_owner",
+      "action": "member.list",
+      "resource": "WorkspaceMembership",
+      "when_all": [
+        "role.product_owner",
+        "product.same",
+        "workspace.same",
+        "row.in_force"
+      ]
+    },
+    {
+      "rule_id": "AC-43",
+      "principal_role": "product_owner",
+      "action": "product_role.list",
+      "resource": "RoleAssignment",
+      "when_all": [
+        "role.product_owner",
+        "product.same",
+        "row.in_force"
+      ]
     }
   ],
   "negative_rules": [

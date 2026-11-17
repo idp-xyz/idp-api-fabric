@@ -41,7 +41,7 @@
 @media(max-width:780px){.doc table{min-width:700px}.architecture-figure{overflow-wrap:anywhere}.fig-grid.cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.fig-grid.cols-3{grid-template-columns:1fr}.doc .architecture-figure{padding:12px 9px}.doc .fig-mini{font-size:10px}}
 @media print{.doc .architecture-figure{break-inside:avoid}.doc table{min-width:0;font-size:7.5pt}}
-</style></head><body><a class="skip-link" href="#main-content">跳到文档正文</a><button id="sideBackdrop" class="side-backdrop" aria-label="关闭章节目录" aria-hidden="true" tabindex="-1"></button><div class="layout"><aside class="side" id="sidebar"><a href="../index.html" style="text-decoration:none"><div class="logo">IDP API Fabric<small>ENGINEERING BASELINE</small></div></a><div class="side-kicker">文档体系</div><div class="navlist"><a href="F01_Product_Requirements.html" class="">F01 · Product Requirements</a><a href="F02_System_Architecture.html" class="">F02 · System Architecture</a><a href="F03_Domain_and_Data_Model.html" class="active">F03 · Domain & Data Model</a><a href="F04_API_Contract_Governance.html" class="">F04 · Contract Governance</a><a href="F05_Security_and_Multitenancy.html" class="">F05 · Security & Multitenancy</a><div class="pending">F06 · Dual Portal Experience <span class="mini">待编写</span></div><div class="pending">F07 · Engineering & Quality <span class="mini">待编写</span></div><a href="F08_Delivery_and_Acceptance.html" class="">F08 · Delivery & Acceptance</a></div><hr><div class="side-kicker">F03 · 目录</div><input id="navsearch" type="search" placeholder="筛选本文章节…" aria-label="筛选目录章节"><nav class="navlist" id="toc"><a href="#section-0" class="" style="">0. 执行摘要与设计结论</a><a href="#section-1" class="" style="">1. 约束、适用性及精确边界</a><a href="#section-1-1" class="sub" style="padding-left:24px">1.1 上位约束继承</a><a href="#section-1-2" class="sub" style="padding-left:24px">1.2 明确“不属于 Fabric”的事实</a><a href="#section-1-3" class="sub" style="padding-left:24px">1.3 时间、身份、租户与不可变性的共同语义</a><a href="#section-2" class="" style="">2. 统一语言及领域概念辞典</a><a href="#section-3" class="" style="">3. Context Map、事实权威与上下文协作</a><a href="#section-3-1" class="sub" style="padding-left:24px">3.1 上下文边界和公开语言</a><a href="#section-3-2" class="sub" style="padding-left:24px">3.2 依赖类型及事务边界</a><a href="#section-3-3" class="sub" style="padding-left:24px">3.3 核心查询投影的权威来源</a><a href="#section-4" class="" style="">4. 核心聚合模型与不变量</a><a href="#section-4-1" class="sub" style="padding-left:24px">4.1 不变量不应被数据库约束替代</a><a href="#section-4-2" class="sub" style="padding-left:24px">4.2 发布 Slot 的必要精化（待 ADR-0004 批准时确认）</a><a href="#section-5" class="" style="">5. 逻辑数据模型与关系基数</a><a href="#section-5-1" class="sub" style="padding-left:24px">5.1 核心逻辑 ERD（不是已执行数据库 DDL）</a><a href="#section-5-2" class="sub" style="padding-left:24px">5.2 主数据关系及完整性规则</a><a href="#section-5-3" class="sub" style="padding-left:24px">5.3 字段设计原则与物理落地边界</a><a href="#section-5-4" class="sub" style="padding-left:24px">5.4 数据字典的伴随机器资产</a><a href="#section-6" class="" style="">6. 数据权威、制品摘要与可追溯发布链</a><a href="#section-7" class="" style="">7. 多维访问范围与关系模型</a><a href="#section-7-1" class="sub" style="padding-left:24px">7.1 授权关系及拒绝优先决策</a><a href="#section-7-2" class="sub" style="padding-left:24px">7.2 跨产品负面样例</a><a href="#section-8" class="" style="">8. 四类状态机及事务性状态边界</a><a href="#section-8-1" class="sub" style="padding-left:24px">8.1 Revision 状态转换（基于内容不可变）</a><a href="#section-8-2" class="sub" style="padding-left:24px">8.2 Release 状态转换</a><a href="#section-8-3" class="sub" style="padding-left:24px">8.3 Publication 状态、指针与撤销</a><a href="#section-8-4" class="sub" style="padding-left:24px">8.4 API Asset 生命周期</a><a href="#section-9" class="" style="">9. 命令、查询、事件与数据流映射</a><a href="#section-10" class="" style="">10. 统一贯通案例：CargoPai 契约发布</a><a href="#section-10-1" class="sub" style="padding-left:24px">10.1 角色与样本边界</a><a href="#section-10-2" class="sub" style="padding-left:24px">10.2 正常路径，明确哪些环节不在同一事务</a><a href="#section-10-3" class="sub" style="padding-left:24px">10.3 发布结果的三级可观察语义</a><a href="#section-11" class="" style="">11. 竞态、异常、失败恢复和证明义务</a><a href="#section-11-1" class="sub" style="padding-left:24px">11.1 并发 CAS 与幂等边界</a><a href="#section-11-2" class="sub" style="padding-left:24px">11.2 失败模式矩阵</a><a href="#section-11-3" class="sub" style="padding-left:24px">11.3 紧急撤销的安全优先序</a><a href="#section-12" class="" style="">12. Outbox、Job、事件、查询一致性</a><a href="#section-12-1" class="sub" style="padding-left:24px">12.1 可靠消息边界</a><a href="#section-12-2" class="sub" style="padding-left:24px">12.2 设计事件目录及所有者</a><a href="#section-12-3" class="sub" style="padding-left:24px">12.3 Outbox 与业务事务是否同库</a><a href="#section-13" class="" style="">13. 数据完整性、删除、历史、保留与重建</a><a href="#section-13-1" class="sub" style="padding-left:24px">13.1 归档和一致性恢复检查点</a><a href="#section-14" class="" style="">14. F01/F02 需求追溯及关联证明</a><a href="#section-14-1" class="sub" style="padding-left:24px">14.1 可执行追溯资产</a><a href="#section-14-2" class="sub" style="padding-left:24px">14.2 F03 设计验证场景（Definition of Verifiability）</a><a href="#section-14-3" class="sub" style="padding-left:24px">14.3 与上位六道门禁的关系</a><a href="#section-15" class="" style="">15. 双门户最小读模型和协作输入（仅领域视角）</a><a href="#section-16" class="" style="">16. 设计差异、未决问题与 ADR 接续</a><a href="#section-17" class="" style="">17. F04–F08 责任边界与顺序交接</a><a href="#section-18" class="" style="">18. 参考来源与采用边界</a><a href="#section-19" class="" style="">19. F03 交付完成定义与证据状态</a></nav><div class="side-foot">V1.0 · 领域设计待具名评审<br>逻辑模型不是数据库 DDL；所有功能验证仍为 NOT_RUN。</div></aside><div class="main"><header class="topbar"><div><button class="menu" id="menu" aria-label="展开目录" aria-controls="sidebar" aria-expanded="false">☰ 目录</button><span class="crumb"><strong>IDP API Fabric</strong>　/　设计基线　/　F03</span></div><div class="top-actions"><a class="desktop-only" href="../index.html">总目录</a><a href="F03_Domain_and_Data_Model.md">Markdown 源文件</a><button onclick="window.print()">打印 / PDF</button></div></header><main id="main-content" class="sheet" tabindex="-1"><header class="hero"><div class="eyebrow">F03 · Domain & Data Model</div><h1>IDP API Fabric<br>领域模型与数据设计</h1><p>DDD 限界上下文 · 逻辑 ERD · 聚合不变量 · 契约发布状态机 · 权限与故障恢复</p><div class="hero-meta"><span>V1.0 · 设计待评审</span><span>2026.11.09</span><span>正式工程目录</span><span>实现 / 测试未执行</span></div></header><div class="metrics"><div class="metric"><b>10</b><span>专业领域与流程图</span></div><div class="metric"><b>13</b><span>聚合与事务不变量</span></div><div class="metric"><b>37</b><span>逻辑模型实体条目</span></div><div class="metric"><b>18</b><span>领域设计验证场景</span></div></div><article class="doc">
+</style></head><body><a class="skip-link" href="#main-content">跳到文档正文</a><button id="sideBackdrop" class="side-backdrop" aria-label="关闭章节目录" aria-hidden="true" tabindex="-1"></button><div class="layout"><aside class="side" id="sidebar"><a href="../index.html" style="text-decoration:none"><div class="logo">IDP API Fabric<small>ENGINEERING BASELINE</small></div></a><div class="side-kicker">文档体系</div><div class="navlist"><a href="F01_Product_Requirements.html" class="">F01 · Product Requirements</a><a href="F02_System_Architecture.html" class="">F02 · System Architecture</a><a href="F03_Domain_and_Data_Model.html" class="active">F03 · Domain & Data Model</a><a href="F04_API_Contract_Governance.html" class="">F04 · Contract Governance</a><a href="F05_Security_and_Multitenancy.html" class="">F05 · Security & Multitenancy</a><div class="pending">F06 · Dual Portal Experience <span class="mini">待编写</span></div><div class="pending">F07 · Engineering & Quality <span class="mini">待编写</span></div><a href="F08_Delivery_and_Acceptance.html" class="">F08 · Delivery & Acceptance</a></div><hr><div class="side-kicker">F03 · 目录</div><input id="navsearch" type="search" placeholder="筛选本文章节…" aria-label="筛选目录章节"><nav class="navlist" id="toc"><a href="#section-0" class="" style="">0. 执行摘要与设计结论</a><a href="#section-1" class="" style="">1. 约束、适用性及精确边界</a><a href="#section-1-1" class="sub" style="padding-left:24px">1.1 上位约束继承</a><a href="#section-1-2" class="sub" style="padding-left:24px">1.2 明确“不属于 Fabric”的事实</a><a href="#section-1-3" class="sub" style="padding-left:24px">1.3 时间、身份、租户与不可变性的共同语义</a><a href="#section-2" class="" style="">2. 统一语言及领域概念辞典</a><a href="#section-3" class="" style="">3. Context Map、事实权威与上下文协作</a><a href="#section-3-1" class="sub" style="padding-left:24px">3.1 上下文边界和公开语言</a><a href="#section-3-2" class="sub" style="padding-left:24px">3.2 依赖类型及事务边界</a><a href="#section-3-3" class="sub" style="padding-left:24px">3.3 核心查询投影的权威来源</a><a href="#section-4" class="" style="">4. 核心聚合模型与不变量</a><a href="#section-4-1" class="sub" style="padding-left:24px">4.1 不变量不应被数据库约束替代</a><a href="#section-4-2" class="sub" style="padding-left:24px">4.2 发布 Slot 的必要精化（待 ADR-0004 批准时确认）</a><a href="#section-5" class="" style="">5. 逻辑数据模型与关系基数</a><a href="#section-5-1" class="sub" style="padding-left:24px">5.1 核心逻辑 ERD（不是已执行数据库 DDL）</a><a href="#section-5-2" class="sub" style="padding-left:24px">5.2 主数据关系及完整性规则</a><a href="#section-5-3" class="sub" style="padding-left:24px">5.3 字段设计原则与物理落地边界</a><a href="#section-5-4" class="sub" style="padding-left:24px">5.4 数据字典的伴随机器资产</a><a href="#section-5-5" class="sub" style="padding-left:24px">5.5 Product Governance 已实现的物理模型（PR #6 / #7，2026-11-17 同步）</a><a href="#section-6" class="" style="">6. 数据权威、制品摘要与可追溯发布链</a><a href="#section-7" class="" style="">7. 多维访问范围与关系模型</a><a href="#section-7-1" class="sub" style="padding-left:24px">7.1 授权关系及拒绝优先决策</a><a href="#section-7-2" class="sub" style="padding-left:24px">7.2 跨产品负面样例</a><a href="#section-8" class="" style="">8. 四类状态机及事务性状态边界</a><a href="#section-8-1" class="sub" style="padding-left:24px">8.1 Revision 状态转换（基于内容不可变）</a><a href="#section-8-2" class="sub" style="padding-left:24px">8.2 Release 状态转换</a><a href="#section-8-3" class="sub" style="padding-left:24px">8.3 Publication 状态、指针与撤销</a><a href="#section-8-4" class="sub" style="padding-left:24px">8.4 API Asset 生命周期</a><a href="#section-9" class="" style="">9. 命令、查询、事件与数据流映射</a><a href="#section-10" class="" style="">10. 统一贯通案例：CargoPai 契约发布</a><a href="#section-10-1" class="sub" style="padding-left:24px">10.1 角色与样本边界</a><a href="#section-10-2" class="sub" style="padding-left:24px">10.2 正常路径，明确哪些环节不在同一事务</a><a href="#section-10-3" class="sub" style="padding-left:24px">10.3 发布结果的三级可观察语义</a><a href="#section-11" class="" style="">11. 竞态、异常、失败恢复和证明义务</a><a href="#section-11-1" class="sub" style="padding-left:24px">11.1 并发 CAS 与幂等边界</a><a href="#section-11-2" class="sub" style="padding-left:24px">11.2 失败模式矩阵</a><a href="#section-11-3" class="sub" style="padding-left:24px">11.3 紧急撤销的安全优先序</a><a href="#section-12" class="" style="">12. Outbox、Job、事件、查询一致性</a><a href="#section-12-1" class="sub" style="padding-left:24px">12.1 可靠消息边界</a><a href="#section-12-2" class="sub" style="padding-left:24px">12.2 设计事件目录及所有者</a><a href="#section-12-3" class="sub" style="padding-left:24px">12.3 Outbox 与业务事务是否同库</a><a href="#section-13" class="" style="">13. 数据完整性、删除、历史、保留与重建</a><a href="#section-13-1" class="sub" style="padding-left:24px">13.1 归档和一致性恢复检查点</a><a href="#section-14" class="" style="">14. F01/F02 需求追溯及关联证明</a><a href="#section-14-1" class="sub" style="padding-left:24px">14.1 可执行追溯资产</a><a href="#section-14-2" class="sub" style="padding-left:24px">14.2 F03 设计验证场景（Definition of Verifiability）</a><a href="#section-14-3" class="sub" style="padding-left:24px">14.3 与上位六道门禁的关系</a><a href="#section-15" class="" style="">15. 双门户最小读模型和协作输入（仅领域视角）</a><a href="#section-16" class="" style="">16. 设计差异、未决问题与 ADR 接续</a><a href="#section-17" class="" style="">17. F04–F08 责任边界与顺序交接</a><a href="#section-18" class="" style="">18. 参考来源与采用边界</a><a href="#section-19" class="" style="">19. F03 交付完成定义与证据状态</a></nav><div class="side-foot">V1.0 · 领域设计待具名评审<br>逻辑模型与已实现切片分开记录；正式验收场景仍为 NOT_RUN。</div></aside><div class="main"><header class="topbar"><div><button class="menu" id="menu" aria-label="展开目录" aria-controls="sidebar" aria-expanded="false">☰ 目录</button><span class="crumb"><strong>IDP API Fabric</strong>　/　设计基线　/　F03</span></div><div class="top-actions"><a class="desktop-only" href="../index.html">总目录</a><a href="F03_Domain_and_Data_Model.md">Markdown 源文件</a><button onclick="window.print()">打印 / PDF</button></div></header><main id="main-content" class="sheet" tabindex="-1"><header class="hero"><div class="eyebrow">F03 · Domain & Data Model</div><h1>IDP API Fabric<br>领域模型与数据设计</h1><p>DDD 限界上下文 · 逻辑 ERD · 聚合不变量 · 契约发布状态机 · 权限与故障恢复</p><div class="hero-meta"><span>V1.0 · 设计待评审</span><span>2026.11.09</span><span>正式工程目录</span><span>已实现切片见 §5.5 · 正式验收待执行</span></div></header><div class="metrics"><div class="metric"><b>10</b><span>专业领域与流程图</span></div><div class="metric"><b>13</b><span>聚合与事务不变量</span></div><div class="metric"><b>38</b><span>逻辑模型实体条目</span></div><div class="metric"><b>18</b><span>领域设计验证场景</span></div></div><article class="doc">
 <blockquote>
 <p><strong>文档编号</strong>：F03 · Domain &amp; Data Model<br/>
 <strong>项目</strong>：IDP API Fabric (<code>idp-api-fabric</code>)<br/>
@@ -417,9 +417,9 @@
 <tbody>
 <tr>
 <td><code>Product</code> / Governance</td>
-<td>ProductStatus、AudienceConfig、WorkspaceRef</td>
-<td>INV-01：产品 ID 唯一；已暂停产品拒绝新登记/发布，历史保留</td>
-<td>版本比较与唯一约束</td>
+<td>ProductStatus、AudienceConfig、ProductRoleAssignment、WorkspaceRef</td>
+<td>INV-01：产品 ID 唯一；已暂停产品拒绝新登记/发布，历史保留；撤销角色后至少保留一位有效负责人</td>
+<td>版本比较、唯一约束；撤销负责人前在同一事务锁住有效分配</td>
 </tr>
 <tr>
 <td><code>Workspace</code> / Governance</td>
@@ -519,6 +519,11 @@
 <td><code>UNIQUE(product_id, workspace_key)</code>；不得从其他产品迁移 Workspace 而保持旧 ID</td>
 </tr>
 <tr>
+<td>Product → ProductRoleAssignment</td>
+<td>1:N；分配以 issuer×subject 标识主体</td>
+<td>同 Product×Principal×Role 同时只有一条有效分配；撤销保留原行，再授予产生新 ID；应用用例加锁保证至少一位负责人</td>
+</tr>
+<tr>
 <td>Product → APIAsset</td>
 <td>1:N；APIAsset 属于唯一 Product</td>
 <td><code>UNIQUE(product_id, asset_key)</code>，<code>owner_workspace_id</code> 必属同 Product</td>
@@ -616,6 +621,17 @@
 <td>product_key</td>
 <td>1 Product to N Workspace</td>
 <td>ACTIVE</td>
+<td>MVP</td>
+</tr>
+<tr>
+<td>ProductGovernance</td>
+<td>Product</td>
+<td>ProductRoleAssignment</td>
+<td>role_assignment_id</td>
+<td>product_id+principal_issuer+principal_subject+role+role_assignment_version+granted_at+granted_by+revoked_at+revoked_by</td>
+<td>product_id+principal_issuer+principal_subject+role where revoked_at is null</td>
+<td>N per Product; at least one in force</td>
+<td>HIST</td>
 <td>MVP</td>
 </tr>
 <tr>
@@ -1016,6 +1032,51 @@
 </tr>
 </tbody>
 </table></div>
+<h3 id="section-5-5">5.5 Product Governance 已实现的物理模型（PR #6 / #7，2026-11-17 同步）</h3>
+<p>本节记录已合入 main 的实现事实，不替代其余逻辑模型的候选状态或正式评审。权威 DDL 为 <code>migrations/productgovernance/003_role_assignment_revocation.sql</code>、<code>004_list_order.sql</code>。</p>
+<ul>
+<li><code>product_role_assignment</code> 的主键为 UUID <code>role_assignment_id</code>。主体始终是 <code>principal_issuer</code> 和 <code>principal_subject</code> 的组合；<code>role</code> 当前仅允许 <code>product_owner</code>。<code>role_assignment_version</code> 授予为 1、撤销为 2；授予/撤销人和时间保留，撤销三列必须同时为空或同时有值。有效记录的部分唯一索引允许撤销后以新 ID 再次授予。</li>
+<li>表触发器只允许一次撤销，拒绝改主体、角色、产品及复活历史行。应用角色有 INSERT、SELECT、UPDATE，没有 DELETE；“至少一位负责人”由撤销用例在事务内锁住该 Product 的全部有效分配后计数保证，不是表触发器的保证。等待锁期间新增的负责人可能不被计入，保守返回 <code>LAST_OWNER</code> 后可重试。</li>
+<li>登记时的首批负责人随 <code>product.registered</code> 产生，不各发授予事件；其后的授予和撤销发 <code>fabric.productgovernance.product_role.changed</code>。载荷只有分配编号、角色、是否有效及事件版本，不含主体身份；仅消费此事件时可能先看到首批负责人的版本 2 撤销，不能假定已经收到版本 1。</li>
+<li>每次请求从当时有效的分配/成员关系重新授权。撤销立即影响下一次请求，不要求更换 JWT。旧版本若不识别撤销列仍会授予权限，第一次撤销前必须完成旧进程下线；回滚不能恢复这种旧授权逻辑。</li>
+</ul>
+<p>迁移 004 的索引与列表顺序如下；成员和角色索引均只覆盖 <code>revoked_at IS NULL</code>，时间相同按 ID 排序，不使用 OFFSET。</p>
+<div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>索引</th>
+<th>键顺序 / 用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>product_list_order</code></td>
+<td><code>(created_at, product_id)</code>，平台管理员的产品列表</td>
+</tr>
+<tr>
+<td><code>workspace_list_order</code></td>
+<td><code>(product_id, created_at, workspace_id)</code>，产品内 Workspace 列表</td>
+</tr>
+<tr>
+<td><code>workspace_membership_list_order</code></td>
+<td><code>(product_id, workspace_id, granted_at, membership_id)</code>，有效成员列表</td>
+</tr>
+<tr>
+<td><code>product_role_assignment_list_order</code></td>
+<td><code>(product_id, granted_at, role_assignment_id)</code>，有效负责人列表</td>
+</tr>
+<tr>
+<td><code>product_role_assignment_of_principal</code></td>
+<td><code>(principal_issuer, principal_subject, product_id)</code>，从调用方有效角色找产品</td>
+</tr>
+<tr>
+<td><code>workspace_membership_of_principal</code></td>
+<td><code>(principal_issuer, principal_subject, product_id)</code>，从调用方有效成员关系找产品</td>
+</tr>
+</tbody>
+</table></div>
+<p>收尾压测发现普通成员的 Workspace 末页可能扫描大量不可见记录。查询现先物化该主体在该产品内有效成员关系对应的去重 Workspace ID，再通过主键逐项读取，最后按固定顺序分页；LATERAL 内的 LIMIT 1 保持每次主键读取有界，不增加迁移或权限。独立 EXPLAIN 回归检查访问的 Workspace 行数，而非依赖易波动的耗时阈值。有权读取的集合很大时，此过滤路径仍有组装和排序可见集合的成本，不能宣称所有授权过滤列表的开销只与单页大小有关。</p>
+<p>升级 #6 需要 <code>fabric-migrate -apply -grant-to &lt;application_role&gt;</code>，授予新需要的 UPDATE；#7 的索引迁移只需 <code>-apply</code>，不增加权限。索引创建会短暂阻塞写入。四类查询的分页约定见 F04 §3.1.1，权限与拒绝语义见 F05 §6.1；可复现的负载证据见 <a href="../tests/performance/README.md">列表压测记录</a>。</p>
 <h2 id="section-6">6. 数据权威、制品摘要与可追溯发布链</h2>
 <figure class="architecture-figure"><div class="fig-label">FIGURE 05 · 单一事实权威与来源追踪 / Import → Release → Portal</div><div class="fig-grid cols-5"><div class="fig-box"><b>SourceSnapshot</b><small>Git Commit/Upload · 原文 digest</small></div><div class="fig-box"><b>Revision</b><small>Immutable content · ref closure</small></div><div class="fig-box"><b>Check + Decision</b><small>Policy digest · scope · review evidence</small></div><div class="fig-box"><b>Release</b><small>READY · immutable artifact manifest</small></div><div class="fig-box fig-primary"><b>PublicationSlot</b><small>CAS pointer · target audience/env</small></div></div><div class="fig-arrow">↓ 主库目标版本权威 → Outbox/Worker → PortalProjection；读时再次按当前策略判定</div><div class="fig-grid cols-3"><div class="fig-box tone-green"><b>Git / Upload</b><small>来源事实</small></div><div class="fig-box tone-green"><b>Registry / Object Store</b><small>正式内容/摘要事实</small></div><div class="fig-box tone-green"><b>Publication DB</b><small>当前生效和阻断事实</small></div></div><figcaption>不允许把门户索引、CDN 或 `latest` 当成权威；完整 digest 链可核验来源、引用闭包、构建工具及最终制品。</figcaption></figure>
 <div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
@@ -1259,6 +1320,22 @@
 <td>PlatformAdmin / ProductAdmin；Product/Workspace</td>
 <td>unique + membership validation + audit/outbox</td>
 <td>Catalog scope 投影更新</td>
+<td>MVP</td>
+</tr>
+<tr>
+<td><code>GrantProductRole</code> / <code>GetProductRole</code> / <code>RevokeProductRole</code></td>
+<td>Product Governance</td>
+<td>产品负责人；平台管理员仅可授予</td>
+<td>授予/撤销同事务写分配、审计和 Outbox；撤销前锁住有效负责人</td>
+<td><code>product_role.changed</code>；初始授予见 §5.5</td>
+<td>MVP</td>
+</tr>
+<tr>
+<td><code>ListProducts</code> / <code>ListWorkspaces</code> / <code>ListMemberships</code> / <code>ListProductRoles</code></td>
+<td>Product Governance</td>
+<td>每页重新按当前角色过滤；见 F05 §6.1</td>
+<td>只读游标分页，不缓存授权、不返回总数；拒绝独立审计</td>
+<td>无成功读取事件或审计</td>
 <td>MVP</td>
 </tr>
 <tr>
@@ -1603,6 +1680,12 @@ WHERE slot_id = :slot_id
 <td>Governance / Product 创建成功</td>
 <td>product_id、owner_ref、version</td>
 <td>Catalog 建立可见范围；不可把 Product 视为业务 Tenant</td>
+</tr>
+<tr>
+<td><code>ProductRoleChanged</code>（已实现为 <code>fabric.productgovernance.product_role.changed</code>）</td>
+<td>Governance / 后续负责人授予、撤销</td>
+<td>product_id、role_assignment_id、role、in_force、aggregate_version</td>
+<td>同事务 Outbox；不含主体；登记时首批负责人不单独发授予事件，见 §5.5</td>
 </tr>
 <tr>
 <td><code>APIAssetRegistered</code></td>
@@ -2070,7 +2153,7 @@ WHERE slot_id = :slot_id
 <li><strong>逻辑模型</strong>：已明确定义事实权威、Owner、聚合、不变量、Scope、ERD、状态机与恢复语义；<code>F03_Logical_Model.csv</code> 为同一设计的索引而非替代规格。</li>
 <li><strong>可读性</strong>：至少 10 幅实际服务于设计判定的图表；图、表、命令、关系与不变量引用需自洽；移动端仅局部表格允许横向滚动。</li>
 <li><strong>追溯</strong>：保留 F01 71 FR、18 NFR；使用 <code>F03_domain_trace.csv</code> 显式区分领域落点和后续承接；F03 18 个设计场景均为 <code>NOT_RUN</code>。</li>
-<li><strong>真实性</strong>：当前只证明<strong>文档构建和静态结构验证</strong>。没有执行生产数据库、服务端 API、权限渗透、并发压测、Edge 全路径撤销、灾备和上位标准正式门禁；不得宣称系统实现或验收通过。</li>
+<li><strong>真实性</strong>：原设计场景与正式门禁保持 <code>NOT_RUN</code>。Product Governance 已实现的负责人管理、列表查询、物理 DDL 和局部负载证据另见 §5.5；这不代表生产 IAM、权限渗透、Edge 全路径撤销、灾备或上位标准验收通过。</li>
 <li><strong>结束条件</strong>：设计可进入具名领域/架构评审；OD-01…OD-10 需由相应责任人处理后再冻结涉及实现的关键决策。F04 可基于该候选领域模型开展契约规范设计，但对未批准的边界必须保留约束与追踪。</li>
 </ul>
 </article><div class="footer">IDP API Fabric · F03 · Generated from Markdown · Logical design candidate / runtime verification NOT_RUN</div></main></div></div><a href="#" class="back-to-top">↑ 返回顶部</a><script>(()=>{const m=document.getElementById('menu'),q=document.getElementById('navsearch'),toc=document.getElementById('toc'),shade=document.getElementById('sideBackdrop');let last=null;function open(v){document.body.classList.toggle('navopen',v);m.setAttribute('aria-expanded',String(v));shade.setAttribute('aria-hidden',String(!v));if(v){last=document.activeElement;q.focus()}else if(last){last.focus();last=null}}m.addEventListener('click',()=>open(!document.body.classList.contains('navopen')));shade.addEventListener('click',()=>open(false));document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('navopen'))open(false)});toc.addEventListener('click',e=>{if(e.target.closest('a')&&document.body.classList.contains('navopen'))open(false)});q.addEventListener('input',()=>{let s=q.value.toLocaleLowerCase();toc.querySelectorAll('a').forEach(a=>a.style.display=a.textContent.toLocaleLowerCase().includes(s)?'':'none')});})();</script></body></html>

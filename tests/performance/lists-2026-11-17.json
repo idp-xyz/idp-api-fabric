@@ -1,0 +1,709 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-11-17T02:02:20.247867179Z",
+  "finished_at": "2026-11-17T02:04:20.937159233Z",
+  "application_commit": "350c720a14359cf8280433dd968735d49fc670ba",
+  "harness_sha256": "24996c365b38a385e65dfec4103ae9fb97071ac1cc79ee0ac24fb670c6dba71b",
+  "go_version": "go1.26.5",
+  "os": "linux",
+  "arch": "amd64",
+  "logical_cpus": 8,
+  "gomaxprocs": 8,
+  "postgresql": "16.14 (Debian 16.14-1.pgdg13+1)",
+  "pool_max_conns": 8,
+  "observed_dataset_rows": {
+    "memberships": 80200,
+    "products": 20001,
+    "role_assignments": 22201,
+    "workspaces": 40001
+  },
+  "identity": "local development issuer; real JWT signature verification; warmed JWKS",
+  "model": "closed loop; warm data; same-host HTTP client and server; no race instrumentation; latency includes body validation",
+  "duration_per_case": "3s",
+  "results": [
+    {
+      "name": "products/admin",
+      "page_position": "first",
+      "concurrency": 1,
+      "expected_http": 200,
+      "requests": 2332,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 2332
+      },
+      "elapsed_seconds": 3.000205174,
+      "requests_per_second": 777.2801741058527,
+      "p50_ms": 1.223447,
+      "p95_ms": 1.632057,
+      "p99_ms": 1.77067,
+      "max_ms": 2.051189,
+      "response_body_bytes": 64225612
+    },
+    {
+      "name": "products/admin",
+      "page_position": "middle",
+      "concurrency": 1,
+      "expected_http": 200,
+      "requests": 2185,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 2185
+      },
+      "elapsed_seconds": 3.000948954,
+      "requests_per_second": 728.1030212418601,
+      "p50_ms": 1.324335,
+      "p95_ms": 1.769921,
+      "p99_ms": 1.911814,
+      "max_ms": 2.057004,
+      "response_body_bytes": 61523045
+    },
+    {
+      "name": "products/owner",
+      "page_position": "first",
+      "concurrency": 1,
+      "expected_http": 200,
+      "requests": 1961,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 1961
+      },
+      "elapsed_seconds": 3.000082762,
+      "requests_per_second": 653.6486342439109,
+      "p50_ms": 1.483501,
+      "p95_ms": 1.929069,
+      "p99_ms": 2.165704,
+      "max_ms": 5.187336,
+      "response_body_bytes": 54007901
+    },
+    {
+      "name": "products/owner",
+      "page_position": "middle",
+      "concurrency": 1,
+      "expected_http": 200,
+      "requests": 1959,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 1959
+      },
+      "elapsed_seconds": 3.001408157,
+      "requests_per_second": 652.6936349630238,
+      "p50_ms": 1.476436,
+      "p95_ms": 1.916361,
+      "p99_ms": 2.076028,
+      "max_ms": 2.373903,
+      "response_body_bytes": 54375963
+    },
+    {
+      "name": "workspaces/owner",
+      "page_position": "first",
+      "concurrency": 1,
+      "expected_http": 200,
+      "requests": 1332,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 1332
+      },
+      "elapsed_seconds": 3.001919171,
+      "requests_per_second": 443.7161442812212,
+      "p50_ms": 2.222479,
+      "p95_ms": 2.650948,
+      "p99_ms": 2.892644,
+      "max_ms": 3.285739,
+      "response_body_bytes": 32159808
+    },
+    {
+      "name": "workspaces/owner",
+      "page_position": "middle",
+      "concurrency": 1,
+      "expected_http": 200,
+      "requests": 1309,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 1309
+      },
+      "elapsed_seconds": 3.000196468,
+      "requests_per_second": 436.30476002546914,
+      "p50_ms": 2.269838,
+      "p95_ms": 2.671937,
+      "p99_ms": 2.798032,
+      "max_ms": 3.207501,
+      "response_body_bytes": 32410840
+    },
+    {
+      "name": "workspaces/member",
+      "page_position": "first",
+      "concurrency": 1,
+      "expected_http": 200,
+      "requests": 1024,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 1024
+      },
+      "elapsed_seconds": 3.000501569,
+      "requests_per_second": 341.27627546659687,
+      "p50_ms": 2.919353,
+      "p95_ms": 3.348898,
+      "p99_ms": 3.782549,
+      "max_ms": 4.24712,
+      "response_body_bytes": 24723456
+    },
+    {
+      "name": "workspaces/member",
+      "page_position": "middle",
+      "concurrency": 1,
+      "expected_http": 200,
+      "requests": 14,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 14
+      },
+      "elapsed_seconds": 3.137535233,
+      "requests_per_second": 4.462101286624819,
+      "p50_ms": 221.036231,
+      "p95_ms": 247.430387,
+      "p99_ms": 247.430387,
+      "max_ms": 247.430387,
+      "response_body_bytes": 338814
+    },
+    {
+      "name": "memberships/owner",
+      "page_position": "first",
+      "concurrency": 1,
+      "expected_http": 200,
+      "requests": 1124,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 1124
+      },
+      "elapsed_seconds": 3.001395317,
+      "requests_per_second": 374.49248808833266,
+      "p50_ms": 2.667288,
+      "p95_ms": 3.059116,
+      "p99_ms": 3.172776,
+      "max_ms": 3.5399,
+      "response_body_bytes": 33667172
+    },
+    {
+      "name": "memberships/owner",
+      "page_position": "middle",
+      "concurrency": 1,
+      "expected_http": 200,
+      "requests": 1105,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 1105
+      },
+      "elapsed_seconds": 3.000501989,
+      "requests_per_second": 368.2717105507641,
+      "p50_ms": 2.688933,
+      "p95_ms": 3.13481,
+      "p99_ms": 3.333821,
+      "max_ms": 3.869709,
+      "response_body_bytes": 33438405
+    },
+    {
+      "name": "roles/owner",
+      "page_position": "first",
+      "concurrency": 1,
+      "expected_http": 200,
+      "requests": 1322,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 1322
+      },
+      "elapsed_seconds": 3.000838908,
+      "requests_per_second": 440.54347485153306,
+      "p50_ms": 2.272603,
+      "p95_ms": 2.617722,
+      "p99_ms": 2.741532,
+      "max_ms": 2.870892,
+      "response_body_bytes": 33129320
+    },
+    {
+      "name": "roles/owner",
+      "page_position": "middle",
+      "concurrency": 1,
+      "expected_http": 200,
+      "requests": 1276,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 1276
+      },
+      "elapsed_seconds": 3.001483425,
+      "requests_per_second": 425.1231205782854,
+      "p50_ms": 2.356138,
+      "p95_ms": 2.757362,
+      "p99_ms": 3.112682,
+      "max_ms": 4.049748,
+      "response_body_bytes": 32241968
+    },
+    {
+      "name": "products/admin",
+      "page_position": "first",
+      "concurrency": 8,
+      "expected_http": 200,
+      "requests": 9780,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 9780
+      },
+      "elapsed_seconds": 3.002077804,
+      "requests_per_second": 3257.7436823819244,
+      "p50_ms": 2.366413,
+      "p95_ms": 3.705148,
+      "p99_ms": 4.657622,
+      "max_ms": 12.371005,
+      "response_body_bytes": 269350980
+    },
+    {
+      "name": "products/admin",
+      "page_position": "middle",
+      "concurrency": 8,
+      "expected_http": 200,
+      "requests": 9439,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 9439
+      },
+      "elapsed_seconds": 3.001930336,
+      "requests_per_second": 3144.3101416461386,
+      "p50_ms": 2.455489,
+      "p95_ms": 3.858699,
+      "p99_ms": 4.649977,
+      "max_ms": 7.288548,
+      "response_body_bytes": 265773923
+    },
+    {
+      "name": "products/owner",
+      "page_position": "first",
+      "concurrency": 8,
+      "expected_http": 200,
+      "requests": 8757,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 8757
+      },
+      "elapsed_seconds": 3.001600456,
+      "requests_per_second": 2917.4435866357026,
+      "p50_ms": 2.658717,
+      "p95_ms": 4.072683,
+      "p99_ms": 4.951772,
+      "max_ms": 10.13603,
+      "response_body_bytes": 241176537
+    },
+    {
+      "name": "products/owner",
+      "page_position": "middle",
+      "concurrency": 8,
+      "expected_http": 200,
+      "requests": 8694,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 8694
+      },
+      "elapsed_seconds": 3.001940355,
+      "requests_per_second": 2896.126828609158,
+      "p50_ms": 2.661447,
+      "p95_ms": 4.132838,
+      "p99_ms": 5.003634,
+      "max_ms": 7.434248,
+      "response_body_bytes": 241319358
+    },
+    {
+      "name": "workspaces/owner",
+      "page_position": "first",
+      "concurrency": 8,
+      "expected_http": 200,
+      "requests": 6692,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 6692
+      },
+      "elapsed_seconds": 3.002412076,
+      "requests_per_second": 2228.8745950274415,
+      "p50_ms": 3.492651,
+      "p95_ms": 4.948536,
+      "p99_ms": 5.953723,
+      "max_ms": 9.975162,
+      "response_body_bytes": 161571648
+    },
+    {
+      "name": "workspaces/owner",
+      "page_position": "middle",
+      "concurrency": 8,
+      "expected_http": 200,
+      "requests": 6268,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 6268
+      },
+      "elapsed_seconds": 3.003001042,
+      "requests_per_second": 2087.2453630004434,
+      "p50_ms": 3.735884,
+      "p95_ms": 5.320702,
+      "p99_ms": 6.180311,
+      "max_ms": 9.033718,
+      "response_body_bytes": 155195680
+    },
+    {
+      "name": "workspaces/member",
+      "page_position": "first",
+      "concurrency": 8,
+      "expected_http": 200,
+      "requests": 4335,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 4335
+      },
+      "elapsed_seconds": 3.003714006,
+      "requests_per_second": 1443.2132990493503,
+      "p50_ms": 5.329225,
+      "p95_ms": 7.680823,
+      "p99_ms": 10.846638,
+      "max_ms": 29.212168,
+      "response_body_bytes": 104664240
+    },
+    {
+      "name": "workspaces/member",
+      "page_position": "middle",
+      "concurrency": 8,
+      "expected_http": 200,
+      "requests": 56,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 56
+      },
+      "elapsed_seconds": 3.193054321,
+      "requests_per_second": 17.538066806975564,
+      "p50_ms": 448.472281,
+      "p95_ms": 472.883936,
+      "p99_ms": 508.927613,
+      "max_ms": 508.927613,
+      "response_body_bytes": 1355256
+    },
+    {
+      "name": "memberships/owner",
+      "page_position": "first",
+      "concurrency": 8,
+      "expected_http": 200,
+      "requests": 5547,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 5547
+      },
+      "elapsed_seconds": 3.003028145,
+      "requests_per_second": 1847.135535254865,
+      "p50_ms": 4.229207,
+      "p95_ms": 5.908583,
+      "p99_ms": 7.131429,
+      "max_ms": 10.104127,
+      "response_body_bytes": 166149291
+    },
+    {
+      "name": "memberships/owner",
+      "page_position": "middle",
+      "concurrency": 8,
+      "expected_http": 200,
+      "requests": 5256,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 5256
+      },
+      "elapsed_seconds": 3.003775911,
+      "requests_per_second": 1749.797639947849,
+      "p50_ms": 4.427212,
+      "p95_ms": 6.507786,
+      "p99_ms": 7.729768,
+      "max_ms": 13.694919,
+      "response_body_bytes": 159051816
+    },
+    {
+      "name": "roles/owner",
+      "page_position": "first",
+      "concurrency": 8,
+      "expected_http": 200,
+      "requests": 6543,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 6543
+      },
+      "elapsed_seconds": 3.002734579,
+      "requests_per_second": 2179.013771566521,
+      "p50_ms": 3.593355,
+      "p95_ms": 5.141746,
+      "p99_ms": 6.196598,
+      "max_ms": 9.369343,
+      "response_body_bytes": 163967580
+    },
+    {
+      "name": "roles/owner",
+      "page_position": "middle",
+      "concurrency": 8,
+      "expected_http": 200,
+      "requests": 6281,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 6281
+      },
+      "elapsed_seconds": 3.004127707,
+      "requests_per_second": 2090.789943904339,
+      "p50_ms": 3.731359,
+      "p95_ms": 5.423815,
+      "p99_ms": 6.520452,
+      "max_ms": 10.075972,
+      "response_body_bytes": 158708308
+    },
+    {
+      "name": "products/admin",
+      "page_position": "first",
+      "concurrency": 32,
+      "expected_http": 200,
+      "requests": 11664,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 11664
+      },
+      "elapsed_seconds": 3.006392898,
+      "requests_per_second": 3879.7324221193658,
+      "p50_ms": 7.779948,
+      "p95_ms": 12.927798,
+      "p99_ms": 17.057706,
+      "max_ms": 39.749356,
+      "response_body_bytes": 321238224
+    },
+    {
+      "name": "products/admin",
+      "page_position": "middle",
+      "concurrency": 32,
+      "expected_http": 200,
+      "requests": 11916,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 11916
+      },
+      "elapsed_seconds": 3.004780688,
+      "requests_per_second": 3965.680439703359,
+      "p50_ms": 7.659936,
+      "p95_ms": 12.96626,
+      "p99_ms": 16.522189,
+      "max_ms": 25.647572,
+      "response_body_bytes": 335518812
+    },
+    {
+      "name": "products/owner",
+      "page_position": "first",
+      "concurrency": 32,
+      "expected_http": 200,
+      "requests": 10058,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 10058
+      },
+      "elapsed_seconds": 3.007475133,
+      "requests_per_second": 3344.333553962589,
+      "p50_ms": 9.174834,
+      "p95_ms": 14.12155,
+      "p99_ms": 17.362455,
+      "max_ms": 28.312665,
+      "response_body_bytes": 277007378
+    },
+    {
+      "name": "products/owner",
+      "page_position": "middle",
+      "concurrency": 32,
+      "expected_http": 200,
+      "requests": 9380,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 9380
+      },
+      "elapsed_seconds": 3.008633223,
+      "requests_per_second": 3117.6947486629547,
+      "p50_ms": 9.836327,
+      "p95_ms": 15.665245,
+      "p99_ms": 19.193431,
+      "max_ms": 29.60434,
+      "response_body_bytes": 260360660
+    },
+    {
+      "name": "workspaces/owner",
+      "page_position": "first",
+      "concurrency": 32,
+      "expected_http": 200,
+      "requests": 7509,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 7509
+      },
+      "elapsed_seconds": 3.008801366,
+      "requests_per_second": 2495.6782075590163,
+      "p50_ms": 12.541828,
+      "p95_ms": 16.395898,
+      "p99_ms": 20.589741,
+      "max_ms": 32.259013,
+      "response_body_bytes": 181297296
+    },
+    {
+      "name": "workspaces/owner",
+      "page_position": "middle",
+      "concurrency": 32,
+      "expected_http": 200,
+      "requests": 7833,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 7833
+      },
+      "elapsed_seconds": 3.007904932,
+      "requests_per_second": 2604.138154988736,
+      "p50_ms": 12.17343,
+      "p95_ms": 15.021766,
+      "p99_ms": 16.616178,
+      "max_ms": 19.45375,
+      "response_body_bytes": 193945080
+    },
+    {
+      "name": "workspaces/member",
+      "page_position": "first",
+      "concurrency": 32,
+      "expected_http": 200,
+      "requests": 5271,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 5271
+      },
+      "elapsed_seconds": 3.013903099,
+      "requests_per_second": 1748.8949799842253,
+      "p50_ms": 18.100259,
+      "p95_ms": 21.727512,
+      "p99_ms": 24.144925,
+      "max_ms": 31.743644,
+      "response_body_bytes": 127263024
+    },
+    {
+      "name": "workspaces/member",
+      "page_position": "middle",
+      "concurrency": 32,
+      "expected_http": 200,
+      "requests": 82,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 82
+      },
+      "elapsed_seconds": 4.557422497,
+      "requests_per_second": 17.99262632638907,
+      "p50_ms": 1709.831778,
+      "p95_ms": 1750.701422,
+      "p99_ms": 2127.874879,
+      "max_ms": 2127.874879,
+      "response_body_bytes": 1984482
+    },
+    {
+      "name": "memberships/owner",
+      "page_position": "first",
+      "concurrency": 32,
+      "expected_http": 200,
+      "requests": 6846,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 6846
+      },
+      "elapsed_seconds": 3.010029185,
+      "requests_per_second": 2274.3965520719694,
+      "p50_ms": 13.761484,
+      "p95_ms": 16.875516,
+      "p99_ms": 25.569536,
+      "max_ms": 42.346199,
+      "response_body_bytes": 205058238
+    },
+    {
+      "name": "memberships/owner",
+      "page_position": "middle",
+      "concurrency": 32,
+      "expected_http": 200,
+      "requests": 6833,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 6833
+      },
+      "elapsed_seconds": 3.00880185,
+      "requests_per_second": 2271.003655491637,
+      "p50_ms": 13.96916,
+      "p95_ms": 16.787236,
+      "p99_ms": 18.375657,
+      "max_ms": 22.203632,
+      "response_body_bytes": 206773413
+    },
+    {
+      "name": "roles/owner",
+      "page_position": "first",
+      "concurrency": 32,
+      "expected_http": 200,
+      "requests": 8002,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 8002
+      },
+      "elapsed_seconds": 3.009468735,
+      "requests_per_second": 2658.94106389512,
+      "p50_ms": 11.909056,
+      "p95_ms": 14.751748,
+      "p99_ms": 16.312484,
+      "max_ms": 20.457406,
+      "response_body_bytes": 200530120
+    },
+    {
+      "name": "roles/owner",
+      "page_position": "middle",
+      "concurrency": 32,
+      "expected_http": 200,
+      "requests": 7718,
+      "errors": 0,
+      "http_status_counts": {
+        "200": 7718
+      },
+      "elapsed_seconds": 3.010271771,
+      "requests_per_second": 2563.888109489899,
+      "p50_ms": 12.303645,
+      "p95_ms": 15.480325,
+      "p99_ms": 17.604182,
+      "max_ms": 21.971106,
+      "response_body_bytes": 195018424
+    },
+    {
+      "name": "roles/member-denied",
+      "page_position": "denied",
+      "concurrency": 32,
+      "expected_http": 403,
+      "requests": 7574,
+      "errors": 0,
+      "http_status_counts": {
+        "403": 7574
+      },
+      "elapsed_seconds": 3.008207393,
+      "requests_per_second": 2517.778534028089,
+      "p50_ms": 12.614765,
+      "p95_ms": 14.432825,
+      "p99_ms": 16.244762,
+      "max_ms": 19.949553,
+      "response_body_bytes": 1378468
+    },
+    {
+      "name": "workspaces/stranger-hidden",
+      "page_position": "denied",
+      "concurrency": 32,
+      "expected_http": 404,
+      "requests": 9686,
+      "errors": 0,
+      "http_status_counts": {
+        "404": 9686
+      },
+      "elapsed_seconds": 3.008014629,
+      "requests_per_second": 3220.064126888926,
+      "p50_ms": 9.916667,
+      "p95_ms": 11.144508,
+      "p99_ms": 11.756602,
+      "max_ms": 14.077829,
+      "response_body_bytes": 1346354
+    }
+  ]
+}

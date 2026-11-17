@@ -124,7 +124,7 @@
 
 | 聚合根 / BC | 内部实体 / 值对象 | 单事务必须保持的关键不变量 | 写入并发机制 |
 |---|---|---|---|
-| `Product` / Governance | ProductStatus、AudienceConfig、WorkspaceRef | INV-01：产品 ID 唯一；已暂停产品拒绝新登记/发布，历史保留 | 版本比较与唯一约束 |
+| `Product` / Governance | ProductStatus、AudienceConfig、ProductRoleAssignment、WorkspaceRef | INV-01：产品 ID 唯一；已暂停产品拒绝新登记/发布，历史保留；撤销角色后至少保留一位有效负责人 | 版本比较、唯一约束；撤销负责人前在同一事务锁住有效分配 |
 | `Workspace` / Governance | WorkspaceMembership、RoleAssignmentRef | INV-02：每个 Workspace 仅属一个 Product；成员授权按 Product×Workspace×Principal×Role×有效区间显式授予 | membership version、排他有效记录 |
 | `APIAsset` / Catalog | AssetOwnerRef、LifecycleRecord、ApiType | INV-03：一个资产仅属一个 Product/Workspace；生命周期转移可审计，不与 Release 生效状态混淆 | aggregate_version |
 | `ContractRevision` / Registry | SourceSnapshotRef、RefClosureManifest、RevisionState | INV-04：Revision 内容与 SHA-256 不变；修改必创建新 Revision | 唯一 ID、来源去重、状态 CAS |
@@ -159,6 +159,7 @@ F02 提出的 `PublicationTarget = Product × Audience × Environment × Portal`
 | 关系 | 基数与归属 | 应用不变量与数据库候选约束 |
 |---|---|---|
 | Product → Workspace | 1:N；Workspace 属于唯一 Product | `UNIQUE(product_id, workspace_key)`；不得从其他产品迁移 Workspace 而保持旧 ID |
+| Product → ProductRoleAssignment | 1:N；分配以 issuer×subject 标识主体 | 同 Product×Principal×Role 同时只有一条有效分配；撤销保留原行，再授予产生新 ID；应用用例加锁保证至少一位负责人 |
 | Product → APIAsset | 1:N；APIAsset 属于唯一 Product | `UNIQUE(product_id, asset_key)`，`owner_workspace_id` 必属同 Product |
 | APIAsset → Revision | 1:N；Revision 必属一 Asset | `UNIQUE(asset_id, revision_sequence)`；每 Revision 固定 source_snapshot_id |
 | Revision → CheckRun | 1:N；每次运行绑定输入与工具 | `UNIQUE(check_run_id)`；不得因重跑覆盖已有结果 |
@@ -191,6 +192,7 @@ F02 提出的 `PublicationTarget = Product × Audience × Environment × Portal`
 | BC | Aggregate | Entity | PrimaryKey | RequiredReferences | Uniqueness | Cardinality | DataRetention | Phase |
 |---|---|---|---|---|---|---|---|---|
 | ProductGovernance | Product | Product | product_id | owner_org_ref | product_key | 1 Product to N Workspace | ACTIVE | MVP |
+| ProductGovernance | Product | ProductRoleAssignment | role_assignment_id | product_id+principal_issuer+principal_subject+role+role_assignment_version+granted_at+granted_by+revoked_at+revoked_by | product_id+principal_issuer+principal_subject+role where revoked_at is null | N per Product; at least one in force | HIST | MVP |
 | ProductGovernance | Product | ProductAudienceConfig | audience_config_id | product_id | product_id+audience_key+environment_key | N per Product | ACTIVE | MVP |
 | ProductGovernance | Workspace | Workspace | workspace_id | product_id | product_id+workspace_key | N per Product | ACTIVE | MVP |
 | ProductGovernance | Workspace | WorkspaceMembership | membership_id | workspace_id+principal_ref | active membership scope | N per Workspace | ACTIVE | MVP |
@@ -228,6 +230,30 @@ F02 提出的 `PublicationTarget = Product × Audience × Environment × Portal`
 | PlatformOperations | Reconciliation | Reconciliation | reconciliation_id | target_ref+source_generation | reconciliation_id | N per Target | HIST | MVP |
 | PlatformOperations | Reconciliation | ProjectionCheckpoint | projection_checkpoint_id | projection_name+scope_ref | projection_name+scope_ref | 1 current per Scope | DERIVED | MVP |
 
+
+### 5.5 Product Governance 已实现的物理模型（PR #6 / #7，2026-11-17 同步）
+
+本节记录已合入 main 的实现事实，不替代其余逻辑模型的候选状态或正式评审。权威 DDL 为 `migrations/productgovernance/003_role_assignment_revocation.sql`、`004_list_order.sql`。
+
+- `product_role_assignment` 的主键为 UUID `role_assignment_id`。主体始终是 `principal_issuer` 和 `principal_subject` 的组合；`role` 当前仅允许 `product_owner`。`role_assignment_version` 授予为 1、撤销为 2；授予/撤销人和时间保留，撤销三列必须同时为空或同时有值。有效记录的部分唯一索引允许撤销后以新 ID 再次授予。
+- 表触发器只允许一次撤销，拒绝改主体、角色、产品及复活历史行。应用角色有 INSERT、SELECT、UPDATE，没有 DELETE；“至少一位负责人”由撤销用例在事务内锁住该 Product 的全部有效分配后计数保证，不是表触发器的保证。等待锁期间新增的负责人可能不被计入，保守返回 `LAST_OWNER` 后可重试。
+- 登记时的首批负责人随 `product.registered` 产生，不各发授予事件；其后的授予和撤销发 `fabric.productgovernance.product_role.changed`。载荷只有分配编号、角色、是否有效及事件版本，不含主体身份；仅消费此事件时可能先看到首批负责人的版本 2 撤销，不能假定已经收到版本 1。
+- 每次请求从当时有效的分配/成员关系重新授权。撤销立即影响下一次请求，不要求更换 JWT。旧版本若不识别撤销列仍会授予权限，第一次撤销前必须完成旧进程下线；回滚不能恢复这种旧授权逻辑。
+
+迁移 004 的索引与列表顺序如下；成员和角色索引均只覆盖 `revoked_at IS NULL`，时间相同按 ID 排序，不使用 OFFSET。
+
+| 索引 | 键顺序 / 用途 |
+|---|---|
+| `product_list_order` | `(created_at, product_id)`，平台管理员的产品列表 |
+| `workspace_list_order` | `(product_id, created_at, workspace_id)`，产品内 Workspace 列表 |
+| `workspace_membership_list_order` | `(product_id, workspace_id, granted_at, membership_id)`，有效成员列表 |
+| `product_role_assignment_list_order` | `(product_id, granted_at, role_assignment_id)`，有效负责人列表 |
+| `product_role_assignment_of_principal` | `(principal_issuer, principal_subject, product_id)`，从调用方有效角色找产品 |
+| `workspace_membership_of_principal` | `(principal_issuer, principal_subject, product_id)`，从调用方有效成员关系找产品 |
+
+收尾压测发现普通成员的 Workspace 末页可能扫描大量不可见记录。查询现先物化该主体在该产品内有效成员关系对应的去重 Workspace ID，再通过主键逐项读取，最后按固定顺序分页；LATERAL 内的 LIMIT 1 保持每次主键读取有界，不增加迁移或权限。独立 EXPLAIN 回归检查访问的 Workspace 行数，而非依赖易波动的耗时阈值。有权读取的集合很大时，此过滤路径仍有组装和排序可见集合的成本，不能宣称所有授权过滤列表的开销只与单页大小有关。
+
+升级 #6 需要 `fabric-migrate -apply -grant-to <application_role>`，授予新需要的 UPDATE；#7 的索引迁移只需 `-apply`，不增加权限。索引创建会短暂阻塞写入。四类查询的分页约定见 F04 §3.1.1，权限与拒绝语义见 F05 §6.1；可复现的负载证据见 [列表压测记录](../tests/performance/README.md)。
 
 ## 6. 数据权威、制品摘要与可追溯发布链
 
@@ -315,6 +341,8 @@ F02 提出的 `PublicationTarget = Product × Audience × Environment × Portal`
 | 用例 / 命令 | 责任 BC | 授权与聚合 | 同步本地事务 | 异步副作用 / 查询模型 | 阶段 |
 |---|---|---|---|---|---|
 | `RegisterProduct` / `CreateWorkspace` | Product Governance | PlatformAdmin / ProductAdmin；Product/Workspace | unique + membership validation + audit/outbox | Catalog scope 投影更新 | MVP |
+| `GrantProductRole` / `GetProductRole` / `RevokeProductRole` | Product Governance | 产品负责人；平台管理员仅可授予 | 授予/撤销同事务写分配、审计和 Outbox；撤销前锁住有效负责人 | `product_role.changed`；初始授予见 §5.5 | MVP |
+| `ListProducts` / `ListWorkspaces` / `ListMemberships` / `ListProductRoles` | Product Governance | 每页重新按当前角色过滤；见 F05 §6.1 | 只读游标分页，不缓存授权、不返回总数；拒绝独立审计 | 无成功读取事件或审计 | MVP |
 | `RegisterAPIAsset` | API Catalog | Product Engineer；APIAsset | asset + owner + audit/outbox | 搜索索引更新 | MVP |
 | `ImportContractRevision` | Registry | CI/Engineer；Revision | 通过暂存和 digest 验证后提交 revision + event | 异步 CheckRun（失败可诊断） | MVP |
 | `RequestCheckRun` | Policy & Review | Engineer/CI；CheckRun | 注册固定 input/policy 指纹 | Worker 执行、报告制品写入 | MVP |
@@ -436,6 +464,7 @@ WHERE slot_id = :slot_id
 | 事件名（候选） | Owner / 触发条件 | 主体引用 / 关键字段 | 事件接受者及限制 |
 |---|---|---|---|
 | `ProductRegistered` | Governance / Product 创建成功 | product_id、owner_ref、version | Catalog 建立可见范围；不可把 Product 视为业务 Tenant |
+| `ProductRoleChanged`（已实现为 `fabric.productgovernance.product_role.changed`） | Governance / 后续负责人授予、撤销 | product_id、role_assignment_id、role、in_force、aggregate_version | 同事务 Outbox；不含主体；登记时首批负责人不单独发授予事件，见 §5.5 |
 | `APIAssetRegistered` | Catalog / Asset 创建成功 | product_id、asset_id、owner_ref | Registry 允许登记契约；事件重复要去重 |
 | `ContractRevisionRegistered` | Registry / Revision 成功登记 | revision_id、asset_id、source_digest | Check Workflow 建立任务；不等于批准 |
 | `GovernanceCheckCompleted` | Policy / 检查终态 | check_run_id、policy_digest、revision_digest | Review UI；失败证据不得默认隐藏 |
@@ -574,5 +603,5 @@ F06 不得把两个门户合并为一套相同的功能菜单，但可共享设�
 - **逻辑模型**：已明确定义事实权威、Owner、聚合、不变量、Scope、ERD、状态机与恢复语义；`F03_Logical_Model.csv` 为同一设计的索引而非替代规格。
 - **可读性**：至少 10 幅实际服务于设计判定的图表；图、表、命令、关系与不变量引用需自洽；移动端仅局部表格允许横向滚动。
 - **追溯**：保留 F01 71 FR、18 NFR；使用 `F03_domain_trace.csv` 显式区分领域落点和后续承接；F03 18 个设计场景均为 `NOT_RUN`。
-- **真实性**：当前只证明**文档构建和静态结构验证**。没有执行生产数据库、服务端 API、权限渗透、并发压测、Edge 全路径撤销、灾备和上位标准正式门禁；不得宣称系统实现或验收通过。
+- **真实性**：原设计场景与正式门禁保持 `NOT_RUN`。Product Governance 已实现的负责人管理、列表查询、物理 DDL 和局部负载证据另见 §5.5；这不代表生产 IAM、权限渗透、Edge 全路径撤销、灾备或上位标准验收通过。
 - **结束条件**：设计可进入具名领域/架构评审；OD-01…OD-10 需由相应责任人处理后再冻结涉及实现的关键决策。F04 可基于该候选领域模型开展契约规范设计，但对未批准的边界必须保留约束与追踪。

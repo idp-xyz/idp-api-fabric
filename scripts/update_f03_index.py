@@ -11,7 +11,7 @@ for c in soup.select('.grid section.card'):
  h=c.find('h3');assert h
  h.string='Domain & Data Model'
  desc=c.find('p');assert desc
- desc.string='七个候选 DDD 限界上下文、37 个逻辑实体、13 条不变量、四类状态机、10 幅领域图与 18 个待验证场景。'
+ desc.string='七个候选 DDD 限界上下文、38 个逻辑实体、13 条不变量、四类状态机、10 幅领域图与 18 个待验证场景。'
  pending=c.find(class_='pending')
  if pending:pending.decompose()
  if not c.find('a',href='docs/F03_Domain_and_Data_Model.html'):
@@ -35,7 +35,7 @@ if soup.find(id='f03-assets') is None:
  target=next((h for h in soup.find_all('h2') if '双门户产品范围' in h.get_text()),None)
  assert target
  heading=soup.new_tag('h2',id='f03-assets');heading.string='F03 领域模型与工程追溯资产'
- content=BeautifulSoup('''<div class="panel"><div class="lanes"><div class="lane"><strong>领域事实与逻辑数据字典</strong><p>七个候选限界上下文、37 个机器可索引逻辑实体、13 条不变量、10 幅模型与流程图；Publication Target / Slot 粒度澄清待 ADR-0004 评审确认。</p><p><a href="docs/F03_Domain_and_Data_Model.html">F03 全文</a> · <a href="docs/F03_Logical_Model.csv">逻辑数据字典 CSV</a></p></div><div class="lane"><strong>需求追溯与领域验证</strong><p>映射 F01 全部 71 FR + 18 NFR；18 个领域验证场景全部为 NOT_RUN，没有冒充实际验证。</p><p><a href="tests/acceptance/F03_domain_trace.csv">需求/模型追溯</a> · <a href="tests/acceptance/F03_domain_scenarios.csv">设计场景</a></p></div></div></div>''','html.parser').div
+ content=BeautifulSoup('''<div class="panel"><div class="lanes"><div class="lane"><strong>领域事实与逻辑数据字典</strong><p>七个候选限界上下文、38 个机器可索引逻辑实体、13 条不变量、10 幅模型与流程图；Publication Target / Slot 粒度澄清待 ADR-0004 评审确认。</p><p><a href="docs/F03_Domain_and_Data_Model.html">F03 全文</a> · <a href="docs/F03_Logical_Model.csv">逻辑数据字典 CSV</a></p></div><div class="lane"><strong>需求追溯与领域验证</strong><p>映射 F01 全部 71 FR + 18 NFR；18 个领域验证场景全部为 NOT_RUN，没有冒充实际验证。</p><p><a href="tests/acceptance/F03_domain_trace.csv">需求/模型追溯</a> · <a href="tests/acceptance/F03_domain_scenarios.csv">设计场景</a></p></div></div></div>''','html.parser').div
  target.insert_before(heading);target.insert_before(content)
 p.write_text(str(soup),encoding='utf-8')
 print('Updated index to F01 + F02 + F03')

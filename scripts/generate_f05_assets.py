@@ -48,6 +48,16 @@ matrix_rows_raw=[
  ('internal_reader','SearchIndex','search.raw_read','internal','never_allow_direct_index','search-gateway','DENY'),
  ('external_developer','ObjectStore','blob.direct_read','partner','never_allow_long_lived_unsigned_url','artifact-gateway','DENY'),
  ('product_owner','ReviewDecision','review.self_approve','internal','never_allow_self_approval','control-plane','DENY'),
+ # Implemented management API operations, indexed separately from the audit
+ # rule IDs they reuse (AC-08 / AC-10 / DENY-03); see F05 section 6.1.
+ ('platform_admin','RoleAssignment','product_role.grant','internal','role.platform_admin & product.active & principal.issuer_trusted','control-plane','DENY_OR_404'),
+ ('product_owner','RoleAssignment','product_role.grant','internal','role.product_owner & product.same & product.active & principal.issuer_trusted','control-plane','DENY_OR_404'),
+ ('product_owner','RoleAssignment','product_role.read','internal','role.product_owner & product.same & assignment.in_force','control-plane','DENY_OR_404'),
+ ('product_owner','RoleAssignment','product_role.revoke','internal','role.product_owner & product.same & assignment.in_force & locked_owners.more_than_one','control-plane','DENY_OR_404'),
+ ('authenticated','Product','product.list','internal','role.platform_admin OR row.has_current_role_or_membership; filter_before_paging','control-plane','DENY_OR_404'),
+ ('product_owner_or_member','Workspace','workspace.list','internal','product.same & (role.product_owner OR row.has_current_membership); filter_before_paging','control-plane','DENY_OR_404'),
+ ('product_owner','WorkspaceMembership','member.list','internal','role.product_owner & product.same & workspace.same & row.in_force','control-plane','DENY_OR_404'),
+ ('product_owner','RoleAssignment','product_role.list','internal','role.product_owner & product.same & row.in_force','control-plane','DENY_OR_404'),
 ]
 m=[]
 for i,(principal,res,action,channel,conditions,pep,fail) in enumerate(matrix_rows_raw,1):

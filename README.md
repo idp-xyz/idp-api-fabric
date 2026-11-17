@@ -5,6 +5,10 @@
 **状态：** F01 内容定稿、待具名签收；**F02 总体架构设计候选、待具名评审及工程 PoC**；**F03 领域与数据设计候选、待具名评审**；**F04 契约与治理规范设计候选、待具名评审与工具验证**；**F05 安全与多租户设计候选、待具名安全评审及真实验证**；**F06 双门户体验设计候选，待具名评审与真实 UX/安全验证**；**F07 工程与质量设计候选、待具名评审与真实 PoC**；**F08 交付与验收设计候选、待具名签收，真实验收 NOT_RUN**。  
 **日期：** 2026-11-09
 
+## 工程实现同步（2026-11-17）
+
+PR #6（产品负责人管理）和 #7（四类分页列表）已合入 main。对应领域与物理模型见 F03 §5.5，分页协议见 F04 §3.1.1，权限规则见 F05 §6.1；授权矩阵新增 AC-36…43，仍保留设计候选状态。可复现的本地 HTTP 负载实验及原始数据见 [列表压测记录](tests/performance/README.md)。该实现记录不改变 F01–F08 正式验收和具名批准的状态。
+
 ## 阅读入口
 
 - [index.html](index.html) — 统一的离线 HTML 文档阅读入口。
@@ -151,7 +155,7 @@ python scripts/verify_manifest.py
 
 ## F05 安全设计的可审查资产与界限
 
-- [F05 授权矩阵](governance/policies/F05_Access_Matrix.csv)：35 条候选操作级规则，所有服务器端授权执行仍未实现。
+- [F05 授权矩阵](governance/policies/F05_Access_Matrix.csv)：43 条候选操作级规则；负责人管理与列表的服务器端实现见 F05 §6.1，完整安全验收仍待执行。
 - [F05 STRIDE 风险登记册](governance/policies/F05_Threat_Register.csv)：29 项威胁及待具名 Owner/残余风险。
 - [F05 授权策略设计 JSON](governance/policies/F05_Authorization_Policy_DRAFT.json)：仅为可读/可检查样例，不是可投入生产的 PDP。
 - [F05 安全测试计划](tests/acceptance/F05_security_scenarios.csv)：36 个场景均为 `NOT_RUN`。
