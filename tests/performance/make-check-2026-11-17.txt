@@ -1,0 +1,64 @@
+go vet ./...
+cd tests/contract/oas31 && go vet ./...
+go test -race -count=1 ./...
+?   	go.idp.xyz/idp-api-fabric/api	[no test files]
+ok  	go.idp.xyz/idp-api-fabric/cmd/fabric-api	8.408s
+ok  	go.idp.xyz/idp-api-fabric/cmd/fabric-devidp	1.366s
+?   	go.idp.xyz/idp-api-fabric/cmd/fabric-migrate	[no test files]
+?   	go.idp.xyz/idp-api-fabric/cmd/fabric-worker	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/apicatalog/adapters	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/apicatalog/application	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/apicatalog/domain	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/apicatalog/ports	[no test files]
+ok  	go.idp.xyz/idp-api-fabric/internal/architecture	1.064s
+?   	go.idp.xyz/idp-api-fabric/internal/contractregistry/adapters	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/contractregistry/application	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/contractregistry/domain	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/contractregistry/ports	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/developeraccess/adapters	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/developeraccess/application	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/developeraccess/domain	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/developeraccess/ports	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/platform/artifacts	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/platform/buildinfo	[no test files]
+ok  	go.idp.xyz/idp-api-fabric/internal/platform/db	3.818s
+ok  	go.idp.xyz/idp-api-fabric/internal/platform/db/migrate	2.487s
+?   	go.idp.xyz/idp-api-fabric/internal/platform/db/pgtest	[no test files]
+ok  	go.idp.xyz/idp-api-fabric/internal/platform/identity	1.354s
+ok  	go.idp.xyz/idp-api-fabric/internal/platform/identity/devissuer	1.164s
+ok  	go.idp.xyz/idp-api-fabric/internal/platform/ids	1.017s
+?   	go.idp.xyz/idp-api-fabric/internal/platform/telemetry	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/platform/workers	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/platformoperations/adapters	[no test files]
+ok  	go.idp.xyz/idp-api-fabric/internal/platformoperations/adapters/postgres	1.795s
+ok  	go.idp.xyz/idp-api-fabric/internal/platformoperations/application	1.017s
+ok  	go.idp.xyz/idp-api-fabric/internal/platformoperations/domain	1.021s
+?   	go.idp.xyz/idp-api-fabric/internal/platformoperations/ports	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/policyreview/adapters	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/policyreview/application	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/policyreview/domain	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/policyreview/ports	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/productgovernance/adapters	[no test files]
+ok  	go.idp.xyz/idp-api-fabric/internal/productgovernance/adapters/outbox	1.639s
+ok  	go.idp.xyz/idp-api-fabric/internal/productgovernance/adapters/postgres	8.691s
+ok  	go.idp.xyz/idp-api-fabric/internal/productgovernance/adapters/static	1.012s
+ok  	go.idp.xyz/idp-api-fabric/internal/productgovernance/application	1.121s
+ok  	go.idp.xyz/idp-api-fabric/internal/productgovernance/domain	1.035s
+?   	go.idp.xyz/idp-api-fabric/internal/productgovernance/ports	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/publication/adapters	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/publication/application	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/publication/domain	[no test files]
+?   	go.idp.xyz/idp-api-fabric/internal/publication/ports	[no test files]
+ok  	go.idp.xyz/idp-api-fabric/internal/transport/http	22.280s
+?   	go.idp.xyz/idp-api-fabric/migrations	[no test files]
+ok  	go.idp.xyz/idp-api-fabric/tests/contract/bentocontract	2.601s
+ok  	go.idp.xyz/idp-api-fabric/tests/contract/codegen	1.928s
+cd tests/contract/oas31 && go test -race -count=1 ./...
+ok  	go.idp.xyz/idp-api-fabric/tests/contract/oas31/anyof	1.032s
+ok  	go.idp.xyz/idp-api-fabric/tests/contract/oas31/composition	1.115s
+ok  	go.idp.xyz/idp-api-fabric/tests/contract/oas31/httpsemantics	1.095s
+ok  	go.idp.xyz/idp-api-fabric/tests/contract/oas31/nullability	1.058s
+?   	go.idp.xyz/idp-api-fabric/tests/contract/oas31/oastest	[no test files]
+ok  	go.idp.xyz/idp-api-fabric/tests/contract/oas31/parsing	1.208s
+ok  	go.idp.xyz/idp-api-fabric/tests/contract/oas31/security	1.041s
+go build -o bin/ ./cmd/...
