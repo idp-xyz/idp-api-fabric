@@ -17,6 +17,48 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for APIAssetLifecycle.
+const (
+	APIAssetLifecycleDEPRECATED   APIAssetLifecycle = "DEPRECATED"
+	APIAssetLifecycleEXPERIMENTAL APIAssetLifecycle = "EXPERIMENTAL"
+	APIAssetLifecycleRETIRED      APIAssetLifecycle = "RETIRED"
+	APIAssetLifecycleSTABLE       APIAssetLifecycle = "STABLE"
+)
+
+// Valid indicates whether the value is a known member of the APIAssetLifecycle enum.
+func (e APIAssetLifecycle) Valid() bool {
+	switch e {
+	case APIAssetLifecycleDEPRECATED:
+		return true
+	case APIAssetLifecycleEXPERIMENTAL:
+		return true
+	case APIAssetLifecycleRETIRED:
+		return true
+	case APIAssetLifecycleSTABLE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssetKind.
+const (
+	AssetKindEVENT AssetKind = "EVENT"
+	AssetKindHTTP  AssetKind = "HTTP"
+)
+
+// Valid indicates whether the value is a known member of the AssetKind enum.
+func (e AssetKind) Valid() bool {
+	switch e {
+	case AssetKindEVENT:
+		return true
+	case AssetKindHTTP:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Audience.
 const (
 	AudienceInternal Audience = "internal"
@@ -135,6 +177,61 @@ func (e WorkspaceRole) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// APIAsset defines model for APIAsset.
+type APIAsset struct {
+	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	APIAssetID Identifier `json:"api_asset_id"`
+	APIKind    AssetKind  `json:"api_kind"`
+
+	// AssetKey The name people and configuration use for an object, unique in its scope: 2 to 63 lower case letters, digits and hyphens, starting with a letter and not ending with a hyphen. It is not the identity of the object.
+	AssetKey  Key       `json:"asset_key"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// DisplayName The name an object is shown under: 1 to 120 characters, without control characters and without surrounding white space. It identifies nothing and is not unique.
+	DisplayName DisplayName `json:"display_name"`
+
+	// DomainKey The name people and configuration use for an object, unique in its scope: 2 to 63 lower case letters, digits and hyphens, starting with a letter and not ending with a hyphen. It is not the identity of the object.
+	DomainKey Key               `json:"domain_key"`
+	Lifecycle APIAssetLifecycle `json:"lifecycle"`
+
+	// ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ProductID Identifier `json:"product_id"`
+
+	// WorkspaceID The owning workspace
+	WorkspaceID Identifier `json:"workspace_id"`
+}
+
+// APIAssetLifecycle defines model for APIAsset.Lifecycle.
+type APIAssetLifecycle string
+
+// AssetKind defines model for AssetKind.
+type AssetKind string
+
+// AssetList One page of the product's visible assets, oldest first
+type AssetList struct {
+	Items []APIAsset `json:"items"`
+
+	// NextPageToken The page_token of the page that follows this one, to be sent back as it is. A page carries it for as long as items follow: the last page of a list has none, also when it is full.
+	NextPageToken *NextPageToken `json:"next_page_token,omitempty"`
+}
+
+// AssetRegistration defines model for AssetRegistration.
+type AssetRegistration struct {
+	APIKind AssetKind `json:"api_kind"`
+
+	// AssetKey The name people and configuration use for an object, unique in its scope: 2 to 63 lower case letters, digits and hyphens, starting with a letter and not ending with a hyphen. It is not the identity of the object.
+	AssetKey Key `json:"asset_key"`
+
+	// DisplayName The name an object is shown under: 1 to 120 characters, without control characters and without surrounding white space. It identifies nothing and is not unique.
+	DisplayName DisplayName `json:"display_name"`
+
+	// DomainKey The name people and configuration use for an object, unique in its scope: 2 to 63 lower case letters, digits and hyphens, starting with a letter and not ending with a hyphen. It is not the identity of the object.
+	DomainKey Key `json:"domain_key"`
+
+	// WorkspaceID The owning workspace in the product
+	WorkspaceID Identifier `json:"workspace_id"`
 }
 
 // Audience Who a product documents its APIs for. public is anybody, signed in or not; partner is the external developers of the organizations the product gives access to; internal is the engineers of IDP. What each of them may read is a rule of the platform, the same for every product, so a product names no audience of its own.
@@ -487,6 +584,21 @@ type ListProductsParams struct {
 	PageToken *PageToken `form:"page_token,omitempty" json:"page_token,omitempty"`
 }
 
+// ListAssetsParams defines parameters for ListAssets.
+type ListAssetsParams struct {
+	// PageSize How many items the page holds at most. A list is read to its end by asking for the page that follows, never by asking for a larger one.
+	PageSize *PageSize `form:"page_size,omitempty" json:"page_size,omitempty"`
+
+	// PageToken Where the page starts: the next_page_token of the page before, as it was given. Without it the list starts at its beginning. The token is opaque. It names a position in one list and grants nothing: what the caller may read is decided again with every page, from what it holds then. One that is not a token of this list is refused (400 PAGE_TOKEN_INVALID).
+	PageToken   *PageToken  `form:"page_token,omitempty" json:"page_token,omitempty"`
+	WorkspaceID *Identifier `form:"workspace_id,omitempty" json:"workspace_id,omitempty"`
+	APIKind     *AssetKind  `form:"api_kind,omitempty" json:"api_kind,omitempty"`
+	DomainKey   *Key        `form:"domain_key,omitempty" json:"domain_key,omitempty"`
+
+	// Q A literal substring of the asset key, display name or domain key, ignoring case
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+}
+
 // ListAudienceConfigsParams defines parameters for ListAudienceConfigs.
 type ListAudienceConfigsParams struct {
 	// PageSize How many items the page holds at most. A list is read to its end by asking for the page that follows, never by asking for a larger one.
@@ -538,6 +650,9 @@ type ListMembershipsParams struct {
 // RegisterProductJSONRequestBody defines body for RegisterProduct for application/json ContentType.
 type RegisterProductJSONRequestBody = ProductRegistration
 
+// RegisterAssetJSONRequestBody defines body for RegisterAsset for application/json ContentType.
+type RegisterAssetJSONRequestBody = AssetRegistration
+
 // ConfigureAudienceJSONRequestBody defines body for ConfigureAudience for application/json ContentType.
 type ConfigureAudienceJSONRequestBody = AudienceConfigCreation
 
@@ -570,6 +685,15 @@ type ServerInterface interface {
 	// GetProduct Read a product
 	// (GET /v1/products/{product_id})
 	GetProduct(w http.ResponseWriter, r *http.Request, productID ProductID)
+	// ListAssets List API assets the caller can read
+	// (GET /v1/products/{product_id}/assets)
+	ListAssets(w http.ResponseWriter, r *http.Request, productID ProductID, params ListAssetsParams)
+	// RegisterAsset Register an API asset in a workspace
+	// (POST /v1/products/{product_id}/assets)
+	RegisterAsset(w http.ResponseWriter, r *http.Request, productID ProductID)
+	// GetAsset Read one API asset within the caller's scope
+	// (GET /v1/products/{product_id}/assets/{api_asset_id})
+	GetAsset(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier)
 	// ListAudienceConfigs List the audience configurations of a product
 	// (GET /v1/products/{product_id}/audience-configs)
 	ListAudienceConfigs(w http.ResponseWriter, r *http.Request, productID ProductID, params ListAudienceConfigsParams)
@@ -726,6 +850,174 @@ func (siw *ServerInterfaceWrapper) GetProduct(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetProduct(w, r, productID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAssets operation middleware
+func (siw *ServerInterfaceWrapper) ListAssets(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAssetsParams
+
+	// ------------- Optional query parameter "page_size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_size", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_size", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page_token" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_token", r.URL.Query(), &params.PageToken, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_token"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_token", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "workspace_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "workspace_id", r.URL.Query(), &params.WorkspaceID, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "workspace_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspace_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "api_kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "api_kind", r.URL.Query(), &params.APIKind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "api_kind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_kind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "domain_key" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "domain_key", r.URL.Query(), &params.DomainKey, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "domain_key"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "domain_key", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAssets(w, r, productID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RegisterAsset operation middleware
+func (siw *ServerInterfaceWrapper) RegisterAsset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RegisterAsset(w, r, productID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAsset operation middleware
+func (siw *ServerInterfaceWrapper) GetAsset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID Identifier
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAsset(w, r, productID, apiAssetID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1593,6 +1885,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/role-assignments", wrapper.GrantProductRole)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/products/{product_id}/role-assignments/{role_assignment_id}", wrapper.RevokeProductRole)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/role-assignments/{role_assignment_id}", wrapper.GetProductRole)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets", wrapper.ListAssets)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets", wrapper.RegisterAsset)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}", wrapper.GetAsset)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ListAudienceConfigs)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ConfigureAudience)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs/{audience_config_id}", wrapper.RemoveAudienceConfig)
@@ -1991,6 +2286,349 @@ type GetProductdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetProductdefaultApplicationProblemPlusJSONResponse) VisitGetProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssetsRequestObject struct {
+	ProductID ProductID `json:"product_id"`
+	Params    ListAssetsParams
+}
+
+type ListAssetsResponseObject interface {
+	VisitListAssetsResponse(w http.ResponseWriter) error
+}
+
+type ListAssets200ResponseHeaders struct {
+	CacheControl string
+}
+
+type ListAssets200JSONResponse struct {
+	Body    AssetList
+	Headers ListAssets200ResponseHeaders
+}
+
+func (response ListAssets200JSONResponse) VisitListAssetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssets400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListAssets400ApplicationProblemPlusJSONResponse) VisitListAssetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssets401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ListAssets401ApplicationProblemPlusJSONResponse) VisitListAssetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssets403ApplicationProblemPlusJSONResponse Problem
+
+func (response ListAssets403ApplicationProblemPlusJSONResponse) VisitListAssetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssets404ApplicationProblemPlusJSONResponse Problem
+
+func (response ListAssets404ApplicationProblemPlusJSONResponse) VisitListAssetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssetsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListAssetsdefaultApplicationProblemPlusJSONResponse) VisitListAssetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterAssetRequestObject struct {
+	ProductID ProductID `json:"product_id"`
+	Body      *RegisterAssetJSONRequestBody
+}
+
+type RegisterAssetResponseObject interface {
+	VisitRegisterAssetResponse(w http.ResponseWriter) error
+}
+
+type RegisterAsset201ResponseHeaders struct {
+	CacheControl string
+	Location     string
+}
+
+type RegisterAsset201JSONResponse struct {
+	Body    APIAsset
+	Headers RegisterAsset201ResponseHeaders
+}
+
+func (response RegisterAsset201JSONResponse) VisitRegisterAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterAsset400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterAsset400ApplicationProblemPlusJSONResponse) VisitRegisterAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterAsset401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterAsset401ApplicationProblemPlusJSONResponse) VisitRegisterAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterAsset403ApplicationProblemPlusJSONResponse Problem
+
+func (response RegisterAsset403ApplicationProblemPlusJSONResponse) VisitRegisterAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterAsset404ApplicationProblemPlusJSONResponse Problem
+
+func (response RegisterAsset404ApplicationProblemPlusJSONResponse) VisitRegisterAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterAsset409ApplicationProblemPlusJSONResponse Problem
+
+func (response RegisterAsset409ApplicationProblemPlusJSONResponse) VisitRegisterAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterAsset503ApplicationProblemPlusJSONResponse Problem
+
+func (response RegisterAsset503ApplicationProblemPlusJSONResponse) VisitRegisterAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterAssetdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response RegisterAssetdefaultApplicationProblemPlusJSONResponse) VisitRegisterAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssetRequestObject struct {
+	ProductID  ProductID  `json:"product_id"`
+	APIAssetID Identifier `json:"api_asset_id"`
+}
+
+type GetAssetResponseObject interface {
+	VisitGetAssetResponse(w http.ResponseWriter) error
+}
+
+type GetAsset200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetAsset200JSONResponse struct {
+	Body    APIAsset
+	Headers GetAsset200ResponseHeaders
+}
+
+func (response GetAsset200JSONResponse) VisitGetAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAsset400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetAsset400ApplicationProblemPlusJSONResponse) VisitGetAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAsset401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetAsset401ApplicationProblemPlusJSONResponse) VisitGetAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAsset404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetAsset404ApplicationProblemPlusJSONResponse) VisitGetAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssetdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetAssetdefaultApplicationProblemPlusJSONResponse) VisitGetAssetResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -4260,6 +4898,15 @@ type StrictServerInterface interface {
 	// GetProduct Read a product
 	// (GET /v1/products/{product_id})
 	GetProduct(ctx context.Context, request GetProductRequestObject) (GetProductResponseObject, error)
+	// ListAssets List API assets the caller can read
+	// (GET /v1/products/{product_id}/assets)
+	ListAssets(ctx context.Context, request ListAssetsRequestObject) (ListAssetsResponseObject, error)
+	// RegisterAsset Register an API asset in a workspace
+	// (POST /v1/products/{product_id}/assets)
+	RegisterAsset(ctx context.Context, request RegisterAssetRequestObject) (RegisterAssetResponseObject, error)
+	// GetAsset Read one API asset within the caller's scope
+	// (GET /v1/products/{product_id}/assets/{api_asset_id})
+	GetAsset(ctx context.Context, request GetAssetRequestObject) (GetAssetResponseObject, error)
 	// ListAudienceConfigs List the audience configurations of a product
 	// (GET /v1/products/{product_id}/audience-configs)
 	ListAudienceConfigs(ctx context.Context, request ListAudienceConfigsRequestObject) (ListAudienceConfigsResponseObject, error)
@@ -4455,6 +5102,93 @@ func (sh *strictHandler) GetProduct(w http.ResponseWriter, r *http.Request, prod
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProductResponseObject); ok {
 		if err := validResponse.VisitGetProductResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAssets operation middleware
+func (sh *strictHandler) ListAssets(w http.ResponseWriter, r *http.Request, productID ProductID, params ListAssetsParams) {
+	var request ListAssetsRequestObject
+
+	request.ProductID = productID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAssets(ctx, request.(ListAssetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAssets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAssetsResponseObject); ok {
+		if err := validResponse.VisitListAssetsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RegisterAsset operation middleware
+func (sh *strictHandler) RegisterAsset(w http.ResponseWriter, r *http.Request, productID ProductID) {
+	var request RegisterAssetRequestObject
+
+	request.ProductID = productID
+
+	var body RegisterAssetJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RegisterAsset(ctx, request.(RegisterAssetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RegisterAsset")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RegisterAssetResponseObject); ok {
+		if err := validResponse.VisitRegisterAssetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAsset operation middleware
+func (sh *strictHandler) GetAsset(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier) {
+	var request GetAssetRequestObject
+
+	request.ProductID = productID
+	request.APIAssetID = apiAssetID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAsset(ctx, request.(GetAssetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAsset")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAssetResponseObject); ok {
+		if err := validResponse.VisitGetAssetResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -580,6 +580,16 @@ func (s membershipStore) HeldBy(_ context.Context, productID domain.ProductID, p
 	return held, nil
 }
 
+func (s membershipStore) LockHeldInWorkspace(ctx context.Context, productID domain.ProductID, workspaceID domain.WorkspaceID, principal domain.Principal) ([]domain.Membership, error) {
+	if !transacted(ctx) {
+		return nil, fmt.Errorf("a Workspace membership was locked outside a transaction")
+	}
+	held, err := s.HeldBy(ctx, productID, principal)
+	return slices.DeleteFunc(held, func(membership domain.Membership) bool {
+		return membership.WorkspaceID != workspaceID
+	}), err
+}
+
 // List returns a page of the memberships in force of the workspace of the
 // product.
 func (s membershipStore) List(_ context.Context, productID domain.ProductID, workspaceID domain.WorkspaceID, page ports.Page) ([]domain.Membership, error) {
