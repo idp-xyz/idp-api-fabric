@@ -39,6 +39,7 @@ type fixture struct {
 	workspaces  *postgres.Workspaces
 	roles       *postgres.RoleAssignments
 	memberships *postgres.Memberships
+	configs     *postgres.AudienceConfigs
 	app         *pgx.Conn
 }
 
@@ -58,6 +59,7 @@ func newFixture(t *testing.T) fixture {
 		workspaces:  postgres.NewWorkspaces(fabric.Framework),
 		roles:       postgres.NewRoleAssignments(fabric.Framework),
 		memberships: postgres.NewMemberships(fabric.Framework),
+		configs:     postgres.NewAudienceConfigs(fabric.Framework),
 		app:         pgtest.Connect(t, database.Application),
 	}
 }

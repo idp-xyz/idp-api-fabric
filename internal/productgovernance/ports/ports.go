@@ -31,6 +31,15 @@ var (
 	// ErrRoleAssignmentGone is ErrMembershipGone for a role assignment.
 	ErrRoleAssignmentGone = errors.New("the role assignment is not in force any more")
 
+	// ErrAudienceConfigExists reports that the product documents its APIs
+	// for the audience in the environment already.
+	ErrAudienceConfigExists = errors.New("the product has a configuration for this audience in this environment already")
+
+	// ErrAudienceConfigGone reports an audience configuration that is not
+	// in force at the version it was read at any more: it was changed or
+	// removed after it was read and before it could be changed.
+	ErrAudienceConfigGone = errors.New("the audience configuration changed or was removed since it was read")
+
 	// ErrOutcomeUncertain reports a transaction whose commit may or may not
 	// have happened. The caller must not assume either: it reads the state
 	// again before it decides what to do (F03 §9).
@@ -42,9 +51,10 @@ var (
 // one instant. Neither ever changes, so an item keeps its place for as long
 // as it is listed.
 //
-// A list is ordered oldest first: products and workspaces by the instant
-// they were created, memberships and role assignments by the instant they
-// were granted, and each then by its identifier.
+// A list is ordered oldest first: products, workspaces and audience
+// configurations by the instant they were created, memberships and role
+// assignments by the instant they were granted, and each then by its
+// identifier.
 type Position struct {
 	// At is the instant, as the store keeps it: to the microsecond.
 	At time.Time
@@ -72,6 +82,12 @@ func PositionOfMembership(membership domain.Membership) Position {
 // assignments.
 func PositionOfRoleAssignment(assignment domain.RoleAssignment) Position {
 	return Position{At: assignment.GrantedAt, ID: string(assignment.ID)}
+}
+
+// PositionOfAudienceConfig is the place of the configuration in a list of
+// audience configurations. A change of its entry does not move it.
+func PositionOfAudienceConfig(config domain.AudienceConfig) Position {
+	return Position{At: config.CreatedAt, ID: string(config.ID)}
 }
 
 // Page is the part of a list one read asks for.
@@ -136,6 +152,10 @@ type RoleAssignments interface {
 	// RolesOf returns the roles the principal holds in the product now. The
 	// role of an assignment that was revoked is not among them.
 	RolesOf(ctx context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Role, error)
+	// LockHeldRoles reads the same roles in the transaction ctx carries and
+	// prevents their revocation until it ends. A concurrent revocation that
+	// took the lock first is reflected in the result.
+	LockHeldRoles(ctx context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Role, error)
 	// List returns one page of the assignments in force of the product, in
 	// the order of the list. An assignment of another product is not among
 	// them, and neither is one that was revoked.
@@ -174,6 +194,39 @@ type Memberships interface {
 	// workspace or of another product is not among them, and neither is
 	// one that was revoked.
 	List(ctx context.Context, productID domain.ProductID, workspaceID domain.WorkspaceID, page Page) ([]domain.Membership, error)
+}
+
+// AudienceConfigs stores which audiences the products document their APIs
+// for, in which environments, and where each enters the documentation.
+type AudienceConfigs interface {
+	// Add stores a new configuration in the transaction ctx carries. It
+	// fails with ErrAudienceConfigExists when the product has one in force
+	// for the audience in the environment already.
+	Add(ctx context.Context, config domain.AudienceConfig) error
+	// Find returns the configuration with the identifier if it is in force
+	// and belongs to the product. A configuration of another product is not
+	// found, and neither is one that was removed: nothing can be done to it.
+	Find(ctx context.Context, productID domain.ProductID, id domain.AudienceConfigID) (config domain.AudienceConfig, found bool, err error)
+	// Lock is Find for a change. It locks the configuration for the
+	// transaction ctx carries, until that ends, and returns it as it is
+	// then. It waits for a transaction that locked it before, and then
+	// returns it as that one left it: once removed, it is not found. What is
+	// decided from it holds when the change is stored.
+	Lock(ctx context.Context, productID domain.ProductID, id domain.AudienceConfigID) (config domain.AudienceConfig, found bool, err error)
+	// Change stores, in the transaction ctx carries, the entry of changed,
+	// who changed it and when, at its version. It fails with
+	// ErrAudienceConfigGone when the configuration is not in force at the
+	// version before that any more.
+	Change(ctx context.Context, changed domain.AudienceConfig) error
+	// Remove stores, in the transaction ctx carries, that the configuration
+	// was removed, when and by whom, as removed says. It fails with
+	// ErrAudienceConfigGone when the configuration is not in force at the
+	// version before that any more.
+	Remove(ctx context.Context, removed domain.AudienceConfig) error
+	// List returns one page of the configurations in force of the product,
+	// in the order of the list. A configuration of another product is not
+	// among them, and neither is one that was removed.
+	List(ctx context.Context, productID domain.ProductID, page Page) ([]domain.AudienceConfig, error)
 }
 
 // PlatformAdministrators knows who may register a product and name its
@@ -229,6 +282,10 @@ type Events interface {
 	// ProductRoleChanged announces a role assignment that was granted or
 	// revoked, as it is after the change.
 	ProductRoleChanged(ctx context.Context, assignment domain.RoleAssignment, correlationID string) error
+	// AudienceConfigChanged announces an audience configuration that was
+	// added, whose entry changed, or that was removed, as it is after the
+	// change.
+	AudienceConfigChanged(ctx context.Context, config domain.AudienceConfig, correlationID string) error
 }
 
 // Transactor owns the transaction boundary of a use case. It fails with

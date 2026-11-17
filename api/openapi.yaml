@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.5.0
+  version: 0.6.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -390,6 +390,267 @@ paths:
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/audience-configs:
+    get:
+      operationId: listAudienceConfigs
+      summary: List the audience configurations of a product
+      description: >-
+        Returns the audience configurations in force of the product: for whom
+        it documents its APIs, in which environments, and where each audience
+        enters the documentation. Whoever may read the product may read them:
+        a platform administrator, and whoever holds something in force in it,
+        a role in the product or a membership in one of its workspaces. To
+        anyone else there is no such product (404 PRODUCT_NOT_FOUND), the
+        same as for a product that is missing. A product starts with none: it
+        documents its APIs for nobody until an owner configures an audience.
+        A configuration that was removed is in no list.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: A page of the audience configurations in force
+          headers:
+            Cache-Control:
+              description: A product is private to its members
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AudienceConfigList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: configureAudience
+      summary: Make a product document its APIs for an audience in an environment
+      description: >-
+        Makes the product document its APIs for the audience in the
+        environment, from now until the configuration is removed, and says
+        where the audience enters the documentation, if anywhere yet. Only an
+        owner of the product may: its portal is the owner's to configure.
+        Whoever else may know the product exists is refused (403 FORBIDDEN):
+        a member of one of its workspaces, and a platform administrator, who
+        registers a product and configures none of its audiences. To anyone
+        else there is no such product (404 PRODUCT_NOT_FOUND), the same as
+        for a product that is missing. A product documents its APIs for an
+        audience in an environment once at a time: a pair that is configured
+        already is refused (409 AUDIENCE_CONFIG_EXISTS), and so is a product
+        that is suspended (409 PRODUCT_NOT_ACTIVE).
+
+
+        The configuration, the audit record and the event are committed
+        together or not at all. A 503 OUTCOME_UNCERTAIN means it is not known
+        which: read before retrying.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AudienceConfigCreation'
+      responses:
+        '201':
+          description: The product documents its APIs for the audience in the environment
+          headers:
+            Location:
+              description: Where the configuration is read, changed and removed
+              required: true
+              schema:
+                type: string
+                format: uri-reference
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              description: A product is private to its members
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AudienceConfig'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/audience-configs/{audience_config_id}:
+    get:
+      operationId: getAudienceConfig
+      summary: Read an audience configuration of a product
+      description: >-
+        Returns an audience configuration in force to whoever may read the
+        product: a platform administrator, and whoever holds something in
+        force in it. To anyone else there is no such product (404
+        PRODUCT_NOT_FOUND). A configuration that was removed is not found
+        (404 AUDIENCE_CONFIG_NOT_FOUND), and a configuration of another
+        product is not found under this one. The ETag of the answer is what
+        a change of the configuration is made from.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/AudienceConfigId'
+      responses:
+        '200':
+          description: The audience configuration
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              description: A product is private to its members
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AudienceConfig'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      operationId: changeAudienceConfig
+      summary: Change where an audience enters the documentation
+      description: >-
+        Replaces what can change of the configuration with the body: where
+        the audience enters the documentation of the environment. A body
+        without docs_url says that there is no entry. The audience and the
+        environment of a configuration never change: another pair is another
+        configuration.
+
+
+        A change is made from the configuration as the caller read it: the
+        request sends back in If-Match the ETag it was answered with. One
+        without If-Match is refused (428 PRECONDITION_REQUIRED). If the
+        configuration changed since it was read, the change is refused (412
+        PRECONDITION_FAILED), and the caller reads it again and decides anew:
+        of two changes made from one version, one is made. A change to the
+        entry the configuration has already changes nothing, and its version
+        stays.
+
+
+        Only an owner of the product may change a configuration. Whoever else
+        may know the product exists is refused (403 FORBIDDEN), whatever the
+        request names; to anyone else there is no such product (404
+        PRODUCT_NOT_FOUND). A configuration that is not in force is not found
+        (404 AUDIENCE_CONFIG_NOT_FOUND), and a suspended product takes no
+        change (409 PRODUCT_NOT_ACTIVE).
+
+
+        The change, the audit record and the event are committed together or
+        not at all. A 503 OUTCOME_UNCERTAIN means it is not known which: read
+        before retrying.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/AudienceConfigId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AudienceConfigChange'
+      responses:
+        '200':
+          description: The audience configuration as it is now
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              description: A product is private to its members
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AudienceConfig'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '412':
+          $ref: '#/components/responses/Problem'
+        '428':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: removeAudienceConfig
+      summary: Remove an audience configuration of a product
+      description: >-
+        Ends the configuration: from the moment the removal is committed the
+        product documents nothing for the audience in the environment, until
+        the pair is configured again, as a new configuration. Only an owner
+        of the product may, also of a product that is suspended. Whoever else
+        may know the product exists is refused (403 FORBIDDEN); to anyone
+        else there is no such product (404 PRODUCT_NOT_FOUND). A
+        configuration that is not in force is not found (404
+        AUDIENCE_CONFIG_NOT_FOUND), whoever removed it, so a removal that is
+        sent again is answered so. The configuration is kept as a record,
+        with who removed it and when.
+
+
+        The removal, the audit record and the event are committed together
+        or not at all. A 503 OUTCOME_UNCERTAIN means it is not known which:
+        read before retrying.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/AudienceConfigId'
+      responses:
+        '204':
+          description: The audience configuration was removed
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/products/{product_id}/workspaces:
     get:
       operationId: listWorkspaces
@@ -760,6 +1021,26 @@ components:
       description: The identifier of the role assignment
       schema:
         $ref: '#/components/schemas/Identifier'
+    AudienceConfigId:
+      name: audience_config_id
+      in: path
+      required: true
+      description: The identifier of the audience configuration
+      schema:
+        $ref: '#/components/schemas/Identifier'
+    IfMatch:
+      name: If-Match
+      in: header
+      description: >-
+        The ETag the caller was answered with when it read what it changes,
+        as it was given. The change is made only if that is still the
+        version in force. A change needs it, and one without it is refused
+        (428 PRECONDITION_REQUIRED) rather than made unconditionally, so the
+        contract does not mark it required: a request that lacks it would be
+        refused as one that does not match the contract. It names one
+        version: "*", a list and a weak tag are refused (400 REQUEST_INVALID).
+      schema:
+        $ref: '#/components/schemas/EntityTag'
     PageSize:
       name: page_size
       in: query
@@ -808,6 +1089,15 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
+  headers:
+    ETag:
+      description: >-
+        The version of what the answer shows, as an entity tag (RFC 9110). A
+        change of it is made from this version: the caller sends it back in
+        If-Match.
+      required: true
+      schema:
+        $ref: '#/components/schemas/EntityTag'
   schemas:
     Health:
       type: object
@@ -960,6 +1250,89 @@ components:
         granted_at:
           type: string
           format: date-time
+    Audience:
+      description: >-
+        Who a product documents its APIs for. public is anybody, signed in or
+        not; partner is the external developers of the organizations the
+        product gives access to; internal is the engineers of IDP. What each
+        of them may read is a rule of the platform, the same for every
+        product, so a product names no audience of its own.
+      type: string
+      enum: [public, partner, internal]
+    Environment:
+      description: >-
+        Where the APIs a product documents run: a sandbox is where a developer
+        tries an API, production is where its business runs.
+      type: string
+      enum: [sandbox, production]
+    DocsURL:
+      description: >-
+        Where an audience enters the documentation: an https URL of a host,
+        with an optional port of at most 65535 and valid percent escapes.
+        Whitespace and control characters are not allowed. The URL is at
+        most 2048 characters. A host whose name is not
+        ASCII is given in its punycode form, and nothing stands in front of
+        the host, so the URL carries no credentials. Fabric keeps it as it is
+        given and never opens it, so it cannot tell whether the host belongs
+        to the product.
+      type: string
+      maxLength: 2048
+      pattern: '^https://[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*(:([0-5]?[0-9]{1,4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?([/?#]([^%\p{Z}\p{Cc}]|%[0-9A-Fa-f]{2})*)?$'
+    EntityTag:
+      description: >-
+        A version as an entity tag (RFC 9110): its number, in double quotes.
+        The caller sends it back as it was given.
+      type: string
+      pattern: '^"[1-9][0-9]{0,17}"$'
+    AudienceConfigCreation:
+      type: object
+      additionalProperties: false
+      required: [audience, environment]
+      properties:
+        audience:
+          $ref: '#/components/schemas/Audience'
+        environment:
+          $ref: '#/components/schemas/Environment'
+        docs_url:
+          description: >-
+            Where the audience enters the documentation of the environment.
+            Without it, nobody said where yet.
+          $ref: '#/components/schemas/DocsURL'
+    AudienceConfigChange:
+      description: >-
+        What can change of an audience configuration, as it is to be. A body
+        without docs_url says that there is no entry.
+      type: object
+      additionalProperties: false
+      properties:
+        docs_url:
+          $ref: '#/components/schemas/DocsURL'
+    AudienceConfig:
+      description: >-
+        A product documents its APIs for one audience in one environment. The
+        configuration is in force from created_at until it is removed; a
+        removed configuration is not shown.
+      type: object
+      required: [audience_config_id, product_id, audience, environment, created_at, updated_at]
+      properties:
+        audience_config_id:
+          $ref: '#/components/schemas/Identifier'
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        audience:
+          $ref: '#/components/schemas/Audience'
+        environment:
+          $ref: '#/components/schemas/Environment'
+        docs_url:
+          description: Absent for as long as nobody said where the audience enters the documentation
+          $ref: '#/components/schemas/DocsURL'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          description: When the entry last changed, or created_at until it does
+          type: string
+          format: date-time
     WorkspaceCreation:
       type: object
       additionalProperties: false
@@ -1089,6 +1462,20 @@ components:
           maxItems: 100
           items:
             $ref: '#/components/schemas/ProductRoleAssignment'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
+    AudienceConfigList:
+      description: >-
+        One page of the audience configurations in force of a product, oldest
+        first.
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/AudienceConfig'
         next_page_token:
           $ref: '#/components/schemas/NextPageToken'
     Problem:

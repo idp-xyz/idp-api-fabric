@@ -9,6 +9,8 @@
 
 PR #6（产品负责人管理）和 #7（四类分页列表）已合入 main。对应领域与物理模型见 F03 §5.5，分页协议见 F04 §3.1.1，权限规则见 F05 §6.1；授权矩阵新增 AC-36…43，仍保留设计候选状态。可复现的本地 HTTP 负载实验及原始数据见 [列表压测记录](tests/performance/README.md)。该实现记录不改变 F01–F08 正式验收和具名批准的状态。
 
+管理 API 0.6.0 支持按产品管理受众、环境和文档入口。升级时执行 `fabric-migrate -apply -grant-to <application_role>`，应用迁移 005 并为应用角色授予新表的权限。[管理 API 契约](api/openapi.yaml)。
+
 ## 阅读入口
 
 - [index.html](index.html) — 统一的离线 HTML 文档阅读入口。

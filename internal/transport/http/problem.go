@@ -35,14 +35,22 @@ const (
 	CodeWorkspaceNotFound      = "WORKSPACE_NOT_FOUND"
 	CodeMembershipNotFound     = "MEMBERSHIP_NOT_FOUND"
 	CodeRoleAssignmentNotFound = "ROLE_ASSIGNMENT_NOT_FOUND"
+	CodeAudienceConfigNotFound = "AUDIENCE_CONFIG_NOT_FOUND"
 
 	// What the state does not allow.
 	CodeProductKeyTaken      = "PRODUCT_KEY_TAKEN"
 	CodeWorkspaceKeyTaken    = "WORKSPACE_KEY_TAKEN"
 	CodeMembershipExists     = "MEMBERSHIP_EXISTS"
 	CodeRoleAssignmentExists = "ROLE_ASSIGNMENT_EXISTS"
+	CodeAudienceConfigExists = "AUDIENCE_CONFIG_EXISTS"
 	CodeLastOwner            = "LAST_OWNER"
 	CodeProductNotActive     = "PRODUCT_NOT_ACTIVE"
+
+	// A change is made from the version the caller read (F04 §11). One that
+	// does not say which is refused; one made from a version that is not in
+	// force any more is refused too, and the caller reads again.
+	CodePreconditionRequired = "PRECONDITION_REQUIRED"
+	CodePreconditionFailed   = "PRECONDITION_FAILED"
 
 	// What matches the contract and still cannot be done.
 	CodeOwnerIssuerNotTrusted  = "OWNER_ISSUER_NOT_TRUSTED"

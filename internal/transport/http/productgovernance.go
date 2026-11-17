@@ -25,10 +25,15 @@ type ProductGovernance interface {
 	GrantProductRole(ctx context.Context, command application.GrantProductRole) (domain.RoleAssignment, error)
 	GetProductRole(ctx context.Context, query application.GetProductRole) (domain.RoleAssignment, error)
 	RevokeProductRole(ctx context.Context, command application.RevokeProductRole) error
+	ConfigureAudience(ctx context.Context, command application.ConfigureAudience) (domain.AudienceConfig, error)
+	GetAudienceConfig(ctx context.Context, query application.GetAudienceConfig) (domain.AudienceConfig, error)
+	ChangeAudienceConfig(ctx context.Context, command application.ChangeAudienceConfig) (domain.AudienceConfig, error)
+	RemoveAudienceConfig(ctx context.Context, command application.RemoveAudienceConfig) error
 	ListProducts(ctx context.Context, query application.ListProducts) (application.Page[domain.Product], error)
 	ListWorkspaces(ctx context.Context, query application.ListWorkspaces) (application.Page[domain.Workspace], error)
 	ListMemberships(ctx context.Context, query application.ListMemberships) (application.Page[domain.Membership], error)
 	ListProductRoles(ctx context.Context, query application.ListProductRoles) (application.Page[domain.RoleAssignment], error)
+	ListAudienceConfigs(ctx context.Context, query application.ListAudienceConfigs) (application.Page[domain.AudienceConfig], error)
 }
 
 // noStore is the cache directive of everything private: a product and what
@@ -259,7 +264,110 @@ func (o operations) RevokeProductRole(ctx context.Context, request RevokeProduct
 	return RevokeProductRole204Response{}, nil
 }
 
-// The four lists are read alike. What the request says of the page is read
+func (o operations) ConfigureAudience(ctx context.Context, request ConfigureAudienceRequestObject) (ConfigureAudienceResponseObject, error) {
+	principal, correlationID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	config, err := o.governance.ConfigureAudience(ctx, application.ConfigureAudience{
+		Caller: principal, CorrelationID: correlationID, ProductID: request.ProductID,
+		Audience: string(request.Body.Audience), Environment: string(request.Body.Environment),
+		DocsURL: docsURLOf(request.Body.DocsURL),
+	})
+	if err != nil {
+		return nil, err
+	}
+	body, err := audienceConfigOf(config)
+	if err != nil {
+		return nil, err
+	}
+	return ConfigureAudience201JSONResponse{
+		Body: body,
+		Headers: ConfigureAudience201ResponseHeaders{
+			Location:     "/v1/products/" + body.ProductID + "/audience-configs/" + body.AudienceConfigID,
+			ETag:         entityTag(config.Version),
+			CacheControl: noStore,
+		},
+	}, nil
+}
+
+func (o operations) GetAudienceConfig(ctx context.Context, request GetAudienceConfigRequestObject) (GetAudienceConfigResponseObject, error) {
+	principal, correlationID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	config, err := o.governance.GetAudienceConfig(ctx, application.GetAudienceConfig{
+		Caller: principal, CorrelationID: correlationID,
+		ProductID: request.ProductID, AudienceConfigID: request.AudienceConfigID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	body, err := audienceConfigOf(config)
+	if err != nil {
+		return nil, err
+	}
+	return GetAudienceConfig200JSONResponse{
+		Body:    body,
+		Headers: GetAudienceConfig200ResponseHeaders{ETag: entityTag(config.Version), CacheControl: noStore},
+	}, nil
+}
+
+// ChangeAudienceConfig asks the use case only once the request says which
+// version it was made from. One that does not is answered here: the use case
+// would have to make it unconditionally or refuse it, and refusing it needs
+// nothing the use case knows.
+func (o operations) ChangeAudienceConfig(ctx context.Context, request ChangeAudienceConfigRequestObject) (ChangeAudienceConfigResponseObject, error) {
+	principal, correlationID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	version, err := versionIn(request.Params.IfMatch)
+	if err != nil {
+		return nil, err
+	}
+	config, err := o.governance.ChangeAudienceConfig(ctx, application.ChangeAudienceConfig{
+		Caller: principal, CorrelationID: correlationID,
+		ProductID: request.ProductID, AudienceConfigID: request.AudienceConfigID,
+		DocsURL: docsURLOf(request.Body.DocsURL), Version: version,
+	})
+	if err != nil {
+		return nil, err
+	}
+	body, err := audienceConfigOf(config)
+	if err != nil {
+		return nil, err
+	}
+	return ChangeAudienceConfig200JSONResponse{
+		Body:    body,
+		Headers: ChangeAudienceConfig200ResponseHeaders{ETag: entityTag(config.Version), CacheControl: noStore},
+	}, nil
+}
+
+func (o operations) RemoveAudienceConfig(ctx context.Context, request RemoveAudienceConfigRequestObject) (RemoveAudienceConfigResponseObject, error) {
+	principal, correlationID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := o.governance.RemoveAudienceConfig(ctx, application.RemoveAudienceConfig{
+		Caller: principal, CorrelationID: correlationID,
+		ProductID: request.ProductID, AudienceConfigID: request.AudienceConfigID,
+	}); err != nil {
+		return nil, err
+	}
+	return RemoveAudienceConfig204Response{}, nil
+}
+
+// docsURLOf is the entry of the documentation a request names, or nothing if
+// it names none.
+func docsURLOf(docsURL *DocsURL) string {
+	if docsURL == nil {
+		return ""
+	}
+	return *docsURL
+}
+
+// The lists are read alike. What the request says of the page is read
 // first: a token that is none is answered before any use case is asked, as a
 // request that does not match the contract is. Who may read the list is for
 // the use case, with every page.
@@ -365,6 +473,31 @@ func (o operations) ListProductRoles(ctx context.Context, request ListProductRol
 	}, nil
 }
 
+func (o operations) ListAudienceConfigs(ctx context.Context, request ListAudienceConfigsRequestObject) (ListAudienceConfigsResponseObject, error) {
+	principal, correlationID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	size, after, err := paging(listOfAudienceConfigs, request.Params.PageSize, request.Params.PageToken)
+	if err != nil {
+		return nil, err
+	}
+	page, err := o.governance.ListAudienceConfigs(ctx, application.ListAudienceConfigs{
+		Caller: principal, CorrelationID: correlationID, ProductID: request.ProductID, PageSize: size, After: after,
+	})
+	if err != nil {
+		return nil, err
+	}
+	items, err := listed(page.Items, audienceConfigOf)
+	if err != nil {
+		return nil, err
+	}
+	return ListAudienceConfigs200JSONResponse{
+		Body:    AudienceConfigList{Items: items, NextPageToken: nextPageToken(listOfAudienceConfigs, page.Next)},
+		Headers: ListAudienceConfigs200ResponseHeaders{CacheControl: noStore},
+	}, nil
+}
+
 // productOf is the product as the contract shows it. The DTO is not the
 // model: what the contract does not declare, such as who registered the
 // product or its version, stays inside (F07 §3.1).
@@ -454,6 +587,42 @@ func roleAssignmentOf(assignment domain.RoleAssignment) (ProductRoleAssignment, 
 	}, nil
 }
 
+// audienceConfigOf is the audience configuration as the contract shows it:
+// for whom the product documents its APIs, in which environment, where the
+// audience enters the documentation, and since when. Who configured it stays
+// inside. Its version is not a member either: an answer that shows one
+// configuration carries it as its ETag.
+//
+// As with a membership, the contract shows a configuration in force and has
+// no member that says otherwise: a removed one is not sent, and neither is
+// an audience or an environment the contract does not declare.
+func audienceConfigOf(config domain.AudienceConfig) (AudienceConfig, error) {
+	if !config.InForce() {
+		return AudienceConfig{}, errors.New("the audience configuration was removed, and the contract shows none that is")
+	}
+	audience := Audience(config.Audience)
+	if !audience.Valid() {
+		return AudienceConfig{}, fmt.Errorf("the configuration is for the audience %q, which the contract does not declare", config.Audience)
+	}
+	environment := Environment(config.Environment)
+	if !environment.Valid() {
+		return AudienceConfig{}, fmt.Errorf("the configuration is for the environment %q, which the contract does not declare", config.Environment)
+	}
+	shown := AudienceConfig{
+		AudienceConfigID: string(config.ID),
+		ProductID:        string(config.ProductID),
+		Audience:         audience,
+		Environment:      environment,
+		CreatedAt:        config.CreatedAt,
+		UpdatedAt:        config.UpdatedAt,
+	}
+	if config.DocsURL != "" {
+		docsURL := config.DocsURL
+		shown.DocsURL = &docsURL
+	}
+	return shown, nil
+}
+
 // problemOf is the problem a failed use case is answered with. The second
 // result is false for a failure nobody expected, which is an internal error.
 //
@@ -464,6 +633,9 @@ func problemOf(err error) (Problem, bool) {
 	case errors.Is(err, errPageTokenInvalid):
 		return problem(http.StatusBadRequest, CodePageTokenInvalid,
 			"The page token is not one of this list. Read the list again from its start."), true
+	case errors.Is(err, errPreconditionRequired):
+		return problem(http.StatusPreconditionRequired, CodePreconditionRequired,
+			"A change needs If-Match: the ETag of what it changes, as it was read."), true
 	case errors.Is(err, application.ErrForbidden):
 		return problem(http.StatusForbidden, CodeForbidden, "The caller may not perform this action."), true
 	case errors.Is(err, application.ErrProductNotFound):
@@ -474,6 +646,11 @@ func problemOf(err error) (Problem, bool) {
 		return problem(http.StatusNotFound, CodeMembershipNotFound, ""), true
 	case errors.Is(err, application.ErrRoleAssignmentNotFound):
 		return problem(http.StatusNotFound, CodeRoleAssignmentNotFound, ""), true
+	case errors.Is(err, application.ErrAudienceConfigNotFound):
+		return problem(http.StatusNotFound, CodeAudienceConfigNotFound, ""), true
+	case errors.Is(err, application.ErrVersionMismatch):
+		return problem(http.StatusPreconditionFailed, CodePreconditionFailed,
+			"It changed since it was read. Read it again before deciding anew."), true
 	case errors.Is(err, ports.ErrProductKeyTaken):
 		return problem(http.StatusConflict, CodeProductKeyTaken, "A product with this key is registered already."), true
 	case errors.Is(err, ports.ErrWorkspaceKeyTaken):
@@ -482,6 +659,9 @@ func problemOf(err error) (Problem, bool) {
 		return problem(http.StatusConflict, CodeMembershipExists, "The principal holds this role in the workspace already."), true
 	case errors.Is(err, ports.ErrRoleAssignmentExists):
 		return problem(http.StatusConflict, CodeRoleAssignmentExists, "The principal holds this role in the product already."), true
+	case errors.Is(err, ports.ErrAudienceConfigExists):
+		return problem(http.StatusConflict, CodeAudienceConfigExists,
+			"The product documents its APIs for this audience in this environment already."), true
 	case errors.Is(err, domain.ErrLastOwner):
 		return problem(http.StatusConflict, CodeLastOwner, "The product has no other owner, and always has one."), true
 	case errors.Is(err, domain.ErrProductNotActive):

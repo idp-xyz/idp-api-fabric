@@ -22,10 +22,14 @@ import (
 )
 
 const (
-	productID    = domain.ProductID("1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6")
-	workspaceID  = domain.WorkspaceID("7d2e9f10-3a4b-4c5d-8e6f-0a1b2c3d4e5f")
-	membershipID = domain.MembershipID("3f8b1c2d-4e5a-4b6c-9d7e-8f9a0b1c2d3e")
-	assignmentID = domain.RoleAssignmentID("5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d")
+	productID        = domain.ProductID("1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6")
+	workspaceID      = domain.WorkspaceID("7d2e9f10-3a4b-4c5d-8e6f-0a1b2c3d4e5f")
+	membershipID     = domain.MembershipID("3f8b1c2d-4e5a-4b6c-9d7e-8f9a0b1c2d3e")
+	assignmentID     = domain.RoleAssignmentID("5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d")
+	audienceConfigID = domain.AudienceConfigID("8c9d0e1f-2a3b-4c4d-9e5f-6a7b8c9d0e1f")
+
+	partnerPortal = "https://developers.cargopai.example/partner"
+	partnerDocs   = "https://partners.cargopai.example/docs"
 )
 
 var (
@@ -96,6 +100,29 @@ func ownership(t *testing.T) (granted, revoked domain.RoleAssignment) {
 		t.Fatalf("revoke the role assignment: %v", err)
 	}
 	return granted, revoked
+}
+
+// partners is CargoPai documenting its APIs for partners in the sandbox: as
+// alice configured it, as bob changed its entry, and as the administrator
+// removed it.
+func partners(t *testing.T) (configured, changed, removed domain.AudienceConfig) {
+	t.Helper()
+
+	product, _ := cargopai(t)
+	configured, err := domain.ConfigureAudience(audienceConfigID, product, domain.AudiencePartner, domain.EnvironmentSandbox,
+		partnerPortal, alice, created.Add(4*time.Minute))
+	if err != nil {
+		t.Fatalf("configure the audience: %v", err)
+	}
+	changed, err = configured.ChangeDocsURL(product, partnerDocs, bob, created.Add(3*time.Hour))
+	if err != nil {
+		t.Fatalf("change the entry: %v", err)
+	}
+	removed, err = changed.Remove(admin, created.Add(4*time.Hour))
+	if err != nil {
+		t.Fatalf("remove the configuration: %v", err)
+	}
+	return configured, changed, removed
 }
 
 // stored is one row of the outbox, as far as these events fill it.
@@ -381,6 +408,80 @@ func TestARoleInAProductIsAnnouncedWhenItIsGrantedAndWhenItIsRevoked(t *testing.
 	}
 }
 
+// An audience configuration has one event for its addition, for every
+// change of its entry and for its removal. The configuration is its subject
+// and what its version counts, and the payload says whether the
+// configuration is in force after the change.
+func TestAnAudienceConfigurationIsAnnouncedWhenItIsAddedChangedAndRemoved(t *testing.T) {
+	database := pgtest.MigratedDatabase(t)
+	fabric, err := db.Open(t.Context(), database.Application)
+	if err != nil {
+		t.Fatalf("open the database: %v", err)
+	}
+	t.Cleanup(fabric.Close)
+	owner := pgtest.Connect(t, database.Migrator)
+
+	store, err := bentooutbox.NewStore(fabric.Framework)
+	if err != nil {
+		t.Fatalf("build the outbox: %v", err)
+	}
+	events, err := outbox.NewEvents(store, fixedClock{}, &eventIDs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	configured, changed, removed := partners(t)
+
+	err = fabric.WithinTransaction(t.Context(), func(ctx context.Context) error {
+		for index, config := range []domain.AudienceConfig{configured, changed, removed} {
+			if err := events.AudienceConfigChanged(ctx, config, fmt.Sprintf("correlation-%d", 7+index)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("store three events: %v", err)
+	}
+
+	announced := func(event int, occurredAt time.Time, version int64, inForce bool) stored {
+		id, correlation := fmt.Sprintf("00000000-0000-4000-8000-0000000000e%d", event), fmt.Sprintf("correlation-%d", 6+event)
+		return stored{
+			Source: "idp-api-fabric/productgovernance", EventID: id,
+			EventType: "fabric.productgovernance.audience_config.changed", EventVersion: 1,
+			Scope: string(productID), Subject: "audience_config/" + string(audienceConfigID), PartitionKey: string(productID),
+			Status: "PENDING", OccurredAt: occurredAt, RecordedAt: recordedAt,
+			CorrelationID: correlation, ContentType: "application/json",
+			Payload: map[string]any{
+				"event_id": id, "schema_version": float64(1),
+				"occurred_at": occurredAt.Format(time.RFC3339Nano), "correlation_id": correlation,
+				"product_id": string(productID), "aggregate_id": string(audienceConfigID), "aggregate_version": float64(version),
+				"audience_config_id": string(audienceConfigID), "audience": "partner", "environment": "sandbox", "in_force": inForce,
+			},
+		}
+	}
+	want := []stored{
+		// It happened when the configuration was added, when its entry
+		// changed, and when it was removed.
+		announced(1, created.Add(4*time.Minute), 1, true),
+		announced(2, created.Add(3*time.Hour), 2, true),
+		announced(3, created.Add(4*time.Hour), 3, false),
+	}
+	if got := outboxRows(t, owner); !reflect.DeepEqual(got, want) {
+		t.Errorf("the outbox holds\n %+v\nwant\n %+v", got, want)
+	}
+	if occurred := want[1].Payload["occurred_at"]; occurred != "2026-11-11T12:00:00.123456Z" {
+		t.Fatalf("the change is announced to have happened at %v", occurred)
+	}
+
+	events, _ = outbox.NewEvents(store, fixedClock{}, &eventIDs{})
+	if err := events.AudienceConfigChanged(t.Context(), configured, "no-transaction"); !errors.Is(err, bentopostgres.ErrTransactionRequired) {
+		t.Errorf("outside a transaction: got %v, want %v", err, bentopostgres.ErrTransactionRequired)
+	}
+	if rows := outboxRows(t, owner); len(rows) != 3 {
+		t.Errorf("the outbox holds %d events, want 3", len(rows))
+	}
+}
+
 // capture keeps what is enqueued, without a database.
 type capture struct {
 	envelopes []eventing.Envelope
@@ -396,12 +497,14 @@ func (c *capture) Enqueue(_ context.Context, envelope eventing.Envelope) error {
 }
 
 // An event carries references and never the content of what it reports: no
-// display name, no principal. That holds for the member of a membership and
-// for the owner of a product too: who it is identifies a person.
+// display name, no principal, no entry of the documentation. That holds for
+// the member of a membership and for the owner of a product too: who it is
+// identifies a person.
 func TestAnEventIsAValidEnvelopeOfReferences(t *testing.T) {
 	product, workspace := cargopai(t)
 	granted, revoked := member(t)
 	owned, disowned := ownership(t)
+	configured, changed, removed := partners(t)
 	writer := &capture{}
 	events, err := outbox.NewEvents(writer, fixedClock{}, &eventIDs{})
 	if err != nil {
@@ -425,9 +528,14 @@ func TestAnEventIsAValidEnvelopeOfReferences(t *testing.T) {
 	if err := events.ProductRoleChanged(t.Context(), disowned, "correlation-6"); err != nil {
 		t.Fatalf("announce the revocation of the role: %v", err)
 	}
+	for _, config := range []domain.AudienceConfig{configured, changed, removed} {
+		if err := events.AudienceConfigChanged(t.Context(), config, "correlation-7"); err != nil {
+			t.Fatalf("announce the audience configuration at version %d: %v", config.Version, err)
+		}
+	}
 
-	if len(writer.envelopes) != 6 {
-		t.Fatalf("%d envelopes, want 6", len(writer.envelopes))
+	if len(writer.envelopes) != 9 {
+		t.Fatalf("%d envelopes, want 9", len(writer.envelopes))
 	}
 	for _, envelope := range writer.envelopes {
 		if err := envelope.Validate(); err != nil {
@@ -442,7 +550,7 @@ func TestAnEventIsAValidEnvelopeOfReferences(t *testing.T) {
 				t.Errorf("the payload of %s lacks %s (F03 §9)", envelope.Type, member)
 			}
 		}
-		for _, withheld := range []string{"CargoPai", "API engineering", admin.Subject, alice.Subject, bob.Subject} {
+		for _, withheld := range []string{"CargoPai", "API engineering", admin.Subject, alice.Subject, bob.Subject, partnerPortal, partnerDocs} {
 			if json.Valid(envelope.Payload) && containsValue(payload, withheld) {
 				t.Errorf("the payload of %s carries %q", envelope.Type, withheld)
 			}

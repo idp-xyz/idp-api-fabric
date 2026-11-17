@@ -628,17 +628,18 @@ func TestTheUseCasesAreWiredCompletelyOrNotAtAll(t *testing.T) {
 	}
 
 	for name, remove := range map[string]func(d *Dependencies){
-		"transactor":     func(d *Dependencies) { d.Transactor = nil },
-		"products":       func(d *Dependencies) { d.Products = nil },
-		"workspaces":     func(d *Dependencies) { d.Workspaces = nil },
-		"roles":          func(d *Dependencies) { d.Roles = nil },
-		"memberships":    func(d *Dependencies) { d.Memberships = nil },
-		"administrators": func(d *Dependencies) { d.Administrators = nil },
-		"issuers":        func(d *Dependencies) { d.Issuers = nil },
-		"audit":          func(d *Dependencies) { d.Audit = nil },
-		"events":         func(d *Dependencies) { d.Events = nil },
-		"clock":          func(d *Dependencies) { d.Clock = nil },
-		"identifiers":    func(d *Dependencies) { d.Identifiers = nil },
+		"transactor":       func(d *Dependencies) { d.Transactor = nil },
+		"products":         func(d *Dependencies) { d.Products = nil },
+		"workspaces":       func(d *Dependencies) { d.Workspaces = nil },
+		"roles":            func(d *Dependencies) { d.Roles = nil },
+		"memberships":      func(d *Dependencies) { d.Memberships = nil },
+		"audience configs": func(d *Dependencies) { d.AudienceConfigs = nil },
+		"administrators":   func(d *Dependencies) { d.Administrators = nil },
+		"issuers":          func(d *Dependencies) { d.Issuers = nil },
+		"audit":            func(d *Dependencies) { d.Audit = nil },
+		"events":           func(d *Dependencies) { d.Events = nil },
+		"clock":            func(d *Dependencies) { d.Clock = nil },
+		"identifiers":      func(d *Dependencies) { d.Identifiers = nil },
 	} {
 		incomplete := complete
 		remove(&incomplete)

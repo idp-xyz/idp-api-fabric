@@ -167,10 +167,18 @@ func (s *stack) call(method, path, subject, body string) answer {
 
 func (s *stack) callWith(method, path, token, body string) answer {
 	s.t.Helper()
+	return s.callWithHeaders(method, path, token, body, nil)
+}
+
+func (s *stack) callWithHeaders(method, path, token, body string, headers http.Header) answer {
+	s.t.Helper()
 
 	request, err := http.NewRequest(method, s.server.URL+path, strings.NewReader(body))
 	if err != nil {
 		s.t.Fatal(err)
+	}
+	if headers != nil {
+		request.Header = headers.Clone()
 	}
 	if body != "" {
 		request.Header.Set("Content-Type", "application/json")

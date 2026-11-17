@@ -85,6 +85,12 @@ func TestWhatTheContractDoesNotRouteIsAProblem(t *testing.T) {
 		// A role assignment is granted and revoked, as a membership is.
 		{"a role assignment that cannot be changed", call{Method: http.MethodPut, Target: roleAssignments + "/" + roleAssignmentID, Token: "alice"},
 			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "GET, HEAD, DELETE"},
+		{"the audiences of a product that cannot be replaced at once", call{Method: http.MethodPut, Target: audienceConfigs, Token: "alice"},
+			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "GET, HEAD, POST"},
+		// What can change of an audience configuration is replaced as a
+		// whole, from the version that was read.
+		{"an audience configuration that is not patched", call{Method: http.MethodPatch, Target: audienceConfigs + "/" + audienceConfigID, Token: "alice"},
+			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "GET, HEAD, PUT, DELETE"},
 		// The mux would redirect these to the path it cleans them to. The
 		// contract routes neither, so neither is served nor redirected.
 		{"a path with a dot segment", call{Method: http.MethodGet, Target: "/v1/products/../healthz"},
@@ -118,6 +124,17 @@ const grant = `{"member":{"issuer":"https://issuer.example","subject":"bob"},"ro
 // roleGrant is the body of a grant of a role in a product: bob owns it.
 const roleGrant = `{"principal":{"issuer":"https://issuer.example","subject":"bob"},"role":"product_owner"}`
 
+// configuration is the body of a configuration of an audience: the partners
+// enter the documentation of the sandbox at partnerDocs.
+const configuration = `{"audience":"partner","environment":"sandbox","docs_url":"` + partnerDocs + `"}`
+
+// docsChange is the body of a change of where an audience enters the
+// documentation.
+const docsChange = `{"docs_url":"` + partnerDocs + `"}`
+
+// fromVersion3 makes a change from the third version of what it changes.
+var fromVersion3 = map[string]string{"If-Match": `"3"`}
+
 // protected are the operations that need a verified caller: every operation
 // but the two declared anonymous.
 var protected = []call{
@@ -131,10 +148,15 @@ var protected = []call{
 	{Method: http.MethodPost, Target: roleAssignments, Body: roleGrant},
 	{Method: http.MethodGet, Target: roleAssignments + "/" + roleAssignmentID},
 	{Method: http.MethodDelete, Target: roleAssignments + "/" + roleAssignmentID},
+	{Method: http.MethodPost, Target: audienceConfigs, Body: configuration},
+	{Method: http.MethodGet, Target: audienceConfigs + "/" + audienceConfigID},
+	{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID, Body: docsChange, Header: fromVersion3},
+	{Method: http.MethodDelete, Target: audienceConfigs + "/" + audienceConfigID},
 	{Method: http.MethodGet, Target: "/v1/products"},
 	{Method: http.MethodGet, Target: "/v1/products/" + productID + "/workspaces"},
 	{Method: http.MethodGet, Target: memberships},
 	{Method: http.MethodGet, Target: roleAssignments},
+	{Method: http.MethodGet, Target: audienceConfigs},
 }
 
 func TestAProtectedOperationNeedsAVerifiedCaller(t *testing.T) {
@@ -219,6 +241,9 @@ func TestWhoSendsARequestIsAskedBeforeWhatItSays(t *testing.T) {
 		{Method: http.MethodGet, Target: memberships + "?page_token=not.a.token"},
 		// This one matches the contract and is still no token of the list.
 		{Method: http.MethodGet, Target: roleAssignments + "?page_token=bm90LWEtdG9rZW4"},
+		{Method: http.MethodPost, Target: audienceConfigs, Body: `{"audience":"everybody","environment":"sandbox"}`},
+		{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID, Body: docsChange, Header: map[string]string{"If-Match": "*"}},
+		{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID, Body: `{"audience":"public"}`, Header: fromVersion3},
 	}
 	for _, c := range invalid {
 		wantProblem(t, s.do(t, c), http.StatusUnauthorized, CodeCredentialsMissing, "")
@@ -394,6 +419,61 @@ func TestARequestThatDoesNotMatchTheContractIsRefused(t *testing.T) {
 			http.StatusBadRequest, CodeRequestInvalid, "The path parameter role_assignment_id does not match the contract."},
 		{"a body where the revocation of a role takes none", call{Method: http.MethodDelete, Target: roleAssignments + "/" + roleAssignmentID, Body: `{"canary":true}`},
 			http.StatusBadRequest, CodeRequestInvalid, "The request does not match the contract."},
+		{"a configuration without an audience", call{Method: http.MethodPost, Target: audienceConfigs, Body: `{"environment":"sandbox"}`},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /audience (required)."},
+		{"a configuration without an environment", call{Method: http.MethodPost, Target: audienceConfigs, Body: `{"audience":"partner"}`},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /environment (required)."},
+		{"an audience nobody defined", call{Method: http.MethodPost, Target: audienceConfigs, Body: strings.Replace(configuration, `"partner"`, `"canary"`, 1)},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /audience (enum)."},
+		{"an environment nobody defined", call{Method: http.MethodPost, Target: audienceConfigs, Body: strings.Replace(configuration, `"sandbox"`, `"canary"`, 1)},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /environment (enum)."},
+		{"an entry over plain http", call{Method: http.MethodPost, Target: audienceConfigs, Body: strings.Replace(configuration, `https://`, `http://`, 1)},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /docs_url (pattern)."},
+		{"an entry that carries credentials", call{Method: http.MethodPost, Target: audienceConfigs, Body: strings.Replace(configuration, `https://`, `https://canary:secret@`, 1)},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /docs_url (pattern)."},
+		{"an entry that is too long", call{Method: http.MethodPost, Target: audienceConfigs,
+			Body: `{"audience":"partner","environment":"sandbox","docs_url":"https://docs.example/` + strings.Repeat("c", 2048) + `"}`},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /docs_url (maxLength)."},
+		// No entry is said by leaving it out, not by an empty one.
+		{"an empty entry", call{Method: http.MethodPost, Target: audienceConfigs, Body: `{"audience":"partner","environment":"sandbox","docs_url":""}`},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /docs_url (pattern)."},
+		{"an entry with an invalid escape", call{Method: http.MethodPost, Target: audienceConfigs,
+			Body: `{"audience":"partner","environment":"sandbox","docs_url":"https://docs.example/guide%zz"}`},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /docs_url (pattern)."},
+		{"an entry with a port outside the valid range", call{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID,
+			Body: `{"docs_url":"https://docs.example:99999/guide"}`, Header: fromVersion3},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /docs_url (pattern)."},
+		{"a second JSON object after an instruction to clear an entry", call{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID,
+			Body: `{}{"docs_url":"https://docs.example/guide"}`, Header: fromVersion3},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body cannot be read as the contract declares it."},
+		{"a null entry", call{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID, Body: `{"docs_url":null}`, Header: fromVersion3},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /docs_url (nullable)."},
+		// A configuration is of the product of the path and is added by the
+		// caller, at version 1.
+		{"a configuration that names its product", call{Method: http.MethodPost, Target: audienceConfigs,
+			Body: strings.Replace(configuration, `"audience"`, `"product_id":"`+productID+`","audience"`, 1)},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		{"a configuration that says who configures it", call{Method: http.MethodPost, Target: audienceConfigs,
+			Body: strings.Replace(configuration, `"audience"`, `"created_by":{"issuer":"https://issuer.example","subject":"canary"},"audience"`, 1)},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		// The audience and the environment of a configuration never change,
+		// and the version a change is made from is said in If-Match.
+		{"a change of the audience", call{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID, Body: `{"audience":"public"}`, Header: fromVersion3},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		{"a change of the environment", call{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID,
+			Body: strings.Replace(docsChange, `{`, `{"environment":"production",`, 1), Header: fromVersion3},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		{"a change that says its version in the body", call{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID,
+			Body: strings.Replace(docsChange, `{`, `{"version":3,`, 1), Header: fromVersion3},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		{"a change without a body", call{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID, Header: fromVersion3},
+			http.StatusBadRequest, CodeRequestInvalid, "The operation requires a request body."},
+		{"an audience configuration identifier that is none", call{Method: http.MethodGet, Target: audienceConfigs + "/canary"},
+			http.StatusBadRequest, CodeRequestInvalid, "The path parameter audience_config_id does not match the contract."},
+		{"a body where the removal of a configuration takes none", call{Method: http.MethodDelete, Target: audienceConfigs + "/" + audienceConfigID, Body: `{"canary":true}`},
+			http.StatusBadRequest, CodeRequestInvalid, "The request does not match the contract."},
+		{"a query where a change takes none", call{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID + "?canary=1", Body: docsChange, Header: fromVersion3},
+			http.StatusBadRequest, CodeRequestInvalid, "The request has a query parameter the operation does not declare."},
 		// A page holds 1 to 100 items, and its size is a whole number.
 		{"a page of no item", call{Method: http.MethodGet, Target: products + "?page_size=0"},
 			http.StatusBadRequest, CodeRequestInvalid, "The query parameter page_size does not match the contract."},

@@ -31,6 +31,17 @@ var (
 	// As with a membership, one that was revoked is not found either.
 	ErrRoleAssignmentNotFound = errors.New("no such role assignment")
 
+	// ErrAudienceConfigNotFound is ErrProductNotFound for an audience
+	// configuration. One that was removed is not found either: nothing can
+	// be done to it.
+	ErrAudienceConfigNotFound = errors.New("no such audience configuration")
+
+	// ErrVersionMismatch reports a change made from a version of what it
+	// changes that is not the version in force: somebody else changed it
+	// since the caller read it. The caller reads it again and decides anew
+	// (F04 §11).
+	ErrVersionMismatch = errors.New("the change was made from a version that is not the one in force")
+
 	// ErrOwnerIssuerNotTrusted reports an owner named under an identity
 	// provider whose principals cannot authenticate here.
 	ErrOwnerIssuerNotTrusted = errors.New("an owner is named under an issuer this deployment does not trust")
@@ -61,6 +72,13 @@ const (
 	ActionProductRoleGrant  = "product_role.grant"
 	ActionProductRoleRevoke = "product_role.revoke"
 	ActionProductRoleRead   = "product_role.read"
+
+	// Nor does it name one on the audiences of a product. These too are
+	// named after the event that announces a configuration.
+	ActionAudienceConfigure    = "audience_config.configure"
+	ActionAudienceConfigChange = "audience_config.change"
+	ActionAudienceConfigRemove = "audience_config.remove"
+	ActionAudienceConfigRead   = "audience_config.read"
 )
 
 // The rules a decision is recorded under, as the access matrix of F05 names
@@ -71,7 +89,11 @@ const (
 	// the owners of a product is part of registering it: an administrator
 	// that names one afterwards is recorded under the same rule.
 	rulePlatformAdministrator = "AC-08"
-	// ruleProductOwner permits workspace.manage (AC-09).
+	// ruleProductOwner permits workspace.manage (AC-09). The matrix has no
+	// row for the audiences of a product. Its portal is its owner's to
+	// configure (F06 §2): an owner that configures an audience manages its
+	// own product, as it does when it creates a workspace, and is recorded
+	// under this rule as well.
 	ruleProductOwner = "AC-09"
 	// ruleMembersOfOwnProduct permits member.grant (AC-10). The matrix has
 	// no row for revoking a membership: whoever may grant one may revoke
@@ -94,21 +116,25 @@ const (
 	// resourceRoleAssignment is the resource of the actions on the roles of
 	// a product. Its identifier is that of the role assignment.
 	resourceRoleAssignment = "RoleAssignment"
+	// resourceAudienceConfig is the resource of the actions on the
+	// audiences of a product, as F03 names it.
+	resourceAudienceConfig = "ProductAudienceConfig"
 )
 
 // Dependencies are the ports the use cases are wired with. All are required.
 type Dependencies struct {
-	Transactor     ports.Transactor
-	Products       ports.Products
-	Workspaces     ports.Workspaces
-	Roles          ports.RoleAssignments
-	Memberships    ports.Memberships
-	Administrators ports.PlatformAdministrators
-	Issuers        ports.TrustedIssuers
-	Audit          ports.AuditTrail
-	Events         ports.Events
-	Clock          ports.Clock
-	Identifiers    ports.Identifiers
+	Transactor      ports.Transactor
+	Products        ports.Products
+	Workspaces      ports.Workspaces
+	Roles           ports.RoleAssignments
+	Memberships     ports.Memberships
+	AudienceConfigs ports.AudienceConfigs
+	Administrators  ports.PlatformAdministrators
+	Issuers         ports.TrustedIssuers
+	Audit           ports.AuditTrail
+	Events          ports.Events
+	Clock           ports.Clock
+	Identifiers     ports.Identifiers
 }
 
 // ProductGovernance holds the use cases of the context (F03 §9).
@@ -124,17 +150,18 @@ type ProductGovernance struct {
 // New builds the use cases.
 func New(deps Dependencies) (*ProductGovernance, error) {
 	missing := map[string]bool{
-		"a transactor":            deps.Transactor == nil,
-		"the products":            deps.Products == nil,
-		"the workspaces":          deps.Workspaces == nil,
-		"the role assignments":    deps.Roles == nil,
-		"the memberships":         deps.Memberships == nil,
-		"the administrators":      deps.Administrators == nil,
-		"the trusted issuers":     deps.Issuers == nil,
-		"the audit trail":         deps.Audit == nil,
-		"the events":              deps.Events == nil,
-		"a clock":                 deps.Clock == nil,
-		"an identifier generator": deps.Identifiers == nil,
+		"a transactor":                deps.Transactor == nil,
+		"the products":                deps.Products == nil,
+		"the workspaces":              deps.Workspaces == nil,
+		"the role assignments":        deps.Roles == nil,
+		"the memberships":             deps.Memberships == nil,
+		"the audience configurations": deps.AudienceConfigs == nil,
+		"the administrators":          deps.Administrators == nil,
+		"the trusted issuers":         deps.Issuers == nil,
+		"the audit trail":             deps.Audit == nil,
+		"the events":                  deps.Events == nil,
+		"a clock":                     deps.Clock == nil,
+		"an identifier generator":     deps.Identifiers == nil,
 	}
 	for what, absent := range missing {
 		if absent {
@@ -176,7 +203,7 @@ func known(caller domain.Principal) error {
 
 // scene is what a use case reads before it decides: the product, what the
 // caller holds in it and, as far as the request names them, the workspace
-// and the membership, or the role assignment.
+// and the membership, the role assignment, or the audience configuration.
 type scene struct {
 	product      domain.Product
 	productFound bool
@@ -188,6 +215,8 @@ type scene struct {
 	membershipFound bool
 	assignment      domain.RoleAssignment
 	assignmentFound bool
+	config          domain.AudienceConfig
+	configFound     bool
 }
 
 // survey reads the scene of a request. An empty identifier names nothing and
@@ -200,13 +229,20 @@ type scene struct {
 // (F05 §5.3).
 func (s *ProductGovernance) survey(ctx context.Context, caller domain.Principal,
 	productID domain.ProductID, workspaceID domain.WorkspaceID, membershipID domain.MembershipID) (scene, error) {
+	return s.surveyWithRoles(ctx, caller, productID, workspaceID, membershipID, s.deps.Roles.RolesOf)
+}
+
+type roleLookup func(context.Context, domain.ProductID, domain.Principal) ([]domain.Role, error)
+
+func (s *ProductGovernance) surveyWithRoles(ctx context.Context, caller domain.Principal,
+	productID domain.ProductID, workspaceID domain.WorkspaceID, membershipID domain.MembershipID, lookup roleLookup) (scene, error) {
 	var seen scene
 	var err error
 
 	if seen.product, seen.productFound, err = s.deps.Products.Find(ctx, productID); err != nil {
 		return scene{}, fmt.Errorf("read the product: %w", err)
 	}
-	if seen.standing.Roles, err = s.deps.Roles.RolesOf(ctx, productID, caller); err != nil {
+	if seen.standing.Roles, err = lookup(ctx, productID, caller); err != nil {
 		return scene{}, fmt.Errorf("read the roles of the caller: %w", err)
 	}
 	if seen.standing.Memberships, err = s.deps.Memberships.HeldBy(ctx, productID, caller); err != nil {
@@ -237,6 +273,23 @@ func (s *ProductGovernance) surveyAssignment(ctx context.Context, caller domain.
 	if assignmentID != "" {
 		if seen.assignment, seen.assignmentFound, err = s.deps.Roles.Find(ctx, productID, assignmentID); err != nil {
 			return scene{}, fmt.Errorf("read the role assignment: %w", err)
+		}
+	}
+	return seen, nil
+}
+
+// surveyAudienceConfig is survey for a request that names an audience
+// configuration of the product. As there, an empty identifier names nothing
+// and is not looked up, and all of it is read whatever the answer will be.
+func (s *ProductGovernance) surveyAudienceConfig(ctx context.Context, caller domain.Principal,
+	productID domain.ProductID, configID domain.AudienceConfigID, lookup roleLookup) (scene, error) {
+	seen, err := s.surveyWithRoles(ctx, caller, productID, "", "", lookup)
+	if err != nil {
+		return scene{}, err
+	}
+	if configID != "" {
+		if seen.config, seen.configFound, err = s.deps.AudienceConfigs.Find(ctx, productID, configID); err != nil {
+			return scene{}, fmt.Errorf("read the audience configuration: %w", err)
 		}
 	}
 	return seen, nil

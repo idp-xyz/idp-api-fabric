@@ -11,7 +11,7 @@ import (
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/ports"
 )
 
-var everyList = []string{listOfProducts, listOfWorkspaces, listOfMemberships, listOfRoleAssignments}
+var everyList = []string{listOfProducts, listOfWorkspaces, listOfMemberships, listOfRoleAssignments, listOfAudienceConfigs}
 
 // tokenOf is the token whose content is the JSON given, whatever it says.
 func tokenOf(content string) string {

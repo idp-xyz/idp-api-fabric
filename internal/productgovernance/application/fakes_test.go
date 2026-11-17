@@ -27,8 +27,10 @@ type world struct {
 	// membership, in force or revoked, as the tables do.
 	roles       map[domain.RoleAssignmentID]domain.RoleAssignment
 	memberships map[domain.MembershipID]domain.Membership
-	audited     []audited
-	events      []string
+	// configs holds every audience configuration, in force or removed.
+	configs map[domain.AudienceConfigID]domain.AudienceConfig
+	audited []audited
+	events  []string
 
 	administrators []domain.Principal
 	issuers        []string
@@ -42,9 +44,10 @@ type world struct {
 	// failing makes the named step fail, to see what a failure leaves behind.
 	failing map[string]error
 	// meanwhile runs when the owners of a product are locked, before they
-	// are counted. It stands for what another transaction committed while
-	// this one waited for the lock: this one reads it, and does not take it
-	// back when it fails.
+	// are counted, and when an audience configuration is locked, before it
+	// is read. It stands for what another transaction committed while this
+	// one waited for the lock: this one reads it, and does not take it back
+	// when it fails.
 	meanwhile func()
 	// undo puts the world back as the transaction in progress found it.
 	undo func()
@@ -77,7 +80,8 @@ var (
 func (w *world) wiring() Dependencies {
 	return Dependencies{
 		Transactor: w, Products: productStore{w}, Workspaces: workspaceStore{w}, Roles: roleStore{w},
-		Memberships: membershipStore{w}, Administrators: w, Issuers: w, Audit: w, Events: w, Clock: w, Identifiers: w,
+		Memberships: membershipStore{w}, AudienceConfigs: configStore{w},
+		Administrators: w, Issuers: w, Audit: w, Events: w, Clock: w, Identifiers: w,
 	}
 }
 
@@ -89,6 +93,7 @@ func newWorld(t *testing.T) (*world, *ProductGovernance) {
 		workspaces:     map[domain.WorkspaceID]domain.Workspace{},
 		roles:          map[domain.RoleAssignmentID]domain.RoleAssignment{},
 		memberships:    map[domain.MembershipID]domain.Membership{},
+		configs:        map[domain.AudienceConfigID]domain.AudienceConfig{},
 		administrators: []domain.Principal{admin},
 		issuers:        []string{trustedIssuer},
 		now:            started,
@@ -124,11 +129,11 @@ func (w *world) WithinTransaction(ctx context.Context, fn func(ctx context.Conte
 // checkpoint returns what puts the world back as it is now.
 func (w *world) checkpoint() func() {
 	products, workspaces := maps.Clone(w.products), maps.Clone(w.workspaces)
-	roles, memberships := maps.Clone(w.roles), maps.Clone(w.memberships)
+	roles, memberships, configs := maps.Clone(w.roles), maps.Clone(w.memberships), maps.Clone(w.configs)
 	audit, events := slices.Clone(w.audited), slices.Clone(w.events)
 	return func() {
 		w.products, w.workspaces = products, workspaces
-		w.roles, w.memberships = roles, memberships
+		w.roles, w.memberships, w.configs = roles, memberships, configs
 		w.audited, w.events = audit, events
 	}
 }
@@ -204,6 +209,24 @@ func (w *world) ProductRoleChanged(ctx context.Context, assignment domain.RoleAs
 		change = "revoked"
 	}
 	w.events = append(w.events, "ProductRoleChanged "+string(assignment.ID)+" "+change+" "+correlationID)
+	return nil
+}
+
+func (w *world) AudienceConfigChanged(ctx context.Context, config domain.AudienceConfig, correlationID string) error {
+	if err := w.fail("events"); err != nil {
+		return err
+	}
+	if !transacted(ctx) {
+		return fmt.Errorf("an event was announced outside a transaction")
+	}
+	change := "changed"
+	switch {
+	case !config.InForce():
+		change = "removed"
+	case config.Version == 1:
+		change = "configured"
+	}
+	w.events = append(w.events, fmt.Sprintf("AudienceConfigChanged %s %s at %d %s", config.ID, change, config.Version, correlationID))
 	return nil
 }
 
@@ -409,6 +432,13 @@ func (s roleStore) RolesOf(_ context.Context, productID domain.ProductID, princi
 	return roles, nil
 }
 
+func (s roleStore) LockHeldRoles(ctx context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Role, error) {
+	if !transacted(ctx) {
+		return nil, fmt.Errorf("a principal's roles were locked outside a transaction")
+	}
+	return s.RolesOf(ctx, productID, principal)
+}
+
 // List returns a page of the role assignments in force of the product.
 func (s roleStore) List(_ context.Context, productID domain.ProductID, page ports.Page) ([]domain.RoleAssignment, error) {
 	if err := s.fail("list"); err != nil {
@@ -518,6 +548,109 @@ func (s membershipStore) List(_ context.Context, productID domain.ProductID, wor
 		}
 	}
 	return paged(of, ports.PositionOfMembership, page)
+}
+
+type configStore struct{ *world }
+
+func (s configStore) Add(ctx context.Context, config domain.AudienceConfig) error {
+	if !transacted(ctx) {
+		return fmt.Errorf("an audience configuration was written outside a transaction")
+	}
+	for _, existing := range s.configs {
+		if existing.InForce() && existing.ProductID == config.ProductID &&
+			existing.Audience == config.Audience && existing.Environment == config.Environment {
+			return ports.ErrAudienceConfigExists
+		}
+	}
+	s.configs[config.ID] = config
+	return nil
+}
+
+// inForce is the audience configuration in force with the identifier, under
+// its own product.
+func (s configStore) inForce(productID domain.ProductID, id domain.AudienceConfigID) (domain.AudienceConfig, bool) {
+	config, found := s.configs[id]
+	if !found || !config.InForce() || config.ProductID != productID {
+		return domain.AudienceConfig{}, false
+	}
+	return config, true
+}
+
+func (s configStore) Find(_ context.Context, productID domain.ProductID, id domain.AudienceConfigID) (domain.AudienceConfig, bool, error) {
+	if err := s.fail("configs"); err != nil {
+		return domain.AudienceConfig{}, false, err
+	}
+	config, found := s.inForce(productID, id)
+	return config, found, nil
+}
+
+// Lock finds an audience configuration in force as Find does, once what
+// another transaction committed in the meantime is in. As with the owners,
+// there is nobody to wait for.
+func (s configStore) Lock(ctx context.Context, productID domain.ProductID, id domain.AudienceConfigID) (domain.AudienceConfig, bool, error) {
+	if !transacted(ctx) {
+		return domain.AudienceConfig{}, false, fmt.Errorf("an audience configuration was locked outside a transaction")
+	}
+	if err := s.fail("lock"); err != nil {
+		return domain.AudienceConfig{}, false, err
+	}
+	if s.meanwhile != nil {
+		// A use case writes nothing before it locks the configuration.
+		s.meanwhile()
+		s.undo = s.checkpoint()
+	}
+	config, found := s.inForce(productID, id)
+	return config, found, nil
+}
+
+// Change stores a change of the entry made from the version before it.
+func (s configStore) Change(ctx context.Context, changed domain.AudienceConfig) error {
+	if !transacted(ctx) {
+		return fmt.Errorf("an audience configuration was changed outside a transaction")
+	}
+	// "change" stands for a change that lost the race against another
+	// writer.
+	if err := s.fail("change"); err != nil {
+		return err
+	}
+	if config, found := s.inForce(changed.ProductID, changed.ID); !found || config.Version != changed.Version-1 {
+		return ports.ErrAudienceConfigGone
+	}
+	s.configs[changed.ID] = changed
+	return nil
+}
+
+// Remove stores a removal made from the version before it.
+func (s configStore) Remove(ctx context.Context, removed domain.AudienceConfig) error {
+	if !transacted(ctx) {
+		return fmt.Errorf("an audience configuration was removed outside a transaction")
+	}
+	// "remove" stands for a removal that lost the race against another
+	// writer.
+	if err := s.fail("remove"); err != nil {
+		return err
+	}
+	if config, found := s.inForce(removed.ProductID, removed.ID); !found || config.Version != removed.Version-1 {
+		return ports.ErrAudienceConfigGone
+	}
+	s.configs[removed.ID] = removed
+	return nil
+}
+
+// List returns a page of the audience configurations in force of the
+// product.
+func (s configStore) List(_ context.Context, productID domain.ProductID, page ports.Page) ([]domain.AudienceConfig, error) {
+	if err := s.fail("list"); err != nil {
+		return nil, err
+	}
+	s.asked = append(s.asked, page)
+	var of []domain.AudienceConfig
+	for _, config := range s.configs {
+		if config.InForce() && config.ProductID == productID {
+			of = append(of, config)
+		}
+	}
+	return paged(of, ports.PositionOfAudienceConfig, page)
 }
 
 // refusals are the audit entries of refused attempts.

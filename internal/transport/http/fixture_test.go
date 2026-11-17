@@ -59,11 +59,17 @@ const (
 	workspaceID      = "7d2e9f10-3a4b-4c5d-8e6f-0a1b2c3d4e5f"
 	membershipID     = "3f8b1c2d-4e5a-4b6c-9d7e-8f9a0b1c2d3e"
 	roleAssignmentID = "5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d"
+	audienceConfigID = "9e8d7c6b-5a4f-4e3d-a2c1-b0f9e8d7c6b5"
 
 	// memberships is where the memberships of the workspace are granted.
 	memberships = "/v1/products/" + productID + "/workspaces/" + workspaceID + "/memberships"
 	// roleAssignments is where the roles of the product are granted.
 	roleAssignments = "/v1/products/" + productID + "/role-assignments"
+	// audienceConfigs is where the audiences of the product are configured.
+	audienceConfigs = "/v1/products/" + productID + "/audience-configs"
+	// partnerDocs is where the partners enter the documentation of the
+	// sandbox.
+	partnerDocs = "https://docs.cargopai.example/partners?env=sandbox"
 )
 
 var createdAt = time.Date(2026, 11, 11, 9, 0, 0, 123456000, time.UTC)
@@ -101,6 +107,18 @@ func ownership() domain.RoleAssignment {
 	}
 }
 
+// partnerSandbox is the documentation of the sandbox for the partners, as
+// alice configured it and changed it twice since.
+func partnerSandbox() domain.AudienceConfig {
+	changedAt := createdAt.Add(time.Hour)
+	return domain.AudienceConfig{
+		ID: audienceConfigID, ProductID: productID,
+		Audience: domain.AudiencePartner, Environment: domain.EnvironmentSandbox, DocsURL: partnerDocs,
+		Version: 3, CreatedAt: createdAt, CreatedBy: domain.Principal(alice),
+		UpdatedAt: changedAt, UpdatedBy: domain.Principal(alice),
+	}
+}
+
 // governance stands in for the use cases of Product Governance. It keeps
 // what it was asked and answers what the test set. The real use cases are
 // tested where they live, and the whole of it in cmd/fabric-api.
@@ -109,6 +127,7 @@ type governance struct {
 	workspace  domain.Workspace
 	membership domain.Membership
 	assignment domain.RoleAssignment
+	config     domain.AudienceConfig
 	err        error
 	// A list answers a page of so many items, each the one above of its
 	// kind, and says that the next page starts behind next. With no item
@@ -127,21 +146,31 @@ type governance struct {
 	rolesGranted      []application.GrantProductRole
 	rolesRead         []application.GetProductRole
 	rolesRevoked      []application.RevokeProductRole
+	configured        []application.ConfigureAudience
+	configsRead       []application.GetAudienceConfig
+	configsChanged    []application.ChangeAudienceConfig
+	configsRemoved    []application.RemoveAudienceConfig
 	productsListed    []application.ListProducts
 	spacesListed      []application.ListWorkspaces
 	membershipsListed []application.ListMemberships
 	rolesListed       []application.ListProductRoles
+	configsListed     []application.ListAudienceConfigs
 }
 
 func newGovernance() *governance {
-	return &governance{product: cargopai(), workspace: engineering(), membership: maintainer(), assignment: ownership(), items: 1}
+	return &governance{
+		product: cargopai(), workspace: engineering(), membership: maintainer(), assignment: ownership(),
+		config: partnerSandbox(), items: 1,
+	}
 }
 
 func (g *governance) calls() int {
 	return len(g.registered) + len(g.productsRead) + len(g.created) + len(g.spacesRead) +
 		len(g.granted) + len(g.membershipsRead) + len(g.revoked) +
 		len(g.rolesGranted) + len(g.rolesRead) + len(g.rolesRevoked) +
-		len(g.productsListed) + len(g.spacesListed) + len(g.membershipsListed) + len(g.rolesListed)
+		len(g.configured) + len(g.configsRead) + len(g.configsChanged) + len(g.configsRemoved) +
+		len(g.productsListed) + len(g.spacesListed) + len(g.membershipsListed) + len(g.rolesListed) +
+		len(g.configsListed)
 }
 
 func (g *governance) RegisterProduct(_ context.Context, command application.RegisterProduct) (domain.Product, error) {
@@ -194,6 +223,26 @@ func (g *governance) RevokeProductRole(_ context.Context, command application.Re
 	return g.err
 }
 
+func (g *governance) ConfigureAudience(_ context.Context, command application.ConfigureAudience) (domain.AudienceConfig, error) {
+	g.configured = append(g.configured, command)
+	return g.config, g.err
+}
+
+func (g *governance) GetAudienceConfig(_ context.Context, query application.GetAudienceConfig) (domain.AudienceConfig, error) {
+	g.configsRead = append(g.configsRead, query)
+	return g.config, g.err
+}
+
+func (g *governance) ChangeAudienceConfig(_ context.Context, command application.ChangeAudienceConfig) (domain.AudienceConfig, error) {
+	g.configsChanged = append(g.configsChanged, command)
+	return g.config, g.err
+}
+
+func (g *governance) RemoveAudienceConfig(_ context.Context, command application.RemoveAudienceConfig) error {
+	g.configsRemoved = append(g.configsRemoved, command)
+	return g.err
+}
+
 // page is the page a list of the stand-in answers: so many times the item,
 // and where the next page starts.
 func page[T any](g *governance, item T) application.Page[T] {
@@ -225,6 +274,11 @@ func (g *governance) ListMemberships(_ context.Context, query application.ListMe
 func (g *governance) ListProductRoles(_ context.Context, query application.ListProductRoles) (application.Page[domain.RoleAssignment], error) {
 	g.rolesListed = append(g.rolesListed, query)
 	return page(g, g.assignment), g.err
+}
+
+func (g *governance) ListAudienceConfigs(_ context.Context, query application.ListAudienceConfigs) (application.Page[domain.AudienceConfig], error) {
+	g.configsListed = append(g.configsListed, query)
+	return page(g, g.config), g.err
 }
 
 // service is the transport under test, with what it logged.

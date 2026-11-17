@@ -2,8 +2,10 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -18,6 +20,26 @@ import (
 
 	"go.idp.xyz/idp-api-fabric/api"
 )
+
+func init() {
+	// The default decoder for the pinned validator reads the first JSON
+	// value. A request body must contain exactly one, especially when an
+	// empty object is an instruction to clear a value.
+	openapi3filter.RegisterBodyDecoder("application/json", singleJSONValue)
+}
+
+func singleJSONValue(body io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ openapi3filter.EncodingFn) (any, error) {
+	decoder := json.NewDecoder(body)
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, err
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		return nil, errors.New("the body must contain exactly one JSON value")
+	}
+	return value, nil
+}
 
 // loadContract reads the contract this build carries. A reference that
 // leaves the document is not followed, and a document that is not valid

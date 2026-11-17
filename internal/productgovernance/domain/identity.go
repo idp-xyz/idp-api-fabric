@@ -56,6 +56,17 @@ func ParseRoleAssignmentID(value string) (RoleAssignmentID, error) {
 	return RoleAssignmentID(value), nil
 }
 
+// AudienceConfigID identifies the configuration of an audience of a product.
+type AudienceConfigID string
+
+// ParseAudienceConfigID accepts the canonical form of an identifier.
+func ParseAudienceConfigID(value string) (AudienceConfigID, error) {
+	if !identifier.MatchString(value) {
+		return "", invalid("an audience configuration identifier is a UUID in its canonical form")
+	}
+	return AudienceConfigID(value), nil
+}
+
 // KeyPattern is the pattern of a key. A key is the name people and
 // configuration use for an object: unique in its scope, short, and safe in a
 // URL or a file name. It is 2 to 63 lower case letters, digits and hyphens,
