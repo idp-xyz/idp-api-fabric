@@ -34,9 +34,10 @@ type ConfigureAudience struct {
 // pair is refused with ports.ErrAudienceConfigExists. A suspended product
 // takes none (INV-01).
 //
-// The decision is made inside the transaction of the write, from what the
-// caller holds then. The configuration, the audit fact and the event commit
-// together or not at all (INV-13).
+// All audience writes lock the caller's assignments before writing or
+// locking a configuration. Either the write commits before revocation, or
+// the revocation wins and the write is refused. The configuration, audit
+// fact and event commit together (INV-13).
 func (s *ProductGovernance) ConfigureAudience(ctx context.Context, command ConfigureAudience) (domain.AudienceConfig, error) {
 	if err := known(command.Caller); err != nil {
 		return domain.AudienceConfig{}, err
@@ -49,7 +50,7 @@ func (s *ProductGovernance) ConfigureAudience(ctx context.Context, command Confi
 	var config domain.AudienceConfig
 	var refused *refusal
 	err = s.deps.Transactor.WithinTransaction(ctx, func(ctx context.Context) error {
-		seen, err := s.survey(ctx, command.Caller, productID, "", "")
+		seen, err := s.surveyAudienceConfig(ctx, command.Caller, productID, "", s.deps.Roles.LockHeldRoles)
 		if err != nil {
 			return err
 		}
@@ -134,7 +135,7 @@ func (s *ProductGovernance) GetAudienceConfig(ctx context.Context, query GetAudi
 	// same: what the caller is told depends on it.
 	configID, _ := domain.ParseAudienceConfigID(query.AudienceConfigID)
 
-	seen, err := s.surveyAudienceConfig(ctx, query.Caller, productID, configID)
+	seen, err := s.surveyAudienceConfig(ctx, query.Caller, productID, configID, s.deps.Roles.RolesOf)
 	if err != nil {
 		return domain.AudienceConfig{}, err
 	}
@@ -197,7 +198,7 @@ func (s *ProductGovernance) ChangeAudienceConfig(ctx context.Context, command Ch
 	var changed domain.AudienceConfig
 	var refused *refusal
 	err = s.deps.Transactor.WithinTransaction(ctx, func(ctx context.Context) error {
-		seen, err := s.surveyAudienceConfig(ctx, command.Caller, productID, configID)
+		seen, err := s.surveyAudienceConfig(ctx, command.Caller, productID, configID, s.deps.Roles.LockHeldRoles)
 		if err != nil {
 			return err
 		}
@@ -302,7 +303,7 @@ func (s *ProductGovernance) RemoveAudienceConfig(ctx context.Context, command Re
 
 	var refused *refusal
 	err = s.deps.Transactor.WithinTransaction(ctx, func(ctx context.Context) error {
-		seen, err := s.surveyAudienceConfig(ctx, command.Caller, productID, configID)
+		seen, err := s.surveyAudienceConfig(ctx, command.Caller, productID, configID, s.deps.Roles.LockHeldRoles)
 		if err != nil {
 			return err
 		}

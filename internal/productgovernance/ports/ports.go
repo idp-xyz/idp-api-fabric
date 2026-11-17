@@ -152,6 +152,10 @@ type RoleAssignments interface {
 	// RolesOf returns the roles the principal holds in the product now. The
 	// role of an assignment that was revoked is not among them.
 	RolesOf(ctx context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Role, error)
+	// LockHeldRoles reads the same roles in the transaction ctx carries and
+	// prevents their revocation until it ends. A concurrent revocation that
+	// took the lock first is reflected in the result.
+	LockHeldRoles(ctx context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Role, error)
 	// List returns one page of the assignments in force of the product, in
 	// the order of the list. An assignment of another product is not among
 	// them, and neither is one that was revoked.

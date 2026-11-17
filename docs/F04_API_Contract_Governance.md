@@ -95,7 +95,7 @@ OpenAPI `security` 既不是运行时授权凭据也不是对象级授权证明�
 
 ### 3.1.1 已实现的列表与查询参数约定（PR #7，2026-11-17 同步）
 
-当前管理契约为 `api/openapi.yaml`（OpenAPI 3.1.2，API 版本 0.5.0），HTTP DTO 与处理器接口由该文件生成。下列约定适用于 Product、Workspace、WorkspaceMembership、ProductRoleAssignment 四类 GET 列表；具体访问规则见 F05 §6.1。
+`api/openapi.yaml`（OpenAPI 3.1.2）是管理 API 的契约，HTTP DTO 与处理器接口由该文件生成。Product、Workspace、WorkspaceMembership 和 ProductRoleAssignment 自 0.5.0 起采用下列分页约定。0.6.0 的受众配置列表也沿用该约定，按创建时间和配置 ID 正序排列。访问规则见管理契约和 F05 §6.1。
 
 | 项目 | 当前实现 |
 |---|---|
@@ -285,6 +285,8 @@ V1 按 `Experimental → Stable → Deprecated → Retired` 表达资产生命�
 ## 11. Fabric 自身 API 的 HTTP/幂等/错误边界
 
 推荐管理 API 资源采用规范化命名和版本路径；示例仅定义设计形态。`POST /v1/products/{product_id}/assets/{api_asset_id}/revisions` 创建固定输入 Revision；`PUT /v1/publication-slots/{slot_id}` 以 `If-Match` / `expected_generation` 的一致规则 CAS 更新。后者是**修改受控资源状态**，幂等键的重试窗口不得跨 Product、Principal、Slot、Action 误用。
+
+管理 API 0.6.0 中，产品负责人通过 `PUT /v1/products/{product_id}/audience-configs/{audience_config_id}` 更新文档入口。请求的 `If-Match` 使用详情响应的 `ETag`。缺少条件返回 428，版本过期返回 412。发送 `{}` 清除入口。单次请求只接受一个 JSON 值。
 
 - `Idempotency-Key` 作用域提议：`(product_id, principal_ref, operation_type, target_id, api_asset_id, idempotency_key)`；服务端还应保存规范化请求指纹。Key 保留窗口、最大长度、请求规范化方式需 F07 配合压测与客户 SLA 定稿。
 - 第一次合法请求返回结果；同 Key、同指纹的完成重试返回**同一语义结果**（状态码或异步结果链接的精确策略待实现测试）；同 Key、不同指纹返回 409；同 Key 的进行中请求返回明确处理中状态，不重复操作。

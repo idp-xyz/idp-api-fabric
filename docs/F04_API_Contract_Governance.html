@@ -326,7 +326,7 @@
 </table></div>
 <p>OpenAPI <code>security</code> 既不是运行时授权凭据也不是对象级授权证明；未经授权的 API 不能因为文档中声明 OAuth scope 就自动对外开放。</p>
 <h3 id="section-3-1-1">3.1.1 已实现的列表与查询参数约定（PR #7，2026-11-17 同步）</h3>
-<p>当前管理契约为 <code>api/openapi.yaml</code>（OpenAPI 3.1.2，API 版本 0.5.0），HTTP DTO 与处理器接口由该文件生成。下列约定适用于 Product、Workspace、WorkspaceMembership、ProductRoleAssignment 四类 GET 列表；具体访问规则见 F05 §6.1。</p>
+<p><code>api/openapi.yaml</code>（OpenAPI 3.1.2）是管理 API 的契约，HTTP DTO 与处理器接口由该文件生成。Product、Workspace、WorkspaceMembership 和 ProductRoleAssignment 自 0.5.0 起采用下列分页约定。0.6.0 的受众配置列表也沿用该约定，按创建时间和配置 ID 正序排列。访问规则见管理契约和 F05 §6.1。</p>
 <div aria-label="可左右滚动的 API 治理与测试表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
 <tr>
@@ -835,6 +835,7 @@
 </table></div>
 <h2 id="section-11">11. Fabric 自身 API 的 HTTP/幂等/错误边界</h2>
 <p>推荐管理 API 资源采用规范化命名和版本路径；示例仅定义设计形态。<code>POST /v1/products/{product_id}/assets/{api_asset_id}/revisions</code> 创建固定输入 Revision；<code>PUT /v1/publication-slots/{slot_id}</code> 以 <code>If-Match</code> / <code>expected_generation</code> 的一致规则 CAS 更新。后者是<strong>修改受控资源状态</strong>，幂等键的重试窗口不得跨 Product、Principal、Slot、Action 误用。</p>
+<p>管理 API 0.6.0 中，产品负责人通过 <code>PUT /v1/products/{product_id}/audience-configs/{audience_config_id}</code> 更新文档入口。请求的 <code>If-Match</code> 使用详情响应的 <code>ETag</code>。缺少条件返回 428，版本过期返回 412。发送 <code>{}</code> 清除入口。单次请求只接受一个 JSON 值。</p>
 <ul>
 <li><code>Idempotency-Key</code> 作用域提议：<code>(product_id, principal_ref, operation_type, target_id, api_asset_id, idempotency_key)</code>；服务端还应保存规范化请求指纹。Key 保留窗口、最大长度、请求规范化方式需 F07 配合压测与客户 SLA 定稿。</li>
 <li>第一次合法请求返回结果；同 Key、同指纹的完成重试返回<strong>同一语义结果</strong>（状态码或异步结果链接的精确策略待实现测试）；同 Key、不同指纹返回 409；同 Key 的进行中请求返回明确处理中状态，不重复操作。</li>

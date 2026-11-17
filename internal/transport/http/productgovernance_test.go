@@ -47,6 +47,13 @@ var roleAssignmentBody = map[string]any{
 	"granted_at": "2026-11-11T09:00:00.123456Z",
 }
 
+// An audience configuration is shown without who configured it. Its version
+// is not a member either: it is the ETag of an answer that shows one.
+var audienceConfigBody = map[string]any{
+	"audience_config_id": audienceConfigID, "product_id": productID, "audience": "partner", "environment": "sandbox",
+	"docs_url": partnerDocs, "created_at": "2026-11-11T09:00:00.123456Z", "updated_at": "2026-11-11T10:00:00.123456Z",
+}
+
 func TestRegisterProductHandsTheRequestToTheUseCaseAsTheVerifiedCaller(t *testing.T) {
 	s := newService(t)
 
@@ -242,6 +249,104 @@ func TestTheRoleOperationsHandTheirRequestsToTheirUseCases(t *testing.T) {
 	}
 }
 
+func TestTheAudienceOperationsHandTheirRequestsToTheirUseCases(t *testing.T) {
+	s := newService(t)
+	config := audienceConfigs + "/" + audienceConfigID
+
+	configured := s.do(t, call{Method: http.MethodPost, Target: audienceConfigs, Token: "alice", Body: configuration})
+	if configured.Code != http.StatusCreated || !reflect.DeepEqual(members(t, configured), audienceConfigBody) {
+		t.Errorf("POST audience configuration: %d %s", configured.Code, configured.Body)
+	}
+	if got := configured.Header().Get("Location"); got != config {
+		t.Errorf("POST audience configuration: Location %q, want %q", got, config)
+	}
+	read := s.do(t, call{Method: http.MethodGet, Target: config, Token: "alice"})
+	if read.Code != http.StatusOK || !reflect.DeepEqual(members(t, read), audienceConfigBody) {
+		t.Errorf("GET audience configuration: %d %s", read.Code, read.Body)
+	}
+	changed := s.do(t, call{Method: http.MethodPut, Target: config, Token: "alice", Body: docsChange, Header: fromVersion3})
+	if changed.Code != http.StatusOK || !reflect.DeepEqual(members(t, changed), audienceConfigBody) {
+		t.Errorf("PUT audience configuration: %d %s", changed.Code, changed.Body)
+	}
+	// What shows one configuration carries its version, which is what a
+	// change of it is made from.
+	for name, response := range map[string]*httptest.ResponseRecorder{"POST": configured, "GET": read, "PUT": changed} {
+		if got := response.Header().Get("Cache-Control"); got != "no-store" {
+			t.Errorf("%s audience configuration: Cache-Control %q, want no-store", name, got)
+		}
+		if got := response.Header().Get("ETag"); got != `"3"` {
+			t.Errorf("%s audience configuration: ETag %q, want the version of the configuration in double quotes", name, got)
+		}
+	}
+	removed := s.do(t, call{Method: http.MethodDelete, Target: config, Token: "alice"})
+	if removed.Code != http.StatusNoContent || removed.Body.Len() != 0 {
+		t.Errorf("DELETE audience configuration: %d %q, want 204 and no body", removed.Code, removed.Body)
+	}
+
+	g := s.governance
+	if len(g.configured) != 1 || len(g.configsRead) != 1 || len(g.configsChanged) != 1 || len(g.configsRemoved) != 1 || g.calls() != 4 {
+		t.Fatalf("the use cases were called %d, %d, %d and %d times of %d calls, want once each and no other",
+			len(g.configured), len(g.configsRead), len(g.configsChanged), len(g.configsRemoved), g.calls())
+	}
+	for _, id := range []*string{&g.configured[0].CorrelationID, &g.configsRead[0].CorrelationID, &g.configsChanged[0].CorrelationID, &g.configsRemoved[0].CorrelationID} {
+		if !uuid.MatchString(*id) {
+			t.Errorf("correlation identifier %q, want one the server generated", *id)
+		}
+		*id = ""
+	}
+
+	caller := domain.Principal(alice)
+	if want := (application.ConfigureAudience{
+		Caller: caller, ProductID: productID, Audience: "partner", Environment: "sandbox", DocsURL: partnerDocs,
+	}); g.configured[0] != want {
+		t.Errorf("ConfigureAudience %+v, want %+v", g.configured[0], want)
+	}
+	if want := (application.GetAudienceConfig{Caller: caller, ProductID: productID, AudienceConfigID: audienceConfigID}); g.configsRead[0] != want {
+		t.Errorf("GetAudienceConfig %+v, want %+v", g.configsRead[0], want)
+	}
+	// The version the change is made from is the one If-Match names.
+	if want := (application.ChangeAudienceConfig{
+		Caller: caller, ProductID: productID, AudienceConfigID: audienceConfigID, DocsURL: partnerDocs, Version: 3,
+	}); g.configsChanged[0] != want {
+		t.Errorf("ChangeAudienceConfig %+v, want %+v", g.configsChanged[0], want)
+	}
+	if want := (application.RemoveAudienceConfig{Caller: caller, ProductID: productID, AudienceConfigID: audienceConfigID}); g.configsRemoved[0] != want {
+		t.Errorf("RemoveAudienceConfig %+v, want %+v", g.configsRemoved[0], want)
+	}
+}
+
+// Where an audience enters the documentation is said by the member docs_url,
+// and that there is no entry yet by leaving it out, on the way in and on the
+// way out.
+func TestAConfigurationWithoutAnEntryHasNoDocsURL(t *testing.T) {
+	s := newService(t)
+	s.governance.config.DocsURL = ""
+	config := audienceConfigs + "/" + audienceConfigID
+
+	for _, operation := range []call{
+		{Method: http.MethodPost, Target: audienceConfigs, Body: `{"audience":"public","environment":"production"}`},
+		{Method: http.MethodGet, Target: config},
+		{Method: http.MethodPut, Target: config, Body: `{}`, Header: fromVersion3},
+		{Method: http.MethodGet, Target: audienceConfigs},
+	} {
+		operation.Token = "alice"
+		response := s.do(t, operation)
+		if response.Code >= 300 {
+			t.Fatalf("%s %s: status %d: %s", operation.Method, operation.Target, response.Code, response.Body)
+		}
+		if strings.Contains(response.Body.String(), "docs_url") {
+			t.Errorf("%s %s: the answer has a docs_url: %s", operation.Method, operation.Target, response.Body)
+		}
+	}
+	g := s.governance
+	if got := g.configured[0]; got.Audience != "public" || got.Environment != "production" || got.DocsURL != "" {
+		t.Errorf("ConfigureAudience %+v, want public in production without an entry", got)
+	}
+	if got := g.configsChanged[0]; got.DocsURL != "" || got.Version != 3 {
+		t.Errorf("ChangeAudienceConfig %+v, want a change to no entry from version 3", got)
+	}
+}
+
 // Every request gets an identifier of its own, and it is the server's: what
 // a caller sends is not written into the audit trail as one.
 func TestEveryRequestGetsItsOwnIdentifierFromTheServer(t *testing.T) {
@@ -272,6 +377,9 @@ func TestAFailureAUseCaseNamesIsAnsweredWithItsProblem(t *testing.T) {
 		"no such workspace":           {application.ErrWorkspaceNotFound, http.StatusNotFound, CodeWorkspaceNotFound, ""},
 		"no such membership":          {application.ErrMembershipNotFound, http.StatusNotFound, CodeMembershipNotFound, ""},
 		"no such role assignment":     {application.ErrRoleAssignmentNotFound, http.StatusNotFound, CodeRoleAssignmentNotFound, ""},
+		"no such configuration":       {application.ErrAudienceConfigNotFound, http.StatusNotFound, CodeAudienceConfigNotFound, ""},
+		"the audience is configured":  {ports.ErrAudienceConfigExists, http.StatusConflict, CodeAudienceConfigExists, "The product documents its APIs for this audience in this environment already."},
+		"a change from a stale read":  {fmt.Errorf("change the audience configuration: %w", application.ErrVersionMismatch), http.StatusPreconditionFailed, CodePreconditionFailed, "It changed since it was read. Read it again before deciding anew."},
 		"the role is held already":    {ports.ErrMembershipExists, http.StatusConflict, CodeMembershipExists, "The principal holds this role in the workspace already."},
 		"the product has the owner":   {ports.ErrRoleAssignmentExists, http.StatusConflict, CodeRoleAssignmentExists, "The principal holds this role in the product already."},
 		"the last owner":              {fmt.Errorf("revoke the role: %w", domain.ErrLastOwner), http.StatusConflict, CodeLastOwner, "The product has no other owner, and always has one."},
@@ -363,6 +471,7 @@ func TestAValueTheContractDoesNotDeclareIsNotSent(t *testing.T) {
 	s.governance.workspace.Status = "ARCHIVED"
 	s.governance.membership.Role = "ARCHIVED"
 	s.governance.assignment.Role = "ARCHIVED"
+	s.governance.config.Audience = "ARCHIVED"
 
 	for _, operation := range protected {
 		if operation.Method == http.MethodDelete {
@@ -427,6 +536,50 @@ func TestARevokedRoleAssignmentIsNotSent(t *testing.T) {
 	}
 }
 
+// Nor is an audience configuration the contract cannot show: one that was
+// removed, or one for an audience or an environment the contract does not
+// declare. A portal that read it would document the APIs for an audience
+// the product no longer, or never, named.
+func TestAnAudienceConfigurationTheContractCannotShowIsNotSent(t *testing.T) {
+	removed, err := partnerSandbox().Remove(domain.Principal(alice), createdAt.Add(2*time.Hour))
+	if err != nil {
+		t.Fatalf("remove the configuration: %v", err)
+	}
+	everybody, staging := partnerSandbox(), partnerSandbox()
+	everybody.Audience, staging.Environment = "everybody", "staging"
+
+	cases := map[string]struct {
+		config domain.AudienceConfig
+		logged string
+	}{
+		"a removed configuration":   {removed, "the audience configuration was removed"},
+		"an undeclared audience":    {everybody, "for the audience"},
+		"an undeclared environment": {staging, "for the environment"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			s := newService(t)
+			s.governance.config = c.config
+			for _, operation := range []call{
+				{Method: http.MethodPost, Target: audienceConfigs, Body: configuration},
+				{Method: http.MethodGet, Target: audienceConfigs + "/" + audienceConfigID},
+				{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID, Body: docsChange, Header: fromVersion3},
+				{Method: http.MethodGet, Target: audienceConfigs},
+			} {
+				operation.Token = "alice"
+				response := s.do(t, operation)
+				wantProblem(t, response, http.StatusInternalServerError, CodeInternalError, "")
+				if body := response.Body.String(); strings.Contains(body, "everybody") || strings.Contains(body, "staging") || strings.Contains(body, "docs.cargopai") {
+					t.Errorf("%s %s: the answer shows the configuration: %s", operation.Method, operation.Target, body)
+				}
+			}
+			if !strings.Contains(s.log.String(), c.logged) {
+				t.Errorf("the log does not say what went wrong:\n%s", s.log)
+			}
+		})
+	}
+}
+
 // An operation of Product Governance is never served without a verified
 // caller, even if it were wired around the validator.
 func TestAnOperationReachedWithoutAPrincipalIsFailed(t *testing.T) {
@@ -445,16 +598,26 @@ func TestAnOperationReachedWithoutAPrincipalIsFailed(t *testing.T) {
 		_, errGrantRole := o.GrantProductRole(ctx, GrantProductRoleRequestObject{ProductID: productID, Body: &ProductRoleGrant{}})
 		_, errGetRole := o.GetProductRole(ctx, GetProductRoleRequestObject{ProductID: productID, RoleAssignmentID: roleAssignmentID})
 		_, errRevokeRole := o.RevokeProductRole(ctx, RevokeProductRoleRequestObject{ProductID: productID, RoleAssignmentID: roleAssignmentID})
+		_, errConfigure := o.ConfigureAudience(ctx, ConfigureAudienceRequestObject{ProductID: productID, Body: &AudienceConfigCreation{}})
+		_, errGetConfig := o.GetAudienceConfig(ctx, GetAudienceConfigRequestObject{ProductID: productID, AudienceConfigID: audienceConfigID})
+		// Without If-Match as well: who asks is decided before what the
+		// request says.
+		_, errChangeConfig := o.ChangeAudienceConfig(ctx, ChangeAudienceConfigRequestObject{
+			ProductID: productID, AudienceConfigID: audienceConfigID, Body: &AudienceConfigChange{}})
+		_, errRemoveConfig := o.RemoveAudienceConfig(ctx, RemoveAudienceConfigRequestObject{ProductID: productID, AudienceConfigID: audienceConfigID})
 		_, errListProducts := o.ListProducts(ctx, ListProductsRequestObject{})
 		_, errListWorkspaces := o.ListWorkspaces(ctx, ListWorkspacesRequestObject{ProductID: productID})
 		_, errListMemberships := o.ListMemberships(ctx, ListMembershipsRequestObject{ProductID: productID, WorkspaceID: workspaceID})
 		_, errListRoles := o.ListProductRoles(ctx, ListProductRolesRequestObject{ProductID: productID})
+		_, errListConfigs := o.ListAudienceConfigs(ctx, ListAudienceConfigsRequestObject{ProductID: productID})
 		for operation, err := range map[string]error{
 			"RegisterProduct": errRegister, "GetProduct": errGet, "CreateWorkspace": errCreate, "GetWorkspace": errGetWorkspace,
 			"GrantMembership": errGrant, "GetMembership": errGetMembership, "RevokeMembership": errRevoke,
 			"GrantProductRole": errGrantRole, "GetProductRole": errGetRole, "RevokeProductRole": errRevokeRole,
+			"ConfigureAudience": errConfigure, "GetAudienceConfig": errGetConfig,
+			"ChangeAudienceConfig": errChangeConfig, "RemoveAudienceConfig": errRemoveConfig,
 			"ListProducts": errListProducts, "ListWorkspaces": errListWorkspaces,
-			"ListMemberships": errListMemberships, "ListProductRoles": errListRoles,
+			"ListMemberships": errListMemberships, "ListProductRoles": errListRoles, "ListAudienceConfigs": errListConfigs,
 		} {
 			if err == nil {
 				t.Errorf("%s with %s was served", operation, name)
@@ -496,7 +659,7 @@ func TestTheContractStatesTheRulesOfTheModel(t *testing.T) {
 		t.Errorf("the contract takes a page of %v to %v items, %v by default; the use cases 1 to %d, %d by default",
 			size.Min, size.Max, size.Default, application.MaxPageSize, application.DefaultPageSize)
 	}
-	for _, list := range []string{"ProductList", "WorkspaceList", "MembershipList", "ProductRoleAssignmentList"} {
+	for _, list := range []string{"ProductList", "WorkspaceList", "MembershipList", "ProductRoleAssignmentList", "AudienceConfigList"} {
 		if schemas[list] == nil || schemas[list].Value.Properties["items"] == nil {
 			t.Errorf("the contract declares no items of %s", list)
 			continue
@@ -556,6 +719,57 @@ func TestTheContractStatesTheRulesOfTheModel(t *testing.T) {
 				t.Errorf("the role of %s is declared by %q, want %q", object, got, want)
 			}
 		}
+	}
+
+	// So are the audiences and the environments of a product, and the
+	// entry of the documentation, wherever a body names them.
+	var audiences, environments []string
+	for _, audience := range domain.Audiences() {
+		audiences = append(audiences, string(audience))
+	}
+	for _, environment := range domain.Environments() {
+		environments = append(environments, string(environment))
+	}
+	for _, values := range []struct {
+		schema, member string
+		model          []string
+		named          []string
+	}{
+		{"Audience", "audience", audiences, []string{"AudienceConfigCreation", "AudienceConfig"}},
+		{"Environment", "environment", environments, []string{"AudienceConfigCreation", "AudienceConfig"}},
+		{"DocsURL", "docs_url", nil, []string{"AudienceConfigCreation", "AudienceConfigChange", "AudienceConfig"}},
+	} {
+		if schemas[values.schema] == nil {
+			t.Errorf("the contract declares no %s", values.schema)
+			continue
+		}
+		if values.model != nil {
+			var declared []string
+			for _, value := range schemas[values.schema].Value.Enum {
+				name, _ := value.(string)
+				declared = append(declared, name)
+			}
+			slices.Sort(declared)
+			modelled := slices.Sorted(slices.Values(values.model))
+			if !slices.Equal(declared, modelled) {
+				t.Errorf("the contract declares the values of %s %v, the model %v", values.schema, declared, modelled)
+			}
+		}
+		for _, object := range values.named {
+			if schemas[object] == nil || schemas[object].Value.Properties[values.member] == nil {
+				t.Errorf("the contract declares no %s of %s", values.member, object)
+				continue
+			}
+			if got, want := schemas[object].Value.Properties[values.member].Ref, "#/components/schemas/"+values.schema; got != want {
+				t.Errorf("the %s of %s is declared by %q, want %q", values.member, object, got, want)
+			}
+		}
+	}
+	if got := schemas["DocsURL"].Value.Pattern; got != domain.DocsURLPattern {
+		t.Errorf("the contract states the pattern of an entry %q, the model %q", got, domain.DocsURLPattern)
+	}
+	if got := schemas["DocsURL"].Value.MaxLength; got == nil || *got != domain.DocsURLMaxLength {
+		t.Errorf("the contract bounds an entry at %v characters, the model at %d", got, domain.DocsURLMaxLength)
 	}
 
 	owner := domain.OrganizationRef{IdentityProvider: issuer, Organization: "org-cargopai"}
@@ -661,5 +875,95 @@ func TestTheContractStatesTheRulesOfTheModel(t *testing.T) {
 		if contract, model := grantWith(memberships, "member", role), err == nil; contract != model {
 			t.Errorf("the role %q in a workspace: the contract accepts it %t, the model %t", role, contract, model)
 		}
+	}
+
+	// What the contract lets through as an audience, an environment and an
+	// entry of the documentation, the model configures, and an entry it
+	// lets through in a change, the model changes to.
+	answered := func(c call, made int) (contractAccepts bool) {
+		t.Helper()
+		c.Token = "alice"
+		response := newService(t).do(t, c)
+		if response.Code != made && response.Code != http.StatusBadRequest {
+			t.Fatalf("status %d for %s %s: %s", response.Code, c.Body, c.Header, response.Body)
+		}
+		return response.Code == made
+	}
+	configureWith := func(audience, environment, docsURL string) (contractAccepts bool) {
+		t.Helper()
+		body, err := json.Marshal(map[string]any{"audience": audience, "environment": environment, "docs_url": docsURL})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return answered(call{Method: http.MethodPost, Target: audienceConfigs, Body: string(body)}, http.StatusCreated)
+	}
+	changeTo := func(docsURL string) (contractAccepts bool) {
+		t.Helper()
+		body, err := json.Marshal(map[string]any{"docs_url": docsURL})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return answered(call{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID, Body: string(body), Header: fromVersion3}, http.StatusOK)
+	}
+	configure := func(audience domain.Audience, environment domain.Environment, docsURL string) error {
+		_, err := domain.ConfigureAudience(audienceConfigID, product, audience, environment, docsURL, domain.Principal(alice), at)
+		return err
+	}
+
+	for _, audience := range []string{
+		"public", "partner", "internal", "", "Public", "PARTNER", " public", "internal\n", "everybody", "external", "sandbox",
+	} {
+		err := configure(domain.Audience(audience), domain.EnvironmentSandbox, partnerDocs)
+		if contract, model := configureWith(audience, "sandbox", partnerDocs), err == nil; contract != model {
+			t.Errorf("the audience %q: the contract accepts it %t, the model %t", audience, contract, model)
+		}
+	}
+	for _, environment := range []string{
+		"sandbox", "production", "", "Sandbox", "PRODUCTION", "production ", "staging", "prod", "test", "partner",
+	} {
+		err := configure(domain.AudiencePartner, domain.Environment(environment), partnerDocs)
+		if contract, model := configureWith("partner", environment, partnerDocs), err == nil; contract != model {
+			t.Errorf("the environment %q: the contract accepts it %t, the model %t", environment, contract, model)
+		}
+	}
+
+	// An entry is bounded in characters on both sides, as a reference is.
+	// That there is none is said by leaving the member out, below.
+	docsURLs := []string{
+		"https://docs.cargopai.example", "https://docs.cargopai.example/", partnerDocs, "https://docs.cargopai.example/partners#sandbox",
+		"https://docs.cargopai.example:8443/partners", "https://docs.cargopai.example?audience=partner", "https://localhost",
+		"https://192.168.0.1/docs", "https://xn--fiq228c.example/docs", "https://docs.cargopai.example/文档", "https://docs.cargopai.example/a%20b",
+		"https://docs.cargopai.example/😀", "https://" + strings.Repeat("a", 63) + ".example", "https://" + strings.Repeat("a", 64) + ".example",
+		"http://docs.cargopai.example", "ftp://docs.cargopai.example", "HTTPS://docs.cargopai.example", "//docs.cargopai.example", "docs.cargopai.example",
+		"https://", "https:///docs", "https://-docs.example", "https://docs-.example", "https://docs..example", "https://.docs.example",
+		"https://文档.example", "https://user:secret@docs.cargopai.example", "https://user@docs.cargopai.example",
+		"https://docs.cargopai.example\\@evil.example", "https://docs.cargopai.example:", "https://docs.cargopai.example:123456",
+		"https://docs.cargopai.example/a b", "https://docs.cargopai.example/a\tb", "https://docs.cargopai.example/a\nb",
+		"https://docs.cargopai.example/\u00a0", "https://docs.cargopai.example/\u0085", "https://docs.cargopai.example/\u2028",
+		"https://docs.cargopai.example/\u3000", " https://docs.cargopai.example", "https://docs.cargopai.example ",
+		"https://docs.example/" + strings.Repeat("d", 2027), "https://docs.example/" + strings.Repeat("d", 2028),
+		"https://docs.example/" + strings.Repeat("文", 2027), "https://docs.example/" + strings.Repeat("文", 2028),
+	}
+	sandbox, err := domain.ConfigureAudience(audienceConfigID, product, domain.AudiencePartner, domain.EnvironmentSandbox, "", domain.Principal(alice), at)
+	if err != nil {
+		t.Fatalf("configure the audience: %v", err)
+	}
+	for _, docsURL := range docsURLs {
+		err := configure(domain.AudiencePartner, domain.EnvironmentSandbox, docsURL)
+		if contract, model := configureWith("partner", "sandbox", docsURL), err == nil; contract != model {
+			t.Errorf("the entry %q of a configuration: the contract accepts it %t, the model %t", docsURL, contract, model)
+		}
+		_, err = sandbox.ChangeDocsURL(product, docsURL, domain.Principal(alice), at)
+		if contract, model := changeTo(docsURL), err == nil; contract != model {
+			t.Errorf("the entry %q of a change: the contract accepts it %t, the model %t", docsURL, contract, model)
+		}
+	}
+	if err := configure(domain.AudiencePartner, domain.EnvironmentSandbox, ""); err != nil ||
+		!answered(call{Method: http.MethodPost, Target: audienceConfigs, Body: `{"audience":"partner","environment":"sandbox"}`}, http.StatusCreated) {
+		t.Errorf("a configuration without an entry: the model refuses it (%v), or the contract does", err)
+	}
+	if _, err := partnerSandbox().ChangeDocsURL(product, "", domain.Principal(alice), at); err != nil ||
+		!answered(call{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID, Body: `{}`, Header: fromVersion3}, http.StatusOK) {
+		t.Errorf("a change to no entry: the model refuses it (%v), or the contract does", err)
 	}
 }

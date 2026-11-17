@@ -167,8 +167,24 @@ func (s *RoleAssignments) RolesOf(ctx context.Context, productID domain.ProductI
 		return nil, fmt.Errorf("read the roles of a principal: %w", err)
 	}
 	rows, err := reader.Query(ctx, rolesOf, string(productID), principal.Issuer, principal.Subject)
+	return collectedRoles(rows, err, "read the roles of a principal")
+}
+
+// LockHeldRoles takes a shared lock on the caller's own assignments. It
+// overlaps other audience writes and conflicts with the revocation of the
+// assignment that authorizes them.
+func (s *RoleAssignments) LockHeldRoles(ctx context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Role, error) {
+	executor, err := s.framework.RequireExecutor(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("read the roles of a principal: %w", err)
+		return nil, fmt.Errorf("lock the roles of a principal: %w", err)
+	}
+	rows, err := executor.Query(ctx, rolesOf+"\nFOR SHARE", string(productID), principal.Issuer, principal.Subject)
+	return collectedRoles(rows, err, "lock the roles of a principal")
+}
+
+func collectedRoles(rows pgx.Rows, err error, operation string) ([]domain.Role, error) {
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", operation, err)
 	}
 	roles, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Role, error) {
 		var role string
@@ -176,7 +192,7 @@ func (s *RoleAssignments) RolesOf(ctx context.Context, productID domain.ProductI
 		return domain.Role(role), err
 	})
 	if err != nil {
-		return nil, fmt.Errorf("read the roles of a principal: %w", err)
+		return nil, fmt.Errorf("%s: %w", operation, err)
 	}
 	return roles, nil
 }

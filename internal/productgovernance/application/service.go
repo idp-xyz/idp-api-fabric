@@ -229,13 +229,20 @@ type scene struct {
 // (F05 §5.3).
 func (s *ProductGovernance) survey(ctx context.Context, caller domain.Principal,
 	productID domain.ProductID, workspaceID domain.WorkspaceID, membershipID domain.MembershipID) (scene, error) {
+	return s.surveyWithRoles(ctx, caller, productID, workspaceID, membershipID, s.deps.Roles.RolesOf)
+}
+
+type roleLookup func(context.Context, domain.ProductID, domain.Principal) ([]domain.Role, error)
+
+func (s *ProductGovernance) surveyWithRoles(ctx context.Context, caller domain.Principal,
+	productID domain.ProductID, workspaceID domain.WorkspaceID, membershipID domain.MembershipID, lookup roleLookup) (scene, error) {
 	var seen scene
 	var err error
 
 	if seen.product, seen.productFound, err = s.deps.Products.Find(ctx, productID); err != nil {
 		return scene{}, fmt.Errorf("read the product: %w", err)
 	}
-	if seen.standing.Roles, err = s.deps.Roles.RolesOf(ctx, productID, caller); err != nil {
+	if seen.standing.Roles, err = lookup(ctx, productID, caller); err != nil {
 		return scene{}, fmt.Errorf("read the roles of the caller: %w", err)
 	}
 	if seen.standing.Memberships, err = s.deps.Memberships.HeldBy(ctx, productID, caller); err != nil {
@@ -275,8 +282,8 @@ func (s *ProductGovernance) surveyAssignment(ctx context.Context, caller domain.
 // configuration of the product. As there, an empty identifier names nothing
 // and is not looked up, and all of it is read whatever the answer will be.
 func (s *ProductGovernance) surveyAudienceConfig(ctx context.Context, caller domain.Principal,
-	productID domain.ProductID, configID domain.AudienceConfigID) (scene, error) {
-	seen, err := s.survey(ctx, caller, productID, "", "")
+	productID domain.ProductID, configID domain.AudienceConfigID, lookup roleLookup) (scene, error) {
+	seen, err := s.surveyWithRoles(ctx, caller, productID, "", "", lookup)
 	if err != nil {
 		return scene{}, err
 	}

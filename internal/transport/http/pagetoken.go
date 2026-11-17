@@ -26,6 +26,7 @@ const (
 	listOfWorkspaces      = "workspaces"
 	listOfMemberships     = "memberships"
 	listOfRoleAssignments = "role-assignments"
+	listOfAudienceConfigs = "audience-configs"
 )
 
 // pageTokenVersion is the version of what a token holds. A change that a

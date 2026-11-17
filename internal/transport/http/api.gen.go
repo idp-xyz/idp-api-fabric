@@ -17,6 +17,45 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for Audience.
+const (
+	AudienceInternal Audience = "internal"
+	AudiencePartner  Audience = "partner"
+	AudiencePublic   Audience = "public"
+)
+
+// Valid indicates whether the value is a known member of the Audience enum.
+func (e Audience) Valid() bool {
+	switch e {
+	case AudienceInternal:
+		return true
+	case AudiencePartner:
+		return true
+	case AudiencePublic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for Environment.
+const (
+	EnvironmentProduction Environment = "production"
+	EnvironmentSandbox    Environment = "sandbox"
+)
+
+// Valid indicates whether the value is a known member of the Environment enum.
+func (e Environment) Valid() bool {
+	switch e {
+	case EnvironmentProduction:
+		return true
+	case EnvironmentSandbox:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	HealthStatusOk HealthStatus = "ok"
@@ -98,6 +137,57 @@ func (e WorkspaceRole) Valid() bool {
 	}
 }
 
+// Audience Who a product documents its APIs for. public is anybody, signed in or not; partner is the external developers of the organizations the product gives access to; internal is the engineers of IDP. What each of them may read is a rule of the platform, the same for every product, so a product names no audience of its own.
+type Audience string
+
+// AudienceConfig A product documents its APIs for one audience in one environment. The configuration is in force from created_at until it is removed; a removed configuration is not shown.
+type AudienceConfig struct {
+	// Audience Who a product documents its APIs for. public is anybody, signed in or not; partner is the external developers of the organizations the product gives access to; internal is the engineers of IDP. What each of them may read is a rule of the platform, the same for every product, so a product names no audience of its own.
+	Audience Audience `json:"audience"`
+
+	// AudienceConfigID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	AudienceConfigID Identifier `json:"audience_config_id"`
+	CreatedAt        time.Time  `json:"created_at"`
+
+	// DocsURL Absent for as long as nobody said where the audience enters the documentation
+	DocsURL *DocsURL `json:"docs_url,omitempty"`
+
+	// Environment Where the APIs a product documents run: a sandbox is where a developer tries an API, production is where its business runs.
+	Environment Environment `json:"environment"`
+
+	// ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ProductID Identifier `json:"product_id"`
+
+	// UpdatedAt When the entry last changed, or created_at until it does
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// AudienceConfigChange What can change of an audience configuration, as it is to be. A body without docs_url says that there is no entry.
+type AudienceConfigChange struct {
+	// DocsURL Where an audience enters the documentation: an https URL of a host, with an optional port of at most 65535 and valid percent escapes. Whitespace and control characters are not allowed. The URL is at most 2048 characters. A host whose name is not ASCII is given in its punycode form, and nothing stands in front of the host, so the URL carries no credentials. Fabric keeps it as it is given and never opens it, so it cannot tell whether the host belongs to the product.
+	DocsURL *DocsURL `json:"docs_url,omitempty"`
+}
+
+// AudienceConfigCreation defines model for AudienceConfigCreation.
+type AudienceConfigCreation struct {
+	// Audience Who a product documents its APIs for. public is anybody, signed in or not; partner is the external developers of the organizations the product gives access to; internal is the engineers of IDP. What each of them may read is a rule of the platform, the same for every product, so a product names no audience of its own.
+	Audience Audience `json:"audience"`
+
+	// DocsURL Where the audience enters the documentation of the environment. Without it, nobody said where yet.
+	DocsURL *DocsURL `json:"docs_url,omitempty"`
+
+	// Environment Where the APIs a product documents run: a sandbox is where a developer tries an API, production is where its business runs.
+	Environment Environment `json:"environment"`
+}
+
+// AudienceConfigList One page of the audience configurations in force of a product, oldest first.
+type AudienceConfigList struct {
+	Items []AudienceConfig `json:"items"`
+
+	// NextPageToken The page_token of the page that follows this one, to be sent back as it is. A page carries it for as long as items follow: the last page of a list has none, also when it is full.
+	NextPageToken *NextPageToken `json:"next_page_token,omitempty"`
+}
+
 // BuildInfo defines model for BuildInfo.
 type BuildInfo struct {
 	BuiltAt string `json:"built_at"`
@@ -107,6 +197,15 @@ type BuildInfo struct {
 
 // DisplayName The name an object is shown under: 1 to 120 characters, without control characters and without surrounding white space. It identifies nothing and is not unique.
 type DisplayName = string
+
+// DocsURL Where an audience enters the documentation: an https URL of a host, with an optional port of at most 65535 and valid percent escapes. Whitespace and control characters are not allowed. The URL is at most 2048 characters. A host whose name is not ASCII is given in its punycode form, and nothing stands in front of the host, so the URL carries no credentials. Fabric keeps it as it is given and never opens it, so it cannot tell whether the host belongs to the product.
+type DocsURL = string
+
+// EntityTag A version as an entity tag (RFC 9110): its number, in double quotes. The caller sends it back as it was given.
+type EntityTag = string
+
+// Environment Where the APIs a product documents run: a sandbox is where a developer tries an API, production is where its business runs.
+type Environment string
 
 // Health defines model for Health.
 type Health struct {
@@ -320,6 +419,12 @@ type WorkspaceList struct {
 // WorkspaceRole What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions. Neither manages the workspace or its members, which is for the owners of the product, and neither says anything about another workspace.
 type WorkspaceRole string
 
+// AudienceConfigID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+type AudienceConfigID = Identifier
+
+// IfMatch A version as an entity tag (RFC 9110): its number, in double quotes. The caller sends it back as it was given.
+type IfMatch = EntityTag
+
 // MembershipID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 type MembershipID = Identifier
 
@@ -348,6 +453,21 @@ type ListProductsParams struct {
 
 	// PageToken Where the page starts: the next_page_token of the page before, as it was given. Without it the list starts at its beginning. The token is opaque. It names a position in one list and grants nothing: what the caller may read is decided again with every page, from what it holds then. One that is not a token of this list is refused (400 PAGE_TOKEN_INVALID).
 	PageToken *PageToken `form:"page_token,omitempty" json:"page_token,omitempty"`
+}
+
+// ListAudienceConfigsParams defines parameters for ListAudienceConfigs.
+type ListAudienceConfigsParams struct {
+	// PageSize How many items the page holds at most. A list is read to its end by asking for the page that follows, never by asking for a larger one.
+	PageSize *PageSize `form:"page_size,omitempty" json:"page_size,omitempty"`
+
+	// PageToken Where the page starts: the next_page_token of the page before, as it was given. Without it the list starts at its beginning. The token is opaque. It names a position in one list and grants nothing: what the caller may read is decided again with every page, from what it holds then. One that is not a token of this list is refused (400 PAGE_TOKEN_INVALID).
+	PageToken *PageToken `form:"page_token,omitempty" json:"page_token,omitempty"`
+}
+
+// ChangeAudienceConfigParams defines parameters for ChangeAudienceConfig.
+type ChangeAudienceConfigParams struct {
+	// IfMatch The ETag the caller was answered with when it read what it changes, as it was given. The change is made only if that is still the version in force. A change needs it, and one without it is refused (428 PRECONDITION_REQUIRED) rather than made unconditionally, so the contract does not mark it required: a request that lacks it would be refused as one that does not match the contract. It names one version: "*", a list and a weak tag are refused (400 REQUEST_INVALID).
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
 }
 
 // ListProductRolesParams defines parameters for ListProductRoles.
@@ -380,6 +500,12 @@ type ListMembershipsParams struct {
 // RegisterProductJSONRequestBody defines body for RegisterProduct for application/json ContentType.
 type RegisterProductJSONRequestBody = ProductRegistration
 
+// ConfigureAudienceJSONRequestBody defines body for ConfigureAudience for application/json ContentType.
+type ConfigureAudienceJSONRequestBody = AudienceConfigCreation
+
+// ChangeAudienceConfigJSONRequestBody defines body for ChangeAudienceConfig for application/json ContentType.
+type ChangeAudienceConfigJSONRequestBody = AudienceConfigChange
+
 // GrantProductRoleJSONRequestBody defines body for GrantProductRole for application/json ContentType.
 type GrantProductRoleJSONRequestBody = ProductRoleGrant
 
@@ -403,6 +529,21 @@ type ServerInterface interface {
 	// GetProduct Read a product
 	// (GET /v1/products/{product_id})
 	GetProduct(w http.ResponseWriter, r *http.Request, productID ProductID)
+	// ListAudienceConfigs List the audience configurations of a product
+	// (GET /v1/products/{product_id}/audience-configs)
+	ListAudienceConfigs(w http.ResponseWriter, r *http.Request, productID ProductID, params ListAudienceConfigsParams)
+	// ConfigureAudience Make a product document its APIs for an audience in an environment
+	// (POST /v1/products/{product_id}/audience-configs)
+	ConfigureAudience(w http.ResponseWriter, r *http.Request, productID ProductID)
+	// RemoveAudienceConfig Remove an audience configuration of a product
+	// (DELETE /v1/products/{product_id}/audience-configs/{audience_config_id})
+	RemoveAudienceConfig(w http.ResponseWriter, r *http.Request, productID ProductID, audienceConfigID AudienceConfigID)
+	// GetAudienceConfig Read an audience configuration of a product
+	// (GET /v1/products/{product_id}/audience-configs/{audience_config_id})
+	GetAudienceConfig(w http.ResponseWriter, r *http.Request, productID ProductID, audienceConfigID AudienceConfigID)
+	// ChangeAudienceConfig Change where an audience enters the documentation
+	// (PUT /v1/products/{product_id}/audience-configs/{audience_config_id})
+	ChangeAudienceConfig(w http.ResponseWriter, r *http.Request, productID ProductID, audienceConfigID AudienceConfigID, params ChangeAudienceConfigParams)
 	// ListProductRoles List the role assignments of a product
 	// (GET /v1/products/{product_id}/role-assignments)
 	ListProductRoles(w http.ResponseWriter, r *http.Request, productID ProductID, params ListProductRolesParams)
@@ -541,6 +682,216 @@ func (siw *ServerInterfaceWrapper) GetProduct(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetProduct(w, r, productID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAudienceConfigs operation middleware
+func (siw *ServerInterfaceWrapper) ListAudienceConfigs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAudienceConfigsParams
+
+	// ------------- Optional query parameter "page_size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_size", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_size", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page_token" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_token", r.URL.Query(), &params.PageToken, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_token"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_token", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAudienceConfigs(w, r, productID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfigureAudience operation middleware
+func (siw *ServerInterfaceWrapper) ConfigureAudience(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfigureAudience(w, r, productID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveAudienceConfig operation middleware
+func (siw *ServerInterfaceWrapper) RemoveAudienceConfig(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "audience_config_id" -------------
+	var audienceConfigID AudienceConfigID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "audience_config_id", r.PathValue("audience_config_id"), &audienceConfigID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "audience_config_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveAudienceConfig(w, r, productID, audienceConfigID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAudienceConfig operation middleware
+func (siw *ServerInterfaceWrapper) GetAudienceConfig(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "audience_config_id" -------------
+	var audienceConfigID AudienceConfigID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "audience_config_id", r.PathValue("audience_config_id"), &audienceConfigID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "audience_config_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAudienceConfig(w, r, productID, audienceConfigID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChangeAudienceConfig operation middleware
+func (siw *ServerInterfaceWrapper) ChangeAudienceConfig(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "audience_config_id" -------------
+	var audienceConfigID AudienceConfigID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "audience_config_id", r.PathValue("audience_config_id"), &audienceConfigID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "audience_config_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ChangeAudienceConfigParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChangeAudienceConfig(w, r, productID, audienceConfigID, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1147,6 +1498,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/role-assignments", wrapper.GrantProductRole)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/products/{product_id}/role-assignments/{role_assignment_id}", wrapper.RevokeProductRole)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/role-assignments/{role_assignment_id}", wrapper.GetProductRole)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ListAudienceConfigs)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ConfigureAudience)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs/{audience_config_id}", wrapper.RemoveAudienceConfig)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs/{audience_config_id}", wrapper.GetAudienceConfig)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs/{audience_config_id}", wrapper.ChangeAudienceConfig)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/workspaces", wrapper.ListWorkspaces)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/workspaces", wrapper.CreateWorkspace)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/workspaces/{workspace_id}", wrapper.GetWorkspace)
@@ -1536,6 +1892,645 @@ type GetProductdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetProductdefaultApplicationProblemPlusJSONResponse) VisitGetProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAudienceConfigsRequestObject struct {
+	ProductID ProductID `json:"product_id"`
+	Params    ListAudienceConfigsParams
+}
+
+type ListAudienceConfigsResponseObject interface {
+	VisitListAudienceConfigsResponse(w http.ResponseWriter) error
+}
+
+type ListAudienceConfigs200ResponseHeaders struct {
+	CacheControl string
+}
+
+type ListAudienceConfigs200JSONResponse struct {
+	Body    AudienceConfigList
+	Headers ListAudienceConfigs200ResponseHeaders
+}
+
+func (response ListAudienceConfigs200JSONResponse) VisitListAudienceConfigsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAudienceConfigs400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListAudienceConfigs400ApplicationProblemPlusJSONResponse) VisitListAudienceConfigsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAudienceConfigs401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ListAudienceConfigs401ApplicationProblemPlusJSONResponse) VisitListAudienceConfigsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAudienceConfigs404ApplicationProblemPlusJSONResponse Problem
+
+func (response ListAudienceConfigs404ApplicationProblemPlusJSONResponse) VisitListAudienceConfigsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAudienceConfigs503ApplicationProblemPlusJSONResponse Problem
+
+func (response ListAudienceConfigs503ApplicationProblemPlusJSONResponse) VisitListAudienceConfigsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAudienceConfigsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListAudienceConfigsdefaultApplicationProblemPlusJSONResponse) VisitListAudienceConfigsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureAudienceRequestObject struct {
+	ProductID ProductID `json:"product_id"`
+	Body      *ConfigureAudienceJSONRequestBody
+}
+
+type ConfigureAudienceResponseObject interface {
+	VisitConfigureAudienceResponse(w http.ResponseWriter) error
+}
+
+type ConfigureAudience201ResponseHeaders struct {
+	CacheControl string
+	ETag         EntityTag
+	Location     string
+}
+
+type ConfigureAudience201JSONResponse struct {
+	Body    AudienceConfig
+	Headers ConfigureAudience201ResponseHeaders
+}
+
+func (response ConfigureAudience201JSONResponse) VisitConfigureAudienceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureAudience400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ConfigureAudience400ApplicationProblemPlusJSONResponse) VisitConfigureAudienceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureAudience401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ConfigureAudience401ApplicationProblemPlusJSONResponse) VisitConfigureAudienceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureAudience403ApplicationProblemPlusJSONResponse Problem
+
+func (response ConfigureAudience403ApplicationProblemPlusJSONResponse) VisitConfigureAudienceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureAudience404ApplicationProblemPlusJSONResponse Problem
+
+func (response ConfigureAudience404ApplicationProblemPlusJSONResponse) VisitConfigureAudienceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureAudience409ApplicationProblemPlusJSONResponse Problem
+
+func (response ConfigureAudience409ApplicationProblemPlusJSONResponse) VisitConfigureAudienceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureAudience503ApplicationProblemPlusJSONResponse Problem
+
+func (response ConfigureAudience503ApplicationProblemPlusJSONResponse) VisitConfigureAudienceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureAudiencedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ConfigureAudiencedefaultApplicationProblemPlusJSONResponse) VisitConfigureAudienceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAudienceConfigRequestObject struct {
+	ProductID        ProductID        `json:"product_id"`
+	AudienceConfigID AudienceConfigID `json:"audience_config_id"`
+}
+
+type RemoveAudienceConfigResponseObject interface {
+	VisitRemoveAudienceConfigResponse(w http.ResponseWriter) error
+}
+
+type RemoveAudienceConfig204Response struct {
+}
+
+func (response RemoveAudienceConfig204Response) VisitRemoveAudienceConfigResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveAudienceConfig400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response RemoveAudienceConfig400ApplicationProblemPlusJSONResponse) VisitRemoveAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAudienceConfig401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response RemoveAudienceConfig401ApplicationProblemPlusJSONResponse) VisitRemoveAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAudienceConfig403ApplicationProblemPlusJSONResponse Problem
+
+func (response RemoveAudienceConfig403ApplicationProblemPlusJSONResponse) VisitRemoveAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAudienceConfig404ApplicationProblemPlusJSONResponse Problem
+
+func (response RemoveAudienceConfig404ApplicationProblemPlusJSONResponse) VisitRemoveAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAudienceConfig503ApplicationProblemPlusJSONResponse Problem
+
+func (response RemoveAudienceConfig503ApplicationProblemPlusJSONResponse) VisitRemoveAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAudienceConfigdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response RemoveAudienceConfigdefaultApplicationProblemPlusJSONResponse) VisitRemoveAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAudienceConfigRequestObject struct {
+	ProductID        ProductID        `json:"product_id"`
+	AudienceConfigID AudienceConfigID `json:"audience_config_id"`
+}
+
+type GetAudienceConfigResponseObject interface {
+	VisitGetAudienceConfigResponse(w http.ResponseWriter) error
+}
+
+type GetAudienceConfig200ResponseHeaders struct {
+	CacheControl string
+	ETag         EntityTag
+}
+
+type GetAudienceConfig200JSONResponse struct {
+	Body    AudienceConfig
+	Headers GetAudienceConfig200ResponseHeaders
+}
+
+func (response GetAudienceConfig200JSONResponse) VisitGetAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAudienceConfig400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetAudienceConfig400ApplicationProblemPlusJSONResponse) VisitGetAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAudienceConfig401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetAudienceConfig401ApplicationProblemPlusJSONResponse) VisitGetAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAudienceConfig404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetAudienceConfig404ApplicationProblemPlusJSONResponse) VisitGetAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAudienceConfig503ApplicationProblemPlusJSONResponse Problem
+
+func (response GetAudienceConfig503ApplicationProblemPlusJSONResponse) VisitGetAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAudienceConfigdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetAudienceConfigdefaultApplicationProblemPlusJSONResponse) VisitGetAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeAudienceConfigRequestObject struct {
+	ProductID        ProductID        `json:"product_id"`
+	AudienceConfigID AudienceConfigID `json:"audience_config_id"`
+	Params           ChangeAudienceConfigParams
+	Body             *ChangeAudienceConfigJSONRequestBody
+}
+
+type ChangeAudienceConfigResponseObject interface {
+	VisitChangeAudienceConfigResponse(w http.ResponseWriter) error
+}
+
+type ChangeAudienceConfig200ResponseHeaders struct {
+	CacheControl string
+	ETag         EntityTag
+}
+
+type ChangeAudienceConfig200JSONResponse struct {
+	Body    AudienceConfig
+	Headers ChangeAudienceConfig200ResponseHeaders
+}
+
+func (response ChangeAudienceConfig200JSONResponse) VisitChangeAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeAudienceConfig400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ChangeAudienceConfig400ApplicationProblemPlusJSONResponse) VisitChangeAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeAudienceConfig401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ChangeAudienceConfig401ApplicationProblemPlusJSONResponse) VisitChangeAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeAudienceConfig403ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangeAudienceConfig403ApplicationProblemPlusJSONResponse) VisitChangeAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeAudienceConfig404ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangeAudienceConfig404ApplicationProblemPlusJSONResponse) VisitChangeAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeAudienceConfig409ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangeAudienceConfig409ApplicationProblemPlusJSONResponse) VisitChangeAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeAudienceConfig412ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangeAudienceConfig412ApplicationProblemPlusJSONResponse) VisitChangeAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeAudienceConfig428ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangeAudienceConfig428ApplicationProblemPlusJSONResponse) VisitChangeAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeAudienceConfig503ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangeAudienceConfig503ApplicationProblemPlusJSONResponse) VisitChangeAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeAudienceConfigdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ChangeAudienceConfigdefaultApplicationProblemPlusJSONResponse) VisitChangeAudienceConfigResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -2998,6 +3993,21 @@ type StrictServerInterface interface {
 	// GetProduct Read a product
 	// (GET /v1/products/{product_id})
 	GetProduct(ctx context.Context, request GetProductRequestObject) (GetProductResponseObject, error)
+	// ListAudienceConfigs List the audience configurations of a product
+	// (GET /v1/products/{product_id}/audience-configs)
+	ListAudienceConfigs(ctx context.Context, request ListAudienceConfigsRequestObject) (ListAudienceConfigsResponseObject, error)
+	// ConfigureAudience Make a product document its APIs for an audience in an environment
+	// (POST /v1/products/{product_id}/audience-configs)
+	ConfigureAudience(ctx context.Context, request ConfigureAudienceRequestObject) (ConfigureAudienceResponseObject, error)
+	// RemoveAudienceConfig Remove an audience configuration of a product
+	// (DELETE /v1/products/{product_id}/audience-configs/{audience_config_id})
+	RemoveAudienceConfig(ctx context.Context, request RemoveAudienceConfigRequestObject) (RemoveAudienceConfigResponseObject, error)
+	// GetAudienceConfig Read an audience configuration of a product
+	// (GET /v1/products/{product_id}/audience-configs/{audience_config_id})
+	GetAudienceConfig(ctx context.Context, request GetAudienceConfigRequestObject) (GetAudienceConfigResponseObject, error)
+	// ChangeAudienceConfig Change where an audience enters the documentation
+	// (PUT /v1/products/{product_id}/audience-configs/{audience_config_id})
+	ChangeAudienceConfig(ctx context.Context, request ChangeAudienceConfigRequestObject) (ChangeAudienceConfigResponseObject, error)
 	// ListProductRoles List the role assignments of a product
 	// (GET /v1/products/{product_id}/role-assignments)
 	ListProductRoles(ctx context.Context, request ListProductRolesRequestObject) (ListProductRolesResponseObject, error)
@@ -3175,6 +4185,155 @@ func (sh *strictHandler) GetProduct(w http.ResponseWriter, r *http.Request, prod
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProductResponseObject); ok {
 		if err := validResponse.VisitGetProductResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAudienceConfigs operation middleware
+func (sh *strictHandler) ListAudienceConfigs(w http.ResponseWriter, r *http.Request, productID ProductID, params ListAudienceConfigsParams) {
+	var request ListAudienceConfigsRequestObject
+
+	request.ProductID = productID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAudienceConfigs(ctx, request.(ListAudienceConfigsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAudienceConfigs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAudienceConfigsResponseObject); ok {
+		if err := validResponse.VisitListAudienceConfigsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ConfigureAudience operation middleware
+func (sh *strictHandler) ConfigureAudience(w http.ResponseWriter, r *http.Request, productID ProductID) {
+	var request ConfigureAudienceRequestObject
+
+	request.ProductID = productID
+
+	var body ConfigureAudienceJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ConfigureAudience(ctx, request.(ConfigureAudienceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ConfigureAudience")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ConfigureAudienceResponseObject); ok {
+		if err := validResponse.VisitConfigureAudienceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveAudienceConfig operation middleware
+func (sh *strictHandler) RemoveAudienceConfig(w http.ResponseWriter, r *http.Request, productID ProductID, audienceConfigID AudienceConfigID) {
+	var request RemoveAudienceConfigRequestObject
+
+	request.ProductID = productID
+	request.AudienceConfigID = audienceConfigID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveAudienceConfig(ctx, request.(RemoveAudienceConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveAudienceConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveAudienceConfigResponseObject); ok {
+		if err := validResponse.VisitRemoveAudienceConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAudienceConfig operation middleware
+func (sh *strictHandler) GetAudienceConfig(w http.ResponseWriter, r *http.Request, productID ProductID, audienceConfigID AudienceConfigID) {
+	var request GetAudienceConfigRequestObject
+
+	request.ProductID = productID
+	request.AudienceConfigID = audienceConfigID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAudienceConfig(ctx, request.(GetAudienceConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAudienceConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAudienceConfigResponseObject); ok {
+		if err := validResponse.VisitGetAudienceConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ChangeAudienceConfig operation middleware
+func (sh *strictHandler) ChangeAudienceConfig(w http.ResponseWriter, r *http.Request, productID ProductID, audienceConfigID AudienceConfigID, params ChangeAudienceConfigParams) {
+	var request ChangeAudienceConfigRequestObject
+
+	request.ProductID = productID
+	request.AudienceConfigID = audienceConfigID
+	request.Params = params
+
+	var body ChangeAudienceConfigJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ChangeAudienceConfig(ctx, request.(ChangeAudienceConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ChangeAudienceConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ChangeAudienceConfigResponseObject); ok {
+		if err := validResponse.VisitChangeAudienceConfigResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

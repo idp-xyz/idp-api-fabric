@@ -53,14 +53,22 @@ func Environments() []Environment {
 }
 
 // DocsURLPattern is the pattern of the entry of the documentation: an https
-// URL of a host, with a port if need be and then anything but white space and
-// control characters. The host is a name of letters, digits and hyphens, so
+// URL of a host, with an optional port up to 65535. A percent sign must
+// start a hex escape. The URL cannot contain whitespace or control
+// characters. The host is a name of letters, digits and hyphens, so
 // a name that is not ASCII is given in its punycode form, and nothing can
 // stand in front of it: a URL that carries credentials does not match.
 //
 // The contract of the API states the same pattern, and a test holds the two
 // together.
-const DocsURLPattern = `^https://[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*(:[0-9]{1,5})?([/?#][^\p{Z}\p{Cc}]*)?$`
+const DocsURLPattern = `^https://` + docsURLHostPattern + `(:` + docsURLPortPattern + `)?` +
+	`([/?#]([^%\p{Z}\p{Cc}]|%[0-9A-Fa-f]{2})*)?$`
+
+const docsURLHostPattern = `[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*`
+
+// Preserve the caller's spelling, including leading zeros, for a port
+// written with at most five digits and in the range 0–65535.
+const docsURLPortPattern = `([0-5]?[0-9]{1,4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])`
 
 var docsURL = regexp.MustCompile(DocsURLPattern)
 
@@ -80,7 +88,7 @@ func checkDocsURL(value string) error {
 	case utf8.RuneCountInString(value) > DocsURLMaxLength:
 		return invalid("the entry of the documentation is longer than %d characters", DocsURLMaxLength)
 	case !docsURL.MatchString(value):
-		return invalid("the entry of the documentation is an https URL of a host, without credentials and without white space")
+		return invalid("the entry of the documentation must be a valid https URL without credentials or whitespace")
 	}
 	return nil
 }

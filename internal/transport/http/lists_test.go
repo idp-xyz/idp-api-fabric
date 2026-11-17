@@ -22,8 +22,8 @@ type listQuery struct {
 	After         *ports.Position
 }
 
-// lists are the four lists: where each is read, which list its tokens are
-// of, what one item of it is shown as, and what its use case was asked.
+// lists are the lists: where each is read, which list its tokens are of,
+// what one item of it is shown as, and what its use case was asked.
 var lists = []struct {
 	name   string
 	target string
@@ -51,6 +51,12 @@ var lists = []struct {
 	}},
 	{"the owners of a product", roleAssignments, listOfRoleAssignments, roleAssignmentBody, func(g *governance) (asked []listQuery) {
 		for _, query := range g.rolesListed {
+			asked = append(asked, listQuery{query.Caller, query.CorrelationID, query.ProductID, "", query.PageSize, query.After})
+		}
+		return asked
+	}},
+	{"the audiences of a product", audienceConfigs, listOfAudienceConfigs, audienceConfigBody, func(g *governance) (asked []listQuery) {
+		for _, query := range g.configsListed {
 			asked = append(asked, listQuery{query.Caller, query.CorrelationID, query.ProductID, "", query.PageSize, query.After})
 		}
 		return asked

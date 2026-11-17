@@ -432,6 +432,13 @@ func (s roleStore) RolesOf(_ context.Context, productID domain.ProductID, princi
 	return roles, nil
 }
 
+func (s roleStore) LockHeldRoles(ctx context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Role, error) {
+	if !transacted(ctx) {
+		return nil, fmt.Errorf("a principal's roles were locked outside a transaction")
+	}
+	return s.RolesOf(ctx, productID, principal)
+}
+
 // List returns a page of the role assignments in force of the product.
 func (s roleStore) List(_ context.Context, productID domain.ProductID, page ports.Page) ([]domain.RoleAssignment, error) {
 	if err := s.fail("list"); err != nil {
