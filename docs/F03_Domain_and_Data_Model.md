@@ -3,7 +3,7 @@
 > **文档编号**：F03 · Domain & Data Model  
 > **项目**：IDP API Fabric (`idp-api-fabric`)  
 > **文档基线**：V1.0 · 2026-11-09（沿用既定基线，不另立版本）  
-> **状态**：领域与逻辑数据设计完成、待具名评审；数据库实现、架构 PoC、正式标准门禁和业务验收均未执行  
+> **状态**：领域与逻辑数据设计待具名评审，Product Governance 实现见 §5.5–5.6。架构 PoC、正式标准门禁和业务验收待执行。\
 > **权威输入**：[F01](F01_Product_Requirements.md)、[F02](F02_System_Architecture.md)、[阶段交接约束](README.md)、《IDP Supply Chain DDD Product Engineering Standard V1.0》（IDP-SCG-STD-001）  
 > **决策约束**：ADR-0001～0006 均为 `Proposed`；F03 不以此文宣称架构已批准。  
 > **面向后续**：F04 API Contract Governance、F05 Security、F06 Dual Portal UX、F07 Engineering、F08 Acceptance。
@@ -193,7 +193,7 @@ F02 提出的 `PublicationTarget = Product × Audience × Environment × Portal`
 |---|---|---|---|---|---|---|---|---|
 | ProductGovernance | Product | Product | product_id | owner_org_ref | product_key | 1 Product to N Workspace | ACTIVE | MVP |
 | ProductGovernance | Product | ProductRoleAssignment | role_assignment_id | product_id+principal_issuer+principal_subject+role+role_assignment_version+granted_at+granted_by+revoked_at+revoked_by | product_id+principal_issuer+principal_subject+role where revoked_at is null | N per Product; at least one in force | HIST | MVP |
-| ProductGovernance | Product | ProductAudienceConfig | audience_config_id | product_id | product_id+audience_key+environment_key | N per Product | ACTIVE | MVP |
+| ProductGovernance | Product | ProductAudienceConfig | audience_config_id | product_id | product_id+audience+environment where removed_at is null | N per Product over time | HIST | MVP |
 | ProductGovernance | Workspace | Workspace | workspace_id | product_id | product_id+workspace_key | N per Product | ACTIVE | MVP |
 | ProductGovernance | Workspace | WorkspaceMembership | membership_id | workspace_id+principal_ref | active membership scope | N per Workspace | ACTIVE | MVP |
 | ProductGovernance | Product | ExternalTenantBinding | tenant_binding_id | product_id+authority | authority+external_tenant_id+product_id | N per Product | ACTIVE | V1 |
@@ -254,6 +254,16 @@ F02 提出的 `PublicationTarget = Product × Audience × Environment × Portal`
 收尾压测发现普通成员的 Workspace 末页可能扫描大量不可见记录。查询现先物化该主体在该产品内有效成员关系对应的去重 Workspace ID，再通过主键逐项读取，最后按固定顺序分页；LATERAL 内的 LIMIT 1 保持每次主键读取有界，不增加迁移或权限。独立 EXPLAIN 回归检查访问的 Workspace 行数，而非依赖易波动的耗时阈值。有权读取的集合很大时，此过滤路径仍有组装和排序可见集合的成本，不能宣称所有授权过滤列表的开销只与单页大小有关。
 
 升级 #6 需要 `fabric-migrate -apply -grant-to <application_role>`，授予新需要的 UPDATE；#7 的索引迁移只需 `-apply`，不增加权限。索引创建会短暂阻塞写入。四类查询的分页约定见 F04 §3.1.1，权限与拒绝语义见 F05 §6.1；可复现的负载证据见 [列表压测记录](../tests/performance/README.md)。
+
+### 5.6 已实现的受众配置和产品品牌（PR #10 / #11）
+
+迁移 `005_product_audience_config.sql` 创建 `product_audience_config`。新产品从空配置开始。配置由 `audience_config_id` 标识，固定归属产品、受众（`public`、`partner`、`internal`）和环境（`sandbox`、`production`）。部分唯一索引保证每个 `(product_id, audience, environment)` 最多有一条 `removed_at IS NULL` 的配置。有效配置按 `(product_id, created_at, audience_config_id)` 索引分页。
+
+配置从版本 1 开始，可更新或清除 `docs_url`。移除记录时间和主体并增加版本，历史行由触发器保持只读；重新配置相同组合生成新 ID。应用角色持有该表的 `SELECT`、`INSERT`、`UPDATE`，触发器限定更新为变更文档入口或结束配置。
+
+迁移 `006_product_brand.sql` 将品牌作为 Product 的值对象，字段为 `brand_name`、`brand_logo_url`、`brand_primary_color`，共用 Product 的 `aggregate_version`。新登记的品牌名称取产品展示名。旧行的空品牌名按展示名读取，空更新主体按登记主体读取。应用角色对 `product` 的 `UPDATE` 由触发器限定为变更品牌及相应版本、更新主体和时间；表属主仍可单独调整 `status`。
+
+四个写用例在事务内通过 `LockHeldRoles` 对调用方的当前角色分配加共享锁，使写入和负责人撤销按锁顺序生效。变更和移除配置时锁定配置行，变更品牌时锁定 Product 行。实际变更、成功审计和 Outbox 事件一起提交。权限见 F05 §6.3，条件更新见 F04 §11。升级时执行 `fabric-migrate -apply -grant-to <application_role>`，应用迁移并补授应用角色权限。
 
 ## 6. 数据权威、制品摘要与可追溯发布链
 
@@ -343,6 +353,9 @@ F02 提出的 `PublicationTarget = Product × Audience × Environment × Portal`
 | `RegisterProduct` / `CreateWorkspace` | Product Governance | PlatformAdmin / ProductAdmin；Product/Workspace | unique + membership validation + audit/outbox | Catalog scope 投影更新 | MVP |
 | `GrantProductRole` / `GetProductRole` / `RevokeProductRole` | Product Governance | 产品负责人；平台管理员仅可授予 | 授予/撤销同事务写分配、审计和 Outbox；撤销前锁住有效负责人 | `product_role.changed`；初始授予见 §5.5 | MVP |
 | `ListProducts` / `ListWorkspaces` / `ListMemberships` / `ListProductRoles` | Product Governance | 每页重新按当前角色过滤；见 F05 §6.1 | 只读游标分页，不缓存授权、不返回总数；拒绝独立审计 | 无成功读取事件或审计 | MVP |
+| `ConfigureAudience` / `ChangeAudienceConfig` / `RemoveAudienceConfig` | Product Governance | 该产品负责人，配置归属该产品 | 校验当前负责人分配；配置、审计和 Outbox 同事务 | `audience_config.changed` | MVP |
+| `GetAudienceConfig` / `ListAudienceConfigs` | Product Governance | 按产品可见性读取有效配置，见 F05 §6.3 | 详情或只读游标分页 | 无成功读取事件或审计 | MVP |
+| `ChangeProductBrand` | Product Governance | 该产品负责人，按 Product 版本更新 | 锁定当前负责人分配和 Product；品牌、审计和 Outbox 同事务 | `product.brand_changed` | MVP |
 | `RegisterAPIAsset` | API Catalog | Product Engineer；APIAsset | asset + owner + audit/outbox | 搜索索引更新 | MVP |
 | `ImportContractRevision` | Registry | CI/Engineer；Revision | 通过暂存和 digest 验证后提交 revision + event | 异步 CheckRun（失败可诊断） | MVP |
 | `RequestCheckRun` | Policy & Review | Engineer/CI；CheckRun | 注册固定 input/policy 指纹 | Worker 执行、报告制品写入 | MVP |
@@ -465,6 +478,8 @@ WHERE slot_id = :slot_id
 |---|---|---|---|
 | `ProductRegistered` | Governance / Product 创建成功 | product_id、owner_ref、version | Catalog 建立可见范围；不可把 Product 视为业务 Tenant |
 | `ProductRoleChanged`（已实现为 `fabric.productgovernance.product_role.changed`） | Governance / 后续负责人授予、撤销 | product_id、role_assignment_id、role、in_force、aggregate_version | 同事务 Outbox；不含主体；登记时首批负责人不单独发授予事件，见 §5.5 |
+| `AudienceConfigChanged`（`fabric.productgovernance.audience_config.changed`） | Governance / 新增、变更文档入口、移除配置 | product_id、audience_config_id、audience、environment、in_force、aggregate_version | `aggregate_id` 为配置 ID；文档入口通过授权后的配置详情读取，移除通过 `in_force=false` 表示 |
+| `ProductBrandChanged`（`fabric.productgovernance.product.brand_changed`） | Governance / 品牌实际变更 | 通用事件字段，`aggregate_id` 为产品 ID，`aggregate_version` 为产品版本 | 品牌内容通过授权后的产品详情读取 |
 | `APIAssetRegistered` | Catalog / Asset 创建成功 | product_id、asset_id、owner_ref | Registry 允许登记契约；事件重复要去重 |
 | `ContractRevisionRegistered` | Registry / Revision 成功登记 | revision_id、asset_id、source_digest | Check Workflow 建立任务；不等于批准 |
 | `GovernanceCheckCompleted` | Policy / 检查终态 | check_run_id、policy_digest、revision_digest | Review UI；失败证据不得默认隐藏 |
@@ -603,5 +618,5 @@ F06 不得把两个门户合并为一套相同的功能菜单，但可共享设�
 - **逻辑模型**：已明确定义事实权威、Owner、聚合、不变量、Scope、ERD、状态机与恢复语义；`F03_Logical_Model.csv` 为同一设计的索引而非替代规格。
 - **可读性**：至少 10 幅实际服务于设计判定的图表；图、表、命令、关系与不变量引用需自洽；移动端仅局部表格允许横向滚动。
 - **追溯**：保留 F01 71 FR、18 NFR；使用 `F03_domain_trace.csv` 显式区分领域落点和后续承接；F03 18 个设计场景均为 `NOT_RUN`。
-- **真实性**：原设计场景与正式门禁保持 `NOT_RUN`。Product Governance 已实现的负责人管理、列表查询、物理 DDL 和局部负载证据另见 §5.5；这不代表生产 IAM、权限渗透、Edge 全路径撤销、灾备或上位标准验收通过。
+- **验收状态**：原设计场景与正式门禁保持 `NOT_RUN`。Product Governance 的实现记录见 §5.5–5.6，涵盖负责人、列表、受众配置和品牌。
 - **结束条件**：设计可进入具名领域/架构评审；OD-01…OD-10 需由相应责任人处理后再冻结涉及实现的关键决策。F04 可基于该候选领域模型开展契约规范设计，但对未批准的边界必须保留约束与追踪。

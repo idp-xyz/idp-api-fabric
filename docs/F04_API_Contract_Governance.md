@@ -95,7 +95,7 @@ OpenAPI `security` 既不是运行时授权凭据也不是对象级授权证明�
 
 ### 3.1.1 已实现的列表与查询参数约定（PR #7，2026-11-17 同步）
 
-`api/openapi.yaml`（OpenAPI 3.1.2）是管理 API 的契约，HTTP DTO 与处理器接口由该文件生成。Product、Workspace、WorkspaceMembership 和 ProductRoleAssignment 自 0.5.0 起采用下列分页约定。0.6.0 的受众配置列表也沿用该约定，按创建时间和配置 ID 正序排列。访问规则见管理契约和 F05 §6.1。
+`api/openapi.yaml`（OpenAPI 3.1.2）是管理 API 的契约，HTTP DTO 与处理器接口由该文件生成。Product、Workspace、WorkspaceMembership 和 ProductRoleAssignment 自 0.5.0 起采用下列分页约定。受众配置列表自 0.6.0 起采用同一约定，按 `(created_at, audience_config_id)` 正序排列。访问规则见 F05 §6.1、§6.3。
 
 | 项目 | 当前实现 |
 |---|---|
@@ -284,9 +284,26 @@ V1 按 `Experimental → Stable → Deprecated → Retired` 表达资产生命�
 
 ## 11. Fabric 自身 API 的 HTTP/幂等/错误边界
 
-推荐管理 API 资源采用规范化命名和版本路径；示例仅定义设计形态。`POST /v1/products/{product_id}/assets/{api_asset_id}/revisions` 创建固定输入 Revision；`PUT /v1/publication-slots/{slot_id}` 以 `If-Match` / `expected_generation` 的一致规则 CAS 更新。后者是**修改受控资源状态**，幂等键的重试窗口不得跨 Product、Principal、Slot、Action 误用。
+### 11.1 已实现的受众配置与品牌接口（PR #10 / #11）
 
-管理 API 0.6.0 中，产品负责人通过 `PUT /v1/products/{product_id}/audience-configs/{audience_config_id}` 更新文档入口。请求的 `If-Match` 使用详情响应的 `ETag`。缺少条件返回 428，版本过期返回 412。发送 `{}` 清除入口。单次请求只接受一个 JSON 值。
+下表路径以 `/v1/products/{product_id}` 开头。当前管理 API 为 0.7.0，访问规则见 F05 §6.3。
+
+| 操作 | 请求与响应 |
+|---|---|
+| `GET …/audience-configs` | 返回有效配置，采用 §3.1.1 的分页约定 |
+| `POST …/audience-configs` | 提交 `audience`、`environment` 和可选的 `docs_url`。成功返回 201、`Location` 和配置的 `ETag`。重复配置同一有效组合返回 409 `AUDIENCE_CONFIG_EXISTS` |
+| `GET …/audience-configs/{audience_config_id}` | 返回配置详情和配置的 `ETag` |
+| `PUT …/audience-configs/{audience_config_id}` | 以配置的 `ETag` 作 `If-Match` 更新 `docs_url`，用 `{}` 清除入口。返回配置及当前 `ETag` |
+| `DELETE …/audience-configs/{audience_config_id}` | 直接移除当前有效配置，无 `If-Match` 条件。首次成功返回 204，重复移除返回 404 `AUDIENCE_CONFIG_NOT_FOUND` |
+| `GET …` / `PUT …/brand` | 产品详情返回 `brand` 和 Product 的 `ETag`。更新时将该 `ETag` 作为 `If-Match`，整体替换品牌。`name` 必填，省略 `logo_url` 或 `primary_color` 清除对应值。成功返回更新后的 Product 和当前 `ETag` |
+
+两个 `PUT` 都接受双引号包围的单个正整数版本作为强标签。缺少 `If-Match` 返回 428 `PRECONDITION_REQUIRED`，版本过期返回 412 `PRECONDITION_FAILED`，标签格式无效返回 400 `REQUEST_INVALID`。标签匹配且内容相同时返回现有内容和版本。登记产品的 201 响应也带 Product 的 `ETag`；产品列表仅随各项返回 `brand`。
+
+请求体只接受一个 JSON 值。`docs_url` 与 `logo_url` 均为长度至多 2048 的 HTTPS URL，禁止凭证、空白字符和控制字符。Fabric 按原值存储链接，读取内容由使用方负责。`primary_color` 使用 `#RRGGBB`，保留输入的大小写。写入收到 503 `OUTCOME_UNCERTAIN` 时，先读取当前状态再决定是否重试。
+
+### 11.2 通用治理约定
+
+推荐管理 API 资源采用规范化命名和版本路径。设计示例中，`POST /v1/products/{product_id}/assets/{api_asset_id}/revisions` 创建固定输入 Revision，`PUT /v1/publication-slots/{slot_id}` 以 `If-Match` / `expected_generation` 的一致规则 CAS 更新。后者修改受控资源状态，幂等键及重试窗口需绑定对应的 Product、Principal、Slot 和 Action。
 
 - `Idempotency-Key` 作用域提议：`(product_id, principal_ref, operation_type, target_id, api_asset_id, idempotency_key)`；服务端还应保存规范化请求指纹。Key 保留窗口、最大长度、请求规范化方式需 F07 配合压测与客户 SLA 定稿。
 - 第一次合法请求返回结果；同 Key、同指纹的完成重试返回**同一语义结果**（状态码或异步结果链接的精确策略待实现测试）；同 Key、不同指纹返回 409；同 Key 的进行中请求返回明确处理中状态，不重复操作。
