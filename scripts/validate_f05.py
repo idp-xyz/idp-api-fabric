@@ -47,7 +47,8 @@ check(policy.get('decision_alg')=='deny_overrides' and policy.get('default_outco
 controls={x['id'] for x in policy.get('controls',[])}
 check(controls=={f'A{i:02d}' for i in range(1,12)},'Missing controls A01..A11')
 m=getcsv(G/'F05_Access_Matrix.csv')
-check(len(m)==35 and {x['rule_id'] for x in m}=={f'AC-{i:02d}' for i in range(1,36)},'Access Matrix IDs/count invalid')
+check(len(m)==43 and {x['rule_id'] for x in m}=={f'AC-{i:02d}' for i in range(1,44)},'Access Matrix IDs/count invalid')
+check({x['action'] for x in m if int(x['rule_id'][3:])>=36}=={'product_role.grant','product_role.read','product_role.revoke','product.list','workspace.list','member.list','product_role.list'},'Product Governance operations missing from matrix')
 check(all(x['default_fail'] in ('DENY','DENY_OR_404') for x in m),'Access Matrix contains non-deny default')
 check(all(x['runtime_verification']=='NOT_RUN' and x['status']=='PROPOSED' for x in m),'Access Matrix claims runtime validation')
 check(all(x['pep'] and x['resource'] and x['action'] and x['allow_if'] for x in m),'Access Matrix incomplete row')

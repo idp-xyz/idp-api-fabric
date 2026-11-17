@@ -42,8 +42,9 @@ def loadcsv(rel):
 model=loadcsv('docs/F03_Logical_Model.csv')
 trace=loadcsv('tests/acceptance/F03_domain_trace.csv')
 scenes=loadcsv('tests/acceptance/F03_domain_scenarios.csv')
-check(len(model)==37,'logic model count differs')
-check(len({x['Entity'] for x in model})==37,'duplicate logical entity names')
+check(len(model)==38,'logic model count differs')
+check(len({x['Entity'] for x in model})==38,'duplicate logical entity names')
+check(any(x['Entity']=='ProductRoleAssignment' and x['PrimaryKey']=='role_assignment_id' for x in model),'Product role assignment is missing from logical model')
 check(len(trace)==89,'requirement trace must cover 89')
 reqs={f'FR-{i:03}' for i in range(1,72)}|{f'NFR-{i:02}' for i in range(1,19)}
 check({x['requirement_id'] for x in trace}==reqs,'trace missing/extra requirement ID')

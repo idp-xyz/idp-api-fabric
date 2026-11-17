@@ -93,6 +93,24 @@ F04 将 **`SourceSnapshot → ContractRevision → CheckRun/ReviewDecision → i
 
 OpenAPI `security` 既不是运行时授权凭据也不是对象级授权证明；未经授权的 API 不能因为文档中声明 OAuth scope 就自动对外开放。
 
+### 3.1.1 已实现的列表与查询参数约定（PR #7，2026-11-17 同步）
+
+当前管理契约为 `api/openapi.yaml`（OpenAPI 3.1.2，API 版本 0.5.0），HTTP DTO 与处理器接口由该文件生成。下列约定适用于 Product、Workspace、WorkspaceMembership、ProductRoleAssignment 四类 GET 列表；具体访问规则见 F05 §6.1。
+
+| 项目 | 当前实现 |
+|---|---|
+| 参数 | `page_size` 为 1–100，默认 50；`page_token` 原样使用上一页的 `next_page_token` |
+| 应答 | 必有 `items`，空页为 `[]`；仅还有下一页时包含非空 `next_page_token`，刚好装满的最后一页也不包含；不返回总数；`Cache-Control: no-store` |
+| 固定排序 | Product/Workspace 按 `(created_at, id)`，成员/负责人按 `(granted_at, id)`，从早到晚；授权过滤在分页前完成 |
+| 选择游标的理由 | 按稳定位置继续读取；避免 OFFSET 在前面新增/撤销时重复或漏项，并使用迁移 004 的索引；吞吐和深页延迟的实测见[列表压测记录](../tests/performance/README.md) |
+| 一致性 | 每页读取当时的状态，不是整次翻页的快照；翻页开始前存在且结束后仍有效的记录恰好一次，期间新增/结束的记录可能出现或不出现 |
+| 令牌 | 版本 1、列表种类、UTC 微秒时间、UUID 的规范 JSON，经无填充 base64url 编码；不签名、不绑定调用方、不设到期时间，不能作为授权凭据；每页重新授权 |
+| 无效令牌 | 格式不规范、其他列表种类、版本或位置无效，均为 400 `PAGE_TOKEN_INVALID`；将来改变排序/游标语义需升令牌版本，旧令牌失败后从头读取 |
+| 查询参数 | 所有接口拒绝未声明、无值或不符合契约的参数，返回 400 `REQUEST_INVALID`；包括 `/healthz`、`/version`，探活请求不得附加无关参数 |
+| 当前范围 | 没有筛选、搜索、可选排序或已撤销记录列表；成功列表不写审计，授权拒绝按 F05 留证 |
+
+传输层先检查身份、参数和请求体，再进入用例；参数错误不代表已经查过对象或授权，也不产生业务变更/授权拒绝审计。分页令牌即使被自行构造或转交，也只定位调用方当时获准读取的集合，不能放宽产品/Workspace 范围。该分页实现和局部负载证据不等于正式 SLO、生产容量或外部 IAM 验收。
+
 ### 3.2 Schema 表达规范
 
 - OAS 3.1 Schema 与 JSON Schema 2020-12 对齐；`nullable: true` 是 OAS 3.0 的旧习惯，3.1 应使用 `type: ["string", "null"]`（在适用上下文）。

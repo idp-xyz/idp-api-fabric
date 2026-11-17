@@ -1,5 +1,4 @@
-<!DOCTYPE html>
-<html lang="zh-CN"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><meta content="light" name="color-scheme"/><meta content="IDP API Fabric F05 V1.0 安全架构与多租户设计：身份联邦、STRIDE、ABAC、授权矩阵、访问隔离、发布撤销及负向安全验证。" name="description"/><title>F05 · IDP API Fabric 安全架构与多租户设计</title><style>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="description" content="IDP API Fabric F05 V1.0 安全架构与多租户设计：身份联邦、STRIDE、ABAC、授权矩阵、访问隔离、发布撤销及负向安全验证。"><title>F05 · IDP API Fabric 安全架构与多租户设计</title><style>
 :root{--ink:#1a2c3e;--muted:#64768a;--brand:#0969aa;--brand2:#087c9e;--line:#dbe4ec;--panel:#fff;--bg:#f4f7fa;--soft:#eef5fb;--accent:#eaf6f4;--warn:#fff3d9;--danger:#fff0ed;--shadow:0 10px 40px rgba(20,52,88,.06)}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:var(--ink);background:var(--bg);font-family:Inter,"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;line-height:1.78;font-size:14px}a{color:var(--brand);text-decoration:none}a:hover{text-decoration:underline}button,input{font:inherit}button{cursor:pointer}
 .layout{display:grid;grid-template-columns:296px minmax(0,1fr);min-height:100vh}.side{position:sticky;top:0;height:100vh;overflow-y:auto;background:#0c273f;color:#d7e3ee;padding:27px 19px 28px;scrollbar-width:thin;scrollbar-color:#557086 #0c273f}.logo{font-weight:800;letter-spacing:.045em;color:white;font-size:19px}.logo small{display:block;letter-spacing:.06em;color:#a1bccf;font-size:10px;margin-top:1px}.side-kicker{text-transform:uppercase;letter-spacing:.13em;color:#76a9c9;font-size:10px;margin:30px 10px 13px;font-weight:800}.navlist{display:flex;flex-direction:column;gap:4px}.navlist a,.navlist .pending{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;color:#b8d0e1;font-size:12px;line-height:1.4}.navlist a:hover{background:#163a58;color:white;text-decoration:none}.navlist a.active{background:#164a70;color:white;border-left:3px solid #4bc2d4}.navlist .pending{color:#7f98ab}.mini{margin-left:auto;font-size:10px;color:#9fb6c6}.side input{width:100%;background:#16354f;border:1px solid #2b4d66;border-radius:8px;padding:10px 12px;color:white;outline:none;font-size:12px}.side input::placeholder{color:#9eb4c6}.side hr{border:0;border-top:1px solid #27455e;margin:18px 0}.side-foot{font-size:11px;color:#7998b2;line-height:1.6;margin:22px 10px 4px}
@@ -49,15 +48,15 @@
 @media(max-width:780px){.doc .table-scroll table{min-width:760px;width:max-content;display:table}.doc .fig-grid.cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}.doc .architecture-figure{overflow-wrap:anywhere}}
 @media(max-width:480px){.doc .fig-grid.cols-3{grid-template-columns:1fr}.doc .architecture-figure{padding:12px 10px}}
 @media print{.doc .architecture-figure{break-inside:avoid}.doc .table-scroll{overflow:visible}.doc .table-scroll table{min-width:0;width:100%;font-size:7.5pt}}
-</style></head><body><a class="skip-link" href="#main-content">跳到文档正文</a><button aria-hidden="true" aria-label="关闭章节目录" class="side-backdrop" id="sideBackdrop" tabindex="-1"></button><div class="layout"><aside class="side" id="sidebar"><a href="../index.html" style="text-decoration:none"><div class="logo">IDP API Fabric<small>ENGINEERING BASELINE</small></div></a><div class="side-kicker">文档体系</div><div class="navlist"><a class="" href="F01_Product_Requirements.html">F01 · Product Requirements</a><a class="" href="F02_System_Architecture.html">F02 · System Architecture</a><a class="" href="F03_Domain_and_Data_Model.html">F03 · Domain &amp; Data Model</a><a class="" href="F04_API_Contract_Governance.html">F04 · Contract Governance</a><a class="active" href="F05_Security_and_Multitenancy.html">F05 · Security &amp; Multitenancy</a><div class="pending">F06 · Dual Portal Experience <span class="mini">待编写</span></div><div class="pending">F07 · Engineering &amp; Quality <span class="mini">待编写</span></div><a href="F08_Delivery_and_Acceptance.html">F08 · Delivery &amp; Acceptance</a></div><hr/><div class="side-kicker">F05 · 目录</div><input aria-label="筛选目录章节" id="navsearch" placeholder="筛选本文章节…" type="search"/><nav class="navlist" id="toc"><a href="#section-0" style="">0. 执行摘要与安全架构裁决</a><a href="#section-1" style="">1. 适用边界、标准与规范效力</a><a href="#section-1-1" style="padding-left:24px">1.1 明确责任和非目标</a><a href="#section-1-2" style="padding-left:24px">1.2 外部依据及采用约束</a><a href="#section-2" style="">2. 安全资产分类、主体与信任边界</a><a href="#section-2-1" style="padding-left:24px">2.1 数据分类（推荐候选）</a><a href="#section-2-2" style="padding-left:24px">2.2 Principal / resource / action / context</a><a href="#section-3" style="">3. STRIDE 威胁模型与攻击面</a><a href="#section-3-1" style="padding-left:24px">3.1 威胁建模对象</a><a href="#section-4" style="">4. 身份联邦、会话及令牌信任</a><a href="#section-4-1" style="padding-left:24px">4.1 身份系统集成原则</a><a href="#section-4-2" style="padding-left:24px">4.2 JWT 与会话最低验证</a><a href="#section-5" style="">5. 多产品、租户与组织授权体系</a><a href="#section-5-1" style="padding-left:24px">5.1 关系模型</a><a href="#section-5-2" style="padding-left:24px">5.2 授权决策次序及结果</a><a href="#section-5-3" style="padding-left:24px">5.3 权限缓存</a><a href="#section-6" style="">6. 内部/外部双门户权限矩阵</a><a href="#section-7" style="">7. 授权策略表达与执行边界</a><a href="#section-8" style="">8. 数据库、对象存储、搜索和缓存的隔离</a><a href="#section-9" style="">9. 安全发布、紧急撤销与传播证明</a><a href="#section-9-1" style="padding-left:24px">9.1 三种撤销级别</a><a href="#section-9-2" style="padding-left:24px">9.2 可观测性状态</a><a href="#section-10" style="">10. 不可信契约、外部引用及内容解析安全</a><a href="#section-11" style="">11. API Explorer 与沙箱执行安全（V1）</a><a href="#section-12" style="">12. Git、CI、Webhook、Worker 与外部适配安全</a><a href="#section-13" style="">13. 加密、密钥及凭证生命周期</a><a href="#section-14" style="">14. 审计、防抵赖与证据完整性</a><a href="#section-15" style="">15. 隐私、数据保留、区域合规与删除</a><a href="#section-16" style="">16. 安全运营、事件响应与恢复</a><a href="#section-17" style="">17. 安全供应链及开发交付门禁</a><a href="#section-18" style="">18. 关键安全质量指标和待定阈值</a><a href="#section-19" style="">19. CargoPai 贯通案例：发布、撤销与跨产品拒绝</a><a href="#section-20" style="">20. 机器可读安全资产与验证计划</a><a href="#section-20-1" style="padding-left:24px">20.1 安全场景测试最低覆盖</a><a href="#section-21" style="">21. 与 F01–F04 的规范、模型与需求追溯</a><a href="#section-22" style="">22. 未决决策、残余风险与下一阶段接口</a><a href="#section-23" style="">23. 参考依据与采用边界</a></nav><div class="side-foot">V1.0 · 安全设计候选 / 待具名批准<br/>设计矩阵与静态检查不等于渗透测试或合规认证。</div></aside><div class="main"><header class="topbar"><div><button aria-controls="sidebar" aria-expanded="false" aria-label="展开目录" class="menu" id="menu">☰ 目录</button><span class="crumb"><strong>IDP API Fabric</strong>　/　设计基线　/　F05</span></div><div class="top-actions"><a class="desktop-only" href="../index.html">总目录</a><a href="F05_Security_and_Multitenancy.md">Markdown 源文件</a><button onclick="window.print()">打印 / PDF</button></div></header><main class="sheet" id="main-content" tabindex="-1"><header class="hero"><div class="eyebrow">F05 · Security &amp; Multitenancy</div><h1>IDP API Fabric<br/>安全架构与多租户设计</h1><p>身份联邦 · 多维授权 · STRIDE 威胁模型 · 安全发布与撤销 · 双门户隔离 · 可审计证据</p><div class="hero-meta"><span>V1.0 · 设计待评审</span><span>2026.11.09</span><span>正式工程目录</span><span>所有真实安全场景 NOT_RUN</span></div></header><div class="metrics"><div class="metric"><b>10</b><span>安全模型及业务流程图</span></div><div class="metric"><b>35</b><span>操作级授权规则</span></div><div class="metric"><b>29</b><span>STRIDE 风险条目</span></div><div class="metric"><b>36</b><span>待执行安全场景</span></div></div><article class="doc">
+</style></head><body><a class="skip-link" href="#main-content">跳到文档正文</a><button id="sideBackdrop" class="side-backdrop" aria-label="关闭章节目录" aria-hidden="true" tabindex="-1"></button><div class="layout"><aside class="side" id="sidebar"><a href="../index.html" style="text-decoration:none"><div class="logo">IDP API Fabric<small>ENGINEERING BASELINE</small></div></a><div class="side-kicker">文档体系</div><div class="navlist"><a href="F01_Product_Requirements.html" class="">F01 · Product Requirements</a><a href="F02_System_Architecture.html" class="">F02 · System Architecture</a><a href="F03_Domain_and_Data_Model.html" class="">F03 · Domain & Data Model</a><a href="F04_API_Contract_Governance.html" class="">F04 · Contract Governance</a><a href="F05_Security_and_Multitenancy.html" class="active">F05 · Security & Multitenancy</a><div class="pending">F06 · Dual Portal Experience <span class="mini">待编写</span></div><div class="pending">F07 · Engineering & Quality <span class="mini">待编写</span></div><a href="F08_Delivery_and_Acceptance.html" class="">F08 · Delivery & Acceptance</a></div><hr><div class="side-kicker">F05 · 目录</div><input id="navsearch" type="search" placeholder="筛选本文章节…" aria-label="筛选目录章节"><nav class="navlist" id="toc"><a href="#section-0" style="">0. 执行摘要与安全架构裁决</a><a href="#section-1" style="">1. 适用边界、标准与规范效力</a><a href="#section-1-1" style="padding-left:24px">1.1 明确责任和非目标</a><a href="#section-1-2" style="padding-left:24px">1.2 外部依据及采用约束</a><a href="#section-2" style="">2. 安全资产分类、主体与信任边界</a><a href="#section-2-1" style="padding-left:24px">2.1 数据分类（推荐候选）</a><a href="#section-2-2" style="padding-left:24px">2.2 Principal / resource / action / context</a><a href="#section-3" style="">3. STRIDE 威胁模型与攻击面</a><a href="#section-3-1" style="padding-left:24px">3.1 威胁建模对象</a><a href="#section-4" style="">4. 身份联邦、会话及令牌信任</a><a href="#section-4-1" style="padding-left:24px">4.1 身份系统集成原则</a><a href="#section-4-2" style="padding-left:24px">4.2 JWT 与会话最低验证</a><a href="#section-5" style="">5. 多产品、租户与组织授权体系</a><a href="#section-5-1" style="padding-left:24px">5.1 关系模型</a><a href="#section-5-2" style="padding-left:24px">5.2 授权决策次序及结果</a><a href="#section-5-3" style="padding-left:24px">5.3 权限缓存</a><a href="#section-6" style="">6. 内部/外部双门户权限矩阵</a><a href="#section-6-1" style="padding-left:24px">6.1 已实现的产品负责人和列表权限（PR #6 / #7，2026-11-17 同步）</a><a href="#section-6-2" style="padding-left:24px">6.2 其余双门户角色设计</a><a href="#section-7" style="">7. 授权策略表达与执行边界</a><a href="#section-8" style="">8. 数据库、对象存储、搜索和缓存的隔离</a><a href="#section-9" style="">9. 安全发布、紧急撤销与传播证明</a><a href="#section-9-1" style="padding-left:24px">9.1 三种撤销级别</a><a href="#section-9-2" style="padding-left:24px">9.2 可观测性状态</a><a href="#section-10" style="">10. 不可信契约、外部引用及内容解析安全</a><a href="#section-11" style="">11. API Explorer 与沙箱执行安全（V1）</a><a href="#section-12" style="">12. Git、CI、Webhook、Worker 与外部适配安全</a><a href="#section-13" style="">13. 加密、密钥及凭证生命周期</a><a href="#section-14" style="">14. 审计、防抵赖与证据完整性</a><a href="#section-15" style="">15. 隐私、数据保留、区域合规与删除</a><a href="#section-16" style="">16. 安全运营、事件响应与恢复</a><a href="#section-17" style="">17. 安全供应链及开发交付门禁</a><a href="#section-18" style="">18. 关键安全质量指标和待定阈值</a><a href="#section-19" style="">19. CargoPai 贯通案例：发布、撤销与跨产品拒绝</a><a href="#section-20" style="">20. 机器可读安全资产与验证计划</a><a href="#section-20-1" style="padding-left:24px">20.1 安全场景测试最低覆盖</a><a href="#section-21" style="">21. 与 F01–F04 的规范、模型与需求追溯</a><a href="#section-22" style="">22. 未决决策、残余风险与下一阶段接口</a><a href="#section-23" style="">23. 参考依据与采用边界</a></nav><div class="side-foot">V1.0 · 安全设计候选 / 待具名批准<br>设计矩阵与静态检查不等于渗透测试或合规认证。</div></aside><div class="main"><header class="topbar"><div><button class="menu" id="menu" aria-label="展开目录" aria-controls="sidebar" aria-expanded="false">☰ 目录</button><span class="crumb"><strong>IDP API Fabric</strong>　/　设计基线　/　F05</span></div><div class="top-actions"><a class="desktop-only" href="../index.html">总目录</a><a href="F05_Security_and_Multitenancy.md">Markdown 源文件</a><button onclick="window.print()">打印 / PDF</button></div></header><main id="main-content" class="sheet" tabindex="-1"><header class="hero"><div class="eyebrow">F05 · Security & Multitenancy</div><h1>IDP API Fabric<br>安全架构与多租户设计</h1><p>身份联邦 · 多维授权 · STRIDE 威胁模型 · 安全发布与撤销 · 双门户隔离 · 可审计证据</p><div class="hero-meta"><span>V1.0 · 设计待评审</span><span>2026.11.09</span><span>正式工程目录</span><span>所有真实安全场景 NOT_RUN</span></div></header><div class="metrics"><div class="metric"><b>10</b><span>安全模型及业务流程图</span></div><div class="metric"><b>43</b><span>操作级授权规则</span></div><div class="metric"><b>29</b><span>STRIDE 风险条目</span></div><div class="metric"><b>36</b><span>待执行安全场景</span></div></div><article class="doc">
 <blockquote>
-<p><strong>文档编号</strong>：F05 · Security &amp; Multitenancy<br>
-<strong>项目</strong>：IDP API Fabric / <code>idp-api-fabric</code><br>
+<p><strong>文档编号</strong>：F05 · Security &amp; Multitenancy<br/>
+<strong>项目</strong>：IDP API Fabric / <code>idp-api-fabric</code><br/>
 <strong>工程基线</strong>：V1.0 · 2026-11-09（与 F01–F04 同一版本，不另立版本）<br/>
 <strong>状态</strong>：安全架构设计候选，待具名安全/架构评审；本文件不是安全认证、渗透测试报告或生产上线批准<br/>
 <strong>权威输入</strong>：<a href="F01_Product_Requirements.md">F01</a> · <a href="F02_System_Architecture.md">F02</a> · <a href="F03_Domain_and_Data_Model.md">F03</a> · <a href="F04_API_Contract_Governance.md">F04</a> · <a href="README.md">阶段交接约束</a><br/>
 <strong>上位规范</strong>：IDP-SCG-STD-001《IDP Supply Chain DDD Product Engineering Standard V1.0》；项目 Profile 采用仍待具名批准。<br/>
-<strong>验证状态</strong>：本地文件结构/矩阵一致性检查可执行；真实 IAM、Gateway、CDN、API Explorer、授权安全、数据恢复与渗透测试全部 <code>NOT_RUN</code>。</br></br></p>
+<strong>验证状态</strong>：本地文件结构/矩阵一致性检查可执行；真实 IAM、Gateway、CDN、API Explorer、授权安全、数据恢复与渗透测试全部 <code>NOT_RUN</code>。</p>
 </blockquote>
 <h2 id="section-0">0. 执行摘要与安全架构裁决</h2>
 <p><strong>设计目标：在跨产品统一的控制平面上，证明每一条管理命令、契约读取、搜索结果、版本下载、发布操作和外部开发者接入都经过服务器端的多维授权；产品自治不能被共享缓存、统一身份或共享域名击穿。</strong> Fabric 不是 IdP、API Gateway 或业务 API 运行时。F05 只为 Fabric 自身及其适配器定义安全责任；各产品真实 API 的授权由其 Gateway/业务资源服务器负责。</p>
@@ -273,6 +272,66 @@
 <h3 id="section-5-3">5.3 权限缓存</h3>
 <p>身份会话与权限缓存必须分离；权限缓存键至少包含 <code>principal_id + resource scope + action + membership_generation + grant_generation + policy_digest</code>（具体实现待 F07），不能只按 <code>user_id</code> 缓存。<strong>撤销与发布阻断路径不得依赖不可控 TTL 才生效</strong>；对高风险写、私有契约读和撤销操作使用权威校验或强版本校验。缓存丢失时对受限数据拒绝，不允许“为保持可用性默认允许”。</p>
 <h2 id="section-6">6. 内部/外部双门户权限矩阵</h2>
+<h3 id="section-6-1">6.1 已实现的产品负责人和列表权限（PR #6 / #7，2026-11-17 同步）</h3>
+<p>以下是管理 API 的实现事实。身份由配置的 IdP 的 issuer×subject 确认，角色/成员关系逐次从数据库读取。这里的“平台管理员”来自部署配置，不等同于 Platform Security Admin；只有显式取得产品负责人角色才有产品内部权限。完整操作级设计矩阵见 <code>governance/policies/F05_Access_Matrix.csv</code>：新增 AC-36…43 对应本节八条操作规则，仍保持 PROPOSED。矩阵编号用于设计索引；运行时审计沿用下面的 AC-08、AC-10、DENY-03，不将新增编号冒充实际审计字段。</p>
+<div aria-label="可横向滚动的安全规则和风险表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>操作</th>
+<th>允许范围</th>
+<th>拒绝与边界</th>
+<th>运行时审计</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST …/role-assignments</code>（AC-36/37）</td>
+<td>产品负责人、平台管理员；产品 ACTIVE，主体签发方受信任</td>
+<td>管理员可把自己加成负责人，保留授予证据；其余已知产品的成员 403，陌生人 404 <code>PRODUCT_NOT_FOUND</code></td>
+<td>成功：负责人 AC-10、管理员 AC-08，<code>product_role.grant</code>；拒绝 DENY-03</td>
+</tr>
+<tr>
+<td><code>GET …/role-assignments/{id}</code>（AC-38）</td>
+<td>该产品负责人</td>
+<td>管理员/成员得到 404 <code>ROLE_ASSIGNMENT_NOT_FOUND</code>；陌生人 404 <code>PRODUCT_NOT_FOUND</code>；跨产品与已撤销分配不可读</td>
+<td>成功不记；拒绝 DENY-03、<code>product_role.read</code></td>
+</tr>
+<tr>
+<td><code>DELETE …/role-assignments/{id}</code>（AC-39）</td>
+<td>该产品负责人，包括尚有其他负责人时撤销自己</td>
+<td>管理员不能撤销；已知产品的非负责人 403，陌生人 404；最后一位负责人返回 409 <code>LAST_OWNER</code>；已撤销分配 404</td>
+<td>成功 AC-10、<code>product_role.revoke</code>；授权拒绝 DENY-03；状态冲突不算授权拒绝</td>
+</tr>
+<tr>
+<td><code>GET /v1/products</code>（AC-40）</td>
+<td>管理员看全部；其他已认证主体仅看持有有效角色/成员关系的产品</td>
+<td>没有可见产品时是空列表，不泄露总数</td>
+<td>成功不记，无对象级拒绝</td>
+</tr>
+<tr>
+<td><code>GET …/workspaces</code>（AC-41）</td>
+<td>负责人看全部；成员仅看自己所属 Workspace</td>
+<td>管理员无产品角色时 403；陌生人 404 <code>PRODUCT_NOT_FOUND</code></td>
+<td>成功不记；拒绝 DENY-03、<code>workspace.read</code></td>
+</tr>
+<tr>
+<td><code>GET …/workspaces/{id}/memberships</code>（AC-42）</td>
+<td>该产品负责人</td>
+<td>本 Workspace 成员 403；管理员/其他 Workspace 成员 404 <code>WORKSPACE_NOT_FOUND</code>；陌生人 404 <code>PRODUCT_NOT_FOUND</code></td>
+<td>成功不记；拒绝 DENY-03、<code>member.read</code></td>
+</tr>
+<tr>
+<td><code>GET …/role-assignments</code>（AC-43）</td>
+<td>该产品负责人</td>
+<td>管理员/成员 403，陌生人 404 <code>PRODUCT_NOT_FOUND</code></td>
+<td>成功不记；拒绝 DENY-03、<code>product_role.read</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>表中的省略前缀是 <code>/v1/products/{product_id}</code>。授予、撤销的分配事实、成功审计和 Outbox 同事务提交；授权拒绝单独留证，审计失败仍拒绝并记录运维错误。重复授予返回 409 <code>ROLE_ASSIGNMENT_EXISTS</code>；重复撤销返回 404，不再产生成功事件。暂停产品拒绝新增负责人但允许撤销；暂停/停用的管理接口尚未实现。</p>
+<p>负责人列表已补齐“管理员修正登记时填错的负责人”的闭环：管理员新增正确负责人，正确负责人列出分配并撤销错误分配，全程无需查数据库。撤销后使用原 JWT 的下一页请求立即重新授权，令牌不能维持已撤销的权限。平台管理员自我授予目前没有双人审批或专门告警，这些尚未实现，不应从此矩阵推导具备这些能力。数据库并发、迁移与旧进程下线约束见 F03 §5.5；分页格式、过滤和参数校验见 F04 §3.1.1。</p>
+<p>负载记录见<a href="../tests/performance/README.md">四类列表压测</a>，功能回归覆盖在 <code>cmd/fabric-api/slice_test.go</code>、<code>lists_test.go</code> 及各层测试中。该证据使用真实 PostgreSQL 与本地替代 IdP，不是生产 IAM 联调、渗透测试或 SEC-01…36 的正式验收，原设计验收状态保持 NOT_RUN。</p>
+<h3 id="section-6-2">6.2 其余双门户角色设计</h3>
 <p><code>governance/policies/F05_Access_Matrix.csv</code> 是本章的可机读设计清单，覆盖私有列表/详情/搜索/历史、下载、审批、发布、撤销、运营、API Explorer、外部开发者和服务身份。<strong>矩阵里的 Role 是设计角色，非已经创建的 IAM 角色；<code>ALLOW_IF</code> 永远包含服务端范围及对象状态检查，不代表无条件 Permit。</strong></p>
 <div aria-label="可横向滚动的安全规则和风险表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
@@ -746,4 +805,4 @@
 <li>IDP-SCG-STD-001：本工程现有上位规范，具名项目采用仍待批准；对其特定规则 ID 的映射是设计期判断。</li>
 </ol>
 <p><strong>文档完成定义</strong>：当且仅当本文、矩阵/风险/验收/追溯资产、HTML、目录和 ZIP 的静态一致性检查成功，可描述为“F05 设计候选交付完成”；真实部署、渗透测试、审计完整性、传播时效、恢复演练与正式标准六道门禁仍需后续实际证据，不得标为 PASS。</p>
-</article><div class="footer">IDP API Fabric · F05 · Generated from Markdown · Security design candidate / runtime &amp; penetration testing NOT_RUN</div></main></div></div><a class="back-to-top" href="#">↑ 返回顶部</a><script>(()=>{const m=document.getElementById('menu'),q=document.getElementById('navsearch'),toc=document.getElementById('toc'),shade=document.getElementById('sideBackdrop');let last=null;function open(v){document.body.classList.toggle('navopen',v);m.setAttribute('aria-expanded',String(v));shade.setAttribute('aria-hidden',String(!v));if(v){last=document.activeElement;q.focus()}else if(last){last.focus();last=null}}m.addEventListener('click',()=>open(!document.body.classList.contains('navopen')));shade.addEventListener('click',()=>open(false));document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('navopen'))open(false)});toc.addEventListener('click',e=>{if(e.target.closest('a')&&document.body.classList.contains('navopen'))open(false)});q.addEventListener('input',()=>{let s=q.value.toLocaleLowerCase();toc.querySelectorAll('a').forEach(a=>a.style.display=a.textContent.toLocaleLowerCase().includes(s)?'':'none')});})();</script></body></html>
+</article><div class="footer">IDP API Fabric · F05 · Generated from Markdown · Security design candidate / runtime & penetration testing NOT_RUN</div></main></div></div><a href="#" class="back-to-top">↑ 返回顶部</a><script>(()=>{const m=document.getElementById('menu'),q=document.getElementById('navsearch'),toc=document.getElementById('toc'),shade=document.getElementById('sideBackdrop');let last=null;function open(v){document.body.classList.toggle('navopen',v);m.setAttribute('aria-expanded',String(v));shade.setAttribute('aria-hidden',String(!v));if(v){last=document.activeElement;q.focus()}else if(last){last.focus();last=null}}m.addEventListener('click',()=>open(!document.body.classList.contains('navopen')));shade.addEventListener('click',()=>open(false));document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('navopen'))open(false)});toc.addEventListener('click',e=>{if(e.target.closest('a')&&document.body.classList.contains('navopen'))open(false)});q.addEventListener('input',()=>{let s=q.value.toLocaleLowerCase();toc.querySelectorAll('a').forEach(a=>a.style.display=a.textContent.toLocaleLowerCase().includes(s)?'':'none')});})();</script></body></html>
