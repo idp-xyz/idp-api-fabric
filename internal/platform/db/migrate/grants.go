@@ -62,6 +62,11 @@ func ApplicationPrivileges() []TablePrivileges {
 		// and a trigger of the table refuses every other one. No statement
 		// removes a membership.
 		{"productgovernance", "workspace_membership", []string{"SELECT", "INSERT", "UPDATE"}},
+		// A revision references immutable source evidence. This process
+		// records the original files and reads back only revision metadata.
+		{"contractregistry", "source_snapshot", []string{"SELECT", "INSERT"}},
+		{"contractregistry", "source_file", []string{"INSERT"}},
+		{"contractregistry", "contract_revision", []string{"SELECT", "INSERT"}},
 	}
 }
 
