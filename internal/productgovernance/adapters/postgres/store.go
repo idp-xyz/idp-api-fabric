@@ -99,6 +99,9 @@ func scanProduct(row interface{ Scan(dest ...any) error }) (domain.Product, erro
 		return domain.Product{}, err
 	}
 	product.ID, product.Status = domain.ProductID(id), domain.ProductStatus(status)
+	// No statement changes a product yet, so every product is as it was
+	// registered: under its display name, last changed by its registrant.
+	product.Brand, product.UpdatedBy = domain.Brand{Name: product.DisplayName}, product.CreatedBy
 	return product, nil
 }
 

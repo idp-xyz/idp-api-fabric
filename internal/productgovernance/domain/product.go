@@ -41,16 +41,25 @@ type Product struct {
 	// Owner is the organization the product belongs to. It is recorded as it
 	// is given: nothing in Fabric derives a permission from it.
 	Owner OrganizationRef
+	// Brand is how the product presents itself to the developers it
+	// documents its APIs for. Until an owner changes it, its name is the
+	// display name and it has no logo and no colour.
+	Brand Brand
 	// Version counts the changes of the aggregate, for optimistic
-	// concurrency and for the order of its events. It has nothing to do with
-	// the version of an API (F03 §4.1).
+	// concurrency and for the order of its events: 1 when the product is
+	// registered, one more with every change of it. It has nothing to do
+	// with the version of an API (F03 §4.1).
 	Version   int64
 	CreatedAt time.Time
 	CreatedBy Principal
+	// UpdatedAt and UpdatedBy say when the product changed last, and who
+	// changed it. Until it changes they are those of its registration.
 	UpdatedAt time.Time
+	UpdatedBy Principal
 }
 
-// NewProduct registers a product: active, at version 1.
+// NewProduct registers a product: active, at version 1, presenting itself
+// under its display name.
 func NewProduct(id ProductID, key, displayName string, owner OrganizationRef, by Principal, at time.Time) (Product, error) {
 	if _, err := ParseProductID(string(id)); err != nil {
 		return Product{}, err
@@ -73,7 +82,8 @@ func NewProduct(id ProductID, key, displayName string, owner OrganizationRef, by
 	at = instant(at)
 	return Product{
 		ID: id, Key: key, DisplayName: displayName, Status: ProductActive, Owner: owner,
-		Version: 1, CreatedAt: at, CreatedBy: by, UpdatedAt: at,
+		Brand:   Brand{Name: displayName},
+		Version: 1, CreatedAt: at, CreatedBy: by, UpdatedAt: at, UpdatedBy: by,
 	}, nil
 }
 

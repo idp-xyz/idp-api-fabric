@@ -65,7 +65,8 @@ func TestRegisterProductStoresTheProductItsOwnersTheAuditFactAndTheEventTogether
 
 	want := domain.Product{
 		ID: "00000000-0000-4000-8000-000000000001", Key: "cargopai", DisplayName: "CargoPai",
-		Status: domain.ProductActive, Owner: cargo, Version: 1, CreatedAt: started, CreatedBy: admin, UpdatedAt: started,
+		Status: domain.ProductActive, Owner: cargo, Brand: domain.Brand{Name: "CargoPai"},
+		Version: 1, CreatedAt: started, CreatedBy: admin, UpdatedAt: started, UpdatedBy: admin,
 	}
 	if product != want {
 		t.Errorf("product\n %+v\nwant\n %+v", product, want)

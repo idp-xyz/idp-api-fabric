@@ -78,7 +78,8 @@ func cargopai() domain.Product {
 	return domain.Product{
 		ID: productID, Key: "cargopai", DisplayName: "CargoPai", Status: domain.ProductActive,
 		Owner:   domain.OrganizationRef{IdentityProvider: issuer, Organization: "org-cargopai"},
-		Version: 1, CreatedAt: createdAt, CreatedBy: domain.Principal(admin), UpdatedAt: createdAt,
+		Brand:   domain.Brand{Name: "CargoPai"},
+		Version: 1, CreatedAt: createdAt, CreatedBy: domain.Principal(admin), UpdatedAt: createdAt, UpdatedBy: domain.Principal(admin),
 	}
 }
 

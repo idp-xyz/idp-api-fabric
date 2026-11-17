@@ -37,7 +37,8 @@ func TestANewProductIsActiveAtVersionOne(t *testing.T) {
 
 	want := Product{
 		ID: productID, Key: "cargopai", DisplayName: "CargoPai", Status: ProductActive, Owner: owner,
-		Version: 1, CreatedAt: created.UTC(), CreatedBy: admin, UpdatedAt: created.UTC(),
+		Brand:   Brand{Name: "CargoPai"},
+		Version: 1, CreatedAt: created.UTC(), CreatedBy: admin, UpdatedAt: created.UTC(), UpdatedBy: admin,
 	}
 	if product != want {
 		t.Errorf("product\n %+v\nwant\n %+v", product, want)
