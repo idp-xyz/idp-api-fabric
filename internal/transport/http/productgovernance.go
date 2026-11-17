@@ -736,5 +736,8 @@ func problemOf(err error) (Problem, bool) {
 		return problem(http.StatusServiceUnavailable, CodeOutcomeUncertain,
 			"It is not known whether the change was committed. Read before retrying."), true
 	}
-	return catalogProblem(err)
+	if found, ok := catalogProblem(err); ok {
+		return found, true
+	}
+	return registryProblem(err)
 }

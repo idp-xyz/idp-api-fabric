@@ -44,6 +44,10 @@ import (
 	catalogoutbox "go.idp.xyz/idp-api-fabric/internal/apicatalog/adapters/outbox"
 	catalogdb "go.idp.xyz/idp-api-fabric/internal/apicatalog/adapters/postgres"
 	catalog "go.idp.xyz/idp-api-fabric/internal/apicatalog/application"
+	registryopenapi "go.idp.xyz/idp-api-fabric/internal/contractregistry/adapters/openapi"
+	registryoutbox "go.idp.xyz/idp-api-fabric/internal/contractregistry/adapters/outbox"
+	registrydb "go.idp.xyz/idp-api-fabric/internal/contractregistry/adapters/postgres"
+	registry "go.idp.xyz/idp-api-fabric/internal/contractregistry/application"
 	"go.idp.xyz/idp-api-fabric/internal/platform/buildinfo"
 	"go.idp.xyz/idp-api-fabric/internal/platform/db"
 	"go.idp.xyz/idp-api-fabric/internal/platform/identity"
@@ -254,8 +258,21 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 	if err != nil {
 		return nil, err
 	}
+	contractRegistry, err := registry.New(registry.Dependencies{
+		Transactions: transactions,
+		Scopes:       revisionScopes{catalog: apiCatalog, governance: productGovernance},
+		Capture:      registryopenapi.Capture,
+		Revisions:    registrydb.NewRevisions(database.Framework),
+		Audit:        audit.recordRevision,
+		Events:       registryoutbox.NewEvents(outbox, identifiers),
+		Clock:        clock,
+		Identifiers:  identifiers,
+	})
+	if err != nil {
+		return nil, err
+	}
 	return httptransport.NewHandler(httptransport.Config{
-		Logger: logger, Build: buildinfo.Current(), Verifier: verifier, Governance: productGovernance, Catalog: apiCatalog,
+		Logger: logger, Build: buildinfo.Current(), Verifier: verifier, Governance: productGovernance, Catalog: apiCatalog, Registry: contractRegistry,
 	})
 }
 

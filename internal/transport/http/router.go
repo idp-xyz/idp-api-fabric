@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	catalog "go.idp.xyz/idp-api-fabric/internal/apicatalog/application"
+	registry "go.idp.xyz/idp-api-fabric/internal/contractregistry/application"
 	"go.idp.xyz/idp-api-fabric/internal/platform/buildinfo"
 	"go.idp.xyz/idp-api-fabric/internal/platform/ids"
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/application"
@@ -37,6 +38,7 @@ type Config struct {
 	// Governance are the use cases of Product Governance.
 	Governance ProductGovernance
 	Catalog    APICatalog
+	Registry   ContractRegistry
 }
 
 // NewHandler returns the root handler of fabric-api.
@@ -50,8 +52,10 @@ func NewHandler(config Config) (http.Handler, error) {
 		return nil, errors.New("the transport needs the use cases of product governance")
 	case config.Catalog == nil:
 		return nil, errors.New("the transport needs the use cases of API Catalog")
+	case config.Registry == nil:
+		return nil, errors.New("the transport needs the use cases of Contract Registry")
 	}
-	return newHandler(config.Logger, config.Verifier, operations{build: config.Build, governance: config.Governance, catalog: config.Catalog})
+	return newHandler(config.Logger, config.Verifier, operations{build: config.Build, governance: config.Governance, catalog: config.Catalog, registry: config.Registry})
 }
 
 // newHandler routes the operations of the contract to server, behind the
@@ -101,6 +105,7 @@ type operations struct {
 	build      buildinfo.Info
 	governance ProductGovernance
 	catalog    APICatalog
+	registry   ContractRegistry
 }
 
 func (operations) GetHealthz(context.Context, GetHealthzRequestObject) (GetHealthzResponseObject, error) {
@@ -147,7 +152,7 @@ func (f failures) operationFailed(w http.ResponseWriter, r *http.Request, err er
 		return
 	}
 	switch {
-	case errors.Is(err, application.ErrRefusalNotAudited), errors.Is(err, catalog.ErrRefusalNotAudited):
+	case errors.Is(err, application.ErrRefusalNotAudited), errors.Is(err, catalog.ErrRefusalNotAudited), errors.Is(err, registry.ErrRefusalNotAudited):
 		// The caller was refused all the same. Whoever operates the service
 		// has to know that the audit trail has a gap.
 		f.logger.ErrorContext(r.Context(), "a refusal could not be audited",

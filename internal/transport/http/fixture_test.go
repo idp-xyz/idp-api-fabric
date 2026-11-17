@@ -308,7 +308,7 @@ func newService(t *testing.T) *service {
 	s := &service{governance: newGovernance(), log: &bytes.Buffer{}}
 	handler, err := NewHandler(Config{
 		Logger: slog.New(slog.NewTextHandler(s.log, nil)), Build: testBuild, Verifier: tokens{}, Governance: s.governance,
-		Catalog: unusedCatalog{},
+		Catalog: unusedCatalog{}, Registry: unusedRegistry{},
 	})
 	if err != nil {
 		t.Fatalf("build the handler: %v", err)
@@ -462,3 +462,5 @@ func wantProblem(t *testing.T, recorder *httptest.ResponseRecorder, status int, 
 	}
 	return traceID
 }
+
+type unusedRegistry struct{ ContractRegistry }
