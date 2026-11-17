@@ -39,6 +39,7 @@ func ApplicationPrivileges() []TablePrivileges {
 		// The audit trail is append-only for a process: it cannot read back,
 		// change or remove what it recorded (FR-062).
 		{"platformoperations", "audit_record", []string{"INSERT"}},
+		{"apicatalog", "api_asset", []string{"SELECT", "INSERT"}},
 		// A product is registered and read, and its brand is changed.
 		// Changing the brand is an UPDATE, and a trigger of the table
 		// refuses the role every other one. The privilege is also what locks

@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.7.0
+  version: 0.8.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -471,6 +471,155 @@ paths:
         '409':
           $ref: '#/components/responses/Problem'
         '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets:
+    get:
+      operationId: listAssets
+      summary: List API assets the caller can read
+      description: >-
+        Lists a product's API assets in creation order. Product owners see
+        the whole product. Other readers see only assets in workspaces where
+        they are current members. A platform administrator without either
+        relationship receives 403. Anyone who cannot know the product exists
+        receives 404. Filters and text matching apply only to visible assets
+        before paging. Keep the filters the same when following a page token.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+        - in: query
+          name: workspace_id
+          schema:
+            $ref: '#/components/schemas/Identifier'
+        - in: query
+          name: api_kind
+          schema:
+            $ref: '#/components/schemas/AssetKind'
+        - in: query
+          name: domain_key
+          schema:
+            $ref: '#/components/schemas/Key'
+        - in: query
+          name: q
+          description: A literal substring of the asset key, display name or domain key, ignoring case
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+            pattern: '^[^\p{Cc}]+$'
+      responses:
+        '200':
+          description: One page of authorized assets
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: registerAsset
+      summary: Register an API asset in a workspace
+      description: >-
+        A current workspace maintainer can register an asset in that
+        workspace of an active product (AC-11). The workspace is the owner.
+        The server supplies a stable ID and the initial EXPERIMENTAL
+        lifecycle. The same asset_key can appear in different products.
+        Within one product it is unique across all workspaces
+        (409 API_ASSET_KEY_TAKEN). A known product with an inaccessible or
+        missing workspace returns 404 WORKSPACE_NOT_FOUND. A caller who
+        knows the workspace without a maintainer membership receives 403.
+        Registration commits the asset, audit record and outbox event together.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssetRegistration'
+      responses:
+        '201':
+          description: The API asset was registered
+          headers:
+            Location:
+              description: The API asset's management URL
+              required: true
+              schema:
+                type: string
+                format: uri-reference
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIAsset'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}:
+    get:
+      operationId: getAsset
+      summary: Read one API asset within the caller's scope
+      description: >-
+        Product owners and current members of the owning workspace can read
+        an asset. A missing, cross-product or withheld asset returns the same
+        API_ASSET_NOT_FOUND response when the caller can know the product
+        exists. Otherwise the response is PRODUCT_NOT_FOUND.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - in: path
+          name: api_asset_id
+          required: true
+          schema:
+            $ref: '#/components/schemas/Identifier'
+      responses:
+        '200':
+          description: The API asset
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIAsset'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
@@ -1386,6 +1535,62 @@ components:
         granted_at:
           type: string
           format: date-time
+    AssetKind:
+      type: string
+      enum: [HTTP, EVENT]
+    AssetRegistration:
+      type: object
+      additionalProperties: false
+      required: [workspace_id, asset_key, display_name, domain_key, api_kind]
+      properties:
+        workspace_id:
+          description: The owning workspace in the product
+          $ref: '#/components/schemas/Identifier'
+        asset_key:
+          $ref: '#/components/schemas/Key'
+        display_name:
+          $ref: '#/components/schemas/DisplayName'
+        domain_key:
+          $ref: '#/components/schemas/Key'
+        api_kind:
+          $ref: '#/components/schemas/AssetKind'
+    APIAsset:
+      type: object
+      required: [api_asset_id, product_id, workspace_id, asset_key, display_name, domain_key, api_kind, lifecycle, created_at]
+      properties:
+        api_asset_id:
+          $ref: '#/components/schemas/Identifier'
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        workspace_id:
+          description: The owning workspace
+          $ref: '#/components/schemas/Identifier'
+        asset_key:
+          $ref: '#/components/schemas/Key'
+        display_name:
+          $ref: '#/components/schemas/DisplayName'
+        domain_key:
+          $ref: '#/components/schemas/Key'
+        api_kind:
+          $ref: '#/components/schemas/AssetKind'
+        lifecycle:
+          type: string
+          enum: [EXPERIMENTAL, STABLE, DEPRECATED, RETIRED]
+        created_at:
+          type: string
+          format: date-time
+    AssetList:
+      description: One page of the product's visible assets, oldest first
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/APIAsset'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
     Audience:
       description: >-
         Who a product documents its APIs for. public is anybody, signed in or

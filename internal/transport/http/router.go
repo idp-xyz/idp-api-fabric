@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"strings"
 
+	catalog "go.idp.xyz/idp-api-fabric/internal/apicatalog/application"
 	"go.idp.xyz/idp-api-fabric/internal/platform/buildinfo"
 	"go.idp.xyz/idp-api-fabric/internal/platform/ids"
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/application"
@@ -35,6 +36,7 @@ type Config struct {
 	Verifier TokenVerifier
 	// Governance are the use cases of Product Governance.
 	Governance ProductGovernance
+	Catalog    APICatalog
 }
 
 // NewHandler returns the root handler of fabric-api.
@@ -46,8 +48,10 @@ func NewHandler(config Config) (http.Handler, error) {
 		return nil, errors.New("the transport needs a token verifier")
 	case config.Governance == nil:
 		return nil, errors.New("the transport needs the use cases of product governance")
+	case config.Catalog == nil:
+		return nil, errors.New("the transport needs the use cases of API Catalog")
 	}
-	return newHandler(config.Logger, config.Verifier, operations{build: config.Build, governance: config.Governance})
+	return newHandler(config.Logger, config.Verifier, operations{build: config.Build, governance: config.Governance, catalog: config.Catalog})
 }
 
 // newHandler routes the operations of the contract to server, behind the
@@ -96,6 +100,7 @@ func requireResponse(next StrictHandlerFunc, operationID string) StrictHandlerFu
 type operations struct {
 	build      buildinfo.Info
 	governance ProductGovernance
+	catalog    APICatalog
 }
 
 func (operations) GetHealthz(context.Context, GetHealthzRequestObject) (GetHealthzResponseObject, error) {
@@ -142,7 +147,7 @@ func (f failures) operationFailed(w http.ResponseWriter, r *http.Request, err er
 		return
 	}
 	switch {
-	case errors.Is(err, application.ErrRefusalNotAudited):
+	case errors.Is(err, application.ErrRefusalNotAudited), errors.Is(err, catalog.ErrRefusalNotAudited):
 		// The caller was refused all the same. Whoever operates the service
 		// has to know that the audit trail has a gap.
 		f.logger.ErrorContext(r.Context(), "a refusal could not be audited",

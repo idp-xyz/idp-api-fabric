@@ -166,14 +166,33 @@ func (s *Memberships) HeldBy(ctx context.Context, productID domain.ProductID, pr
 		return nil, fmt.Errorf("read the memberships of a principal: %w", err)
 	}
 	rows, err := reader.Query(ctx, membershipsHeldBy, string(productID), principal.Issuer, principal.Subject)
+	return collectMemberships(rows, err, "read the memberships of a principal")
+}
+
+const lockMembershipsOf = membershipInForce + ` AND product_id = $1 AND workspace_id = $2
+    AND principal_issuer = $3 AND principal_subject = $4
+ORDER BY role FOR SHARE`
+
+// LockHeldInWorkspace keeps a membership in force while a command that
+// relies on it commits. Revocation and registration take effect in lock order.
+func (s *Memberships) LockHeldInWorkspace(ctx context.Context, productID domain.ProductID, workspaceID domain.WorkspaceID, principal domain.Principal) ([]domain.Membership, error) {
+	writer, err := s.framework.RequireExecutor(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("read the memberships of a principal: %w", err)
+		return nil, fmt.Errorf("lock the memberships of a principal: %w", err)
+	}
+	rows, err := writer.Query(ctx, lockMembershipsOf, string(productID), string(workspaceID), principal.Issuer, principal.Subject)
+	return collectMemberships(rows, err, "lock the memberships of a principal")
+}
+
+func collectMemberships(rows pgx.Rows, err error, operation string) ([]domain.Membership, error) {
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", operation, err)
 	}
 	memberships, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Membership, error) {
 		return scanMembership(row)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("read the memberships of a principal: %w", err)
+		return nil, fmt.Errorf("%s: %w", operation, err)
 	}
 	return memberships, nil
 }
