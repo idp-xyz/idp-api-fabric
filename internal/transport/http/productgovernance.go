@@ -17,6 +17,7 @@ import (
 type ProductGovernance interface {
 	RegisterProduct(ctx context.Context, command application.RegisterProduct) (domain.Product, error)
 	GetProduct(ctx context.Context, query application.GetProduct) (domain.Product, error)
+	ChangeProductBrand(ctx context.Context, command application.ChangeProductBrand) (domain.Product, error)
 	CreateWorkspace(ctx context.Context, command application.CreateWorkspace) (domain.Workspace, error)
 	GetWorkspace(ctx context.Context, query application.GetWorkspace) (domain.Workspace, error)
 	GrantMembership(ctx context.Context, command application.GrantMembership) (domain.Membership, error)
@@ -80,8 +81,10 @@ func (o operations) RegisterProduct(ctx context.Context, request RegisterProduct
 		return nil, err
 	}
 	return RegisterProduct201JSONResponse{
-		Body:    body,
-		Headers: RegisterProduct201ResponseHeaders{Location: "/v1/products/" + body.ProductID, CacheControl: noStore},
+		Body: body,
+		Headers: RegisterProduct201ResponseHeaders{
+			Location: "/v1/products/" + body.ProductID, ETag: entityTag(product.Version), CacheControl: noStore,
+		},
 	}, nil
 }
 
@@ -100,7 +103,47 @@ func (o operations) GetProduct(ctx context.Context, request GetProductRequestObj
 	if err != nil {
 		return nil, err
 	}
-	return GetProduct200JSONResponse{Body: body, Headers: GetProduct200ResponseHeaders{CacheControl: noStore}}, nil
+	return GetProduct200JSONResponse{
+		Body:    body,
+		Headers: GetProduct200ResponseHeaders{ETag: entityTag(product.Version), CacheControl: noStore},
+	}, nil
+}
+
+// ChangeProductBrand asks the use case only once the request says which
+// version of the product it was made from, as a change of an audience
+// configuration does. The brand is replaced as a whole: what the body leaves
+// out, the product is to have none of.
+func (o operations) ChangeProductBrand(ctx context.Context, request ChangeProductBrandRequestObject) (ChangeProductBrandResponseObject, error) {
+	principal, correlationID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	version, err := versionIn(request.Params.IfMatch)
+	if err != nil {
+		return nil, err
+	}
+	brand := domain.Brand{Name: request.Body.Name}
+	if request.Body.LogoURL != nil {
+		brand.LogoURL = *request.Body.LogoURL
+	}
+	if request.Body.PrimaryColor != nil {
+		brand.PrimaryColor = *request.Body.PrimaryColor
+	}
+	product, err := o.governance.ChangeProductBrand(ctx, application.ChangeProductBrand{
+		Caller: principal, CorrelationID: correlationID, ProductID: request.ProductID,
+		Brand: brand, Version: version,
+	})
+	if err != nil {
+		return nil, err
+	}
+	body, err := productOf(product)
+	if err != nil {
+		return nil, err
+	}
+	return ChangeProductBrand200JSONResponse{
+		Body:    body,
+		Headers: ChangeProductBrand200ResponseHeaders{ETag: entityTag(product.Version), CacheControl: noStore},
+	}, nil
 }
 
 func (o operations) CreateWorkspace(ctx context.Context, request CreateWorkspaceRequestObject) (CreateWorkspaceResponseObject, error) {
@@ -498,9 +541,11 @@ func (o operations) ListAudienceConfigs(ctx context.Context, request ListAudienc
 	}, nil
 }
 
-// productOf is the product as the contract shows it. The DTO is not the
-// model: what the contract does not declare, such as who registered the
-// product or its version, stays inside (F07 §3.1).
+// productOf is the product as the contract shows it, with its brand. The DTO
+// is not the model: what the contract does not declare, such as who
+// registered the product or who changed it last, stays inside (F07 §3.1).
+// Its version is not a member either: an answer that shows one product
+// carries it as its ETag.
 //
 // A status the contract does not declare is not sent: a caller would branch
 // on a value it was never told of.
@@ -508,6 +553,16 @@ func productOf(product domain.Product) (Product, error) {
 	status := ProductStatus(product.Status)
 	if !status.Valid() {
 		return Product{}, fmt.Errorf("the product is in the status %q, which the contract does not declare", product.Status)
+	}
+	// What a brand does not have is left out, not sent empty.
+	brand := Brand{Name: product.Brand.Name}
+	if product.Brand.LogoURL != "" {
+		logoURL := product.Brand.LogoURL
+		brand.LogoURL = &logoURL
+	}
+	if product.Brand.PrimaryColor != "" {
+		primaryColor := product.Brand.PrimaryColor
+		brand.PrimaryColor = &primaryColor
 	}
 	return Product{
 		ProductID:   string(product.ID),
@@ -518,6 +573,7 @@ func productOf(product domain.Product) (Product, error) {
 			IdentityProvider: product.Owner.IdentityProvider,
 			Organization:     product.Owner.Organization,
 		},
+		Brand:     brand,
 		CreatedAt: product.CreatedAt,
 	}, nil
 }

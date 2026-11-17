@@ -11,6 +11,8 @@ PR #6（产品负责人管理）和 #7（四类分页列表）已合入 main。�
 
 管理 API 0.6.0 支持按产品管理受众、环境和文档入口。升级时执行 `fabric-migrate -apply -grant-to <application_role>`，应用迁移 005 并为应用角色授予新表的权限。[管理 API 契约](api/openapi.yaml)。
 
+管理 API 0.7.0 支持设置产品的品牌（名称、Logo 网址、主色），品牌随产品一起返回。升级时同样执行 `fabric-migrate -apply -grant-to <application_role>`，应用迁移 006 并为应用角色授予 `product` 表的 `UPDATE` 权限。
+
 ## 阅读入口
 
 - [index.html](index.html) — 统一的离线 HTML 文档阅读入口。

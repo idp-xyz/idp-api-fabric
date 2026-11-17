@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.6.0
+  version: 0.7.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -111,7 +111,8 @@ paths:
         platform administrator may (403 FORBIDDEN otherwise). A product key
         that is taken is refused (409 PRODUCT_KEY_TAKEN), and so is an owner
         under an issuer this deployment does not trust (422
-        OWNER_ISSUER_NOT_TRUSTED).
+        OWNER_ISSUER_NOT_TRUSTED). The product presents itself under its
+        display name until an owner changes its brand.
 
 
         The product, the role of its owners, the audit record and the event
@@ -133,6 +134,8 @@ paths:
               schema:
                 type: string
                 format: uri-reference
+            ETag:
+              $ref: '#/components/headers/ETag'
             Cache-Control:
               description: A product is private to its members
               required: true
@@ -167,13 +170,16 @@ paths:
         one of its workspaces. To anyone else the product does not exist: the
         answer is 404 PRODUCT_NOT_FOUND, the same as for a product that is
         missing. That includes whoever held something in it that was revoked
-        since.
+        since. The product is shown with its brand, and the ETag of the
+        answer is what a change of the product is made from.
       parameters:
         - $ref: '#/components/parameters/ProductId'
       responses:
         '200':
           description: The product
           headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
             Cache-Control:
               description: A product is private to its members
               required: true
@@ -189,6 +195,84 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/brand:
+    put:
+      operationId: changeProductBrand
+      summary: Change the brand of a product
+      description: >-
+        Replaces the brand of the product with the body: the name the product
+        presents itself under to the developers it documents its APIs for,
+        where its logo is fetched from, and its colour. The brand is replaced
+        as a whole: a body without logo_url says that the product has no
+        logo, and one without primary_color that it has no colour. A product
+        has a brand from its registration, under its display name.
+
+
+        A change is made from the product as the caller read it: the request
+        sends back in If-Match the ETag getProduct answered with. One without
+        If-Match is refused (428 PRECONDITION_REQUIRED). If the product
+        changed since it was read, the change is refused (412
+        PRECONDITION_FAILED), and the caller reads it again and decides anew:
+        of two changes made from one version, one is made. A change to the
+        brand the product has already changes nothing, and its version stays.
+
+
+        Only an owner of the product may change its brand: its portal is the
+        owner's to make up. Whoever else may know the product exists is
+        refused (403 FORBIDDEN), whatever the request names: a member of one
+        of its workspaces, and a platform administrator, who registers a
+        product and gives it no brand. To anyone else there is no such
+        product (404 PRODUCT_NOT_FOUND), the same as for a product that is
+        missing. A suspended product takes no change (409
+        PRODUCT_NOT_ACTIVE).
+
+
+        The change, the audit record and the event are committed together or
+        not at all. A 503 OUTCOME_UNCERTAIN means it is not known which: read
+        before retrying.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BrandChange'
+      responses:
+        '200':
+          description: The product as it is now
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              description: A product is private to its members
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '412':
+          $ref: '#/components/responses/Problem'
+        '428':
           $ref: '#/components/responses/Problem'
         '503':
           $ref: '#/components/responses/Problem'
@@ -1198,7 +1282,7 @@ components:
             $ref: '#/components/schemas/Principal'
     Product:
       type: object
-      required: [product_id, product_key, display_name, status, owner_organization, created_at]
+      required: [product_id, product_key, display_name, status, owner_organization, brand, created_at]
       properties:
         product_id:
           $ref: '#/components/schemas/Identifier'
@@ -1212,9 +1296,61 @@ components:
           enum: [ACTIVE, SUSPENDED]
         owner_organization:
           $ref: '#/components/schemas/OrganizationRef'
+        brand:
+          $ref: '#/components/schemas/Brand'
         created_at:
           type: string
           format: date-time
+    LogoURL:
+      description: >-
+        Where the logo of a product is fetched from: an https URL of a host,
+        by the rules of DocsURL, of at most 2048 characters. Fabric keeps it
+        as it is given and never opens it, so it cannot tell what is there.
+      type: string
+      maxLength: 2048
+      pattern: '^https://[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*(:([0-5]?[0-9]{1,4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?([/?#]([^%\p{Z}\p{Cc}]|%[0-9A-Fa-f]{2})*)?$'
+    Color:
+      description: >-
+        A colour: "#" and six hexadecimal digits, two each for red, green and
+        blue, in either case. It is kept as it is given.
+      type: string
+      pattern: '^#[0-9A-Fa-f]{6}$'
+    BrandChange:
+      description: >-
+        The brand a product is to have, as a whole. A body without logo_url
+        says that the product has no logo, and one without primary_color that
+        it has no colour.
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          description: The name the product presents itself under
+          $ref: '#/components/schemas/DisplayName'
+        logo_url:
+          $ref: '#/components/schemas/LogoURL'
+        primary_color:
+          $ref: '#/components/schemas/Color'
+    Brand:
+      description: >-
+        How a product presents itself to the developers it documents its APIs
+        for: the name, the logo and the colour a portal of the product is
+        made up with. Fabric keeps a brand and shows it; it renders nothing
+        with it.
+      type: object
+      required: [name]
+      properties:
+        name:
+          description: >-
+            The name the product presents itself under: its display name
+            until an owner changes the brand
+          $ref: '#/components/schemas/DisplayName'
+        logo_url:
+          description: Absent for as long as the product has no logo
+          $ref: '#/components/schemas/LogoURL'
+        primary_color:
+          description: Absent for as long as the product has no colour
+          $ref: '#/components/schemas/Color'
     ProductRole:
       description: >-
         What a principal is in a product. A product_owner manages the

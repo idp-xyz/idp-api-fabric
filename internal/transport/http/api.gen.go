@@ -188,12 +188,39 @@ type AudienceConfigList struct {
 	NextPageToken *NextPageToken `json:"next_page_token,omitempty"`
 }
 
+// Brand How a product presents itself to the developers it documents its APIs for: the name, the logo and the colour a portal of the product is made up with. Fabric keeps a brand and shows it; it renders nothing with it.
+type Brand struct {
+	// LogoURL Absent for as long as the product has no logo
+	LogoURL *LogoURL `json:"logo_url,omitempty"`
+
+	// Name The name the product presents itself under: its display name until an owner changes the brand
+	Name DisplayName `json:"name"`
+
+	// PrimaryColor Absent for as long as the product has no colour
+	PrimaryColor *Color `json:"primary_color,omitempty"`
+}
+
+// BrandChange The brand a product is to have, as a whole. A body without logo_url says that the product has no logo, and one without primary_color that it has no colour.
+type BrandChange struct {
+	// LogoURL Where the logo of a product is fetched from: an https URL of a host, by the rules of DocsURL, of at most 2048 characters. Fabric keeps it as it is given and never opens it, so it cannot tell what is there.
+	LogoURL *LogoURL `json:"logo_url,omitempty"`
+
+	// Name The name the product presents itself under
+	Name DisplayName `json:"name"`
+
+	// PrimaryColor A colour: "#" and six hexadecimal digits, two each for red, green and blue, in either case. It is kept as it is given.
+	PrimaryColor *Color `json:"primary_color,omitempty"`
+}
+
 // BuildInfo defines model for BuildInfo.
 type BuildInfo struct {
 	BuiltAt string `json:"built_at"`
 	Commit  string `json:"commit"`
 	Version string `json:"version"`
 }
+
+// Color A colour: "#" and six hexadecimal digits, two each for red, green and blue, in either case. It is kept as it is given.
+type Color = string
 
 // DisplayName The name an object is shown under: 1 to 120 characters, without control characters and without surrounding white space. It identifies nothing and is not unique.
 type DisplayName = string
@@ -220,6 +247,9 @@ type Identifier = string
 
 // Key The name people and configuration use for an object, unique in its scope: 2 to 63 lower case letters, digits and hyphens, starting with a letter and not ending with a hyphen. It is not the identity of the object.
 type Key = string
+
+// LogoURL Where the logo of a product is fetched from: an https URL of a host, by the rules of DocsURL, of at most 2048 characters. Fabric keeps it as it is given and never opens it, so it cannot tell what is there.
+type LogoURL = string
 
 // Membership A principal that holds a role in one workspace. It is in force from granted_at until it is revoked; a revoked membership is not shown.
 type Membership struct {
@@ -294,6 +324,8 @@ type Problem struct {
 
 // Product defines model for Product.
 type Product struct {
+	// Brand How a product presents itself to the developers it documents its APIs for: the name, the logo and the colour a portal of the product is made up with. Fabric keeps a brand and shows it; it renders nothing with it.
+	Brand     Brand     `json:"brand"`
 	CreatedAt time.Time `json:"created_at"`
 
 	// DisplayName The name an object is shown under: 1 to 120 characters, without control characters and without surrounding white space. It identifies nothing and is not unique.
@@ -470,6 +502,12 @@ type ChangeAudienceConfigParams struct {
 	IfMatch *IfMatch `json:"If-Match,omitempty"`
 }
 
+// ChangeProductBrandParams defines parameters for ChangeProductBrand.
+type ChangeProductBrandParams struct {
+	// IfMatch The ETag the caller was answered with when it read what it changes, as it was given. The change is made only if that is still the version in force. A change needs it, and one without it is refused (428 PRECONDITION_REQUIRED) rather than made unconditionally, so the contract does not mark it required: a request that lacks it would be refused as one that does not match the contract. It names one version: "*", a list and a weak tag are refused (400 REQUEST_INVALID).
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
+}
+
 // ListProductRolesParams defines parameters for ListProductRoles.
 type ListProductRolesParams struct {
 	// PageSize How many items the page holds at most. A list is read to its end by asking for the page that follows, never by asking for a larger one.
@@ -505,6 +543,9 @@ type ConfigureAudienceJSONRequestBody = AudienceConfigCreation
 
 // ChangeAudienceConfigJSONRequestBody defines body for ChangeAudienceConfig for application/json ContentType.
 type ChangeAudienceConfigJSONRequestBody = AudienceConfigChange
+
+// ChangeProductBrandJSONRequestBody defines body for ChangeProductBrand for application/json ContentType.
+type ChangeProductBrandJSONRequestBody = BrandChange
 
 // GrantProductRoleJSONRequestBody defines body for GrantProductRole for application/json ContentType.
 type GrantProductRoleJSONRequestBody = ProductRoleGrant
@@ -544,6 +585,9 @@ type ServerInterface interface {
 	// ChangeAudienceConfig Change where an audience enters the documentation
 	// (PUT /v1/products/{product_id}/audience-configs/{audience_config_id})
 	ChangeAudienceConfig(w http.ResponseWriter, r *http.Request, productID ProductID, audienceConfigID AudienceConfigID, params ChangeAudienceConfigParams)
+	// ChangeProductBrand Change the brand of a product
+	// (PUT /v1/products/{product_id}/brand)
+	ChangeProductBrand(w http.ResponseWriter, r *http.Request, productID ProductID, params ChangeProductBrandParams)
 	// ListProductRoles List the role assignments of a product
 	// (GET /v1/products/{product_id}/role-assignments)
 	ListProductRoles(w http.ResponseWriter, r *http.Request, productID ProductID, params ListProductRolesParams)
@@ -892,6 +936,56 @@ func (siw *ServerInterfaceWrapper) ChangeAudienceConfig(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ChangeAudienceConfig(w, r, productID, audienceConfigID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChangeProductBrand operation middleware
+func (siw *ServerInterfaceWrapper) ChangeProductBrand(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ChangeProductBrandParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChangeProductBrand(w, r, productID, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1494,6 +1588,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products", wrapper.ListProducts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products", wrapper.RegisterProduct)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}", wrapper.GetProduct)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/products/{product_id}/brand", wrapper.ChangeProductBrand)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/role-assignments", wrapper.ListProductRoles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/role-assignments", wrapper.GrantProductRole)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/products/{product_id}/role-assignments/{role_assignment_id}", wrapper.RevokeProductRole)
@@ -1667,6 +1762,7 @@ type RegisterProductResponseObject interface {
 
 type RegisterProduct201ResponseHeaders struct {
 	CacheControl string
+	ETag         EntityTag
 	Location     string
 }
 
@@ -1683,6 +1779,7 @@ func (response RegisterProduct201JSONResponse) VisitRegisterProductResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
 	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
 	w.WriteHeader(201)
 	_, err := buf.WriteTo(w)
@@ -1805,6 +1902,7 @@ type GetProductResponseObject interface {
 
 type GetProduct200ResponseHeaders struct {
 	CacheControl string
+	ETag         EntityTag
 }
 
 type GetProduct200JSONResponse struct {
@@ -1820,6 +1918,7 @@ func (response GetProduct200JSONResponse) VisitGetProductResponse(w http.Respons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
@@ -2531,6 +2630,174 @@ type ChangeAudienceConfigdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ChangeAudienceConfigdefaultApplicationProblemPlusJSONResponse) VisitChangeAudienceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeProductBrandRequestObject struct {
+	ProductID ProductID `json:"product_id"`
+	Params    ChangeProductBrandParams
+	Body      *ChangeProductBrandJSONRequestBody
+}
+
+type ChangeProductBrandResponseObject interface {
+	VisitChangeProductBrandResponse(w http.ResponseWriter) error
+}
+
+type ChangeProductBrand200ResponseHeaders struct {
+	CacheControl string
+	ETag         EntityTag
+}
+
+type ChangeProductBrand200JSONResponse struct {
+	Body    Product
+	Headers ChangeProductBrand200ResponseHeaders
+}
+
+func (response ChangeProductBrand200JSONResponse) VisitChangeProductBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeProductBrand400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ChangeProductBrand400ApplicationProblemPlusJSONResponse) VisitChangeProductBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeProductBrand401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ChangeProductBrand401ApplicationProblemPlusJSONResponse) VisitChangeProductBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeProductBrand403ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangeProductBrand403ApplicationProblemPlusJSONResponse) VisitChangeProductBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeProductBrand404ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangeProductBrand404ApplicationProblemPlusJSONResponse) VisitChangeProductBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeProductBrand409ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangeProductBrand409ApplicationProblemPlusJSONResponse) VisitChangeProductBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeProductBrand412ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangeProductBrand412ApplicationProblemPlusJSONResponse) VisitChangeProductBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeProductBrand428ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangeProductBrand428ApplicationProblemPlusJSONResponse) VisitChangeProductBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeProductBrand503ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangeProductBrand503ApplicationProblemPlusJSONResponse) VisitChangeProductBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeProductBranddefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ChangeProductBranddefaultApplicationProblemPlusJSONResponse) VisitChangeProductBrandResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -4008,6 +4275,9 @@ type StrictServerInterface interface {
 	// ChangeAudienceConfig Change where an audience enters the documentation
 	// (PUT /v1/products/{product_id}/audience-configs/{audience_config_id})
 	ChangeAudienceConfig(ctx context.Context, request ChangeAudienceConfigRequestObject) (ChangeAudienceConfigResponseObject, error)
+	// ChangeProductBrand Change the brand of a product
+	// (PUT /v1/products/{product_id}/brand)
+	ChangeProductBrand(ctx context.Context, request ChangeProductBrandRequestObject) (ChangeProductBrandResponseObject, error)
 	// ListProductRoles List the role assignments of a product
 	// (GET /v1/products/{product_id}/role-assignments)
 	ListProductRoles(ctx context.Context, request ListProductRolesRequestObject) (ListProductRolesResponseObject, error)
@@ -4334,6 +4604,40 @@ func (sh *strictHandler) ChangeAudienceConfig(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ChangeAudienceConfigResponseObject); ok {
 		if err := validResponse.VisitChangeAudienceConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ChangeProductBrand operation middleware
+func (sh *strictHandler) ChangeProductBrand(w http.ResponseWriter, r *http.Request, productID ProductID, params ChangeProductBrandParams) {
+	var request ChangeProductBrandRequestObject
+
+	request.ProductID = productID
+	request.Params = params
+
+	var body ChangeProductBrandJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ChangeProductBrand(ctx, request.(ChangeProductBrandRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ChangeProductBrand")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ChangeProductBrandResponseObject); ok {
+		if err := validResponse.VisitChangeProductBrandResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
