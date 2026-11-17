@@ -107,3 +107,42 @@ INSERT INTO contractregistry.contract_revision (
 	}
 	return ports.Registration{Revision: revision, Created: true}, nil
 }
+
+func (s *Revisions) Find(ctx context.Context, asset domain.AssetRef, id string) (domain.Revision, bool, error) {
+	reader, err := s.database.ReadExecutor(ctx)
+	if err != nil {
+		return domain.Revision{}, false, err
+	}
+	rows, err := reader.Query(ctx, selectRevision+" AND r.workspace_id = $3 AND r.revision_id = $4",
+		asset.ProductID, asset.AssetID, asset.WorkspaceID, id)
+	if err != nil {
+		return domain.Revision{}, false, fmt.Errorf("find a contract revision: %w", err)
+	}
+	revision, err := pgx.CollectOneRow(rows, scanRevision)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Revision{}, false, nil
+	}
+	return revision, err == nil, err
+}
+
+func (s *Revisions) List(ctx context.Context, asset domain.AssetRef, after *ports.Position, limit int) ([]domain.Revision, error) {
+	reader, err := s.database.ReadExecutor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	const list = selectRevision + `
+  AND r.workspace_id = $3
+  AND (s.captured_at, r.revision_id) >
+      (COALESCE($4::timestamptz, '-infinity'), COALESCE($5::uuid, '00000000-0000-0000-0000-000000000000'))
+ORDER BY s.captured_at, r.revision_id
+LIMIT $6`
+	var at, id any
+	if after != nil {
+		at, id = after.At, after.ID
+	}
+	rows, err := reader.Query(ctx, list, asset.ProductID, asset.AssetID, asset.WorkspaceID, at, id, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list contract revisions: %w", err)
+	}
+	return pgx.CollectRows(rows, scanRevision)
+}

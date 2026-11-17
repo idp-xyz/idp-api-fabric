@@ -13,8 +13,8 @@ import (
 // requestBodyMaxBytes bounds the body of a request. The validator reads a
 // body whole, and reads it before it has asked who sends the request, so the
 // bound comes first: it is what an unauthenticated caller can make the
-// process hold. The largest body the contract declares is a product
-// registration, a few kilobytes at most.
+// process hold. A contract upload shares this HTTP limit and also bounds
+// the decoded source bundle.
 const requestBodyMaxBytes = 64 << 10
 
 // requestState is what the transport learns about one request on its way to
