@@ -206,6 +206,9 @@ type Memberships interface {
 	// HeldBy returns the memberships the principal holds in the workspaces
 	// of the product now. One that was revoked is not among them.
 	HeldBy(ctx context.Context, productID domain.ProductID, principal domain.Principal) ([]domain.Membership, error)
+	// LockHeldInWorkspace reads and locks the caller's current memberships
+	// in one Workspace for the duration of a transaction.
+	LockHeldInWorkspace(ctx context.Context, productID domain.ProductID, workspaceID domain.WorkspaceID, principal domain.Principal) ([]domain.Membership, error)
 	// List returns one page of the memberships in force of the workspace of
 	// the product, in the order of the list. A membership of another
 	// workspace or of another product is not among them, and neither is

@@ -41,6 +41,9 @@ import (
 
 	bentooutbox "go.idp.xyz/idp-bento-go/postgres/outbox"
 
+	catalogoutbox "go.idp.xyz/idp-api-fabric/internal/apicatalog/adapters/outbox"
+	catalogdb "go.idp.xyz/idp-api-fabric/internal/apicatalog/adapters/postgres"
+	catalog "go.idp.xyz/idp-api-fabric/internal/apicatalog/application"
 	"go.idp.xyz/idp-api-fabric/internal/platform/buildinfo"
 	"go.idp.xyz/idp-api-fabric/internal/platform/db"
 	"go.idp.xyz/idp-api-fabric/internal/platform/identity"
@@ -206,6 +209,8 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 	clock, identifiers := systemClock{}, ids.UUIDs{}
 
 	recordAudit := operations.NewRecordAudit(database, operationsdb.NewAuditRecords(database.Framework), clock, identifiers)
+	audit := auditTrail{record: recordAudit}
+	transactions := governancedb.NewTransactions(database.WithinTransaction)
 
 	outbox, err := bentooutbox.NewStore(database.Framework)
 	if err != nil {
@@ -220,7 +225,7 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 		return nil, fmt.Errorf("IDP_FABRIC_PLATFORM_ADMIN_SUBJECTS: %w", err)
 	}
 	productGovernance, err := governance.New(governance.Dependencies{
-		Transactor:      governancedb.NewTransactions(database.WithinTransaction),
+		Transactor:      transactions,
 		Products:        governancedb.NewProducts(database.Framework),
 		Workspaces:      governancedb.NewWorkspaces(database.Framework),
 		Roles:           governancedb.NewRoleAssignments(database.Framework),
@@ -228,7 +233,7 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 		AudienceConfigs: governancedb.NewAudienceConfigs(database.Framework),
 		Administrators:  administrators,
 		Issuers:         static.NewIssuers(configured.identity.Issuer),
-		Audit:           auditTrail{record: recordAudit},
+		Audit:           audit,
 		Events:          events,
 		Clock:           clock,
 		Identifiers:     identifiers,
@@ -237,8 +242,20 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 		return nil, err
 	}
 
+	apiCatalog, err := catalog.New(catalog.Dependencies{
+		Transactions: transactions,
+		Scopes:       catalogScopes{governance: productGovernance},
+		Assets:       catalogdb.NewAssets(database.Framework),
+		Audit:        audit.recordCatalog,
+		Events:       catalogoutbox.NewEvents(outbox, identifiers),
+		Clock:        clock,
+		Identifiers:  identifiers,
+	})
+	if err != nil {
+		return nil, err
+	}
 	return httptransport.NewHandler(httptransport.Config{
-		Logger: logger, Build: buildinfo.Current(), Verifier: verifier, Governance: productGovernance,
+		Logger: logger, Build: buildinfo.Current(), Verifier: verifier, Governance: productGovernance, Catalog: apiCatalog,
 	})
 }
 

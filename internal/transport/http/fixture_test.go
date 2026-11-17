@@ -308,6 +308,7 @@ func newService(t *testing.T) *service {
 	s := &service{governance: newGovernance(), log: &bytes.Buffer{}}
 	handler, err := NewHandler(Config{
 		Logger: slog.New(slog.NewTextHandler(s.log, nil)), Build: testBuild, Verifier: tokens{}, Governance: s.governance,
+		Catalog: unusedCatalog{},
 	})
 	if err != nil {
 		t.Fatalf("build the handler: %v", err)
@@ -315,6 +316,9 @@ func newService(t *testing.T) *service {
 	s.handler = handler
 	return s
 }
+
+// The Product Governance transport fixtures never call the Catalog.
+type unusedCatalog struct{ APICatalog }
 
 // call is one request. Token is the bearer token; Header adds to it.
 type call struct {

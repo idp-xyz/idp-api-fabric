@@ -49,7 +49,7 @@ func TestAPanicInAnOperationIsAnInternalErrorThatIsLoggedAndNotSent(t *testing.T
 	s := &service{governance: newGovernance(), log: &bytes.Buffer{}}
 	handler, err := NewHandler(Config{
 		Logger: slog.New(slog.NewTextHandler(s.log, nil)), Build: testBuild, Verifier: tokens{},
-		Governance: panicking{s.governance},
+		Governance: panicking{s.governance}, Catalog: unusedCatalog{},
 	})
 	if err != nil {
 		t.Fatalf("build the handler: %v", err)
