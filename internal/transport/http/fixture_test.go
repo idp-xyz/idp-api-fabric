@@ -70,15 +70,23 @@ const (
 	// partnerDocs is where the partners enter the documentation of the
 	// sandbox.
 	partnerDocs = "https://docs.cargopai.example/partners?env=sandbox"
+	// productBrand is where the brand of the product is changed, and
+	// brandLogo where its logo is fetched from.
+	productBrand = "/v1/products/" + productID + "/brand"
+	brandLogo    = "https://static.cargopai.example/brand/logo.svg?v=3"
 )
 
 var createdAt = time.Date(2026, 11, 11, 9, 0, 0, 123456000, time.UTC)
 
+// cargopai is the product as the administrator registered it and as alice
+// has changed its brand three times since.
 func cargopai() domain.Product {
 	return domain.Product{
 		ID: productID, Key: "cargopai", DisplayName: "CargoPai", Status: domain.ProductActive,
 		Owner:   domain.OrganizationRef{IdentityProvider: issuer, Organization: "org-cargopai"},
-		Version: 1, CreatedAt: createdAt, CreatedBy: domain.Principal(admin), UpdatedAt: createdAt,
+		Brand:   domain.Brand{Name: "CargoPai Developers", LogoURL: brandLogo, PrimaryColor: "#0A7B3C"},
+		Version: 4, CreatedAt: createdAt, CreatedBy: domain.Principal(admin),
+		UpdatedAt: createdAt.Add(time.Hour), UpdatedBy: domain.Principal(alice),
 	}
 }
 
@@ -138,6 +146,7 @@ type governance struct {
 
 	registered        []application.RegisterProduct
 	productsRead      []application.GetProduct
+	brandsChanged     []application.ChangeProductBrand
 	created           []application.CreateWorkspace
 	spacesRead        []application.GetWorkspace
 	granted           []application.GrantMembership
@@ -165,7 +174,7 @@ func newGovernance() *governance {
 }
 
 func (g *governance) calls() int {
-	return len(g.registered) + len(g.productsRead) + len(g.created) + len(g.spacesRead) +
+	return len(g.registered) + len(g.productsRead) + len(g.brandsChanged) + len(g.created) + len(g.spacesRead) +
 		len(g.granted) + len(g.membershipsRead) + len(g.revoked) +
 		len(g.rolesGranted) + len(g.rolesRead) + len(g.rolesRevoked) +
 		len(g.configured) + len(g.configsRead) + len(g.configsChanged) + len(g.configsRemoved) +
@@ -180,6 +189,11 @@ func (g *governance) RegisterProduct(_ context.Context, command application.Regi
 
 func (g *governance) GetProduct(_ context.Context, query application.GetProduct) (domain.Product, error) {
 	g.productsRead = append(g.productsRead, query)
+	return g.product, g.err
+}
+
+func (g *governance) ChangeProductBrand(_ context.Context, command application.ChangeProductBrand) (domain.Product, error) {
+	g.brandsChanged = append(g.brandsChanged, command)
 	return g.product, g.err
 }
 

@@ -61,11 +61,14 @@ var (
 const (
 	ActionProductRegister = "product.register"
 	ActionProductRead     = "product.read"
-	ActionWorkspaceManage = "workspace.manage"
-	ActionWorkspaceRead   = "workspace.read"
-	ActionMemberGrant     = "member.grant"
-	ActionMemberRevoke    = "member.revoke"
-	ActionMemberRead      = "member.read"
+	// The access matrix names no action on the brand of a product. Changing
+	// it is an action on the product, as registering and reading it are.
+	ActionProductChangeBrand = "product.change_brand"
+	ActionWorkspaceManage    = "workspace.manage"
+	ActionWorkspaceRead      = "workspace.read"
+	ActionMemberGrant        = "member.grant"
+	ActionMemberRevoke       = "member.revoke"
+	ActionMemberRead         = "member.read"
 
 	// The access matrix of F05 names no action on the roles of a product.
 	// These are named after the event that announces such a role.
@@ -90,10 +93,10 @@ const (
 	// that names one afterwards is recorded under the same rule.
 	rulePlatformAdministrator = "AC-08"
 	// ruleProductOwner permits workspace.manage (AC-09). The matrix has no
-	// row for the audiences of a product. Its portal is its owner's to
-	// configure (F06 §2): an owner that configures an audience manages its
-	// own product, as it does when it creates a workspace, and is recorded
-	// under this rule as well.
+	// row for the audiences of a product, nor for its brand. Its portal is
+	// its owner's to configure (F06 §2): an owner that configures an
+	// audience or changes the brand manages its own product, as it does
+	// when it creates a workspace, and is recorded under this rule as well.
 	ruleProductOwner = "AC-09"
 	// ruleMembersOfOwnProduct permits member.grant (AC-10). The matrix has
 	// no row for revoking a membership: whoever may grant one may revoke

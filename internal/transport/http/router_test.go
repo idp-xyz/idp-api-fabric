@@ -74,6 +74,15 @@ func TestWhatTheContractDoesNotRouteIsAProblem(t *testing.T) {
 			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "GET, HEAD, POST"},
 		{"a product that cannot be removed", call{Method: http.MethodDelete, Target: "/v1/products/" + productID, Token: "alice"},
 			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "GET, HEAD"},
+		// A product has a brand from its registration, and the brand is
+		// shown with the product. It is replaced as a whole, from the
+		// version of the product that was read.
+		{"the brand of a product that is not read on its own", call{Method: http.MethodGet, Target: productBrand, Token: "alice"},
+			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "PUT"},
+		{"the brand of a product that cannot be removed", call{Method: http.MethodDelete, Target: productBrand, Token: "alice"},
+			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "PUT"},
+		{"the brand of a product that is not patched", call{Method: http.MethodPatch, Target: productBrand, Token: "alice"},
+			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "PUT"},
 		{"the members of a workspace that cannot be replaced at once", call{Method: http.MethodPut, Target: memberships, Token: "alice"},
 			http.StatusMethodNotAllowed, CodeMethodNotAllowed, "GET, HEAD, POST"},
 		// A membership is granted and revoked. Nothing about it changes in
@@ -135,11 +144,20 @@ const docsChange = `{"docs_url":"` + partnerDocs + `"}`
 // fromVersion3 makes a change from the third version of what it changes.
 var fromVersion3 = map[string]string{"If-Match": `"3"`}
 
+// brandChange is the body of a change of the brand of a product: a name, a
+// logo and a colour.
+const brandChange = `{"name":"CargoPai Developers","logo_url":"` + brandLogo + `","primary_color":"#0A7B3C"}`
+
+// fromVersion4 makes a change from the fourth version of what it changes,
+// which is the version the product of these tests is at.
+var fromVersion4 = map[string]string{"If-Match": `"4"`}
+
 // protected are the operations that need a verified caller: every operation
 // but the two declared anonymous.
 var protected = []call{
 	{Method: http.MethodPost, Target: "/v1/products", Body: registration},
 	{Method: http.MethodGet, Target: "/v1/products/" + productID},
+	{Method: http.MethodPut, Target: productBrand, Body: brandChange, Header: fromVersion4},
 	{Method: http.MethodPost, Target: "/v1/products/" + productID + "/workspaces", Body: `{"workspace_key":"api","display_name":"API"}`},
 	{Method: http.MethodGet, Target: "/v1/products/" + productID + "/workspaces/" + workspaceID},
 	{Method: http.MethodPost, Target: memberships, Body: grant},
@@ -244,6 +262,8 @@ func TestWhoSendsARequestIsAskedBeforeWhatItSays(t *testing.T) {
 		{Method: http.MethodPost, Target: audienceConfigs, Body: `{"audience":"everybody","environment":"sandbox"}`},
 		{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID, Body: docsChange, Header: map[string]string{"If-Match": "*"}},
 		{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID, Body: `{"audience":"public"}`, Header: fromVersion3},
+		{Method: http.MethodPut, Target: productBrand, Body: `{"name":" not a name "}`, Header: fromVersion4},
+		{Method: http.MethodPut, Target: productBrand, Body: brandChange, Header: map[string]string{"If-Match": "*"}},
 	}
 	for _, c := range invalid {
 		wantProblem(t, s.do(t, c), http.StatusUnauthorized, CodeCredentialsMissing, "")
@@ -474,6 +494,60 @@ func TestARequestThatDoesNotMatchTheContractIsRefused(t *testing.T) {
 			http.StatusBadRequest, CodeRequestInvalid, "The request does not match the contract."},
 		{"a query where a change takes none", call{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID + "?canary=1", Body: docsChange, Header: fromVersion3},
 			http.StatusBadRequest, CodeRequestInvalid, "The request has a query parameter the operation does not declare."},
+		// A brand is a name, and a logo and a colour if the product has
+		// them. No logo or colour is said by leaving it out.
+		{"a brand without a name", call{Method: http.MethodPut, Target: productBrand, Body: `{"logo_url":"` + brandLogo + `"}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /name (required)."},
+		{"a brand under an empty name", call{Method: http.MethodPut, Target: productBrand, Body: `{"name":""}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /name (minLength)."},
+		{"a brand under a name in white space", call{Method: http.MethodPut, Target: productBrand, Body: `{"name":" canary "}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /name (pattern)."},
+		{"a brand under a name that is too long", call{Method: http.MethodPut, Target: productBrand, Body: `{"name":"` + strings.Repeat("n", 121) + `"}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /name (maxLength)."},
+		{"a logo over plain http", call{Method: http.MethodPut, Target: productBrand, Body: `{"name":"CargoPai","logo_url":"http://canary.example/logo.svg"}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /logo_url (pattern)."},
+		{"a logo in the URL itself", call{Method: http.MethodPut, Target: productBrand, Body: `{"name":"CargoPai","logo_url":"data:image/svg+xml;base64,Y2FuYXJ5"}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /logo_url (pattern)."},
+		{"a logo that carries credentials", call{Method: http.MethodPut, Target: productBrand,
+			Body: `{"name":"CargoPai","logo_url":"https://canary:secret@static.cargopai.example/logo.svg"}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /logo_url (pattern)."},
+		{"a logo that is too long", call{Method: http.MethodPut, Target: productBrand,
+			Body: `{"name":"CargoPai","logo_url":"https://static.example/` + strings.Repeat("c", 2048) + `"}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /logo_url (maxLength)."},
+		{"an empty logo", call{Method: http.MethodPut, Target: productBrand, Body: `{"name":"CargoPai","logo_url":""}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /logo_url (pattern)."},
+		{"a null logo", call{Method: http.MethodPut, Target: productBrand, Body: `{"name":"CargoPai","logo_url":null}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /logo_url (nullable)."},
+		{"a colour by its name", call{Method: http.MethodPut, Target: productBrand, Body: `{"name":"CargoPai","primary_color":"canary"}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /primary_color (pattern)."},
+		{"a colour of three digits", call{Method: http.MethodPut, Target: productBrand, Body: `{"name":"CargoPai","primary_color":"#0A7"}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /primary_color (pattern)."},
+		{"a colour and a line after it", call{Method: http.MethodPut, Target: productBrand, Body: `{"name":"CargoPai","primary_color":"#0A7B3C\n"}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /primary_color (pattern)."},
+		{"an empty colour", call{Method: http.MethodPut, Target: productBrand, Body: `{"name":"CargoPai","primary_color":""}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /primary_color (pattern)."},
+		{"a null colour", call{Method: http.MethodPut, Target: productBrand, Body: `{"name":"CargoPai","primary_color":null}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body does not match the contract at /primary_color (nullable)."},
+		// A brand is of the product of the path, and nothing else of the
+		// product changes with it. The version a change is made from is
+		// said in If-Match.
+		{"a brand that names its product", call{Method: http.MethodPut, Target: productBrand,
+			Body: `{"name":"CargoPai","product_id":"` + productID + `"}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		{"a brand that renames the product", call{Method: http.MethodPut, Target: productBrand, Body: `{"name":"CargoPai","display_name":"Canary"}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		{"a brand that suspends the product", call{Method: http.MethodPut, Target: productBrand, Body: `{"name":"CargoPai","status":"SUSPENDED"}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		{"a brand that says its version in the body", call{Method: http.MethodPut, Target: productBrand, Body: `{"name":"CargoPai","version":4}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, ""},
+		{"a second brand after the first", call{Method: http.MethodPut, Target: productBrand, Body: `{"name":"CargoPai"}{"name":"Canary"}`, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request body cannot be read as the contract declares it."},
+		{"a change of the brand without a body", call{Method: http.MethodPut, Target: productBrand, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The operation requires a request body."},
+		{"a query where a change of the brand takes none", call{Method: http.MethodPut, Target: productBrand + "?canary=1", Body: brandChange, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The request has a query parameter the operation does not declare."},
+		{"the brand of a product whose identifier is none", call{Method: http.MethodPut, Target: "/v1/products/canary/brand", Body: brandChange, Header: fromVersion4},
+			http.StatusBadRequest, CodeRequestInvalid, "The path parameter product_id does not match the contract."},
 		// A page holds 1 to 100 items, and its size is a whole number.
 		{"a page of no item", call{Method: http.MethodGet, Target: products + "?page_size=0"},
 			http.StatusBadRequest, CodeRequestInvalid, "The query parameter page_size does not match the contract."},

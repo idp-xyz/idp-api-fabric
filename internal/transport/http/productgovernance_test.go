@@ -19,11 +19,14 @@ import (
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/ports"
 )
 
-// The answer shows the product as the contract declares it and nothing the
-// contract does not: not who registered it, not its version.
+// The answer shows the product as the contract declares it, with its brand,
+// and nothing the contract does not: not who registered it, not who changed
+// it last. Its version is not a member either: it is the ETag of an answer
+// that shows one product.
 var productBody = map[string]any{
 	"product_id": productID, "product_key": "cargopai", "display_name": "CargoPai", "status": "ACTIVE",
 	"owner_organization": map[string]any{"identity_provider": issuer, "organization": "org-cargopai"},
+	"brand":              map[string]any{"name": "CargoPai Developers", "logo_url": brandLogo, "primary_color": "#0A7B3C"},
 	"created_at":         "2026-11-11T09:00:00.123456Z",
 }
 
@@ -67,6 +70,11 @@ func TestRegisterProductHandsTheRequestToTheUseCaseAsTheVerifiedCaller(t *testin
 	if got := response.Header().Get("Cache-Control"); got != "no-store" {
 		t.Errorf("Cache-Control %q, want no-store", got)
 	}
+	// What shows one product carries its version, which is what a change of
+	// it is made from.
+	if got := response.Header().Get("ETag"); got != `"4"` {
+		t.Errorf("ETag %q, want the version of the product in double quotes", got)
+	}
 	if got := members(t, response); !reflect.DeepEqual(got, productBody) {
 		t.Errorf("body\n %v\nwant\n %v", got, productBody)
 	}
@@ -101,6 +109,9 @@ func TestTheOtherOperationsHandTheirRequestsToTheirUseCases(t *testing.T) {
 	}
 	if got := read.Header().Get("Cache-Control"); got != "no-store" {
 		t.Errorf("GET product: Cache-Control %q, want no-store", got)
+	}
+	if got := read.Header().Get("ETag"); got != `"4"` {
+		t.Errorf("GET product: ETag %q, want the version of the product in double quotes", got)
 	}
 
 	created := s.do(t, call{Method: http.MethodPost, Target: workspaces, Token: "alice",
@@ -590,6 +601,9 @@ func TestAnOperationReachedWithoutAPrincipalIsFailed(t *testing.T) {
 	for name, ctx := range map[string]context.Context{"no request state": context.Background(), "no principal": unauthenticated} {
 		_, errRegister := o.RegisterProduct(ctx, RegisterProductRequestObject{Body: &ProductRegistration{}})
 		_, errGet := o.GetProduct(ctx, GetProductRequestObject{ProductID: productID})
+		// Without If-Match as well: who asks is decided before what the
+		// request says.
+		_, errChangeBrand := o.ChangeProductBrand(ctx, ChangeProductBrandRequestObject{ProductID: productID, Body: &BrandChange{}})
 		_, errCreate := o.CreateWorkspace(ctx, CreateWorkspaceRequestObject{ProductID: productID, Body: &WorkspaceCreation{}})
 		_, errGetWorkspace := o.GetWorkspace(ctx, GetWorkspaceRequestObject{ProductID: productID, WorkspaceID: workspaceID})
 		_, errGrant := o.GrantMembership(ctx, GrantMembershipRequestObject{ProductID: productID, WorkspaceID: workspaceID, Body: &MembershipGrant{}})
@@ -611,7 +625,8 @@ func TestAnOperationReachedWithoutAPrincipalIsFailed(t *testing.T) {
 		_, errListRoles := o.ListProductRoles(ctx, ListProductRolesRequestObject{ProductID: productID})
 		_, errListConfigs := o.ListAudienceConfigs(ctx, ListAudienceConfigsRequestObject{ProductID: productID})
 		for operation, err := range map[string]error{
-			"RegisterProduct": errRegister, "GetProduct": errGet, "CreateWorkspace": errCreate, "GetWorkspace": errGetWorkspace,
+			"RegisterProduct": errRegister, "GetProduct": errGet, "ChangeProductBrand": errChangeBrand,
+			"CreateWorkspace": errCreate, "GetWorkspace": errGetWorkspace,
 			"GrantMembership": errGrant, "GetMembership": errGetMembership, "RevokeMembership": errRevoke,
 			"GrantProductRole": errGrantRole, "GetProductRole": errGetRole, "RevokeProductRole": errRevokeRole,
 			"ConfigureAudience": errConfigure, "GetAudienceConfig": errGetConfig,
@@ -965,5 +980,87 @@ func TestTheContractStatesTheRulesOfTheModel(t *testing.T) {
 	if _, err := partnerSandbox().ChangeDocsURL(product, "", domain.Principal(alice), at); err != nil ||
 		!answered(call{Method: http.MethodPut, Target: audienceConfigs + "/" + audienceConfigID, Body: `{}`, Header: fromVersion3}, http.StatusOK) {
 		t.Errorf("a change to no entry: the model refuses it (%v), or the contract does", err)
+	}
+
+	// The brand of a product is declared once for what a change sends and
+	// once for what an answer shows, and both name its members through the
+	// declarations the model is held to.
+	for _, object := range []string{"BrandChange", "Brand"} {
+		if schemas[object] == nil {
+			t.Errorf("the contract declares no %s", object)
+			continue
+		}
+		for member, declaration := range map[string]string{"name": "DisplayName", "logo_url": "LogoURL", "primary_color": "Color"} {
+			property := schemas[object].Value.Properties[member]
+			if property == nil {
+				t.Errorf("the contract declares no %s of %s", member, object)
+				continue
+			}
+			if got, want := property.Ref, "#/components/schemas/"+declaration; got != want {
+				t.Errorf("the %s of %s is declared by %q, want %q", member, object, got, want)
+			}
+		}
+		if got := schemas[object].Value.Required; !slices.Equal(got, []string{"name"}) {
+			t.Errorf("%s requires %v, want its name and nothing else", object, got)
+		}
+	}
+	if schemas["LogoURL"] == nil || schemas["Color"] == nil {
+		t.Fatal("the contract declares no LogoURL or no Color")
+	}
+	if got := schemas["LogoURL"].Value.Pattern; got != domain.LogoURLPattern {
+		t.Errorf("the contract states the pattern of a logo %q, the model %q", got, domain.LogoURLPattern)
+	}
+	if got := schemas["LogoURL"].Value.MaxLength; got == nil || *got != domain.LogoURLMaxLength {
+		t.Errorf("the contract bounds a logo at %v characters, the model at %d", got, domain.LogoURLMaxLength)
+	}
+	if got := schemas["Color"].Value.Pattern; got != domain.ColorPattern {
+		t.Errorf("the contract states the pattern of a colour %q, the model %q", got, domain.ColorPattern)
+	}
+
+	// What the contract lets through as the name, the logo and the colour
+	// of a brand, the model takes for the brand of a product. That there is
+	// no logo or no colour is said by leaving the member out, below.
+	// One service answers them all: its use case changes nothing, so what
+	// one request left says nothing to the next.
+	branding := newService(t)
+	rebrandWith := func(brand map[string]any) (contractAccepts bool) {
+		t.Helper()
+		body, err := json.Marshal(brand)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := branding.do(t, call{Method: http.MethodPut, Target: productBrand, Token: "alice", Body: string(body), Header: fromVersion4})
+		if response.Code != http.StatusOK && response.Code != http.StatusBadRequest {
+			t.Fatalf("status %d for the brand %s: %s", response.Code, body, response.Body)
+		}
+		return response.Code == http.StatusOK
+	}
+	rebrand := func(brand domain.Brand) error {
+		_, err := product.ChangeBrand(brand, domain.Principal(alice), at)
+		return err
+	}
+	for _, name := range names {
+		err := rebrand(domain.Brand{Name: name})
+		if contract, model := rebrandWith(map[string]any{"name": name}), err == nil; contract != model {
+			t.Errorf("the name %q of a brand: the contract accepts it %t, the model %t", name, contract, model)
+		}
+	}
+	for _, logoURL := range docsURLs {
+		err := rebrand(domain.Brand{Name: "CargoPai Developers", LogoURL: logoURL})
+		if contract, model := rebrandWith(map[string]any{"name": "CargoPai Developers", "logo_url": logoURL}), err == nil; contract != model {
+			t.Errorf("the logo %q of a brand: the contract accepts it %t, the model %t", logoURL, contract, model)
+		}
+	}
+	for _, colour := range []string{
+		"#0A7B3C", "#0a7b3c", "#0A7b3c", "#000000", "#FFFFFF", "0A7B3C", "#0A7", "#0A7B3", "#0A7B3CF", "#0A7B3CFF", "#0A7B3G", "green", "rgb(10,123,60)",
+		" #0A7B3C", "#0A7B3C ", "#0A7B3C\n", "\n#0A7B3C", "#0A7B3C#FFFFFF", "＃0A7B3C", "#", "#０A7B3C",
+	} {
+		err := rebrand(domain.Brand{Name: "CargoPai Developers", PrimaryColor: colour})
+		if contract, model := rebrandWith(map[string]any{"name": "CargoPai Developers", "primary_color": colour}), err == nil; contract != model {
+			t.Errorf("the colour %q of a brand: the contract accepts it %t, the model %t", colour, contract, model)
+		}
+	}
+	if err := rebrand(domain.Brand{Name: "CargoPai Developers"}); err != nil || !rebrandWith(map[string]any{"name": "CargoPai Developers"}) {
+		t.Errorf("a brand without a logo and without a colour: the model refuses it (%v), or the contract does", err)
 	}
 }

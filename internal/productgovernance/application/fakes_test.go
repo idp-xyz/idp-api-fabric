@@ -44,10 +44,10 @@ type world struct {
 	// failing makes the named step fail, to see what a failure leaves behind.
 	failing map[string]error
 	// meanwhile runs when the owners of a product are locked, before they
-	// are counted, and when an audience configuration is locked, before it
-	// is read. It stands for what another transaction committed while this
-	// one waited for the lock: this one reads it, and does not take it back
-	// when it fails.
+	// are counted, and when an audience configuration or a product is
+	// locked, before it is read. It stands for what another transaction
+	// committed while this one waited for the lock: this one reads it, and
+	// does not take it back when it fails.
 	meanwhile func()
 	// undo puts the world back as the transaction in progress found it.
 	undo func()
@@ -171,6 +171,17 @@ func (w *world) ProductRegistered(ctx context.Context, product domain.Product, c
 	return nil
 }
 
+func (w *world) ProductBrandChanged(ctx context.Context, product domain.Product, correlationID string) error {
+	if err := w.fail("events"); err != nil {
+		return err
+	}
+	if !transacted(ctx) {
+		return fmt.Errorf("an event was announced outside a transaction")
+	}
+	w.events = append(w.events, fmt.Sprintf("ProductBrandChanged %s at %d %s", product.ID, product.Version, correlationID))
+	return nil
+}
+
 func (w *world) WorkspaceCreated(ctx context.Context, workspace domain.Workspace, correlationID string) error {
 	if err := w.fail("events"); err != nil {
 		return err
@@ -251,6 +262,41 @@ func (s productStore) Find(_ context.Context, id domain.ProductID) (domain.Produ
 	}
 	product, found := s.products[id]
 	return product, found, nil
+}
+
+// Lock finds a product as Find does, once what another transaction committed
+// in the meantime is in. As with the owners, there is nobody to wait for.
+func (s productStore) Lock(ctx context.Context, id domain.ProductID) (domain.Product, bool, error) {
+	if !transacted(ctx) {
+		return domain.Product{}, false, fmt.Errorf("a product was locked outside a transaction")
+	}
+	if err := s.fail("lock"); err != nil {
+		return domain.Product{}, false, err
+	}
+	if s.meanwhile != nil {
+		// A use case writes nothing before it locks the product.
+		s.meanwhile()
+		s.undo = s.checkpoint()
+	}
+	product, found := s.products[id]
+	return product, found, nil
+}
+
+// ChangeBrand stores a change of the brand made from the version before it.
+func (s productStore) ChangeBrand(ctx context.Context, changed domain.Product) error {
+	if !transacted(ctx) {
+		return fmt.Errorf("the brand of a product was changed outside a transaction")
+	}
+	// "rebrand" stands for a change that lost the race against another
+	// writer.
+	if err := s.fail("rebrand"); err != nil {
+		return err
+	}
+	if product, found := s.products[changed.ID]; !found || product.Version != changed.Version-1 {
+		return ports.ErrProductChanged
+	}
+	s.products[changed.ID] = changed
+	return nil
 }
 
 // paged is the part of a list a page asks for: of items, in the order of the

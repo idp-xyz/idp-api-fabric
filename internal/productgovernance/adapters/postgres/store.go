@@ -59,8 +59,9 @@ func NewProducts(framework *bentopostgres.DB) *Products {
 const addProduct = `
 INSERT INTO productgovernance.product
     (product_id, product_key, display_name, status, owner_identity_provider, owner_organization,
-     aggregate_version, created_at, created_by_issuer, created_by_subject, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     aggregate_version, created_at, created_by_issuer, created_by_subject,
+     updated_at, updated_by_issuer, updated_by_subject, brand_name, brand_logo_url, brand_primary_color)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 ON CONFLICT (product_key) DO NOTHING`
 
 // Add stores a new product in the transaction ctx carries.
@@ -72,7 +73,9 @@ func (s *Products) Add(ctx context.Context, product domain.Product) error {
 	inserted, err := executor.Exec(ctx, addProduct,
 		string(product.ID), product.Key, product.DisplayName, string(product.Status),
 		product.Owner.IdentityProvider, product.Owner.Organization,
-		product.Version, product.CreatedAt, product.CreatedBy.Issuer, product.CreatedBy.Subject, product.UpdatedAt)
+		product.Version, product.CreatedAt, product.CreatedBy.Issuer, product.CreatedBy.Subject,
+		product.UpdatedAt, product.UpdatedBy.Issuer, product.UpdatedBy.Subject,
+		product.Brand.Name, nullable(product.Brand.LogoURL), nullable(product.Brand.PrimaryColor))
 	if err != nil {
 		return fmt.Errorf("add a product: %w", err)
 	}
@@ -82,23 +85,37 @@ func (s *Products) Add(ctx context.Context, product domain.Product) error {
 	return nil
 }
 
-// The columns of a product.
+// The columns of a product. A row a build before the brand wrote says
+// nothing of a brand or of who changed the product last: such a product is
+// as it was registered, under its display name, and its registrant changed
+// it last.
 const selectProduct = `
 SELECT product_id, product_key, display_name, status, owner_identity_provider, owner_organization,
-       aggregate_version, created_at, created_by_issuer, created_by_subject, updated_at
+       aggregate_version, created_at, created_by_issuer, created_by_subject, updated_at,
+       coalesce(updated_by_issuer, created_by_issuer), coalesce(updated_by_subject, created_by_subject),
+       coalesce(brand_name, display_name), brand_logo_url, brand_primary_color
 FROM productgovernance.product`
 
 // scanProduct reads one row of selectProduct.
 func scanProduct(row interface{ Scan(dest ...any) error }) (domain.Product, error) {
 	var product domain.Product
 	var id, status string
+	var logoURL, primaryColor *string
 	err := row.Scan(&id, &product.Key, &product.DisplayName, &status,
 		&product.Owner.IdentityProvider, &product.Owner.Organization,
-		&product.Version, &product.CreatedAt, &product.CreatedBy.Issuer, &product.CreatedBy.Subject, &product.UpdatedAt)
+		&product.Version, &product.CreatedAt, &product.CreatedBy.Issuer, &product.CreatedBy.Subject, &product.UpdatedAt,
+		&product.UpdatedBy.Issuer, &product.UpdatedBy.Subject,
+		&product.Brand.Name, &logoURL, &primaryColor)
 	if err != nil {
 		return domain.Product{}, err
 	}
 	product.ID, product.Status = domain.ProductID(id), domain.ProductStatus(status)
+	if logoURL != nil {
+		product.Brand.LogoURL = *logoURL
+	}
+	if primaryColor != nil {
+		product.Brand.PrimaryColor = *primaryColor
+	}
 	return product, nil
 }
 
@@ -119,6 +136,66 @@ func (s *Products) Find(ctx context.Context, id domain.ProductID) (domain.Produc
 		return domain.Product{}, false, fmt.Errorf("find a product: %w", err)
 	}
 	return product, true, nil
+}
+
+// A transaction that finds the row locked waits for the one that holds it,
+// and then reads the row as that one left it, at its new version.
+//
+// The lock is the one a change of the brand takes itself. It keeps another
+// change of the product out and lets everything else in: a workspace, a role
+// assignment or an audience configuration of the product needs the product
+// to stay, not to stay as it is, and is added while the lock is held.
+const lockProduct = findProduct + `
+FOR NO KEY UPDATE`
+
+// Lock returns the product with the identifier, if there is one, locked for
+// the transaction ctx carries.
+func (s *Products) Lock(ctx context.Context, id domain.ProductID) (domain.Product, bool, error) {
+	executor, err := s.framework.RequireExecutor(ctx)
+	if err != nil {
+		return domain.Product{}, false, fmt.Errorf("lock a product: %w", err)
+	}
+	product, err := scanProduct(executor.QueryRow(ctx, lockProduct, string(id)))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Product{}, false, nil
+	}
+	if err != nil {
+		return domain.Product{}, false, fmt.Errorf("lock a product: %w", err)
+	}
+	return product, true, nil
+}
+
+// A change is stored over the version it was made from: of two changes made
+// from one version, one changes the row and the other finds nothing to
+// change. Nothing but the brand, who changed it, when, and the version is
+// written.
+const changeProductBrand = `
+UPDATE productgovernance.product
+SET brand_name = $3, brand_logo_url = $4, brand_primary_color = $5,
+    updated_at = $6, updated_by_issuer = $7, updated_by_subject = $8, aggregate_version = $2
+WHERE product_id = $1 AND aggregate_version = $2 - 1`
+
+// ChangeBrand stores, in the transaction ctx carries, the new brand of a
+// product.
+func (s *Products) ChangeBrand(ctx context.Context, changed domain.Product) error {
+	if changed.Version < 2 {
+		return errors.New("change the brand of a product: the product is at the version it was registered at")
+	}
+	executor, err := s.framework.RequireExecutor(ctx)
+	if err != nil {
+		return fmt.Errorf("change the brand of a product: %w", err)
+	}
+	updated, err := executor.Exec(ctx, changeProductBrand,
+		string(changed.ID), changed.Version,
+		changed.Brand.Name, nullable(changed.Brand.LogoURL), nullable(changed.Brand.PrimaryColor),
+		changed.UpdatedAt, changed.UpdatedBy.Issuer, changed.UpdatedBy.Subject)
+	if err != nil {
+		return fmt.Errorf("change the brand of a product: %w", err)
+	}
+	if updated.RowsAffected() == 0 {
+		return ports.ErrProductChanged
+	}
+	return nil
 }
 
 // Every product, oldest first.

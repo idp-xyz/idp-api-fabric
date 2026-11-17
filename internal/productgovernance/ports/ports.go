@@ -12,6 +12,11 @@ var (
 	// ErrProductKeyTaken reports that a product with the key exists already.
 	ErrProductKeyTaken = errors.New("a product with this key is registered already")
 
+	// ErrProductChanged reports a product that is not at the version it was
+	// read at any more: it was changed after it was read and before it could
+	// be changed.
+	ErrProductChanged = errors.New("the product changed since it was read")
+
 	// ErrWorkspaceKeyTaken reports that the product has a workspace with the
 	// key already.
 	ErrWorkspaceKeyTaken = errors.New("the product has a workspace with this key already")
@@ -106,6 +111,18 @@ type Products interface {
 	Add(ctx context.Context, product domain.Product) error
 	// Find returns the product with the identifier, if there is one.
 	Find(ctx context.Context, id domain.ProductID) (product domain.Product, found bool, err error)
+	// Lock is Find for a change. It locks the product for the transaction
+	// ctx carries, until that ends, and returns it as it is then. It waits
+	// for a transaction that locked it before, and then returns it as that
+	// one left it. What is decided from it holds when the change is stored.
+	// What is added to the product meanwhile, a workspace or a role, does
+	// not wait for the lock.
+	Lock(ctx context.Context, id domain.ProductID) (product domain.Product, found bool, err error)
+	// ChangeBrand stores, in the transaction ctx carries, the brand of
+	// changed, who changed it and when, at its version. It fails with
+	// ErrProductChanged when the product is not at the version before that
+	// any more.
+	ChangeBrand(ctx context.Context, changed domain.Product) error
 	// List returns one page of all the products, in the order of the list.
 	List(ctx context.Context, page Page) ([]domain.Product, error)
 	// ListFor returns one page of the products the principal holds
@@ -275,6 +292,9 @@ type AuditTrail interface {
 // F03 §12.1).
 type Events interface {
 	ProductRegistered(ctx context.Context, product domain.Product, correlationID string) error
+	// ProductBrandChanged announces a product whose brand was changed, as
+	// it is after the change.
+	ProductBrandChanged(ctx context.Context, product domain.Product, correlationID string) error
 	WorkspaceCreated(ctx context.Context, workspace domain.Workspace, correlationID string) error
 	// MembershipChanged announces a membership that was granted or revoked,
 	// as it is after the change.
