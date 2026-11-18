@@ -580,6 +580,76 @@
         "product.same",
         "row.in_force"
       ]
+    },
+    {
+      "rule_id": "AC-44",
+      "principal_role": "product_owner",
+      "action": "audience_config.configure",
+      "resource": "ProductAudienceConfig",
+      "when_all": [
+        "role.product_owner",
+        "product.same",
+        "product.active",
+        "pair.available"
+      ]
+    },
+    {
+      "rule_id": "AC-45",
+      "principal_role": "authenticated",
+      "action": "audience_config.read",
+      "resource": "ProductAudienceConfig",
+      "when_all": [
+        "product.same",
+        "(role.platform_admin OR product.has_current_role_or_membership)",
+        "row.in_force"
+      ]
+    },
+    {
+      "rule_id": "AC-46",
+      "principal_role": "authenticated",
+      "action": "audience_config.list",
+      "resource": "ProductAudienceConfig",
+      "when_all": [
+        "product.same",
+        "(role.platform_admin OR product.has_current_role_or_membership)",
+        "row.in_force; filter_before_paging"
+      ]
+    },
+    {
+      "rule_id": "AC-47",
+      "principal_role": "product_owner",
+      "action": "audience_config.change",
+      "resource": "ProductAudienceConfig",
+      "when_all": [
+        "role.product_owner",
+        "product.same",
+        "product.active",
+        "row.in_force",
+        "cas.match"
+      ]
+    },
+    {
+      "rule_id": "AC-48",
+      "principal_role": "product_owner",
+      "action": "audience_config.remove",
+      "resource": "ProductAudienceConfig",
+      "when_all": [
+        "role.product_owner",
+        "product.same",
+        "row.in_force"
+      ]
+    },
+    {
+      "rule_id": "AC-49",
+      "principal_role": "product_owner",
+      "action": "product.change_brand",
+      "resource": "Product",
+      "when_all": [
+        "role.product_owner",
+        "product.same",
+        "product.active",
+        "cas.match"
+      ]
     }
   ],
   "negative_rules": [

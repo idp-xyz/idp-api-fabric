@@ -13,6 +13,8 @@ PR #6（产品负责人管理）和 #7（四类分页列表）已合入 main。�
 
 管理 API 0.7.0 支持设置产品的品牌（名称、Logo 网址、主色），品牌随产品一起返回。升级时同样执行 `fabric-migrate -apply -grant-to <application_role>`，应用迁移 006 并为应用角色授予 `product` 表的 `UPDATE` 权限。
 
+PR #10 和 #11 的实现详见 [F03 §5.6](docs/F03_Domain_and_Data_Model.md#56-已实现的受众配置和产品品牌pr-10--11)、[F04 §11](docs/F04_API_Contract_Governance.md#11-fabric-自身-api-的-http幂等错误边界) 和 [F05 §6.3](docs/F05_Security_and_Multitenancy.md#63-已实现的受众配置和产品品牌权限pr-10--11)。
+
 ## 阅读入口
 
 - [index.html](index.html) — 统一的离线 HTML 文档阅读入口。
@@ -159,7 +161,7 @@ python scripts/verify_manifest.py
 
 ## F05 安全设计的可审查资产与界限
 
-- [F05 授权矩阵](governance/policies/F05_Access_Matrix.csv)：43 条候选操作级规则；负责人管理与列表的服务器端实现见 F05 §6.1，完整安全验收仍待执行。
+- [F05 授权矩阵](governance/policies/F05_Access_Matrix.csv) 收录 49 条候选操作级规则。负责人管理、列表、受众配置和品牌的实现见 F05 §6.1、§6.3。
 - [F05 STRIDE 风险登记册](governance/policies/F05_Threat_Register.csv)：29 项威胁及待具名 Owner/残余风险。
 - [F05 授权策略设计 JSON](governance/policies/F05_Authorization_Policy_DRAFT.json)：仅为可读/可检查样例，不是可投入生产的 PDP。
 - [F05 安全测试计划](tests/acceptance/F05_security_scenarios.csv)：36 个场景均为 `NOT_RUN`。
