@@ -41,6 +41,10 @@ type ImportRevision struct {
 	ports.ScopeQuery
 	Entrypoint string
 	Files      []domain.SourceFile
+	// Origin is the Git origin the caller declares for the files, or the
+	// zero value for an upload. It is recorded as it is said: nothing here
+	// reads the repository.
+	Origin domain.GitOrigin
 }
 
 func (r *Registry) ImportRevision(ctx context.Context, command ImportRevision) (ports.Registration, error) {
@@ -61,13 +65,18 @@ func (r *Registry) ImportRevision(ctx context.Context, command ImportRevision) (
 		if !scope.HTTP {
 			return ErrAssetKind
 		}
+		if command.Origin.Declared() {
+			if err := command.Origin.Validate(); err != nil {
+				return err
+			}
+		}
 		source, err := r.deps.Capture(command.Entrypoint, command.Files)
 		if err != nil {
 			return err
 		}
 		registered, err = r.deps.Revisions.Register(tx, domain.Draft{
 			ID: r.deps.Identifiers.NewID(), SourceSnapshotID: r.deps.Identifiers.NewID(),
-			Asset: scope.Asset, CapturedAt: r.deps.Clock.Now(), CapturedBy: command.Caller,
+			Asset: scope.Asset, Origin: command.Origin, CapturedAt: r.deps.Clock.Now(), CapturedBy: command.Caller,
 		}, source)
 		if err != nil || !registered.Created {
 			return err

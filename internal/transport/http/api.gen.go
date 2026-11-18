@@ -82,12 +82,15 @@ func (e Audience) Valid() bool {
 
 // Defines values for ContractRevisionSourceKind.
 const (
+	ContractRevisionSourceKindGIT    ContractRevisionSourceKind = "GIT"
 	ContractRevisionSourceKindUPLOAD ContractRevisionSourceKind = "UPLOAD"
 )
 
 // Valid indicates whether the value is a known member of the ContractRevisionSourceKind enum.
 func (e ContractRevisionSourceKind) Valid() bool {
 	switch e {
+	case ContractRevisionSourceKindGIT:
+		return true
 	case ContractRevisionSourceKindUPLOAD:
 		return true
 	default:
@@ -374,15 +377,20 @@ type ContractRevision struct {
 	CreatedAt  time.Time          `json:"created_at"`
 	Entrypoint ContractSourcePath `json:"entrypoint"`
 
+	// GitOrigin The origin the source was submitted with. It is present exactly when source_kind is GIT.
+	GitOrigin *GitOrigin `json:"git_origin,omitempty"`
+
 	// ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 	ProductID        Identifier     `json:"product_id"`
 	RefClosureDigest ContractDigest `json:"ref_closure_digest"`
 
 	// RevisionID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
-	RevisionID       Identifier                 `json:"revision_id"`
-	RevisionSequence int64                      `json:"revision_sequence"`
-	SourceDigest     ContractDigest             `json:"source_digest"`
-	SourceKind       ContractRevisionSourceKind `json:"source_kind"`
+	RevisionID       Identifier     `json:"revision_id"`
+	RevisionSequence int64          `json:"revision_sequence"`
+	SourceDigest     ContractDigest `json:"source_digest"`
+
+	// SourceKind GIT for a source submitted with a Git origin, UPLOAD for one without
+	SourceKind ContractRevisionSourceKind `json:"source_kind"`
 
 	// SourceSnapshotID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 	SourceSnapshotID Identifier                  `json:"source_snapshot_id"`
@@ -390,7 +398,7 @@ type ContractRevision struct {
 	Status           ContractRevisionStatus      `json:"status"`
 }
 
-// ContractRevisionSourceKind defines model for ContractRevision.SourceKind.
+// ContractRevisionSourceKind GIT for a source submitted with a Git origin, UPLOAD for one without
 type ContractRevisionSourceKind string
 
 // ContractRevisionSpecVersion defines model for ContractRevision.SpecVersion.
@@ -421,6 +429,9 @@ type ContractSourcePath = string
 type ContractSourceUpload struct {
 	Entrypoint ContractSourcePath   `json:"entrypoint"`
 	Files      []ContractSourceFile `json:"files"`
+
+	// GitOrigin Where the files came from, when they were read from a Git repository. Without it the source is recorded as an upload.
+	GitOrigin *GitOrigin `json:"git_origin,omitempty"`
 }
 
 // DisplayName The name an object is shown under: 1 to 120 characters, without control characters and without surrounding white space. It identifies nothing and is not unique.
@@ -434,6 +445,27 @@ type EntityTag = string
 
 // Environment Where the APIs a product documents run: a sandbox is where a developer tries an API, production is where its business runs.
 type Environment string
+
+// GitCommit The full name of a commit: 40 hexadecimal digits for SHA-1 or 64 for SHA-256, in lower case. An abbreviation, a branch and a tag are refused: each of them can name another commit tomorrow.
+type GitCommit = string
+
+// GitOrigin Where the submitter of a source says its files came from. It is a declaration: Fabric records it with who made it and does not read the repository, so it is evidence of what was said, not proof of what the commit holds.
+type GitOrigin struct {
+	// Commit The commit the files were read at
+	Commit GitCommit `json:"commit"`
+
+	// Ref The branch or tag that pointed at the commit when the files were read. It is informational: a reference moves, the commit does not.
+	Ref *GitRef `json:"ref,omitempty"`
+
+	// Repository A Git repository, as the https URL it is known under, written one way: the host in lower case with nothing in front of it, so the URL carries no credentials, an optional port, and a path of one or more segments of letters, digits, ".", "_", "~" and "-" without a trailing slash, a query or a fragment. It is at most 300 characters. A repository is compared as it is written, so the same repository with and without ".git" is two. Fabric keeps the URL as it is given and never opens it.
+	Repository GitRepository `json:"repository"`
+}
+
+// GitRef The full name of a branch, a tag or another reference, as in refs/heads/main or refs/tags/v1.2.0: at most 200 characters, without white space or control characters.
+type GitRef = string
+
+// GitRepository A Git repository, as the https URL it is known under, written one way: the host in lower case with nothing in front of it, so the URL carries no credentials, an optional port, and a path of one or more segments of letters, digits, ".", "_", "~" and "-" without a trailing slash, a query or a fragment. It is at most 300 characters. A repository is compared as it is written, so the same repository with and without ".git" is two. Fabric keeps the URL as it is given and never opens it.
+type GitRepository = string
 
 // Health defines model for Health.
 type Health struct {

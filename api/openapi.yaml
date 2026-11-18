@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.10.0
+  version: 0.11.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -679,10 +679,22 @@ paths:
         remote references, paths outside the bundle and cycles. The original
         entrypoint and referenced files are preserved with SHA-256 digests.
         Inaccessible assets are hidden using the API Catalog read rules.
-        A new closure creates a DRAFT revision with a monotonically
-        increasing sequence and returns 201. The same closure on the same
-        asset returns 200 with its existing revision. The source snapshot,
-        revision, success audit and Outbox event commit together.
+        A source may name the Git commit its files were read at
+        (git_origin). The entrypoint and the file paths are then the paths
+        of the files in the repository. Fabric records the origin as it is
+        declared, with who declared it, and does not read the repository. A
+        source without an origin is an upload.
+        A closure is recorded once per source: the uploads of an asset are
+        one source and each repository is another. A new closure creates a
+        DRAFT revision with a monotonically increasing sequence and returns
+        201. A closure already recorded from the same source returns 200
+        with the revision recorded first, under the origin it was recorded
+        with, also when it is submitted again from a later commit. An
+        entrypoint of a commit is recorded with one closure: the same
+        repository, commit and entrypoint with another closure is refused
+        (409 GIT_ORIGIN_CONFLICT), because a commit never changes. The
+        source snapshot, revision, success audit and Outbox event commit
+        together.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - name: api_asset_id
@@ -715,7 +727,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ContractRevision'
         '200':
-          description: The source closure was already registered for this asset
+          description: The source closure was already registered for this asset from the same source
           headers:
             Cache-Control:
               required: true
@@ -1734,6 +1746,59 @@ components:
           maxItems: 16
           items:
             $ref: '#/components/schemas/ContractSourceFile'
+        git_origin:
+          description: >-
+            Where the files came from, when they were read from a Git
+            repository. Without it the source is recorded as an upload.
+          $ref: '#/components/schemas/GitOrigin'
+    GitRepository:
+      description: >-
+        A Git repository, as the https URL it is known under, written one
+        way: the host in lower case with nothing in front of it, so the URL
+        carries no credentials, an optional port, and a path of one or more
+        segments of letters, digits, ".", "_", "~" and "-" without a trailing
+        slash, a query or a fragment. It is at most 300 characters. A
+        repository is compared as it is written, so the same repository with
+        and without ".git" is two. Fabric keeps the URL as it is given and
+        never opens it.
+      type: string
+      maxLength: 300
+      pattern: '^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?(/[A-Za-z0-9._~-]*[A-Za-z0-9_~-][A-Za-z0-9._~-]*)+$'
+    GitCommit:
+      description: >-
+        The full name of a commit: 40 hexadecimal digits for SHA-1 or 64 for
+        SHA-256, in lower case. An abbreviation, a branch and a tag are
+        refused: each of them can name another commit tomorrow.
+      type: string
+      pattern: '^([0-9a-f]{40}|[0-9a-f]{64})$'
+    GitRef:
+      description: >-
+        The full name of a branch, a tag or another reference, as in
+        refs/heads/main or refs/tags/v1.2.0: at most 200 characters, without
+        white space or control characters.
+      type: string
+      maxLength: 200
+      pattern: '^refs/[^\p{Z}\p{Cc}]+$'
+    GitOrigin:
+      description: >-
+        Where the submitter of a source says its files came from. It is a
+        declaration: Fabric records it with who made it and does not read the
+        repository, so it is evidence of what was said, not proof of what the
+        commit holds.
+      type: object
+      additionalProperties: false
+      required: [repository, commit]
+      properties:
+        repository:
+          $ref: '#/components/schemas/GitRepository'
+        commit:
+          description: The commit the files were read at
+          $ref: '#/components/schemas/GitCommit'
+        ref:
+          description: >-
+            The branch or tag that pointed at the commit when the files were
+            read. It is informational: a reference moves, the commit does not.
+          $ref: '#/components/schemas/GitRef'
     ContractDigest:
       type: string
       pattern: '^sha256:[a-f0-9]{64}$'
@@ -1758,8 +1823,14 @@ components:
           type: string
           enum: [DRAFT]
         source_kind:
+          description: GIT for a source submitted with a Git origin, UPLOAD for one without
           type: string
-          enum: [UPLOAD]
+          enum: [UPLOAD, GIT]
+        git_origin:
+          description: >-
+            The origin the source was submitted with. It is present exactly
+            when source_kind is GIT.
+          $ref: '#/components/schemas/GitOrigin'
         entrypoint:
           $ref: '#/components/schemas/ContractSourcePath'
         spec_version:
