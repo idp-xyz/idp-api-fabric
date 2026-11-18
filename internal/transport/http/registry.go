@@ -9,10 +9,13 @@ import (
 	registry "go.idp.xyz/idp-api-fabric/internal/contractregistry/application"
 	"go.idp.xyz/idp-api-fabric/internal/contractregistry/domain"
 	"go.idp.xyz/idp-api-fabric/internal/contractregistry/ports"
+	governanceports "go.idp.xyz/idp-api-fabric/internal/productgovernance/ports"
 )
 
 type ContractRegistry interface {
 	ImportRevision(context.Context, registry.ImportRevision) (ports.Registration, error)
+	GetRevision(context.Context, ports.ScopeQuery, string) (domain.Revision, error)
+	ListRevisions(context.Context, registry.ListRevisions) (registry.Page, error)
 }
 
 func revisionScope(ctx context.Context, product, asset string) (ports.ScopeQuery, error) {
@@ -45,9 +48,57 @@ func (o operations) ImportRevision(ctx context.Context, request ImportRevisionRe
 	}
 	body := revisionOf(registered.Revision)
 	if registered.Created {
-		return ImportRevision201JSONResponse{Body: body, Headers: ImportRevision201ResponseHeaders{CacheControl: noStore}}, nil
+		location := "/v1/products/" + body.ProductID + "/assets/" + body.APIAssetID + "/revisions/" + body.RevisionID
+		return ImportRevision201JSONResponse{Body: body, Headers: ImportRevision201ResponseHeaders{
+			CacheControl: noStore, Location: location,
+		}}, nil
 	}
 	return ImportRevision200JSONResponse{Body: body, Headers: ImportRevision200ResponseHeaders{CacheControl: noStore}}, nil
+}
+
+func (o operations) GetRevision(ctx context.Context, request GetRevisionRequestObject) (GetRevisionResponseObject, error) {
+	scope, err := revisionScope(ctx, request.ProductID, request.APIAssetID)
+	if err != nil {
+		return nil, err
+	}
+	revision, err := o.registry.GetRevision(ctx, scope, request.RevisionID)
+	if err != nil {
+		return nil, err
+	}
+	return GetRevision200JSONResponse{
+		Body: revisionOf(revision), Headers: GetRevision200ResponseHeaders{CacheControl: noStore},
+	}, nil
+}
+
+func (o operations) ListRevisions(ctx context.Context, request ListRevisionsRequestObject) (ListRevisionsResponseObject, error) {
+	scope, err := revisionScope(ctx, request.ProductID, request.APIAssetID)
+	if err != nil {
+		return nil, err
+	}
+	list := "revisions/" + request.ProductID + "/" + request.APIAssetID
+	size, position, err := paging(list, request.Params.PageSize, request.Params.PageToken)
+	if err != nil {
+		return nil, err
+	}
+	var after *ports.Position
+	if position != nil {
+		after = &ports.Position{At: position.At, ID: position.ID}
+	}
+	page, err := o.registry.ListRevisions(ctx, registry.ListRevisions{ScopeQuery: scope, PageSize: size, After: after})
+	if err != nil {
+		return nil, err
+	}
+	items := make([]ContractRevision, len(page.Items))
+	for i, revision := range page.Items {
+		items[i] = revisionOf(revision)
+	}
+	var next *NextPageToken
+	if page.Next != nil {
+		next = nextPageToken(list, &governanceports.Position{At: page.Next.At, ID: page.Next.ID})
+	}
+	return ListRevisions200JSONResponse{
+		Body: ContractRevisionList{Items: items, NextPageToken: next}, Headers: ListRevisions200ResponseHeaders{CacheControl: noStore},
+	}, nil
 }
 
 func revisionOf(revision domain.Revision) ContractRevision {
@@ -65,6 +116,10 @@ func registryProblem(err error) (Problem, bool) {
 		return problem(http.StatusBadRequest, CodeRequestInvalid, "A contract file must contain standard Base64."), true
 	case errors.Is(err, registry.ErrForbidden):
 		return problem(http.StatusForbidden, CodeForbidden, "The caller is not a current internal author of the workspace."), true
+	case errors.Is(err, registry.ErrRevisionNotFound):
+		return problem(http.StatusNotFound, "REVISION_NOT_FOUND", ""), true
+	case errors.Is(err, registry.ErrInvalidPage):
+		return problem(http.StatusBadRequest, CodeRequestInvalid, ""), true
 	case errors.Is(err, registry.ErrProductSuspended):
 		return problem(http.StatusConflict, CodeProductNotActive, "The product is suspended and takes no new work."), true
 	case errors.Is(err, registry.ErrAssetKind):

@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.9.0
+  version: 0.10.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -624,6 +624,48 @@ paths:
         default:
           $ref: '#/components/responses/Problem'
   /v1/products/{product_id}/assets/{api_asset_id}/revisions:
+    get:
+      operationId: listRevisions
+      summary: List draft revision metadata for an API asset
+      description: >-
+        A current internal author of the asset's owning workspace can read
+        its revision history, oldest capture first. The cursor belongs to
+        this product and asset and conveys no authorization. Results include
+        source and closure digests and omit the original source bytes.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - name: api_asset_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Identifier'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: One page of revision metadata
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractRevisionList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
     post:
       operationId: importRevision
       summary: Import an OpenAPI source bundle as a draft revision
@@ -658,6 +700,11 @@ paths:
         '201':
           description: A draft revision was created
           headers:
+            Location:
+              required: true
+              schema:
+                type: string
+                format: uri-reference
             Cache-Control:
               required: true
               schema:
@@ -694,6 +741,52 @@ paths:
         '415':
           $ref: '#/components/responses/Problem'
         '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}:
+    get:
+      operationId: getRevision
+      summary: Read one immutable draft revision's metadata
+      description: >-
+        A current internal author of the asset's owning workspace can read
+        a revision that belongs to this asset and product. A revision from
+        a different asset is indistinguishable from one that is missing.
+        The source bytes are kept by the registry.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - name: api_asset_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Identifier'
+        - name: revision_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Identifier'
+      responses:
+        '200':
+          description: The revision metadata
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractRevision'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
           $ref: '#/components/responses/Problem'
         '503':
           $ref: '#/components/responses/Problem'
@@ -1679,6 +1772,17 @@ components:
         created_at:
           type: string
           format: date-time
+    ContractRevisionList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContractRevision'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
     AssetKind:
       type: string
       enum: [HTTP, EVENT]

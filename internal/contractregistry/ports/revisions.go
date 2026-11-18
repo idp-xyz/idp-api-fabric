@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"time"
 
 	"go.idp.xyz/idp-api-fabric/internal/contractregistry/domain"
 )
@@ -13,6 +14,13 @@ type Registration struct {
 	Created  bool
 }
 
+type Position struct {
+	At time.Time
+	ID string
+}
+
 type Revisions interface {
 	Register(context.Context, domain.Draft, domain.SourceSnapshot) (Registration, error)
+	Find(context.Context, domain.AssetRef, string) (domain.Revision, bool, error)
+	List(context.Context, domain.AssetRef, *Position, int) ([]domain.Revision, error)
 }

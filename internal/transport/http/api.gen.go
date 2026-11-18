@@ -399,6 +399,14 @@ type ContractRevisionSpecVersion string
 // ContractRevisionStatus defines model for ContractRevision.Status.
 type ContractRevisionStatus string
 
+// ContractRevisionList defines model for ContractRevisionList.
+type ContractRevisionList struct {
+	Items []ContractRevision `json:"items"`
+
+	// NextPageToken The page_token of the page that follows this one, to be sent back as it is. A page carries it for as long as items follow: the last page of a list has none, also when it is full.
+	NextPageToken *NextPageToken `json:"next_page_token,omitempty"`
+}
+
 // ContractSourceFile defines model for ContractSourceFile.
 type ContractSourceFile struct {
 	// ContentBase64 Base64-encoded original UTF-8 bytes
@@ -695,6 +703,15 @@ type ListAssetsParams struct {
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 }
 
+// ListRevisionsParams defines parameters for ListRevisions.
+type ListRevisionsParams struct {
+	// PageSize How many items the page holds at most. A list is read to its end by asking for the page that follows, never by asking for a larger one.
+	PageSize *PageSize `form:"page_size,omitempty" json:"page_size,omitempty"`
+
+	// PageToken Where the page starts: the next_page_token of the page before, as it was given. Without it the list starts at its beginning. The token is opaque. It names a position in one list and grants nothing: what the caller may read is decided again with every page, from what it holds then. One that is not a token of this list is refused (400 PAGE_TOKEN_INVALID).
+	PageToken *PageToken `form:"page_token,omitempty" json:"page_token,omitempty"`
+}
+
 // ListAudienceConfigsParams defines parameters for ListAudienceConfigs.
 type ListAudienceConfigsParams struct {
 	// PageSize How many items the page holds at most. A list is read to its end by asking for the page that follows, never by asking for a larger one.
@@ -793,9 +810,15 @@ type ServerInterface interface {
 	// GetAsset Read one API asset within the caller's scope
 	// (GET /v1/products/{product_id}/assets/{api_asset_id})
 	GetAsset(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier)
+	// ListRevisions List draft revision metadata for an API asset
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions)
+	ListRevisions(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier, params ListRevisionsParams)
 	// ImportRevision Import an OpenAPI source bundle as a draft revision
 	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions)
 	ImportRevision(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier)
+	// GetRevision Read one immutable draft revision's metadata
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id})
+	GetRevision(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier, revisionID Identifier)
 	// ListAudienceConfigs List the audience configurations of a product
 	// (GET /v1/products/{product_id}/audience-configs)
 	ListAudienceConfigs(w http.ResponseWriter, r *http.Request, productID ProductID, params ListAudienceConfigsParams)
@@ -1129,6 +1152,70 @@ func (siw *ServerInterfaceWrapper) GetAsset(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// ListRevisions operation middleware
+func (siw *ServerInterfaceWrapper) ListRevisions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID Identifier
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRevisionsParams
+
+	// ------------- Optional query parameter "page_size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_size", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_size", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page_token" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_token", r.URL.Query(), &params.PageToken, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_token"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_token", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRevisions(w, r, productID, apiAssetID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ImportRevision operation middleware
 func (siw *ServerInterfaceWrapper) ImportRevision(w http.ResponseWriter, r *http.Request) {
 
@@ -1155,6 +1242,50 @@ func (siw *ServerInterfaceWrapper) ImportRevision(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ImportRevision(w, r, productID, apiAssetID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRevision operation middleware
+func (siw *ServerInterfaceWrapper) GetRevision(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID Identifier
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "revision_id" -------------
+	var revisionID Identifier
+
+	err = runtime.BindStyledParameterWithOptions("simple", "revision_id", r.PathValue("revision_id"), &revisionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revision_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRevision(w, r, productID, apiAssetID, revisionID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2025,7 +2156,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets", wrapper.ListAssets)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets", wrapper.RegisterAsset)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}", wrapper.GetAsset)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions", wrapper.ListRevisions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions", wrapper.ImportRevision)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}", wrapper.GetRevision)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ListAudienceConfigs)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ConfigureAudience)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs/{audience_config_id}", wrapper.RemoveAudienceConfig)
@@ -2778,6 +2911,130 @@ func (response GetAssetdefaultApplicationProblemPlusJSONResponse) VisitGetAssetR
 	return err
 }
 
+type ListRevisionsRequestObject struct {
+	ProductID  ProductID  `json:"product_id"`
+	APIAssetID Identifier `json:"api_asset_id"`
+	Params     ListRevisionsParams
+}
+
+type ListRevisionsResponseObject interface {
+	VisitListRevisionsResponse(w http.ResponseWriter) error
+}
+
+type ListRevisions200ResponseHeaders struct {
+	CacheControl string
+}
+
+type ListRevisions200JSONResponse struct {
+	Body    ContractRevisionList
+	Headers ListRevisions200ResponseHeaders
+}
+
+func (response ListRevisions200JSONResponse) VisitListRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRevisions400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListRevisions400ApplicationProblemPlusJSONResponse) VisitListRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRevisions401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ListRevisions401ApplicationProblemPlusJSONResponse) VisitListRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRevisions403ApplicationProblemPlusJSONResponse Problem
+
+func (response ListRevisions403ApplicationProblemPlusJSONResponse) VisitListRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRevisions404ApplicationProblemPlusJSONResponse Problem
+
+func (response ListRevisions404ApplicationProblemPlusJSONResponse) VisitListRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRevisions503ApplicationProblemPlusJSONResponse Problem
+
+func (response ListRevisions503ApplicationProblemPlusJSONResponse) VisitListRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRevisionsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListRevisionsdefaultApplicationProblemPlusJSONResponse) VisitListRevisionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ImportRevisionRequestObject struct {
 	ProductID  ProductID  `json:"product_id"`
 	APIAssetID Identifier `json:"api_asset_id"`
@@ -2812,6 +3069,7 @@ func (response ImportRevision200JSONResponse) VisitImportRevisionResponse(w http
 
 type ImportRevision201ResponseHeaders struct {
 	CacheControl string
+	Location     string
 }
 
 type ImportRevision201JSONResponse struct {
@@ -2827,6 +3085,7 @@ func (response ImportRevision201JSONResponse) VisitImportRevisionResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
 	w.WriteHeader(201)
 	_, err := buf.WriteTo(w)
 	return err
@@ -2969,6 +3228,130 @@ type ImportRevisiondefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ImportRevisiondefaultApplicationProblemPlusJSONResponse) VisitImportRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisionRequestObject struct {
+	ProductID  ProductID  `json:"product_id"`
+	APIAssetID Identifier `json:"api_asset_id"`
+	RevisionID Identifier `json:"revision_id"`
+}
+
+type GetRevisionResponseObject interface {
+	VisitGetRevisionResponse(w http.ResponseWriter) error
+}
+
+type GetRevision200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetRevision200JSONResponse struct {
+	Body    ContractRevision
+	Headers GetRevision200ResponseHeaders
+}
+
+func (response GetRevision200JSONResponse) VisitGetRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevision400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetRevision400ApplicationProblemPlusJSONResponse) VisitGetRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevision401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetRevision401ApplicationProblemPlusJSONResponse) VisitGetRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevision403ApplicationProblemPlusJSONResponse Problem
+
+func (response GetRevision403ApplicationProblemPlusJSONResponse) VisitGetRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevision404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetRevision404ApplicationProblemPlusJSONResponse) VisitGetRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevision503ApplicationProblemPlusJSONResponse Problem
+
+func (response GetRevision503ApplicationProblemPlusJSONResponse) VisitGetRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisiondefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetRevisiondefaultApplicationProblemPlusJSONResponse) VisitGetRevisionResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -5247,9 +5630,15 @@ type StrictServerInterface interface {
 	// GetAsset Read one API asset within the caller's scope
 	// (GET /v1/products/{product_id}/assets/{api_asset_id})
 	GetAsset(ctx context.Context, request GetAssetRequestObject) (GetAssetResponseObject, error)
+	// ListRevisions List draft revision metadata for an API asset
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions)
+	ListRevisions(ctx context.Context, request ListRevisionsRequestObject) (ListRevisionsResponseObject, error)
 	// ImportRevision Import an OpenAPI source bundle as a draft revision
 	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions)
 	ImportRevision(ctx context.Context, request ImportRevisionRequestObject) (ImportRevisionResponseObject, error)
+	// GetRevision Read one immutable draft revision's metadata
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id})
+	GetRevision(ctx context.Context, request GetRevisionRequestObject) (GetRevisionResponseObject, error)
 	// ListAudienceConfigs List the audience configurations of a product
 	// (GET /v1/products/{product_id}/audience-configs)
 	ListAudienceConfigs(ctx context.Context, request ListAudienceConfigsRequestObject) (ListAudienceConfigsResponseObject, error)
@@ -5539,6 +5928,34 @@ func (sh *strictHandler) GetAsset(w http.ResponseWriter, r *http.Request, produc
 	}
 }
 
+// ListRevisions operation middleware
+func (sh *strictHandler) ListRevisions(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier, params ListRevisionsParams) {
+	var request ListRevisionsRequestObject
+
+	request.ProductID = productID
+	request.APIAssetID = apiAssetID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRevisions(ctx, request.(ListRevisionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRevisions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRevisionsResponseObject); ok {
+		if err := validResponse.VisitListRevisionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ImportRevision operation middleware
 func (sh *strictHandler) ImportRevision(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier) {
 	var request ImportRevisionRequestObject
@@ -5566,6 +5983,34 @@ func (sh *strictHandler) ImportRevision(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ImportRevisionResponseObject); ok {
 		if err := validResponse.VisitImportRevisionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRevision operation middleware
+func (sh *strictHandler) GetRevision(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier, revisionID Identifier) {
+	var request GetRevisionRequestObject
+
+	request.ProductID = productID
+	request.APIAssetID = apiAssetID
+	request.RevisionID = revisionID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRevision(ctx, request.(GetRevisionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRevision")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRevisionResponseObject); ok {
+		if err := validResponse.VisitGetRevisionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
