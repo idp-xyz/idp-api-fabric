@@ -21,9 +21,12 @@ func NewRevisions(database *bentopostgres.DB) *Revisions {
 	return &Revisions{database: database}
 }
 
+// A snapshot without an origin holds NULL in the three columns: it is read
+// as the zero GitOrigin.
 const selectRevision = `
 SELECT r.revision_id, r.source_snapshot_id, r.product_id, r.workspace_id,
        r.api_asset_id, r.revision_sequence, r.status, s.source_kind,
+       coalesce(s.origin_repository, ''), coalesce(s.origin_commit, ''), coalesce(s.origin_ref, ''),
        s.entrypoint, r.spec_version, s.source_digest, s.ref_closure_digest, s.captured_at
 FROM contractregistry.contract_revision r
 JOIN contractregistry.source_snapshot s USING (source_snapshot_id)
@@ -33,17 +36,34 @@ func scanRevision(row pgx.CollectableRow) (domain.Revision, error) {
 	var revision domain.Revision
 	err := row.Scan(&revision.ID, &revision.SourceSnapshotID, &revision.Asset.ProductID, &revision.Asset.WorkspaceID,
 		&revision.Asset.AssetID, &revision.Sequence, &revision.Status, &revision.SourceKind,
+		&revision.Origin.Repository, &revision.Origin.Commit, &revision.Origin.Ref,
 		&revision.Entrypoint, &revision.SpecVersion, &revision.SourceDigest, &revision.RefClosureDigest, &revision.CreatedAt)
 	revision.CreatedAt = revision.CreatedAt.UTC()
 	return revision, err
 }
+
+// The closure a source is already recorded with, among the uploads of the
+// asset and from one of its repositories.
+const (
+	recordedUpload = selectRevision + `
+  AND s.source_kind = 'UPLOAD' AND s.ref_closure_digest = $3`
+	recordedFromRepository = selectRevision + `
+  AND s.source_kind = 'GIT' AND s.origin_repository = $3 AND s.ref_closure_digest = $4`
+)
+
+// The closure an entrypoint of a commit is recorded with.
+const recordedAtCommit = `
+SELECT ref_closure_digest
+FROM contractregistry.source_snapshot
+WHERE product_id = $1 AND api_asset_id = $2 AND source_kind = 'GIT'
+  AND origin_repository = $3 AND origin_commit = $4 AND entrypoint = $5`
 
 func (s *Revisions) Register(ctx context.Context, draft domain.Draft, source domain.SourceSnapshot) (ports.Registration, error) {
 	writer, err := s.database.RequireExecutor(ctx)
 	if err != nil {
 		return ports.Registration{}, err
 	}
-	asset := draft.Asset
+	asset, origin := draft.Asset, draft.Origin
 
 	// Registration is serialized per asset until commit, so content reuse
 	// and sequence allocation both observe the preceding committed draft.
@@ -51,8 +71,25 @@ func (s *Revisions) Register(ctx context.Context, draft domain.Draft, source dom
 	if _, err := writer.Exec(ctx, lock, asset.AssetID); err != nil {
 		return ports.Registration{}, fmt.Errorf("lock revision registration: %w", err)
 	}
-	rows, err := writer.Query(ctx, selectRevision+" AND s.ref_closure_digest = $3",
-		asset.ProductID, asset.AssetID, source.RefClosureDigest)
+
+	var rows pgx.Rows
+	if origin.Declared() {
+		// The commit is looked at before the content: a commit recorded
+		// with one closure is refused with another, also when that other
+		// closure is already recorded from the repository.
+		var recorded string
+		switch err := writer.QueryRow(ctx, recordedAtCommit,
+			asset.ProductID, asset.AssetID, origin.Repository, origin.Commit, source.Entrypoint).Scan(&recorded); {
+		case err == nil && recorded != source.RefClosureDigest:
+			return ports.Registration{}, ports.ErrOriginConflict
+		case err != nil && !errors.Is(err, pgx.ErrNoRows):
+			return ports.Registration{}, fmt.Errorf("read what the commit is recorded with: %w", err)
+		}
+		rows, err = writer.Query(ctx, recordedFromRepository,
+			asset.ProductID, asset.AssetID, origin.Repository, source.RefClosureDigest)
+	} else {
+		rows, err = writer.Query(ctx, recordedUpload, asset.ProductID, asset.AssetID, source.RefClosureDigest)
+	}
 	if err != nil {
 		return ports.Registration{}, fmt.Errorf("find a revision for the source: %w", err)
 	}
@@ -77,11 +114,13 @@ WHERE product_id = $1 AND api_asset_id = $2`
 	const insertSnapshot = `
 INSERT INTO contractregistry.source_snapshot (
     source_snapshot_id, product_id, api_asset_id, source_kind, entrypoint, source_digest,
-    ref_closure_digest, ref_closure_manifest, captured_at, captured_by_issuer, captured_by_subject
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`
+    ref_closure_digest, ref_closure_manifest, captured_at, captured_by_issuer, captured_by_subject,
+    origin_repository, origin_commit, origin_ref
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`
 	if _, err := writer.Exec(ctx, insertSnapshot, draft.SourceSnapshotID, asset.ProductID, asset.AssetID,
-		domain.SourceUpload, source.Entrypoint, source.SourceDigest, source.RefClosureDigest, []byte(source.Manifest()),
-		captured, draft.CapturedBy.Issuer, draft.CapturedBy.Subject); err != nil {
+		origin.SourceKind(), source.Entrypoint, source.SourceDigest, source.RefClosureDigest, []byte(source.Manifest()),
+		captured, draft.CapturedBy.Issuer, draft.CapturedBy.Subject,
+		nullable(origin.Repository), nullable(origin.Commit), nullable(origin.Ref)); err != nil {
 		return ports.Registration{}, fmt.Errorf("store the source snapshot: %w", err)
 	}
 	for _, file := range source.Files() {
@@ -102,10 +141,19 @@ INSERT INTO contractregistry.contract_revision (
 	}
 	revision := domain.Revision{
 		ID: draft.ID, SourceSnapshotID: draft.SourceSnapshotID, Asset: asset, Sequence: sequence,
-		Status: domain.RevisionDraft, SourceKind: domain.SourceUpload, Entrypoint: source.Entrypoint, SpecVersion: source.SpecVersion,
+		Status: domain.RevisionDraft, SourceKind: origin.SourceKind(), Origin: origin,
+		Entrypoint: source.Entrypoint, SpecVersion: source.SpecVersion,
 		SourceDigest: source.SourceDigest, RefClosureDigest: source.RefClosureDigest, CreatedAt: captured,
 	}
 	return ports.Registration{Revision: revision, Created: true}, nil
+}
+
+// nullable stores what a snapshot does not say as NULL.
+func nullable(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 func (s *Revisions) Find(ctx context.Context, asset domain.AssetRef, id string) (domain.Revision, bool, error) {
