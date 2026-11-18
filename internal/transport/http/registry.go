@@ -40,13 +40,20 @@ func (o operations) ImportRevision(ctx context.Context, request ImportRevisionRe
 		}
 		files = append(files, domain.SourceFile{Path: file.Path, Content: string(content)})
 	}
+	var origin domain.GitOrigin
+	if declared := request.Body.GitOrigin; declared != nil {
+		origin = domain.GitOrigin{Repository: declared.Repository, Commit: declared.Commit, Ref: valueOf(declared.Ref)}
+	}
 	registered, err := o.registry.ImportRevision(ctx, registry.ImportRevision{
-		ScopeQuery: scope, Entrypoint: request.Body.Entrypoint, Files: files,
+		ScopeQuery: scope, Entrypoint: request.Body.Entrypoint, Files: files, Origin: origin,
 	})
 	if err != nil {
 		return nil, err
 	}
-	body := revisionOf(registered.Revision)
+	body, err := revisionOf(registered.Revision)
+	if err != nil {
+		return nil, err
+	}
 	if registered.Created {
 		location := "/v1/products/" + body.ProductID + "/assets/" + body.APIAssetID + "/revisions/" + body.RevisionID
 		return ImportRevision201JSONResponse{Body: body, Headers: ImportRevision201ResponseHeaders{
@@ -65,9 +72,11 @@ func (o operations) GetRevision(ctx context.Context, request GetRevisionRequestO
 	if err != nil {
 		return nil, err
 	}
-	return GetRevision200JSONResponse{
-		Body: revisionOf(revision), Headers: GetRevision200ResponseHeaders{CacheControl: noStore},
-	}, nil
+	body, err := revisionOf(revision)
+	if err != nil {
+		return nil, err
+	}
+	return GetRevision200JSONResponse{Body: body, Headers: GetRevision200ResponseHeaders{CacheControl: noStore}}, nil
 }
 
 func (o operations) ListRevisions(ctx context.Context, request ListRevisionsRequestObject) (ListRevisionsResponseObject, error) {
@@ -90,7 +99,9 @@ func (o operations) ListRevisions(ctx context.Context, request ListRevisionsRequ
 	}
 	items := make([]ContractRevision, len(page.Items))
 	for i, revision := range page.Items {
-		items[i] = revisionOf(revision)
+		if items[i], err = revisionOf(revision); err != nil {
+			return nil, err
+		}
 	}
 	var next *NextPageToken
 	if page.Next != nil {
@@ -101,13 +112,29 @@ func (o operations) ListRevisions(ctx context.Context, request ListRevisionsRequ
 	}, nil
 }
 
-func revisionOf(revision domain.Revision) ContractRevision {
-	return ContractRevision{
+// revisionOf shows a revision as the contract declares it. A source kind
+// that is not the kind of its origin is a failure of this service and is
+// answered as one: a revision that says GIT without a commit, or UPLOAD with
+// one, would mislead whoever traces it. An origin has the kinds of the model
+// and no other, and a test holds the kinds of the contract to those, so a
+// kind that agrees with the origin is one the contract declares.
+func revisionOf(revision domain.Revision) (ContractRevision, error) {
+	if revision.SourceKind != revision.Origin.SourceKind() {
+		return ContractRevision{}, errors.New("the source kind of a revision disagrees with its origin")
+	}
+	body := ContractRevision{
 		RevisionID: revision.ID, SourceSnapshotID: revision.SourceSnapshotID, ProductID: revision.Asset.ProductID,
 		APIAssetID: revision.Asset.AssetID, RevisionSequence: revision.Sequence, Status: ContractRevisionStatus(revision.Status),
 		SourceKind: ContractRevisionSourceKind(revision.SourceKind), Entrypoint: revision.Entrypoint, SpecVersion: ContractRevisionSpecVersion(revision.SpecVersion),
 		SourceDigest: revision.SourceDigest, RefClosureDigest: revision.RefClosureDigest, CreatedAt: revision.CreatedAt,
 	}
+	if origin := revision.Origin; origin.Declared() {
+		body.GitOrigin = &GitOrigin{Repository: origin.Repository, Commit: origin.Commit}
+		if origin.Ref != "" {
+			body.GitOrigin.Ref = &origin.Ref
+		}
+	}
+	return body, nil
 }
 
 func registryProblem(err error) (Problem, bool) {
@@ -124,6 +151,14 @@ func registryProblem(err error) (Problem, bool) {
 		return problem(http.StatusConflict, CodeProductNotActive, "The product is suspended and takes no new work."), true
 	case errors.Is(err, registry.ErrAssetKind):
 		return problem(http.StatusConflict, "API_ASSET_KIND_UNSUPPORTED", "The API asset does not accept OpenAPI revisions."), true
+	case errors.Is(err, ports.ErrOriginConflict):
+		return problem(http.StatusConflict, "GIT_ORIGIN_CONFLICT",
+			"This entrypoint of the commit is already recorded for the asset with other files."), true
+	case errors.Is(err, domain.ErrInvalidOrigin):
+		// The contract states the form of an origin, so the validator has
+		// refused such a request before. This is the model refusing what
+		// reached it another way.
+		return problem(http.StatusUnprocessableEntity, CodeRequestUnprocessable, ""), true
 	case errors.Is(err, domain.ErrUnsupportedSpecVersion):
 		return problem(http.StatusUnprocessableEntity, "UNSUPPORTED_SPEC_VERSION", "The entrypoint must be OpenAPI 3.1.2."), true
 	case errors.Is(err, domain.ErrInvalidSource):
