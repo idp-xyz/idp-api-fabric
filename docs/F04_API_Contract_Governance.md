@@ -107,7 +107,7 @@ OpenAPI `security` 既不是运行时授权凭据也不是对象级授权证明�
 | 令牌 | 版本 1、列表种类、UTC 微秒时间、UUID 的规范 JSON，经无填充 base64url 编码；不签名、不绑定调用方、不设到期时间，不能作为授权凭据；每页重新授权 |
 | 无效令牌 | 格式不规范、其他列表种类、版本或位置无效，均为 400 `PAGE_TOKEN_INVALID`；将来改变排序/游标语义需升令牌版本，旧令牌失败后从头读取 |
 | 查询参数 | 所有接口拒绝未声明、无值或不符合契约的参数，返回 400 `REQUEST_INVALID`；包括 `/healthz`、`/version`，探活请求不得附加无关参数 |
-| 当前范围 | 没有筛选、搜索、可选排序或已撤销记录列表；成功列表不写审计，授权拒绝按 F05 留证 |
+| 当前范围 | 上述五类列表没有筛选、搜索、可选排序或已撤销记录列表；成功列表不写审计，授权拒绝按 F05 留证。0.8.0 起的 API 资产列表和修订历史采用同一分页约定，资产列表另有过滤条件，见 §11.3 |
 
 传输层先检查身份、参数和请求体，再进入用例；参数错误不代表已经查过对象或授权，也不产生业务变更/授权拒绝审计。分页令牌即使被自行构造或转交，也只定位调用方当时获准读取的集合，不能放宽产品/Workspace 范围。该分页实现和局部负载证据不等于正式 SLO、生产容量或外部 IAM 验收。
 
@@ -310,6 +310,30 @@ V1 按 `Experimental → Stable → Deprecated → Retired` 表达资产生命�
 - CAS 条件若缺失，返回 `428 Precondition Required`（实现可采用其他显式模式，但契约必须一致）；错误 generation 返回 `412 Precondition Failed`。业务状态不允许但并发条件满足时使用 409。
 - 对外错误使用 RFC 9457 的 `type`, `title`, `status`, `detail`（脱敏）、`instance`（可选）及 `error_code`, `trace_id` 扩展，禁止包含凭证、内部存储路径、完整私有策略内容。`status` 与实际 HTTP 状态必须一致。
 - 2026 年 IETF 的 `Idempotency-Key` 仍为 Internet-Draft；它用于指导设计，不得把本项目机制表述成已符合正式 RFC。
+
+### 11.3 已实现的 API 资产与契约修订接口
+
+本节对应 PR #12、#14–#17 以及随后的 Git 来源和原文读取。下表路径以 `/v1/products/{product_id}` 开头。当前管理 API 为 0.12.0：0.8.0 加入资产登记与查询，0.9.0 加入修订导入，0.10.0 加入修订详情与历史，0.11.0 加入 Git 来源，0.12.0 加入原文读取。数据模型见 F03 §5.7，访问规则见 F05 §6.4。
+
+| 操作 | 请求与响应 |
+|---|---|
+| `GET …/assets` | 列出调用方可见的资产，按 `(created_at, api_asset_id)` 正序，采用 §3.1.1 的分页约定。可用 `workspace_id`、`api_kind`、`domain_key` 过滤，`q` 是对资产 key、名称和领域 key 的不区分大小写的子串匹配，至多 120 个字符。过滤只作用在可见的资产上；翻页时保持过滤条件不变 |
+| `POST …/assets` | 提交 `workspace_id`、`asset_key`、`display_name`、`domain_key`、`api_kind`（`HTTP` 或 `EVENT`）。成功返回 201 和 `Location`，`lifecycle` 为 `EXPERIMENTAL`。同一产品内 key 重复返回 409 `API_ASSET_KEY_TAKEN` |
+| `GET …/assets/{api_asset_id}` | 返回资产详情 |
+| `POST …/assets/{api_asset_id}/revisions` | 提交 `entrypoint`、`files`（每项为 `path` 和 `content_base64`），以及可选的 `git_origin`（`repository`、`commit`、可选 `ref`）。登记了新闭包返回 201 和 `Location`；同一来源下已登记的闭包返回 200 和原修订 |
+| `GET …/assets/{api_asset_id}/revisions` | 修订历史，按采集时间从早到晚，采用 §3.1.1 的分页约定。只有元数据，不含原文 |
+| `GET …/assets/{api_asset_id}/revisions/{revision_id}` | 修订的元数据：序号、状态、`source_kind`、`git_origin`、入口路径、`spec_version`、`source_digest`、`ref_closure_digest` 和创建时间 |
+| `GET …/assets/{api_asset_id}/revisions/{revision_id}/source` | 修订的原文：入口和它引用的每个文件，按路径排序，逐字节以标准 Base64 返回，每个文件带自己的 SHA-256 |
+
+这些资源登记后不变，所以没有 `ETag` 和 `If-Match`。全部响应带 `Cache-Control: no-store`。
+
+**导入。** 文件是 UTF-8 的 YAML 或 JSON，以标准 Base64 提交；一次最多 16 个文件、解码后合计 40960 字节，HTTP 请求体不超过 65536 字节。入口必须声明 OpenAPI 3.1.2，否则返回 422 `UNSUPPORTED_SPEC_VERSION`。引用只能是包内的相对 JSON Pointer；远程引用、越出包的路径、循环等返回 422 `CONTRACT_SOURCE_INVALID`。Base64 不合法返回 400 `REQUEST_INVALID`。资产不是 `HTTP` 类型返回 409 `API_ASSET_KIND_UNSUPPORTED`，产品已暂停返回 409 `PRODUCT_NOT_ACTIVE`。导入没有 `Idempotency-Key`：幂等来自内容，相同闭包重复提交得到同一个修订，响应以 200 而不是 201 区分。
+
+**Git 来源。** `git_origin` 的三个字段的形式都写在契约里：仓库是不含凭证、查询串和片段的 https 网址，主机名小写，至多 300 个字符；提交是 40 或 64 位小写十六进制的完整提交名，缩写、分支名和标签名都不接受；引用是 `refs/` 开头的完整引用名，至多 200 个字符。形式不符的请求在进入用例之前返回 400 `REQUEST_INVALID`，带凭证的网址不会被写入数据库或日志。带来源时，入口和文件路径就是文件在仓库里的路径。Fabric 记录声明，不读取仓库。同一仓库、提交和入口带着另一份闭包再次提交，返回 409 `GIT_ORIGIN_CONFLICT`，不留下任何记录。
+
+**读取原文。** 响应包含 `revision_id`、`source_snapshot_id`、`entrypoint`、`source_digest`、`ref_closure_digest` 和 `files`。入口文件的摘要就是 `source_digest`。提交时没有被引用到的文件不在其中。Fabric 在返回前按存储内容重新计算摘要；与修订记录不符时不返回文件，响应为 500 `INTERNAL_ERROR`；修订编号和原因写入日志，日志的 `correlation_id` 就是响应里的 `trace_id`。此时修订的元数据仍可读取。
+
+**兼容性。** 0.11.0 给 `ContractRevision.source_kind` 增加了 `GIT`，并给 `ContractRevision` 增加了可选的 `git_origin`。按 §5.1，响应枚举增加成员属于 RISKY：把枚举当作封闭集合、或拒绝未知字段的客户端，需要先升级才能读取从 Git 导入的修订。没有带来源导入之前，响应与 0.10.0 相同。
 
 ## 12. API Catalog 元数据、文档产物和发布加工
 

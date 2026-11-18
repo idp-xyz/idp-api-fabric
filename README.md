@@ -5,7 +5,7 @@
 **状态：** F01 内容定稿、待具名签收；**F02 总体架构设计候选、待具名评审及工程 PoC**；**F03 领域与数据设计候选、待具名评审**；**F04 契约与治理规范设计候选、待具名评审与工具验证**；**F05 安全与多租户设计候选、待具名安全评审及真实验证**；**F06 双门户体验设计候选，待具名评审与真实 UX/安全验证**；**F07 工程与质量设计候选、待具名评审与真实 PoC**；**F08 交付与验收设计候选、待具名签收，真实验收 NOT_RUN**。  
 **日期：** 2026-11-09
 
-## 工程实现同步（2026-11-17）
+## 工程实现同步（2026-11-18）
 
 PR #6（产品负责人管理）和 #7（四类分页列表）已合入 main。对应领域与物理模型见 F03 §5.5，分页协议见 F04 §3.1.1，权限规则见 F05 §6.1；授权矩阵新增 AC-36…43，仍保留设计候选状态。可复现的本地 HTTP 负载实验及原始数据见 [列表压测记录](tests/performance/README.md)。该实现记录不改变 F01–F08 正式验收和具名批准的状态。
 
@@ -14,6 +14,12 @@ PR #6（产品负责人管理）和 #7（四类分页列表）已合入 main。�
 管理 API 0.7.0 支持设置产品的品牌（名称、Logo 网址、主色），品牌随产品一起返回。升级时同样执行 `fabric-migrate -apply -grant-to <application_role>`，应用迁移 006 并为应用角色授予 `product` 表的 `UPDATE` 权限。
 
 PR #10 和 #11 的实现详见 [F03 §5.6](docs/F03_Domain_and_Data_Model.md#56-已实现的受众配置和产品品牌pr-10--11)、[F04 §11](docs/F04_API_Contract_Governance.md#11-fabric-自身-api-的-http幂等错误边界) 和 [F05 §6.3](docs/F05_Security_and_Multitenancy.md#63-已实现的受众配置和产品品牌权限pr-10--11)。
+
+管理 API 0.8.0–0.12.0 加入 API 目录和契约修订：登记和查询 API 资产（PR #12），把 OpenAPI 3.1.2 源文件导入为草稿修订并查看修订历史（PR #14–#17），导入时声明文件来自哪个 Git 提交（0.11.0），读回修订的原文（0.12.0）。Fabric 记录 Git 来源的声明，不读取仓库。
+
+从 0.7.0 之后升级，仍执行 `fabric-migrate -apply -grant-to <application_role>`：应用 `apicatalog/001`、`contractregistry/001` 和 `002`，并授予应用角色新表的权限。0.12.0 需要 `contractregistry.source_file` 的 `SELECT`，它没有对应的迁移步骤，缺少时进程拒绝启动并指出缺少的权限，所以先执行授权再启动新进程。全部进程升级后再开始带 Git 来源导入。
+
+实现详见 [F03 §5.7](docs/F03_Domain_and_Data_Model.md#57-已实现的-api-目录和契约修订)、[F04 §11.3](docs/F04_API_Contract_Governance.md#113-已实现的-api-资产与契约修订接口) 和 [F05 §6.4](docs/F05_Security_and_Multitenancy.md#64-已实现的-api-目录和契约修订权限)。授权矩阵没有新增条目。
 
 ## 阅读入口
 
