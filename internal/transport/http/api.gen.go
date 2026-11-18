@@ -80,6 +80,51 @@ func (e Audience) Valid() bool {
 	}
 }
 
+// Defines values for ContractRevisionSourceKind.
+const (
+	ContractRevisionSourceKindUPLOAD ContractRevisionSourceKind = "UPLOAD"
+)
+
+// Valid indicates whether the value is a known member of the ContractRevisionSourceKind enum.
+func (e ContractRevisionSourceKind) Valid() bool {
+	switch e {
+	case ContractRevisionSourceKindUPLOAD:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ContractRevisionSpecVersion.
+const (
+	ContractRevisionSpecVersionN312 ContractRevisionSpecVersion = "3.1.2"
+)
+
+// Valid indicates whether the value is a known member of the ContractRevisionSpecVersion enum.
+func (e ContractRevisionSpecVersion) Valid() bool {
+	switch e {
+	case ContractRevisionSpecVersionN312:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ContractRevisionStatus.
+const (
+	ContractRevisionStatusDRAFT ContractRevisionStatus = "DRAFT"
+)
+
+// Valid indicates whether the value is a known member of the ContractRevisionStatus enum.
+func (e ContractRevisionStatus) Valid() bool {
+	switch e {
+	case ContractRevisionStatusDRAFT:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Environment.
 const (
 	EnvironmentProduction Environment = "production"
@@ -318,6 +363,57 @@ type BuildInfo struct {
 
 // Color A colour: "#" and six hexadecimal digits, two each for red, green and blue, in either case. It is kept as it is given.
 type Color = string
+
+// ContractDigest defines model for ContractDigest.
+type ContractDigest = string
+
+// ContractRevision defines model for ContractRevision.
+type ContractRevision struct {
+	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	APIAssetID Identifier         `json:"api_asset_id"`
+	CreatedAt  time.Time          `json:"created_at"`
+	Entrypoint ContractSourcePath `json:"entrypoint"`
+
+	// ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ProductID        Identifier     `json:"product_id"`
+	RefClosureDigest ContractDigest `json:"ref_closure_digest"`
+
+	// RevisionID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	RevisionID       Identifier                 `json:"revision_id"`
+	RevisionSequence int64                      `json:"revision_sequence"`
+	SourceDigest     ContractDigest             `json:"source_digest"`
+	SourceKind       ContractRevisionSourceKind `json:"source_kind"`
+
+	// SourceSnapshotID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	SourceSnapshotID Identifier                  `json:"source_snapshot_id"`
+	SpecVersion      ContractRevisionSpecVersion `json:"spec_version"`
+	Status           ContractRevisionStatus      `json:"status"`
+}
+
+// ContractRevisionSourceKind defines model for ContractRevision.SourceKind.
+type ContractRevisionSourceKind string
+
+// ContractRevisionSpecVersion defines model for ContractRevision.SpecVersion.
+type ContractRevisionSpecVersion string
+
+// ContractRevisionStatus defines model for ContractRevision.Status.
+type ContractRevisionStatus string
+
+// ContractSourceFile defines model for ContractSourceFile.
+type ContractSourceFile struct {
+	// ContentBase64 Base64-encoded original UTF-8 bytes
+	ContentBase64 string             `json:"content_base64"`
+	Path          ContractSourcePath `json:"path"`
+}
+
+// ContractSourcePath defines model for ContractSourcePath.
+type ContractSourcePath = string
+
+// ContractSourceUpload defines model for ContractSourceUpload.
+type ContractSourceUpload struct {
+	Entrypoint ContractSourcePath   `json:"entrypoint"`
+	Files      []ContractSourceFile `json:"files"`
+}
 
 // DisplayName The name an object is shown under: 1 to 120 characters, without control characters and without surrounding white space. It identifies nothing and is not unique.
 type DisplayName = string
@@ -653,6 +749,9 @@ type RegisterProductJSONRequestBody = ProductRegistration
 // RegisterAssetJSONRequestBody defines body for RegisterAsset for application/json ContentType.
 type RegisterAssetJSONRequestBody = AssetRegistration
 
+// ImportRevisionJSONRequestBody defines body for ImportRevision for application/json ContentType.
+type ImportRevisionJSONRequestBody = ContractSourceUpload
+
 // ConfigureAudienceJSONRequestBody defines body for ConfigureAudience for application/json ContentType.
 type ConfigureAudienceJSONRequestBody = AudienceConfigCreation
 
@@ -694,6 +793,9 @@ type ServerInterface interface {
 	// GetAsset Read one API asset within the caller's scope
 	// (GET /v1/products/{product_id}/assets/{api_asset_id})
 	GetAsset(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier)
+	// ImportRevision Import an OpenAPI source bundle as a draft revision
+	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions)
+	ImportRevision(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier)
 	// ListAudienceConfigs List the audience configurations of a product
 	// (GET /v1/products/{product_id}/audience-configs)
 	ListAudienceConfigs(w http.ResponseWriter, r *http.Request, productID ProductID, params ListAudienceConfigsParams)
@@ -1018,6 +1120,41 @@ func (siw *ServerInterfaceWrapper) GetAsset(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAsset(w, r, productID, apiAssetID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ImportRevision operation middleware
+func (siw *ServerInterfaceWrapper) ImportRevision(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID Identifier
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ImportRevision(w, r, productID, apiAssetID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1888,6 +2025,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets", wrapper.ListAssets)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets", wrapper.RegisterAsset)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}", wrapper.GetAsset)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions", wrapper.ImportRevision)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ListAudienceConfigs)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ConfigureAudience)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs/{audience_config_id}", wrapper.RemoveAudienceConfig)
@@ -2629,6 +2767,208 @@ type GetAssetdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetAssetdefaultApplicationProblemPlusJSONResponse) VisitGetAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportRevisionRequestObject struct {
+	ProductID  ProductID  `json:"product_id"`
+	APIAssetID Identifier `json:"api_asset_id"`
+	Body       *ImportRevisionJSONRequestBody
+}
+
+type ImportRevisionResponseObject interface {
+	VisitImportRevisionResponse(w http.ResponseWriter) error
+}
+
+type ImportRevision200ResponseHeaders struct {
+	CacheControl string
+}
+
+type ImportRevision200JSONResponse struct {
+	Body    ContractRevision
+	Headers ImportRevision200ResponseHeaders
+}
+
+func (response ImportRevision200JSONResponse) VisitImportRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportRevision201ResponseHeaders struct {
+	CacheControl string
+}
+
+type ImportRevision201JSONResponse struct {
+	Body    ContractRevision
+	Headers ImportRevision201ResponseHeaders
+}
+
+func (response ImportRevision201JSONResponse) VisitImportRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportRevision400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ImportRevision400ApplicationProblemPlusJSONResponse) VisitImportRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportRevision401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ImportRevision401ApplicationProblemPlusJSONResponse) VisitImportRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportRevision403ApplicationProblemPlusJSONResponse Problem
+
+func (response ImportRevision403ApplicationProblemPlusJSONResponse) VisitImportRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportRevision404ApplicationProblemPlusJSONResponse Problem
+
+func (response ImportRevision404ApplicationProblemPlusJSONResponse) VisitImportRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportRevision409ApplicationProblemPlusJSONResponse Problem
+
+func (response ImportRevision409ApplicationProblemPlusJSONResponse) VisitImportRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportRevision413ApplicationProblemPlusJSONResponse Problem
+
+func (response ImportRevision413ApplicationProblemPlusJSONResponse) VisitImportRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportRevision415ApplicationProblemPlusJSONResponse Problem
+
+func (response ImportRevision415ApplicationProblemPlusJSONResponse) VisitImportRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportRevision422ApplicationProblemPlusJSONResponse Problem
+
+func (response ImportRevision422ApplicationProblemPlusJSONResponse) VisitImportRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportRevision503ApplicationProblemPlusJSONResponse Problem
+
+func (response ImportRevision503ApplicationProblemPlusJSONResponse) VisitImportRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportRevisiondefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ImportRevisiondefaultApplicationProblemPlusJSONResponse) VisitImportRevisionResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -4907,6 +5247,9 @@ type StrictServerInterface interface {
 	// GetAsset Read one API asset within the caller's scope
 	// (GET /v1/products/{product_id}/assets/{api_asset_id})
 	GetAsset(ctx context.Context, request GetAssetRequestObject) (GetAssetResponseObject, error)
+	// ImportRevision Import an OpenAPI source bundle as a draft revision
+	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions)
+	ImportRevision(ctx context.Context, request ImportRevisionRequestObject) (ImportRevisionResponseObject, error)
 	// ListAudienceConfigs List the audience configurations of a product
 	// (GET /v1/products/{product_id}/audience-configs)
 	ListAudienceConfigs(ctx context.Context, request ListAudienceConfigsRequestObject) (ListAudienceConfigsResponseObject, error)
@@ -5189,6 +5532,40 @@ func (sh *strictHandler) GetAsset(w http.ResponseWriter, r *http.Request, produc
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAssetResponseObject); ok {
 		if err := validResponse.VisitGetAssetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ImportRevision operation middleware
+func (sh *strictHandler) ImportRevision(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier) {
+	var request ImportRevisionRequestObject
+
+	request.ProductID = productID
+	request.APIAssetID = apiAssetID
+
+	var body ImportRevisionJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ImportRevision(ctx, request.(ImportRevisionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ImportRevision")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ImportRevisionResponseObject); ok {
+		if err := validResponse.VisitImportRevisionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

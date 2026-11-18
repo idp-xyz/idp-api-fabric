@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.8.0
+  version: 0.9.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -620,6 +620,82 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/revisions:
+    post:
+      operationId: importRevision
+      summary: Import an OpenAPI source bundle as a draft revision
+      description: >-
+        A current internal author of the HTTP asset's owning workspace can
+        import into an active product. Submit UTF-8 YAML or JSON files as
+        standard Base64, with a canonical relative entrypoint. The bundle
+        holds up to 16 files and 40960 decoded bytes, within the 65536-byte
+        HTTP request limit. Capture supports an OpenAPI 3.1.2 entrypoint and
+        relative JSON Pointer references within the bundle. It refuses
+        remote references, paths outside the bundle and cycles. The original
+        entrypoint and referenced files are preserved with SHA-256 digests.
+        Inaccessible assets are hidden using the API Catalog read rules.
+        A new closure creates a DRAFT revision with a monotonically
+        increasing sequence and returns 201. The same closure on the same
+        asset returns 200 with its existing revision. The source snapshot,
+        revision, success audit and Outbox event commit together.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - name: api_asset_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Identifier'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContractSourceUpload'
+      responses:
+        '201':
+          description: A draft revision was created
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractRevision'
+        '200':
+          description: The source closure was already registered for this asset
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractRevision'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
@@ -1533,6 +1609,74 @@ components:
         role:
           $ref: '#/components/schemas/ProductRole'
         granted_at:
+          type: string
+          format: date-time
+    ContractSourcePath:
+      type: string
+      minLength: 1
+      maxLength: 200
+      pattern: '^[a-zA-Z0-9._-]+(/[a-zA-Z0-9._-]+)*$'
+    ContractSourceFile:
+      type: object
+      required: [path, content_base64]
+      additionalProperties: false
+      properties:
+        path:
+          $ref: '#/components/schemas/ContractSourcePath'
+        content_base64:
+          description: Base64-encoded original UTF-8 bytes
+          type: string
+          minLength: 4
+          maxLength: 54616
+    ContractSourceUpload:
+      type: object
+      required: [entrypoint, files]
+      additionalProperties: false
+      properties:
+        entrypoint:
+          $ref: '#/components/schemas/ContractSourcePath'
+        files:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items:
+            $ref: '#/components/schemas/ContractSourceFile'
+    ContractDigest:
+      type: string
+      pattern: '^sha256:[a-f0-9]{64}$'
+    ContractRevision:
+      type: object
+      required: [revision_id, source_snapshot_id, product_id, api_asset_id, revision_sequence, status, source_kind, entrypoint, spec_version, source_digest, ref_closure_digest, created_at]
+      additionalProperties: false
+      properties:
+        revision_id:
+          $ref: '#/components/schemas/Identifier'
+        source_snapshot_id:
+          $ref: '#/components/schemas/Identifier'
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        api_asset_id:
+          $ref: '#/components/schemas/Identifier'
+        revision_sequence:
+          type: integer
+          format: int64
+          minimum: 1
+        status:
+          type: string
+          enum: [DRAFT]
+        source_kind:
+          type: string
+          enum: [UPLOAD]
+        entrypoint:
+          $ref: '#/components/schemas/ContractSourcePath'
+        spec_version:
+          type: string
+          const: '3.1.2'
+        source_digest:
+          $ref: '#/components/schemas/ContractDigest'
+        ref_closure_digest:
+          $ref: '#/components/schemas/ContractDigest'
+        created_at:
           type: string
           format: date-time
     AssetKind:
