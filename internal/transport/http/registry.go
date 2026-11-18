@@ -15,6 +15,7 @@ import (
 type ContractRegistry interface {
 	ImportRevision(context.Context, registry.ImportRevision) (ports.Registration, error)
 	GetRevision(context.Context, ports.ScopeQuery, string) (domain.Revision, error)
+	GetRevisionSource(context.Context, ports.ScopeQuery, string) (registry.RevisionSource, error)
 	ListRevisions(context.Context, registry.ListRevisions) (registry.Page, error)
 }
 
@@ -77,6 +78,29 @@ func (o operations) GetRevision(ctx context.Context, request GetRevisionRequestO
 		return nil, err
 	}
 	return GetRevision200JSONResponse{Body: body, Headers: GetRevision200ResponseHeaders{CacheControl: noStore}}, nil
+}
+
+func (o operations) GetRevisionSource(ctx context.Context, request GetRevisionSourceRequestObject) (GetRevisionSourceResponseObject, error) {
+	scope, err := revisionScope(ctx, request.ProductID, request.APIAssetID)
+	if err != nil {
+		return nil, err
+	}
+	source, err := o.registry.GetRevisionSource(ctx, scope, request.RevisionID)
+	if err != nil {
+		return nil, err
+	}
+	revision := source.Revision
+	body := ContractRevisionSource{
+		RevisionID: revision.ID, SourceSnapshotID: revision.SourceSnapshotID, Entrypoint: revision.Entrypoint,
+		SourceDigest: revision.SourceDigest, RefClosureDigest: revision.RefClosureDigest,
+		Files: make([]ContractRecordedFile, len(source.Files)),
+	}
+	for i, file := range source.Files {
+		body.Files[i] = ContractRecordedFile{
+			Path: file.Path, Digest: file.Digest, ContentBase64: base64.StdEncoding.EncodeToString([]byte(file.Content)),
+		}
+	}
+	return GetRevisionSource200JSONResponse{Body: body, Headers: GetRevisionSource200ResponseHeaders{CacheControl: noStore}}, nil
 }
 
 func (o operations) ListRevisions(ctx context.Context, request ListRevisionsRequestObject) (ListRevisionsResponseObject, error) {

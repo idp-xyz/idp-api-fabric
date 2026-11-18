@@ -217,6 +217,9 @@ func TestOpenRefusesARoleThatWasGrantedLessThanAProcessNeeds(t *testing.T) {
 		// Nor did it change a product: its brand came later.
 		"the privilege to change the brand of a product was never granted": {
 			`REVOKE UPDATE ON productgovernance.product FROM `, "missing UPDATE on productgovernance.product"},
+		// It stored the files of a source and never read one back.
+		"the privilege to read the files of a source was never granted": {
+			`REVOKE SELECT ON contractregistry.source_file FROM `, "missing SELECT on contractregistry.source_file"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -228,6 +231,69 @@ func TestOpenRefusesARoleThatWasGrantedLessThanAProcessNeeds(t *testing.T) {
 				t.Fatalf("got %v, want %v naming %q", err, db.ErrNotGranted, c.missing)
 			}
 		})
+	}
+}
+
+// The build before this one stored the files of a source and never read one
+// back, so the role it granted may write them and may not read them. A
+// process of this build does not start on that grant and names what is
+// missing. Granting again with this build is all it takes: nothing is
+// migrated, and the role still cannot change or remove a file.
+func TestAProcessStartsOnceTheRoleOfTheBuildBeforeMayReadTheFilesOfASource(t *testing.T) {
+	database := pgtest.MigratedDatabase(t)
+	mustAlter(t, database, `REVOKE SELECT ON contractregistry.source_file FROM `+role(database))
+	app := pgtest.Connect(t, database.Application)
+	// refusedFor is the SQLSTATE the role is refused the statement with, and
+	// empty if the statement runs.
+	refusedFor := func(statement string) string {
+		t.Helper()
+		_, err := app.Exec(t.Context(), statement)
+		var refused *pgconn.PgError
+		switch {
+		case err == nil:
+			return ""
+		case errors.As(err, &refused):
+			return refused.Code
+		}
+		t.Fatalf("%s: %v", statement, err)
+		return ""
+	}
+	const insufficientPrivilege = "42501"
+	if got := refusedFor(`SELECT count(*) FROM contractregistry.source_file`); got != insufficientPrivilege {
+		t.Fatalf("the role of the build before reads the files: SQLSTATE %q, want it refused", got)
+	}
+
+	err := refused(t, database.Application)
+	if !errors.Is(err, db.ErrNotGranted) || !strings.HasSuffix(err.Error(), ": missing SELECT on contractregistry.source_file") {
+		t.Fatalf("got %v, want %v naming the one privilege that is missing", err, db.ErrNotGranted)
+	}
+
+	migrator := pgtest.Connect(t, database.Migrator)
+	history := func() (steps int) {
+		if err := migrator.QueryRow(t.Context(), `SELECT count(*) FROM fabric_migration.applied_migration`).Scan(&steps); err != nil {
+			t.Fatalf("read the history: %v", err)
+		}
+		return steps
+	}
+	before := history()
+	if err := migrate.Grant(t.Context(), migrator, database.ApplicationRole); err != nil {
+		t.Fatalf("grant with this build: %v", err)
+	}
+	open(t, database.Application)
+	if after := history(); after != before {
+		t.Errorf("the history holds %d steps, it held %d: granting migrated something", after, before)
+	}
+	if got := refusedFor(`SELECT count(*) FROM contractregistry.source_file`); got != "" {
+		t.Errorf("the role still cannot read the files: SQLSTATE %q", got)
+	}
+	for _, statement := range []string{
+		`UPDATE contractregistry.source_file SET content = 'x'`,
+		`DELETE FROM contractregistry.source_file`,
+		`TRUNCATE contractregistry.source_file`,
+	} {
+		if got := refusedFor(statement); got != insufficientPrivilege {
+			t.Errorf("%s: SQLSTATE %q, want it refused for lack of privilege", statement, got)
+		}
 	}
 }
 

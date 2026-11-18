@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.11.0
+  version: 0.12.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -766,7 +766,8 @@ paths:
         A current internal author of the asset's owning workspace can read
         a revision that belongs to this asset and product. A revision from
         a different asset is indistinguishable from one that is missing.
-        The source bytes are kept by the registry.
+        The files the revision was recorded from are read with
+        getRevisionSource.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - name: api_asset_id
@@ -792,6 +793,64 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ContractRevision'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/source:
+    get:
+      operationId: getRevisionSource
+      summary: Read the files a draft revision was recorded from
+      description: >-
+        Whoever may read a revision may read its source: a current internal
+        author of the asset's owning workspace. To anyone else the answer is
+        the one getRevision gives, and a revision from a different asset is
+        indistinguishable from one that is missing.
+        The answer holds the closure that was recorded: the entrypoint and
+        every file it references, byte for byte as they were submitted, in
+        the order of their paths. A file that was submitted with the bundle
+        and referenced by nothing was not recorded and is not here.
+        Each file carries the SHA-256 digest of its bytes, the digest of the
+        entrypoint is the source_digest of the revision, and
+        ref_closure_digest covers the entrypoint and the path and digest of
+        every file. Fabric computes the digests again from what it stored
+        before it answers. Files that are no longer the ones the revision
+        was recorded from are not handed out: the request fails with 500
+        INTERNAL_ERROR and the cause is logged for whoever operates the
+        service.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - name: api_asset_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Identifier'
+        - name: revision_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Identifier'
+      responses:
+        '200':
+          description: The files of the revision, checked against its digests
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractRevisionSource'
         '400':
           $ref: '#/components/responses/Problem'
         '401':
@@ -1854,6 +1913,52 @@ components:
             $ref: '#/components/schemas/ContractRevision'
         next_page_token:
           $ref: '#/components/schemas/NextPageToken'
+    ContractRecordedFile:
+      description: One file of a recorded source, as it was submitted
+      type: object
+      required: [path, digest, content_base64]
+      additionalProperties: false
+      properties:
+        path:
+          $ref: '#/components/schemas/ContractSourcePath'
+        digest:
+          description: The SHA-256 digest of the bytes of the file
+          $ref: '#/components/schemas/ContractDigest'
+        content_base64:
+          description: The bytes of the file in standard Base64
+          type: string
+          minLength: 4
+          maxLength: 54616
+    ContractRevisionSource:
+      description: >-
+        The files a revision was recorded from, with the digests the
+        revision carries for them.
+      type: object
+      required: [revision_id, source_snapshot_id, entrypoint, source_digest, ref_closure_digest, files]
+      additionalProperties: false
+      properties:
+        revision_id:
+          $ref: '#/components/schemas/Identifier'
+        source_snapshot_id:
+          $ref: '#/components/schemas/Identifier'
+        entrypoint:
+          description: The path of the file the others are referenced from
+          $ref: '#/components/schemas/ContractSourcePath'
+        source_digest:
+          description: The digest of the entrypoint
+          $ref: '#/components/schemas/ContractDigest'
+        ref_closure_digest:
+          description: >-
+            The digest of the closure: the entrypoint and the path and
+            digest of every file
+          $ref: '#/components/schemas/ContractDigest'
+        files:
+          description: The entrypoint and every file it references, in the order of their paths
+          type: array
+          minItems: 1
+          maxItems: 16
+          items:
+            $ref: '#/components/schemas/ContractRecordedFile'
     AssetKind:
       type: string
       enum: [HTTP, EVENT]

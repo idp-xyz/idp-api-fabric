@@ -95,6 +95,40 @@ func CaptureSource(entrypoint, version string, files []SourceFile) (SourceSnapsh
 func (s SourceSnapshot) Manifest() string    { return s.manifest }
 func (s SourceSnapshot) Files() []SourceFile { return slices.Clone(s.files) }
 
+// ErrSourceDamaged reports stored files that are not the files a revision
+// was recorded from. It is a failure of the storage, never of a request, and
+// what it guards is the promise of a revision: its source does not change.
+var ErrSourceDamaged = errors.New("the stored source files are not the ones the revision was recorded from")
+
+// RecordedFile is one file of the source of a revision, with the digest of
+// its bytes.
+type RecordedFile struct {
+	Path    string
+	Digest  string
+	Content string
+}
+
+// RecordedSource checks files read back from storage against the digests the
+// revision was recorded with and returns them in the order of their paths.
+// The digest of the closure covers the entrypoint and the path and digest of
+// every file, so a file that was changed, renamed, removed or added fails
+// here with ErrSourceDamaged, as does a set without the entrypoint.
+//
+// The digests come from the same storage as the files. The check tells
+// storage that lost or altered a file from storage that kept it; it does not
+// hold against someone who rewrites the files and the digests together.
+func RecordedSource(revision Revision, files []SourceFile) ([]RecordedFile, error) {
+	stored, err := CaptureSource(revision.Entrypoint, revision.SpecVersion, files)
+	if err != nil || stored.SourceDigest != revision.SourceDigest || stored.RefClosureDigest != revision.RefClosureDigest {
+		return nil, ErrSourceDamaged
+	}
+	recorded := make([]RecordedFile, 0, len(stored.files))
+	for _, file := range stored.files {
+		recorded = append(recorded, RecordedFile{Path: file.Path, Digest: sourceDigest(file.Content), Content: file.Content})
+	}
+	return recorded, nil
+}
+
 func sourceDigest(content string) string {
 	return fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(content)))
 }

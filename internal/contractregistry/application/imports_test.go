@@ -20,15 +20,21 @@ const (
 
 var shipments = domain.AssetRef{ProductID: "product", WorkspaceID: "workspace", AssetID: "asset"}
 
-// registryDouble stands in for everything an import reaches, and keeps what
+// registryDouble stands in for everything a use case reaches, and keeps what
 // reached it.
 type registryDouble struct {
 	author, active, http bool
+	// recorded and stored are the revision the store holds and the files it
+	// holds for it.
+	recorded *domain.Revision
+	stored   []domain.SourceFile
 
-	captured int
-	drafts   []domain.Draft
-	audited  []ports.AuditEntry
-	events   int
+	captured  int
+	drafts    []domain.Draft
+	found     []string
+	filesRead []string
+	audited   []ports.AuditEntry
+	events    int
 }
 
 func (d *registryDouble) WithinTransaction(ctx context.Context, work func(context.Context) error) error {
@@ -58,8 +64,20 @@ func (d *registryDouble) Register(_ context.Context, draft domain.Draft, source 
 	}}, nil
 }
 
-func (d *registryDouble) Find(context.Context, domain.AssetRef, string) (domain.Revision, bool, error) {
-	return domain.Revision{}, false, nil
+func (d *registryDouble) Find(_ context.Context, asset domain.AssetRef, id string) (domain.Revision, bool, error) {
+	d.found = append(d.found, id)
+	if d.recorded == nil || d.recorded.ID != id || d.recorded.Asset != asset {
+		return domain.Revision{}, false, nil
+	}
+	return *d.recorded, true, nil
+}
+
+func (d *registryDouble) Files(_ context.Context, asset domain.AssetRef, id string) ([]domain.SourceFile, error) {
+	d.filesRead = append(d.filesRead, id)
+	if d.recorded == nil || d.recorded.ID != id || d.recorded.Asset != asset {
+		return nil, nil
+	}
+	return d.stored, nil
 }
 
 func (d *registryDouble) List(context.Context, domain.AssetRef, *ports.Position, int) ([]domain.Revision, error) {

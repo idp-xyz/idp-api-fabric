@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.idp.xyz/idp-api-fabric/internal/contractregistry/domain"
 	"go.idp.xyz/idp-api-fabric/internal/contractregistry/ports"
@@ -28,6 +29,42 @@ func (r *Registry) GetRevision(ctx context.Context, query ports.ScopeQuery, id s
 		return domain.Revision{}, ErrRevisionNotFound
 	}
 	return revision, nil
+}
+
+// RevisionSource is a revision with the files it was recorded from.
+type RevisionSource struct {
+	Revision domain.Revision
+	Files    []domain.RecordedFile
+}
+
+// GetRevisionSource reads the files a revision was recorded from, for whoever
+// may read the revision. The files are checked against the digests of the
+// revision before they are returned: it fails with domain.ErrSourceDamaged
+// rather than hand out files that are not the recorded ones.
+//
+// A revision and its files are written once, in one transaction, and never
+// changed, so the two reads here need no transaction of their own.
+func (r *Registry) GetRevisionSource(ctx context.Context, query ports.ScopeQuery, id string) (RevisionSource, error) {
+	asset, err := r.readAsset(ctx, query)
+	if err != nil {
+		return RevisionSource{}, err
+	}
+	revision, found, err := r.deps.Revisions.Find(ctx, asset, id)
+	if err != nil {
+		return RevisionSource{}, err
+	}
+	if !found {
+		return RevisionSource{}, ErrRevisionNotFound
+	}
+	stored, err := r.deps.Revisions.Files(ctx, asset, id)
+	if err != nil {
+		return RevisionSource{}, err
+	}
+	files, err := domain.RecordedSource(revision, stored)
+	if err != nil {
+		return RevisionSource{}, fmt.Errorf("the source of revision %s: %w", revision.ID, err)
+	}
+	return RevisionSource{Revision: revision, Files: files}, nil
 }
 
 type ListRevisions struct {

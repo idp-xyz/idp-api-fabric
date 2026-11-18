@@ -33,11 +33,24 @@ const (
 // are tested in cmd/fabric-api, with the store behind them.
 type contractRegistry struct {
 	revision registrydomain.Revision
+	files    []registrydomain.RecordedFile
 	created  bool
 	err      error
 
-	imported []registry.ImportRevision
-	read     []string
+	imported    []registry.ImportRevision
+	read        []string
+	sourcesRead []sourceRead
+}
+
+// sourceRead is one request for the files of a revision.
+type sourceRead struct {
+	Query    registryports.ScopeQuery
+	Revision string
+}
+
+func (r *contractRegistry) GetRevisionSource(_ context.Context, query registryports.ScopeQuery, id string) (registry.RevisionSource, error) {
+	r.sourcesRead = append(r.sourcesRead, sourceRead{Query: query, Revision: id})
+	return registry.RevisionSource{Revision: r.revision, Files: r.files}, r.err
 }
 
 func (r *contractRegistry) ImportRevision(_ context.Context, command registry.ImportRevision) (registryports.Registration, error) {
