@@ -23,8 +23,11 @@ type Draft struct {
 	ID               string
 	SourceSnapshotID string
 	Asset            AssetRef
-	CapturedAt       time.Time
-	CapturedBy       Principal
+	// Origin is the Git origin the submitter declared, or the zero value
+	// for a source uploaded without one.
+	Origin     GitOrigin
+	CapturedAt time.Time
+	CapturedBy Principal
 }
 
 // Revision carries the immutable metadata of a recorded draft. Its source
@@ -36,6 +39,8 @@ type Revision struct {
 	Sequence         int64
 	Status           string
 	SourceKind       string
+	// Origin is declared for a GIT source and zero for an UPLOAD.
+	Origin           GitOrigin
 	Entrypoint       string
 	SpecVersion      string
 	SourceDigest     string

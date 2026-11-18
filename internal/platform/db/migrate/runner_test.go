@@ -479,6 +479,141 @@ func TestRunLeavesTheProductsOfTheBuildBeforeTheBrandAsTheyWereRegistered(t *tes
 	}
 }
 
+// gitOrigin is the step that let a source snapshot say which commit its
+// files came from. The build before it recorded uploads and nothing else.
+const gitOrigin = "contractregistry/002_git_origin"
+
+// A database the build before Git origins has migrated and written to is
+// brought up to date with what it holds. Every snapshot stays the upload it
+// was recorded as, and its row says nothing of an origin. What that build
+// still records while this one is rolled out is an upload like the others,
+// and a closure it has recorded is still recorded once. The step adds no
+// table and no statement a process needs a new privilege for, so a process
+// of this build starts as soon as the database is migrated.
+func TestRunLeavesTheSnapshotsOfTheBuildBeforeGitOriginsAsTheUploadsTheyAre(t *testing.T) {
+	database := pgtest.FreshDatabase(t)
+	conn := pgtest.Connect(t, database.Migrator)
+
+	plan, err := migrate.Plan()
+	if err != nil {
+		t.Fatalf("build the plan: %v", err)
+	}
+	// The plan of the build before: without that step, and without what
+	// Contract Registry may add after it.
+	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool {
+		return step.Schema == "contractregistry" && step.ID >= gitOrigin
+	})
+	if len(before) == len(plan) {
+		t.Fatalf("the plan does not carry %s; this test would pass vacuously", gitOrigin)
+	}
+	if err := migrate.Apply(t.Context(), conn, quiet, before); err != nil {
+		t.Fatalf("migrate as the build before: %v", err)
+	}
+	grantOnWhatIsThere(t, conn, database.ApplicationRole)
+
+	// A snapshot as a process of that build records it, with the statement
+	// it runs: it names no origin.
+	const (
+		shipping = "3e1c6a9d-74f2-4b0a-98c3-b2e5f4a6c7d8"
+		cargopai = "1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6"
+
+		recordSnapshot = `
+			INSERT INTO contractregistry.source_snapshot (
+			    source_snapshot_id, product_id, api_asset_id, source_kind, entrypoint, source_digest,
+			    ref_closure_digest, ref_closure_manifest, captured_at, captured_by_issuer, captured_by_subject
+			) VALUES ($1, $2, $3, 'UPLOAD', 'openapi.yaml', $4, $4, '{}', $5, 'https://issuer.example', 'author')`
+		uniqueViolation = "23505"
+	)
+	digest := func(of string) string { return "sha256:" + strings.Repeat(of, 64) }
+	recorded := time.Date(2026, 11, 17, 8, 0, 0, 0, time.UTC)
+	app := pgtest.Connect(t, database.Application)
+	record := func(id, closure string, at time.Time) error {
+		_, err := app.Exec(t.Context(), recordSnapshot, id, cargopai, shipping, digest(closure), at)
+		return err
+	}
+	if err := record("5a3c8e1f-96b4-4d2c-8ae5-d4a7b6c8e9f0", "a", recorded); err != nil {
+		t.Fatalf("record a snapshot as the build before: %v", err)
+	}
+
+	// A process of this build does not start on the database as that build
+	// left it, and says which step is missing.
+	opened, err := db.Open(t.Context(), database.Application)
+	if err == nil {
+		opened.Close()
+	}
+	if !errors.Is(err, db.ErrNotMigrated) || !strings.Contains(err.Error(), "migration "+gitOrigin+" is not recorded") {
+		t.Fatalf("on the database as the build before left it: got %v, want %v naming %s", err, db.ErrNotMigrated, gitOrigin)
+	}
+
+	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
+		t.Fatalf("migrate as this build: %v", err)
+	}
+	// The step is recorded last, behind the steps of the contexts the plan
+	// lists after Contract Registry: the history is in the order of what
+	// happened, and a later run finds nothing left to apply.
+	applied, planned := history(t, conn), planRows(t)
+	if len(applied) == 0 || applied[len(applied)-1].ID != gitOrigin {
+		t.Errorf("the history records\n %+v\nwant %s applied last", applied, gitOrigin)
+	}
+	byID := func(a, b historyRow) int { return strings.Compare(a.ID, b.ID) }
+	slices.SortFunc(applied, byID)
+	slices.SortFunc(planned, byID)
+	if !slices.Equal(applied, planned) {
+		t.Errorf("the history records\n %+v\nwant every step of the plan, each once\n %+v", applied, planned)
+	}
+	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
+		t.Fatalf("migrate as this build a second time: %v", err)
+	}
+	if again := history(t, conn); len(again) != len(planned) {
+		t.Errorf("a second run left %d steps on record, want %d", len(again), len(planned))
+	}
+	// Migrated, it starts: the role was granted nothing since.
+	opened, err = db.Open(t.Context(), database.Application)
+	if err != nil {
+		t.Fatalf("once it is migrated: %v", err)
+	}
+	opened.Close()
+
+	// That build is still running while this one is rolled out. It records
+	// another upload the way it does, and a closure it has is still
+	// recorded once.
+	if err := record("6b4d9f2a-a7c5-4e3d-9bf6-e5b8c7d9fa01", "b", recorded.Add(time.Hour)); err != nil {
+		t.Fatalf("record a snapshot as the build before, after the migration: %v", err)
+	}
+	if err := record("7c5ea03b-b8d6-4f4e-8c07-f6c9d8eafb12", "a", recorded.Add(2*time.Hour)); sqlState(err) != uniqueViolation {
+		t.Errorf("the first closure again, as the build before records it: got %v, want it refused as a duplicate", err)
+	}
+
+	type snapshot struct {
+		Kind       string
+		Closure    string
+		CapturedAt time.Time
+		// SaysNothing is whether the row is silent about an origin.
+		SaysNothing bool
+	}
+	rows, err := conn.Query(t.Context(), `
+		SELECT source_kind, ref_closure_digest, captured_at,
+		       origin_repository IS NULL AND origin_commit IS NULL AND origin_ref IS NULL
+		FROM contractregistry.source_snapshot ORDER BY captured_at`)
+	if err != nil {
+		t.Fatalf("read the snapshots: %v", err)
+	}
+	snapshots, err := pgx.CollectRows(rows, pgx.RowToStructByPos[snapshot])
+	if err != nil {
+		t.Fatalf("read the snapshots: %v", err)
+	}
+	for index := range snapshots {
+		snapshots[index].CapturedAt = snapshots[index].CapturedAt.UTC()
+	}
+	want := []snapshot{
+		{Kind: "UPLOAD", Closure: digest("a"), CapturedAt: recorded, SaysNothing: true},
+		{Kind: "UPLOAD", Closure: digest("b"), CapturedAt: recorded.Add(time.Hour), SaysNothing: true},
+	}
+	if !slices.Equal(snapshots, want) {
+		t.Errorf("the snapshots are\n %+v\nwant them as they were recorded, their rows silent about an origin\n %+v", snapshots, want)
+	}
+}
+
 func TestRunRefusesAnAppliedArtifactThatChanged(t *testing.T) {
 	conn := pgtest.Connect(t, pgtest.MigratedDatabase(t).Migrator)
 
