@@ -265,6 +265,44 @@ F02 提出的 `PublicationTarget = Product × Audience × Environment × Portal`
 
 四个写用例在事务内通过 `LockHeldRoles` 对调用方的当前角色分配加共享锁，使写入和负责人撤销按锁顺序生效。变更和移除配置时锁定配置行，变更品牌时锁定 Product 行。实际变更、成功审计和 Outbox 事件一起提交。权限见 F05 §6.3，条件更新见 F04 §11。升级时执行 `fabric-migrate -apply -grant-to <application_role>`，应用迁移并补授应用角色权限。
 
+### 5.7 已实现的 API 目录和契约修订
+
+本节记录 PR #12、#14–#17 以及随后的 Git 来源和原文读取（管理 API 0.8.0–0.12.0）的实现事实，不替代 §5.4 逻辑模型的候选状态。权威 DDL 为 `migrations/apicatalog/001_api_asset.sql`、`migrations/contractregistry/001_uploaded_contract_revision.sql` 和 `002_git_origin.sql`。接口见 F04 §11.3，权限见 F05 §6.4。
+
+**API 资产。** `apicatalog.api_asset` 以 UUID `api_asset_id` 为主键。`product_id` 和 `workspace_id` 是对 Product Governance 的引用，不设跨 schema 外键，登记时在同一事务内向 Product Governance 核对。资产归属的 Workspace 就是它的所有者，登记后不变。`asset_key` 在一个产品内唯一（跨 Workspace），不同产品可以重复；`asset_key` 与 `domain_key` 的格式都是 `^[a-z][a-z0-9-]{0,61}[a-z0-9]$`，`display_name` 为 1–120 个字符，`api_kind` 为 `HTTP` 或 `EVENT`。`lifecycle` 登记时为 `EXPERIMENTAL`；表约束还允许 `STABLE`、`DEPRECATED`、`RETIRED`，但目前没有改变生命周期的用例。索引 `api_asset_product_order (product_id, created_at, api_asset_id)` 和 `api_asset_workspace_order (product_id, workspace_id, created_at, api_asset_id)` 支撑列表。应用角色只有 `SELECT`、`INSERT`。
+
+登记资产时，事务内对调用方在目标 Workspace 的成员关系加共享锁，再写入资产、成功审计和 Outbox 事件 `fabric.apicatalog.asset.registered`（版本 1），三者一起提交。事件载荷是事件编号、时间、关联编号、产品、Workspace、资产编号和聚合版本，不含 key 和名称。逻辑模型中的 `AssetOwnership`、`AssetLifecycleTransition` 尚未实现。
+
+**来源快照和修订。** 三张表都只增不改，应用角色没有 `UPDATE` 和 `DELETE`。
+
+| 表 | 内容 | 关键约束 |
+|---|---|---|
+| `contractregistry.source_snapshot` | 一次导入的证据：`source_kind`（`UPLOAD` 或 `GIT`）、入口路径、入口文件摘要 `source_digest`、闭包摘要 `ref_closure_digest`、闭包清单 `ref_closure_manifest`、采集时间和采集主体，以及 Git 来源的 `origin_repository`、`origin_commit`、`origin_ref` | `GIT` 必有仓库和提交，`UPLOAD` 的三列全为空；仓库、提交、引用各有格式和长度约束 |
+| `contractregistry.source_file` | 快照的文件，按 `(source_snapshot_id, path)` 存原始字节 | 路径 1–200 个字符，内容非空 |
+| `contractregistry.contract_revision` | 修订：所属产品、Workspace、资产，`revision_sequence`，`spec_version`，`status` | 一个快照只对应一个修订；序号在资产内从 1 递增且唯一；`status` 目前只有 `DRAFT` |
+
+闭包清单是入口路径加上每个文件的路径和 SHA-256，文件按路径的字节顺序排列；`ref_closure_digest` 是清单的 SHA-256。逻辑模型里的 `RefClosureManifest` 在物理上是快照的一列。逻辑模型里的 `ContractSource`（来源登记）尚未实现：现在的“来源”指一个资产的全部上传，或者一个 Git 仓库网址。
+
+采集只在提交的文件之内进行，不访问文件系统和网络。入口必须是 OpenAPI 3.1.2，文件为 UTF-8 的 YAML 或 JSON，最多 16 个、解码后合计 40960 字节。只解析包内的相对 JSON Pointer 引用；远程引用、越出包的路径、循环引用、锚点、YAML 别名、重复键、多文档文件和 `$id` 都被拒绝。没有被引用到的文件不进入闭包，也不保存。
+
+**去重和 Git 来源。** 相同闭包在同一个来源下只登记一次：再次提交返回最先登记的那个修订。去重和“一个提交只有一份内容”由下面三个部分唯一索引保证；登记时还对资产加事务级咨询锁，使查重和序号分配按顺序进行。
+
+| 索引 | 保证 |
+|---|---|
+| `source_snapshot_upload_closure_key` | 一个资产的上传中，同一闭包只有一个快照 |
+| `source_snapshot_git_closure_key` | 一个资产来自同一仓库的快照中，同一闭包只有一个 |
+| `source_snapshot_git_commit_key` | 同一仓库、同一提交、同一入口只有一个快照 |
+
+Git 来源是提交者的声明：仓库的 https 网址（至多 300 个字符，不含凭证）、完整的提交名（40 或 64 位十六进制），以及可选的引用名（`refs/…`，至多 200 个字符）。Fabric 原样记录这三项和声明者，不读取仓库，所以它是“谁在何时说这些文件来自哪里”的证据，不是对提交内容的证明。仓库按写法比较，带不带 `.git` 算两个仓库。来自同一仓库的相同闭包，即使出自更晚的提交，也返回最先登记的修订和它当时的来源。同一仓库、提交和入口如果带着另一份闭包再来，会被拒绝（提交不会变，两次声明必有一次是错的）。手工上传和 Git 导入的相同内容是两个来源下的两个修订。
+
+修订、快照、文件、成功审计和 Outbox 事件 `fabric.contractregistry.revision.registered`（版本 1）在一个事务内提交。事件载荷是事件编号、时间、关联编号、产品、资产、修订编号、序号和两个摘要，不含来源、路径和原文。
+
+**读取原文。** 文件通过修订读取，查询条件同时包含产品、资产、Workspace 和修订编号，不接受单独的快照编号。返回之前，按存储的文件重新计算入口摘要和闭包摘要，并与修订记录的摘要比对；文件被改动、改名、增减，或摘要对不上，都不返回文件。摘要和文件存在同一个数据库里，所以这项核对能发现存储丢失或改动了文件，不能防住同时改写文件和摘要的人。
+
+**升级。** 从 0.7.0 之后升级，执行 `fabric-migrate -apply -grant-to <application_role>`：应用上述迁移，并授予应用角色这四张表的权限。读取原文需要 `source_file` 的 `SELECT`，这项授权没有对应的迁移步骤，缺少时新进程拒绝启动并指出缺少的权限。迁移 002 把已有的快照保留为 `UPLOAD`。旧进程在迁移后的库上仍能登记上传，但它不认识 Git 来源，按内容查重时也不区分来源；过渡期内，一次与某个 Git 修订内容相同的上传可能得到那个 Git 修订。应在所有进程升级之后再开始带 Git 来源导入。
+
+**尚未实现。** 来源登记（每个资产允许的仓库和引用策略）、CI 服务身份、由 Fabric 读取 Git（FR-021，V1）、按提交查找修订、记录相同内容在后续提交中的出现、修订的状态流转，以及检查、评审和 Release。
+
 ## 6. 数据权威、制品摘要与可追溯发布链
 
 <figure class="architecture-figure"><div class="fig-label">FIGURE 05 · 单一事实权威与来源追踪 / Import → Release → Portal</div><div class="fig-grid cols-5"><div class="fig-box"><b>SourceSnapshot</b><small>Git Commit/Upload · 原文 digest</small></div><div class="fig-box"><b>Revision</b><small>Immutable content · ref closure</small></div><div class="fig-box"><b>Check + Decision</b><small>Policy digest · scope · review evidence</small></div><div class="fig-box"><b>Release</b><small>READY · immutable artifact manifest</small></div><div class="fig-box fig-primary"><b>PublicationSlot</b><small>CAS pointer · target audience/env</small></div></div><div class="fig-arrow">↓ 主库目标版本权威 → Outbox/Worker → PortalProjection；读时再次按当前策略判定</div><div class="fig-grid cols-3"><div class="fig-box tone-green"><b>Git / Upload</b><small>来源事实</small></div><div class="fig-box tone-green"><b>Registry / Object Store</b><small>正式内容/摘要事实</small></div><div class="fig-box tone-green"><b>Publication DB</b><small>当前生效和阻断事实</small></div></div><figcaption>不允许把门户索引、CDN 或 `latest` 当成权威；完整 digest 链可核验来源、引用闭包、构建工具及最终制品。</figcaption></figure>

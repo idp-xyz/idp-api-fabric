@@ -182,6 +182,30 @@
 
 功能回归见 `cmd/fabric-api/audienceconfig_test.go` 和 `cmd/fabric-api/brand_test.go`，涵盖权限及真实 PostgreSQL 下的负责人撤销并发场景。SEC-01…36 的正式安全验收状态为 NOT_RUN。
 
+### 6.4 已实现的 API 目录和契约修订权限
+
+本节对应 PR #12、#14–#17 以及随后的 Git 来源和原文读取。下表路径以 `/v1/products/{product_id}` 开头。每次请求都从数据库读取当时有效的角色和成员关系。“能看到资产”指调用方是该产品的负责人，或在资产所属的 Workspace 持有任一有效成员关系。这些操作对应设计矩阵里已有的 AC-01、AC-02、AC-11、AC-13、AC-14，本次没有新增矩阵条目；矩阵状态仍为 PROPOSED。
+
+| 操作 | 允许范围与状态条件 | 拒绝 | 运行时审计 |
+|---|---|---|---|
+| `POST …/assets`（AC-11） | 在目标 Workspace 持有有效的 `workspace_maintainer` 成员关系，产品为 ACTIVE | 不知道该产品的人 404 `PRODUCT_NOT_FOUND`；Workspace 不存在或调用方看不到它，404 `WORKSPACE_NOT_FOUND`；看得到但不是维护者（包括产品负责人）403 | 成功 AC-11、`asset.create`；拒绝 DENY-03、`asset.create` |
+| `GET …/assets/{id}`（AC-14） | 能看到资产 | 知道产品但看不到该资产（包括平台管理员和其他 Workspace 的成员）404 `API_ASSET_NOT_FOUND`；不知道产品 404 `PRODUCT_NOT_FOUND` | 成功不记；拒绝 DENY-03、`asset.read` |
+| `GET …/assets`（AC-13） | 负责人看到全部；成员只看到自己所在 Workspace 的资产；过滤和文本匹配在授权过滤之后 | 没有产品角色和成员关系的平台管理员 403；不知道产品 404 | 成功不记；拒绝 DENY-03、`asset.search` |
+| `POST …/assets/{id}/revisions`（AC-01） | 能看到资产，并在资产所属的 Workspace 持有有效的 `internal_author` 成员关系；产品为 ACTIVE，资产为 `HTTP` | 看不到资产 404；看得到但不是作者（包括负责人和维护者）403 | 成功 AC-01、`revision.create`；403 记 DENY-03、`revision.create`；404 由目录记 DENY-03、`asset.read` |
+| `GET …/revisions`、`GET …/revisions/{id}`、`GET …/revisions/{id}/source`（AC-02） | 同上的作者关系；产品暂停时仍可读 | 同上；修订不属于该资产或不存在，404 `REVISION_NOT_FOUND` | 成功不记；403 记 DENY-03、`revision.read`；404 `REVISION_NOT_FOUND` 不记 |
+
+导入时，作者的成员关系在事务内加共享锁后读取：撤销先提交，则导入被拒绝；导入先提交，则修订留下。登记资产对维护者成员关系的处理相同。修订、原文、成功审计和事件同事务提交；授权拒绝单独留证，审计失败仍然拒绝并记录运维错误。输入不合法（400、422）和状态冲突（409，包括 `GIT_ORIGIN_CONFLICT`）不是授权拒绝，不写审计。
+
+**读取原文的权限就是读取修订的权限。** 原文是尚未评审的草稿，目前只有资产所属 Workspace 的作者能读；产品负责人、维护者和平台管理员不能读修订，也就不能读原文。无权读取的人对原文接口得到的回答，与对修订详情接口得到的回答相同。成功读取不写审计，这一点与其他读取一致。AC-16 `contract.download` 指的是已发布 Release 的制品下载，不是这里的草稿原文。
+
+**Git 来源不带来任何权限。** 带 `git_origin` 的导入与普通上传走同一条规则（AC-01），提交者仍须是该 Workspace 的作者。来源是提交者的声明，Fabric 不向仓库核实，所以它不能当作“内容确实来自某个提交”的安全依据；审计记录的是谁提交了这次导入。设计矩阵里的 AC-26（CI 服务身份提交，要求 `source.allowed`）和 AC-27 尚未实现：现在没有 CI 服务身份，也没有“资产允许哪些仓库”的登记。仓库网址只接受不含凭证的 https 形式，带凭证的请求在进入用例前被拒绝，不进入数据库、审计、事件和日志。
+
+**不可信内容。** 导入的文件按 §10 的处理链只做到了前两步的一部分：限定大小、数量和格式，只在提交的文件之内解析引用，不访问文件系统和网络，拒绝远程引用、越界路径、循环和 YAML 别名。原文读取把文件作为 Base64 放在 JSON 里返回，不以文件自身的媒体类型提供，也不渲染。对内容的安全扫描、策略检查和评审尚未实现。
+
+**原文完整性。** 应用角色对三张表只有 `SELECT` 和 `INSERT`，不能改写或删除已登记的原文。读取时重新计算摘要，可发现存储层丢失或改动了文件；摘要与文件同库，这不是防篡改证明（见 F03 §5.7）。核对失败时不返回文件，响应不透露原因，原因写入运维日志。
+
+功能回归见 `cmd/fabric-api/catalog_test.go`、`registry_test.go`、`revisionhistory_test.go`、`gitorigin_test.go` 和 `revisionsource_test.go`，使用真实 PostgreSQL 和本地替代 IdP。SEC-01…36 的正式安全验收状态为 NOT_RUN。
+
 ## 7. 授权策略表达与执行边界
 
 本阶段提供 `governance/policies/F05_Authorization_Policy_DRAFT.json`，是**可机器解析的策略结构样例**，包含 `deny_overrides`、资源关系、显式 Allow 条件及关键禁止项；这不是运行中的 PDP，不可由 CI “JSON 通过”就宣称安全实现完成。
