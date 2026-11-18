@@ -128,7 +128,7 @@
 
 ### 6.1 已实现的产品负责人和列表权限（PR #6 / #7，2026-11-17 同步）
 
-以下是管理 API 的实现事实。身份由配置的 IdP 的 issuer×subject 确认，角色/成员关系逐次从数据库读取。这里的“平台管理员”来自部署配置，不等同于 Platform Security Admin；只有显式取得产品负责人角色才有产品内部权限。完整操作级设计矩阵见 `governance/policies/F05_Access_Matrix.csv`：新增 AC-36…43 对应本节八条操作规则，仍保持 PROPOSED。矩阵编号用于设计索引；运行时审计沿用下面的 AC-08、AC-10、DENY-03，不将新增编号冒充实际审计字段。
+身份由配置的 IdP 的 issuer×subject 确认，角色和成员关系逐次从数据库读取。管理 API 的平台管理员由部署配置指定，授权范围见下表及 §6.3。完整操作级设计矩阵见 `governance/policies/F05_Access_Matrix.csv`。AC-36…43 是本节的设计索引，状态为 PROPOSED。运行时审计使用 AC-08、AC-10、DENY-03。
 
 | 操作 | 允许范围 | 拒绝与边界 | 运行时审计 |
 |---|---|---|---|
@@ -162,6 +162,25 @@
 | CI Service / Worker Identity | 固定任务范围下提交、验证和执行受限工作 | 互动登录和跨产品超级权限 |
 
 **职责分离原则**：Author → Reviewer → Publisher 三方职责原则上分离；同一主体参与多个阶段时，必须定义是否允许的风险等级和独立批准程序。紧急阻断允许经过审计的最小 Break-glass，但解除阻断与恢复发布需重新校验授权和审批，不能由“紧急角色”自动放行。具体 SoD/Break-glass 时限和责任人为 `TBD / Proposed`。
+
+### 6.3 已实现的受众配置和产品品牌权限（PR #10 / #11）
+
+平台管理员、当前产品负责人和该产品任一 Workspace 的有效成员可读取产品及品牌，也可读取该产品的有效受众配置。产品缺失或调用方无权读取产品时，返回 404 `PRODUCT_NOT_FOUND`。下表路径以 `/v1/products/{product_id}` 开头。
+
+| 操作 | 允许范围与状态条件 | 成功写入的审计动作 |
+|---|---|---|
+| `POST …/audience-configs`（AC-44） | 该产品负责人，产品为 ACTIVE，且受众与环境组合可用 | `audience_config.configure` |
+| `GET …/audience-configs/{id}`（AC-45） | 可读该产品，且配置在该产品内有效 | — |
+| `GET …/audience-configs`（AC-46） | 可读该产品，只返回有效配置 | — |
+| `PUT …/audience-configs/{id}`（AC-47） | 该产品负责人，产品为 ACTIVE，且该产品内的配置有效、版本匹配 | `audience_config.change` |
+| `DELETE …/audience-configs/{id}`（AC-48） | 该产品负责人，且该产品内的配置有效，暂停时仍可移除 | `audience_config.remove` |
+| `PUT …/brand`（AC-49） | 该产品负责人，产品为 ACTIVE，且产品版本匹配 | `product.change_brand` |
+
+可读该产品的调用方若缺少负责人角色，写请求返回 403 `FORBIDDEN`，包括仅持有平台管理员身份的调用方。按配置 ID 操作时，完成授权后若配置缺失、已移除或属于其他产品，返回 404 `AUDIENCE_CONFIG_NOT_FOUND`。受众取值为 `public` 仅记录目标受众，公共文档仍须通过发布授权。
+
+写操作在事务内读取并锁定调用方当前的角色分配。实际写入的审计规则为 `AC-09`，审计与数据和 Outbox 同事务提交。授权拒绝使用 `DENY-03`，受众详情和列表的拒绝动作均为 `audience_config.read`。AC-44…49 是设计矩阵索引，状态为 PROPOSED。配置事件只含标识、受众、环境和生效状态等字段，品牌事件只含通用事件字段。文档入口与品牌内容通过受授权的详情接口读取。
+
+功能回归见 `cmd/fabric-api/audienceconfig_test.go` 和 `cmd/fabric-api/brand_test.go`，涵盖权限及真实 PostgreSQL 下的负责人撤销并发场景。SEC-01…36 的正式安全验收状态为 NOT_RUN。
 
 ## 7. 授权策略表达与执行边界
 

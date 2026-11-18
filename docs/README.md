@@ -28,13 +28,13 @@
 - [F01 规范采用讨论输入](../governance/policies/F01_Project_Manifest_DRAFT.json)：不是已批准的 Project Manifest。
 - [F02 架构追溯](../tests/acceptance/F02_architecture_trace.csv)：71 项 FR + 18 项 NFR 的设计章节与 ADR 关联。
 - [F02 架构验证场景](../tests/acceptance/F02_architecture_scenarios.csv)：12 个场景均为 `NOT_RUN`。
-- [F03 逻辑实体字典](F03_Logical_Model.csv)：从 F03 Markdown §5.4 的逻辑模型表生成，38 条逻辑条目（负责人模型与已实现物理约束见 F03 §5.5），非 PostgreSQL DDL。
+- [F03 逻辑实体字典](F03_Logical_Model.csv) 从 F03 §5.4 生成，共 38 条。负责人、受众配置和品牌的物理模型见 F03 §5.5–5.6。
 - [F03 需求—模型追溯](../tests/acceptance/F03_domain_trace.csv)：71 FR + 18 NFR，区分领域负责、支撑与后续范围。
 - [F03 领域验证场景](../tests/acceptance/F03_domain_scenarios.csv)：18 个 DM-01–18 场景，均为 `NOT_RUN`。
 - [F04 候选治理规则](../governance/policies/F04_Rules_Registry.json)：28 条规则，部分有本地示范子集，完整产品验证未执行。
 - [F04 治理追溯](../tests/acceptance/F04_contract_trace.csv)：覆盖 71 FR + 18 NFR。
 - [F04 治理验证计划](../tests/acceptance/F04_governance_scenarios.csv)：24 项场景，全部 `NOT_RUN`。
-- [F05 候选权限矩阵](../governance/policies/F05_Access_Matrix.csv)：43 项操作级授权设计（负责人及列表规则见 F05 §6.1）。
+- [F05 候选权限矩阵](../governance/policies/F05_Access_Matrix.csv) 收录 49 项操作级授权设计。已实现的负责人、列表、受众配置与品牌规则见 F05 §6.1、§6.3。
 - [F05 STRIDE 登记册](../governance/policies/F05_Threat_Register.csv)：29 项威胁；Risk Owner 待确认。
 - [F05 策略结构草案](../governance/policies/F05_Authorization_Policy_DRAFT.json)：可解析的设计样例，不是真实 PDP。
 - [F05 需求—安全追溯](../tests/acceptance/F05_security_trace.csv)：89 项需求承接。

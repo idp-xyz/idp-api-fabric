@@ -1,7 +1,7 @@
 ﻿BC,Aggregate,Entity,PrimaryKey,RequiredReferences,Uniqueness,Cardinality,DataRetention,Phase
 ProductGovernance,Product,Product,product_id,owner_org_ref,product_key,1 Product to N Workspace,ACTIVE,MVP
 ProductGovernance,Product,ProductRoleAssignment,role_assignment_id,product_id+principal_issuer+principal_subject+role+role_assignment_version+granted_at+granted_by+revoked_at+revoked_by,product_id+principal_issuer+principal_subject+role where revoked_at is null,N per Product; at least one in force,HIST,MVP
-ProductGovernance,Product,ProductAudienceConfig,audience_config_id,product_id,product_id+audience_key+environment_key,N per Product,ACTIVE,MVP
+ProductGovernance,Product,ProductAudienceConfig,audience_config_id,product_id,product_id+audience+environment where removed_at is null,N per Product over time,HIST,MVP
 ProductGovernance,Workspace,Workspace,workspace_id,product_id,product_id+workspace_key,N per Product,ACTIVE,MVP
 ProductGovernance,Workspace,WorkspaceMembership,membership_id,workspace_id+principal_ref,active membership scope,N per Workspace,ACTIVE,MVP
 ProductGovernance,Product,ExternalTenantBinding,tenant_binding_id,product_id+authority,authority+external_tenant_id+product_id,N per Product,ACTIVE,V1
