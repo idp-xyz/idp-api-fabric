@@ -173,6 +173,32 @@ func (s *Revisions) Find(ctx context.Context, asset domain.AssetRef, id string) 
 	return revision, err == nil, err
 }
 
+// Files reads the files through the revision, so that the scope of the asset
+// decides what is read and not an identifier of a snapshot alone.
+func (s *Revisions) Files(ctx context.Context, asset domain.AssetRef, id string) ([]domain.SourceFile, error) {
+	reader, err := s.database.ReadExecutor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	const files = `
+SELECT f.path, f.content
+FROM contractregistry.contract_revision r
+JOIN contractregistry.source_file f USING (source_snapshot_id)
+WHERE r.product_id = $1 AND r.api_asset_id = $2 AND r.workspace_id = $3 AND r.revision_id = $4
+ORDER BY f.path COLLATE "C"`
+	rows, err := reader.Query(ctx, files, asset.ProductID, asset.AssetID, asset.WorkspaceID, id)
+	if err != nil {
+		return nil, fmt.Errorf("read the files of a contract revision: %w", err)
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.SourceFile, error) {
+		var file domain.SourceFile
+		var content []byte
+		err := row.Scan(&file.Path, &content)
+		file.Content = string(content)
+		return file, err
+	})
+}
+
 func (s *Revisions) List(ctx context.Context, asset domain.AssetRef, after *ports.Position, limit int) ([]domain.Revision, error) {
 	reader, err := s.database.ReadExecutor(ctx)
 	if err != nil {

@@ -370,6 +370,16 @@ type Color = string
 // ContractDigest defines model for ContractDigest.
 type ContractDigest = string
 
+// ContractRecordedFile One file of a recorded source, as it was submitted
+type ContractRecordedFile struct {
+	// ContentBase64 The bytes of the file in standard Base64
+	ContentBase64 string `json:"content_base64"`
+
+	// Digest The SHA-256 digest of the bytes of the file
+	Digest ContractDigest     `json:"digest"`
+	Path   ContractSourcePath `json:"path"`
+}
+
 // ContractRevision defines model for ContractRevision.
 type ContractRevision struct {
 	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
@@ -413,6 +423,27 @@ type ContractRevisionList struct {
 
 	// NextPageToken The page_token of the page that follows this one, to be sent back as it is. A page carries it for as long as items follow: the last page of a list has none, also when it is full.
 	NextPageToken *NextPageToken `json:"next_page_token,omitempty"`
+}
+
+// ContractRevisionSource The files a revision was recorded from, with the digests the revision carries for them.
+type ContractRevisionSource struct {
+	// Entrypoint The path of the file the others are referenced from
+	Entrypoint ContractSourcePath `json:"entrypoint"`
+
+	// Files The entrypoint and every file it references, in the order of their paths
+	Files []ContractRecordedFile `json:"files"`
+
+	// RefClosureDigest The digest of the closure: the entrypoint and the path and digest of every file
+	RefClosureDigest ContractDigest `json:"ref_closure_digest"`
+
+	// RevisionID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	RevisionID Identifier `json:"revision_id"`
+
+	// SourceDigest The digest of the entrypoint
+	SourceDigest ContractDigest `json:"source_digest"`
+
+	// SourceSnapshotID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	SourceSnapshotID Identifier `json:"source_snapshot_id"`
 }
 
 // ContractSourceFile defines model for ContractSourceFile.
@@ -851,6 +882,9 @@ type ServerInterface interface {
 	// GetRevision Read one immutable draft revision's metadata
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id})
 	GetRevision(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier, revisionID Identifier)
+	// GetRevisionSource Read the files a draft revision was recorded from
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/source)
+	GetRevisionSource(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier, revisionID Identifier)
 	// ListAudienceConfigs List the audience configurations of a product
 	// (GET /v1/products/{product_id}/audience-configs)
 	ListAudienceConfigs(w http.ResponseWriter, r *http.Request, productID ProductID, params ListAudienceConfigsParams)
@@ -1318,6 +1352,50 @@ func (siw *ServerInterfaceWrapper) GetRevision(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetRevision(w, r, productID, apiAssetID, revisionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRevisionSource operation middleware
+func (siw *ServerInterfaceWrapper) GetRevisionSource(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID Identifier
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "revision_id" -------------
+	var revisionID Identifier
+
+	err = runtime.BindStyledParameterWithOptions("simple", "revision_id", r.PathValue("revision_id"), &revisionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revision_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRevisionSource(w, r, productID, apiAssetID, revisionID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2191,6 +2269,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions", wrapper.ListRevisions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions", wrapper.ImportRevision)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}", wrapper.GetRevision)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/source", wrapper.GetRevisionSource)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ListAudienceConfigs)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ConfigureAudience)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs/{audience_config_id}", wrapper.RemoveAudienceConfig)
@@ -3384,6 +3463,130 @@ type GetRevisiondefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetRevisiondefaultApplicationProblemPlusJSONResponse) VisitGetRevisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisionSourceRequestObject struct {
+	ProductID  ProductID  `json:"product_id"`
+	APIAssetID Identifier `json:"api_asset_id"`
+	RevisionID Identifier `json:"revision_id"`
+}
+
+type GetRevisionSourceResponseObject interface {
+	VisitGetRevisionSourceResponse(w http.ResponseWriter) error
+}
+
+type GetRevisionSource200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetRevisionSource200JSONResponse struct {
+	Body    ContractRevisionSource
+	Headers GetRevisionSource200ResponseHeaders
+}
+
+func (response GetRevisionSource200JSONResponse) VisitGetRevisionSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisionSource400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetRevisionSource400ApplicationProblemPlusJSONResponse) VisitGetRevisionSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisionSource401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetRevisionSource401ApplicationProblemPlusJSONResponse) VisitGetRevisionSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisionSource403ApplicationProblemPlusJSONResponse Problem
+
+func (response GetRevisionSource403ApplicationProblemPlusJSONResponse) VisitGetRevisionSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisionSource404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetRevisionSource404ApplicationProblemPlusJSONResponse) VisitGetRevisionSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisionSource503ApplicationProblemPlusJSONResponse Problem
+
+func (response GetRevisionSource503ApplicationProblemPlusJSONResponse) VisitGetRevisionSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisionSourcedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetRevisionSourcedefaultApplicationProblemPlusJSONResponse) VisitGetRevisionSourceResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -5671,6 +5874,9 @@ type StrictServerInterface interface {
 	// GetRevision Read one immutable draft revision's metadata
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id})
 	GetRevision(ctx context.Context, request GetRevisionRequestObject) (GetRevisionResponseObject, error)
+	// GetRevisionSource Read the files a draft revision was recorded from
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/source)
+	GetRevisionSource(ctx context.Context, request GetRevisionSourceRequestObject) (GetRevisionSourceResponseObject, error)
 	// ListAudienceConfigs List the audience configurations of a product
 	// (GET /v1/products/{product_id}/audience-configs)
 	ListAudienceConfigs(ctx context.Context, request ListAudienceConfigsRequestObject) (ListAudienceConfigsResponseObject, error)
@@ -6043,6 +6249,34 @@ func (sh *strictHandler) GetRevision(w http.ResponseWriter, r *http.Request, pro
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetRevisionResponseObject); ok {
 		if err := validResponse.VisitGetRevisionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRevisionSource operation middleware
+func (sh *strictHandler) GetRevisionSource(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier, revisionID Identifier) {
+	var request GetRevisionSourceRequestObject
+
+	request.ProductID = productID
+	request.APIAssetID = apiAssetID
+	request.RevisionID = revisionID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRevisionSource(ctx, request.(GetRevisionSourceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRevisionSource")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRevisionSourceResponseObject); ok {
+		if err := validResponse.VisitGetRevisionSourceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

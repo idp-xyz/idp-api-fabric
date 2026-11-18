@@ -34,5 +34,10 @@ type Revisions interface {
 	// and entrypoint are recorded with another closure.
 	Register(context.Context, domain.Draft, domain.SourceSnapshot) (Registration, error)
 	Find(context.Context, domain.AssetRef, string) (domain.Revision, bool, error)
+	// Files returns the stored files of the source of a revision of the
+	// asset, and none for a revision the asset does not have. It returns
+	// what storage holds: whether that is still the recorded source is for
+	// domain.RecordedSource to say.
+	Files(context.Context, domain.AssetRef, string) ([]domain.SourceFile, error)
 	List(context.Context, domain.AssetRef, *Position, int) ([]domain.Revision, error)
 }
