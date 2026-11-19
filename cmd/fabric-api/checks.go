@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 
+	registryopenapi "go.idp.xyz/idp-api-fabric/internal/contractregistry/adapters/openapi"
 	registry "go.idp.xyz/idp-api-fabric/internal/contractregistry/application"
 	registrydomain "go.idp.xyz/idp-api-fabric/internal/contractregistry/domain"
 	registryports "go.idp.xyz/idp-api-fabric/internal/contractregistry/ports"
@@ -48,10 +50,29 @@ func (r checkRevisions) Source(ctx context.Context, target checkports.Target) (c
 		Entrypoint: recorded.Revision.Entrypoint, Digest: recorded.Revision.RefClosureDigest,
 		Files: make([]checkdomain.SourceFile, 0, len(recorded.Files)),
 	}
+	source.Closure = verifyReferenceClosure(source.Entrypoint, source.Digest, recorded.Files)
 	for _, file := range recorded.Files {
 		source.Files = append(source.Files, checkdomain.SourceFile{Path: file.Path, Content: file.Content})
 	}
 	return checkRevision(recorded.Revision), source, nil
+}
+
+func verifyReferenceClosure(entrypoint, digest string, files []registrydomain.RecordedFile) checkdomain.ReferenceClosure {
+	submitted := make([]registrydomain.SourceFile, 0, len(files))
+	for _, file := range files {
+		submitted = append(submitted, registrydomain.SourceFile{Path: file.Path, Content: file.Content})
+	}
+	captured, err := registryopenapi.Capture(entrypoint, submitted)
+	switch {
+	case errors.Is(err, registrydomain.ErrInvalidSource):
+		return checkdomain.ClosureInvalid
+	case err != nil:
+		return checkdomain.ClosureUndecided
+	case captured.RefClosureDigest != digest:
+		return checkdomain.ClosureInvalid
+	default:
+		return checkdomain.ClosureVerified
+	}
 }
 
 func (r checkRevisions) LockAuthor(ctx context.Context, caller checkdomain.Principal, revision checkdomain.RevisionRef) (bool, bool, error) {

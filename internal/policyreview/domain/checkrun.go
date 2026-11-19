@@ -100,7 +100,18 @@ type Source struct {
 	Entrypoint string
 	Files      []SourceFile
 	Digest     string
+	Closure    ReferenceClosure
 }
+
+// ReferenceClosure records revalidation of the submitted file closure
+// against the source digest. Its zero value means the verifier was not run.
+type ReferenceClosure uint8
+
+const (
+	ClosureVerified ReferenceClosure = iota + 1
+	ClosureInvalid
+	ClosureUndecided
+)
 
 // Finding is one place where a source breaks a rule.
 //

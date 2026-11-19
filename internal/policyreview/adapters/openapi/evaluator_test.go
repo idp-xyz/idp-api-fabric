@@ -120,6 +120,26 @@ func TestTheToolEvaluatesTheAutomatedSubsetAndOfficialSchema(t *testing.T) {
 	}
 }
 
+func TestTheClosureRuleReportsOnlyVerifiedSourceEvidence(t *testing.T) {
+	rule := domain.Rule{ID: "F04-GOV-012", Evaluator: "ref_closure_budget"}
+	source := domain.Source{Entrypoint: "openapi.yaml", Files: []domain.SourceFile{file("openapi.yaml", minimal)}}
+	for _, tc := range []struct {
+		status    domain.ReferenceClosure
+		findings  int
+		undecided bool
+	}{
+		{status: domain.ClosureVerified},
+		{status: domain.ClosureInvalid, findings: 1},
+		{status: domain.ClosureUndecided, undecided: true},
+	} {
+		source.Closure = tc.status
+		observations := (openapi.Evaluator{}).Evaluate(source, []domain.Rule{rule})
+		if len(observations) != 1 || len(observations[0].Findings) != tc.findings || observations[0].Undecided != tc.undecided {
+			t.Errorf("closure evidence %d: %+v", tc.status, observations)
+		}
+	}
+}
+
 // minimal is a contract no rule has anything to say of.
 const minimal = `openapi: 3.1.2
 info: {title: Shipments, version: '1'}
@@ -181,7 +201,7 @@ func TestTheSamplesOfF04AreJudgedAsF04SaysTheyAre(t *testing.T) {
 // finds something else in the same files than it did: raise
 // openapi.Version, and record the new behaviour here with it.
 func TestTheBehaviourOfTheToolIsTheBehaviourOfItsVersion(t *testing.T) {
-	const recorded = "2 sha256:5c178b5a03644cc9d76ad08d8d40ebd69e4e23a015607358736d2ecbbe8c5f36"
+	const recorded = "3 sha256:5c178b5a03644cc9d76ad08d8d40ebd69e4e23a015607358736d2ecbbe8c5f36"
 
 	sources := [][]domain.SourceFile{
 		{file("openapi.yaml", minimal)},

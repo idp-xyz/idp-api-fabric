@@ -18,7 +18,7 @@ import (
 // something else in the same files is another version: a rule it judges
 // differently, a credential form it learns, a bound it changes. A test
 // holds the behaviour to the version.
-const Version = "2"
+const Version = "3"
 
 // Evaluator is the built-in tool of a check.
 type Evaluator struct{}
@@ -45,6 +45,7 @@ var evaluators = map[string]struct {
 	"operation_security":      {(*bundle).operationSecurity, true},
 	"problem_content":         {(*bundle).problemContent, true},
 	"official_oas_validation": {(*bundle).officialValidation, true},
+	"ref_closure_budget":      {(*bundle).referenceClosure, false},
 	"ref_safety":              {(*bundle).refSafety, true},
 	"parse_safety":            {(*bundle).parseSafety, false},
 	"secret_scan":             {func(b *bundle) judgment { return b.scan(credentialOn) }, false},
@@ -58,7 +59,7 @@ func (Evaluator) Evaluate(source domain.Source, rules []domain.Rule) []domain.Ob
 	var observations []domain.Observation
 	for _, rule := range rules {
 		evaluator, implemented := evaluators[rule.Evaluator]
-		if !implemented {
+		if !implemented || (rule.Evaluator == "ref_closure_budget" && source.Closure == 0) {
 			continue
 		}
 		observation := domain.Observation{RuleID: rule.ID}
@@ -76,4 +77,15 @@ func (Evaluator) Evaluate(source domain.Source, rules []domain.Rule) []domain.Ob
 		observations = append(observations, observation)
 	}
 	return observations
+}
+
+func (b *bundle) referenceClosure() judgment {
+	switch b.source.Closure {
+	case domain.ClosureVerified:
+		return judgment{}
+	case domain.ClosureInvalid:
+		return judgment{findings: []found{{place{file: b.source.Entrypoint}, "the recorded reference closure could not be verified within the import bounds"}}}
+	default:
+		return judgment{undecided: true}
+	}
 }
