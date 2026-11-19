@@ -301,13 +301,37 @@ func (e ProductRole) Valid() bool {
 
 // Defines values for ReviewConclusionOutcome.
 const (
+	ReviewConclusionOutcomeAPPROVED  ReviewConclusionOutcome = "APPROVED"
+	ReviewConclusionOutcomeREJECTED  ReviewConclusionOutcome = "REJECTED"
 	ReviewConclusionOutcomeWITHDRAWN ReviewConclusionOutcome = "WITHDRAWN"
 )
 
 // Valid indicates whether the value is a known member of the ReviewConclusionOutcome enum.
 func (e ReviewConclusionOutcome) Valid() bool {
 	switch e {
+	case ReviewConclusionOutcomeAPPROVED:
+		return true
+	case ReviewConclusionOutcomeREJECTED:
+		return true
 	case ReviewConclusionOutcomeWITHDRAWN:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ReviewDecisionOutcome.
+const (
+	ReviewDecisionOutcomeAPPROVED ReviewDecisionOutcome = "APPROVED"
+	ReviewDecisionOutcomeREJECTED ReviewDecisionOutcome = "REJECTED"
+)
+
+// Valid indicates whether the value is a known member of the ReviewDecisionOutcome enum.
+func (e ReviewDecisionOutcome) Valid() bool {
+	switch e {
+	case ReviewDecisionOutcomeAPPROVED:
+		return true
+	case ReviewDecisionOutcomeREJECTED:
 		return true
 	default:
 		return false
@@ -316,14 +340,20 @@ func (e ReviewConclusionOutcome) Valid() bool {
 
 // Defines values for ReviewStatus.
 const (
+	ReviewStatusAPPROVED  ReviewStatus = "APPROVED"
 	ReviewStatusINREVIEW  ReviewStatus = "IN_REVIEW"
+	ReviewStatusREJECTED  ReviewStatus = "REJECTED"
 	ReviewStatusWITHDRAWN ReviewStatus = "WITHDRAWN"
 )
 
 // Valid indicates whether the value is a known member of the ReviewStatus enum.
 func (e ReviewStatus) Valid() bool {
 	switch e {
+	case ReviewStatusAPPROVED:
+		return true
 	case ReviewStatusINREVIEW:
+		return true
+	case ReviewStatusREJECTED:
 		return true
 	case ReviewStatusWITHDRAWN:
 		return true
@@ -948,7 +978,7 @@ type Review struct {
 	// CheckRunID The check the decision is asked on
 	CheckRunID Identifier `json:"check_run_id"`
 
-	// Conclusion How a review ended, who ended it and when
+	// Conclusion How a review ended, who ended it and when. An approval says until when it holds and which rules it waives.
 	Conclusion *ReviewConclusion `json:"conclusion,omitempty"`
 
 	// InputDigest What that check read, the reference closure digest of the revision
@@ -977,7 +1007,7 @@ type Review struct {
 	Status ReviewStatus `json:"status"`
 }
 
-// ReviewConclusion How a review ended, who ended it and when
+// ReviewConclusion How a review ended, who ended it and when. An approval says until when it holds and which rules it waives.
 type ReviewConclusion struct {
 	ConcludedAt time.Time `json:"concluded_at"`
 
@@ -987,10 +1017,31 @@ type ReviewConclusion struct {
 
 	// Reason Why a review ended the way it did: one line of 1 to 1000 characters, without control characters and without space around it.
 	Reason *ReviewReason `json:"reason,omitempty"`
+
+	// ValidUntil Until when an approval holds
+	ValidUntil *time.Time `json:"valid_until,omitempty"`
+
+	// Waivers The waivers of an approval, by rule
+	Waivers *[]ReviewWaiver `json:"waivers,omitempty"`
 }
 
 // ReviewConclusionOutcome defines model for ReviewConclusion.Outcome.
 type ReviewConclusionOutcome string
+
+// ReviewDecision What a reviewer decides with. A rejection gives its reason and nothing else. An approval gives the time it holds until and a waiver for every rule that failed or could not be judged; its reason is optional.
+type ReviewDecision struct {
+	Outcome ReviewDecisionOutcome `json:"outcome"`
+
+	// Reason Why a review ended the way it did: one line of 1 to 1000 characters, without control characters and without space around it.
+	Reason *ReviewReason `json:"reason,omitempty"`
+
+	// ValidUntil Until when an approval holds, at most a year away
+	ValidUntil *time.Time      `json:"valid_until,omitempty"`
+	Waivers    *[]ReviewWaiver `json:"waivers,omitempty"`
+}
+
+// ReviewDecisionOutcome defines model for ReviewDecision.Outcome.
+type ReviewDecisionOutcome string
 
 // ReviewList defines model for ReviewList.
 type ReviewList struct {
@@ -1005,6 +1056,9 @@ type ReviewNote = string
 
 // ReviewReason Why a review ended the way it did: one line of 1 to 1000 characters, without control characters and without space around it.
 type ReviewReason = string
+
+// ReviewRuleID The identifier a rule has in the policy of a check, as in F04-GOV-013
+type ReviewRuleID = string
 
 // ReviewStatus Where a review stands: IN_REVIEW until it is concluded, then the way it ended.
 type ReviewStatus string
@@ -1028,6 +1082,21 @@ type ReviewTarget struct {
 
 	// Environment Where the APIs a product documents run: a sandbox is where a developer tries an API, production is where its business runs.
 	Environment Environment `json:"environment"`
+}
+
+// ReviewWaiver One rule that did not pass and that an approval lets stand: why, what makes up for it if anything does, and until when. A waiver is part of the approval it was given with and holds for nothing else.
+type ReviewWaiver struct {
+	// CompensatingControl What makes up for the rule that does not hold
+	CompensatingControl *ReviewReason `json:"compensating_control,omitempty"`
+
+	// ExpiresAt Until when the waiver holds, no later than the approval
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Reason Why a review ended the way it did: one line of 1 to 1000 characters, without control characters and without space around it.
+	Reason ReviewReason `json:"reason"`
+
+	// RuleID The identifier a rule has in the policy of a check, as in F04-GOV-013
+	RuleID ReviewRuleID `json:"rule_id"`
 }
 
 // ReviewWithdrawal defines model for ReviewWithdrawal.
@@ -1245,6 +1314,9 @@ type ImportRevisionJSONRequestBody = ContractSourceUpload
 // RequestRevisionReviewJSONRequestBody defines body for RequestRevisionReview for application/json ContentType.
 type RequestRevisionReviewJSONRequestBody = ReviewSubmission
 
+// DecideRevisionReviewJSONRequestBody defines body for DecideRevisionReview for application/json ContentType.
+type DecideRevisionReviewJSONRequestBody = ReviewDecision
+
 // WithdrawRevisionReviewJSONRequestBody defines body for WithdrawRevisionReview for application/json ContentType.
 type WithdrawRevisionReviewJSONRequestBody = ReviewWithdrawal
 
@@ -1319,6 +1391,9 @@ type ServerInterface interface {
 	// GetRevisionReview Read one review of a revision
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id})
 	GetRevisionReview(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, reviewID ReviewID)
+	// DecideRevisionReview Approve or reject a revision that is in review
+	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/decision)
+	DecideRevisionReview(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, reviewID ReviewID)
 	// WithdrawRevisionReview Take a request for review back
 	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/withdrawal)
 	WithdrawRevisionReview(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, reviewID ReviewID)
@@ -2208,6 +2283,59 @@ func (siw *ServerInterfaceWrapper) GetRevisionReview(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetRevisionReview(w, r, productID, apiAssetID, revisionID, reviewID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DecideRevisionReview operation middleware
+func (siw *ServerInterfaceWrapper) DecideRevisionReview(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID CheckAssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "revision_id" -------------
+	var revisionID CheckRevisionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "revision_id", r.PathValue("revision_id"), &revisionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revision_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "review_id" -------------
+	var reviewID ReviewID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "review_id", r.PathValue("review_id"), &reviewID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "review_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DecideRevisionReview(w, r, productID, apiAssetID, revisionID, reviewID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3187,6 +3315,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews", wrapper.RequestRevisionReview)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}", wrapper.GetRevisionReview)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/withdrawal", wrapper.WithdrawRevisionReview)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/decision", wrapper.DecideRevisionReview)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ListAudienceConfigs)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ConfigureAudience)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs/{audience_config_id}", wrapper.RemoveAudienceConfig)
@@ -5351,6 +5480,188 @@ type GetRevisionReviewdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetRevisionReviewdefaultApplicationProblemPlusJSONResponse) VisitGetRevisionReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideRevisionReviewRequestObject struct {
+	ProductID  ProductID       `json:"product_id"`
+	APIAssetID CheckAssetID    `json:"api_asset_id"`
+	RevisionID CheckRevisionID `json:"revision_id"`
+	ReviewID   ReviewID        `json:"review_id"`
+	Body       *DecideRevisionReviewJSONRequestBody
+}
+
+type DecideRevisionReviewResponseObject interface {
+	VisitDecideRevisionReviewResponse(w http.ResponseWriter) error
+}
+
+type DecideRevisionReview200ResponseHeaders struct {
+	CacheControl string
+}
+
+type DecideRevisionReview200JSONResponse struct {
+	Body    Review
+	Headers DecideRevisionReview200ResponseHeaders
+}
+
+func (response DecideRevisionReview200JSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideRevisionReview400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response DecideRevisionReview400ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideRevisionReview401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response DecideRevisionReview401ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideRevisionReview403ApplicationProblemPlusJSONResponse Problem
+
+func (response DecideRevisionReview403ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideRevisionReview404ApplicationProblemPlusJSONResponse Problem
+
+func (response DecideRevisionReview404ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideRevisionReview409ApplicationProblemPlusJSONResponse Problem
+
+func (response DecideRevisionReview409ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideRevisionReview413ApplicationProblemPlusJSONResponse Problem
+
+func (response DecideRevisionReview413ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideRevisionReview415ApplicationProblemPlusJSONResponse Problem
+
+func (response DecideRevisionReview415ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideRevisionReview422ApplicationProblemPlusJSONResponse Problem
+
+func (response DecideRevisionReview422ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideRevisionReview503ApplicationProblemPlusJSONResponse Problem
+
+func (response DecideRevisionReview503ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideRevisionReviewdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response DecideRevisionReviewdefaultApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -7965,6 +8276,9 @@ type StrictServerInterface interface {
 	// GetRevisionReview Read one review of a revision
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id})
 	GetRevisionReview(ctx context.Context, request GetRevisionReviewRequestObject) (GetRevisionReviewResponseObject, error)
+	// DecideRevisionReview Approve or reject a revision that is in review
+	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/decision)
+	DecideRevisionReview(ctx context.Context, request DecideRevisionReviewRequestObject) (DecideRevisionReviewResponseObject, error)
 	// WithdrawRevisionReview Take a request for review back
 	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/withdrawal)
 	WithdrawRevisionReview(ctx context.Context, request WithdrawRevisionReviewRequestObject) (WithdrawRevisionReviewResponseObject, error)
@@ -8552,6 +8866,42 @@ func (sh *strictHandler) GetRevisionReview(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetRevisionReviewResponseObject); ok {
 		if err := validResponse.VisitGetRevisionReviewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DecideRevisionReview operation middleware
+func (sh *strictHandler) DecideRevisionReview(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, reviewID ReviewID) {
+	var request DecideRevisionReviewRequestObject
+
+	request.ProductID = productID
+	request.APIAssetID = apiAssetID
+	request.RevisionID = revisionID
+	request.ReviewID = reviewID
+
+	var body DecideRevisionReviewJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DecideRevisionReview(ctx, request.(DecideRevisionReviewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DecideRevisionReview")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DecideRevisionReviewResponseObject); ok {
+		if err := validResponse.VisitDecideRevisionReviewResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

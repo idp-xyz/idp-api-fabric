@@ -23,13 +23,30 @@ func (s *ProductGovernance) RevisionReader(ctx context.Context, actor domain.Pri
 	}), nil
 }
 
+// RevisionReviewer holds the current reviewer grant in the asset's workspace
+// while a decision on a review is recorded: the membership is locked and the
+// status of the product is read in the transaction of the decision, so that
+// a revocation and a decision take effect in the order they commit.
+func (s *ProductGovernance) RevisionReviewer(ctx context.Context, actor domain.Principal,
+	productID domain.ProductID, workspaceID domain.WorkspaceID) (reviewer, productActive bool, err error) {
+	return s.lockedRole(ctx, actor, productID, workspaceID, domain.RoleInternalReviewer, true)
+}
+
 // RevisionAuthor holds the current author grant in the asset's workspace.
 // For an import the membership is locked and the product's status is read
 // in the same transaction as registration.
 func (s *ProductGovernance) RevisionAuthor(ctx context.Context, actor domain.Principal,
 	productID domain.ProductID, workspaceID domain.WorkspaceID, importing bool) (author, productActive bool, err error) {
+	return s.lockedRole(ctx, actor, productID, workspaceID, domain.RoleInternalAuthor, importing)
+}
+
+// lockedRole reports whether actor holds role in the workspace. With writing
+// it locks the membership it finds and reads whether the product takes new
+// work; without, it reads the grant and says nothing of the product.
+func (s *ProductGovernance) lockedRole(ctx context.Context, actor domain.Principal, productID domain.ProductID,
+	workspaceID domain.WorkspaceID, role domain.Role, writing bool) (held, productActive bool, err error) {
 	var memberships []domain.Membership
-	if importing {
+	if writing {
 		memberships, err = s.deps.Memberships.LockHeldInWorkspace(ctx, productID, workspaceID, actor)
 	} else {
 		memberships, err = s.deps.Memberships.HeldBy(ctx, productID, actor)
@@ -37,11 +54,11 @@ func (s *ProductGovernance) RevisionAuthor(ctx context.Context, actor domain.Pri
 	if err != nil {
 		return false, false, err
 	}
-	author = slices.ContainsFunc(memberships, func(membership domain.Membership) bool {
-		return membership.WorkspaceID == workspaceID && membership.Role == domain.RoleInternalAuthor
+	held = slices.ContainsFunc(memberships, func(membership domain.Membership) bool {
+		return membership.WorkspaceID == workspaceID && membership.Role == role
 	})
-	if !author || !importing {
-		return author, false, nil
+	if !held || !writing {
+		return held, false, nil
 	}
 	product, found, err := s.deps.Products.Find(ctx, productID)
 	if err != nil {

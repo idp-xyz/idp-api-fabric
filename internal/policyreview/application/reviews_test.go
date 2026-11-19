@@ -43,7 +43,9 @@ type world struct {
 	digest         string
 	reading        error
 	author, active bool
-	moves          []string
+	// reviewer says that the caller holds the reviewer grant.
+	reviewer bool
+	moves    []string
 
 	runs     map[string]domain.CheckRun
 	reviews  map[string]domain.Review
@@ -90,6 +92,15 @@ func (w *world) Source(context.Context, ports.Target) (domain.RevisionRef, domai
 
 func (w *world) LockAuthor(context.Context, domain.Principal, domain.RevisionRef) (bool, bool, error) {
 	return w.author, w.active, nil
+}
+
+func (w *world) LockReviewer(context.Context, domain.Principal, domain.RevisionRef) (bool, bool, error) {
+	return w.reviewer, w.active, nil
+}
+
+// Recorder is who recorded the revision: dave, for whoever may read it.
+func (w *world) Recorder(context.Context, ports.Target) (domain.Principal, error) {
+	return dave, w.reading
 }
 
 // Move makes the moves the registry has, and refuses the others.

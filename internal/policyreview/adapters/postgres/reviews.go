@@ -31,25 +31,32 @@ SELECT q.review_id, q.product_id, q.workspace_id, q.api_asset_id, q.revision_id,
        coalesce(q.note, ''), q.requested_at, q.requested_by_issuer, q.requested_by_subject,
        ARRAY(SELECT s.audience || '/' || s.environment FROM policyreview.review_scope s
              WHERE s.review_id = q.review_id ORDER BY s.audience COLLATE "C", s.environment COLLATE "C"),
-       c.outcome, coalesce(c.reason, ''), c.concluded_at, c.concluded_by_issuer, c.concluded_by_subject
+       c.outcome, coalesce(c.reason, ''), c.concluded_at, c.concluded_by_issuer, c.concluded_by_subject, c.valid_until,
+       ARRAY(SELECT w.rule_id FROM policyreview.review_waiver w WHERE w.review_id = q.review_id ORDER BY w.rule_id COLLATE "C"),
+       ARRAY(SELECT w.reason FROM policyreview.review_waiver w WHERE w.review_id = q.review_id ORDER BY w.rule_id COLLATE "C"),
+       ARRAY(SELECT coalesce(w.compensating_control, '') FROM policyreview.review_waiver w
+             WHERE w.review_id = q.review_id ORDER BY w.rule_id COLLATE "C"),
+       ARRAY(SELECT w.expires_at FROM policyreview.review_waiver w WHERE w.review_id = q.review_id ORDER BY w.rule_id COLLATE "C")
 FROM policyreview.review_request q
 LEFT JOIN policyreview.review_conclusion c USING (review_id)
 WHERE q.product_id = $1 AND q.api_asset_id = $2 AND q.workspace_id = $3 AND q.revision_id = $4`
 
 func scanReview(row pgx.CollectableRow) (domain.Review, error) {
 	var (
-		review          domain.Review
-		scope           []string
-		outcome         *string
-		reason          string
-		concludedAt     *time.Time
-		issuer, subject *string
+		review                   domain.Review
+		scope                    []string
+		outcome                  *string
+		reason                   string
+		concludedAt, validUntil  *time.Time
+		issuer, subject          *string
+		rules, reasons, controls []string
+		expiries                 []time.Time
 	)
 	request := &review.Request
 	if err := row.Scan(&request.ID, &request.Revision.ProductID, &request.Revision.WorkspaceID, &request.Revision.AssetID,
 		&request.Revision.RevisionID, &request.CheckRunID, &request.InputDigest, &request.Note, &request.RequestedAt,
 		&request.RequestedBy.Issuer, &request.RequestedBy.Subject, &scope,
-		&outcome, &reason, &concludedAt, &issuer, &subject); err != nil {
+		&outcome, &reason, &concludedAt, &issuer, &subject, &validUntil, &rules, &reasons, &controls, &expiries); err != nil {
 		return domain.Review{}, err
 	}
 	request.RequestedAt = request.RequestedAt.UTC()
@@ -58,10 +65,23 @@ func scanReview(row pgx.CollectableRow) (domain.Review, error) {
 		request.Scope = append(request.Scope, domain.Target{Audience: audience, Environment: environment})
 	}
 	if outcome != nil && concludedAt != nil && issuer != nil && subject != nil {
-		review.Conclusion = &domain.Conclusion{
+		conclusion := &domain.Conclusion{
 			ReviewID: request.ID, Outcome: domain.ReviewOutcome(*outcome), Reason: reason, ConcludedAt: concludedAt.UTC(),
 			ConcludedBy: domain.Principal{Issuer: *issuer, Subject: *subject},
 		}
+		if validUntil != nil {
+			conclusion.ValidUntil = validUntil.UTC()
+		}
+		for i, rule := range rules {
+			conclusion.Waivers = append(conclusion.Waivers, domain.Waiver{
+				RuleID: rule, Reason: reasons[i], CompensatingControl: controls[i], ExpiresAt: expiries[i].UTC(),
+			})
+		}
+		review.Conclusion = conclusion
+	} else if len(rules) > 0 {
+		// Waivers of a review that has no conclusion are no review the
+		// model recorded.
+		return domain.Review{}, fmt.Errorf("review %s: %w", request.ID, domain.ErrReviewDamaged)
 	}
 	recorded, err := domain.RecordedReview(review)
 	if err != nil {
@@ -105,11 +125,34 @@ func (s *Reviews) Conclude(ctx context.Context, conclusion domain.Conclusion) er
 		return err
 	}
 	const insert = `
-INSERT INTO policyreview.review_conclusion (review_id, outcome, reason, concluded_at, concluded_by_issuer, concluded_by_subject)
-VALUES ($1,$2,$3,$4,$5,$6)`
+INSERT INTO policyreview.review_conclusion (
+    review_id, outcome, reason, concluded_at, concluded_by_issuer, concluded_by_subject, valid_until
+) VALUES ($1,$2,$3,$4,$5,$6,$7)`
+	var validUntil *time.Time
+	if !conclusion.ValidUntil.IsZero() {
+		validUntil = &conclusion.ValidUntil
+	}
 	if _, err := writer.Exec(ctx, insert, conclusion.ReviewID, string(conclusion.Outcome), optional(conclusion.Reason),
-		conclusion.ConcludedAt, conclusion.ConcludedBy.Issuer, conclusion.ConcludedBy.Subject); err != nil {
+		conclusion.ConcludedAt, conclusion.ConcludedBy.Issuer, conclusion.ConcludedBy.Subject, validUntil); err != nil {
 		return fmt.Errorf("store the conclusion of a review: %w", err)
+	}
+	if len(conclusion.Waivers) == 0 {
+		return nil
+	}
+	var (
+		rules, reasons []string
+		controls       []*string
+		expiries       []time.Time
+	)
+	for _, waiver := range conclusion.Waivers {
+		rules, reasons = append(rules, waiver.RuleID), append(reasons, waiver.Reason)
+		controls, expiries = append(controls, optional(waiver.CompensatingControl)), append(expiries, waiver.ExpiresAt)
+	}
+	const insertWaivers = `
+INSERT INTO policyreview.review_waiver (review_id, rule_id, reason, compensating_control, expires_at)
+SELECT $1::uuid, * FROM unnest($2::text[], $3::text[], $4::text[], $5::timestamptz[])`
+	if _, err := writer.Exec(ctx, insertWaivers, conclusion.ReviewID, rules, reasons, controls, expiries); err != nil {
+		return fmt.Errorf("store the waivers of a review: %w", err)
 	}
 	return nil
 }

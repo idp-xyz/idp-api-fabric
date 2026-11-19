@@ -27,7 +27,8 @@ const selectRevision = `
 SELECT r.revision_id, r.source_snapshot_id, r.product_id, r.workspace_id,
        r.api_asset_id, r.revision_sequence, r.status, r.status_version, s.source_kind,
        coalesce(s.origin_repository, ''), coalesce(s.origin_commit, ''), coalesce(s.origin_ref, ''),
-       s.entrypoint, r.spec_version, s.source_digest, s.ref_closure_digest, s.captured_at
+       s.entrypoint, r.spec_version, s.source_digest, s.ref_closure_digest, s.captured_at,
+       s.captured_by_issuer, s.captured_by_subject
 FROM contractregistry.contract_revision r
 JOIN contractregistry.source_snapshot s USING (source_snapshot_id)
 WHERE r.product_id = $1 AND r.api_asset_id = $2`
@@ -37,7 +38,8 @@ func scanRevision(row pgx.CollectableRow) (domain.Revision, error) {
 	err := row.Scan(&revision.ID, &revision.SourceSnapshotID, &revision.Asset.ProductID, &revision.Asset.WorkspaceID,
 		&revision.Asset.AssetID, &revision.Sequence, &revision.Status, &revision.StatusVersion, &revision.SourceKind,
 		&revision.Origin.Repository, &revision.Origin.Commit, &revision.Origin.Ref,
-		&revision.Entrypoint, &revision.SpecVersion, &revision.SourceDigest, &revision.RefClosureDigest, &revision.CreatedAt)
+		&revision.Entrypoint, &revision.SpecVersion, &revision.SourceDigest, &revision.RefClosureDigest, &revision.CreatedAt,
+		&revision.CreatedBy.Issuer, &revision.CreatedBy.Subject)
 	revision.CreatedAt = revision.CreatedAt.UTC()
 	return revision, err
 }
@@ -144,6 +146,7 @@ INSERT INTO contractregistry.contract_revision (
 		Status: domain.RevisionDraft, StatusVersion: 1, SourceKind: origin.SourceKind(), Origin: origin,
 		Entrypoint: source.Entrypoint, SpecVersion: source.SpecVersion,
 		SourceDigest: source.SourceDigest, RefClosureDigest: source.RefClosureDigest, CreatedAt: captured,
+		CreatedBy: draft.CapturedBy,
 	}
 	return ports.Registration{Revision: revision, Created: true}, nil
 }

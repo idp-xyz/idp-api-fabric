@@ -129,6 +129,67 @@ WHERE f.source_snapshot_id = $1 AND f.path = 'openapi.yaml'`, revision.SourceSna
 	}
 }
 
+// A revision says who recorded it: whoever submitted its content first. It
+// says so however it is read, and it keeps saying so when someone else
+// submits the same content again or its status moves.
+func TestARevisionSaysWhoRecordedItWhoeverSubmitsItsContentAgain(t *testing.T) {
+	database := pgtest.MigratedDatabase(t)
+	fabric, err := db.Open(t.Context(), database.Application)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(fabric.Close)
+	store := postgres.NewRevisions(fabric.Framework)
+	asset := domain.AssetRef{ProductID: ids.NewUUID(), WorkspaceID: ids.NewUUID(), AssetID: ids.NewUUID()}
+	author := domain.Principal{Issuer: "https://issuer.example", Subject: "author"}
+	coauthor := domain.Principal{Issuer: "https://other-issuer.example", Subject: "coauthor"}
+	source, err := domain.CaptureSource("openapi.yaml", "3.1.2", []domain.SourceFile{
+		{Path: "openapi.yaml", Content: "openapi: 3.1.2\ninfo: {title: Shipments, version: v1}\n"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	register := func(by domain.Principal) ports.Registration {
+		t.Helper()
+		var registered ports.Registration
+		if err := fabric.WithinTransaction(t.Context(), func(ctx context.Context) error {
+			var err error
+			registered, err = store.Register(ctx, domain.Draft{
+				ID: ids.NewUUID(), SourceSnapshotID: ids.NewUUID(), Asset: asset, CapturedBy: by, CapturedAt: time.Now(),
+			}, source)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return registered
+	}
+
+	first := register(author)
+	if !first.Created || first.Revision.CreatedBy != author {
+		t.Fatalf("the revision as it was registered: %+v, want it recorded by %+v", first, author)
+	}
+	again := register(coauthor)
+	if again.Created || again.Revision.ID != first.Revision.ID || again.Revision.CreatedBy != author {
+		t.Errorf("the same content submitted by someone else: %+v, want the revision %s that %+v recorded", again, first.Revision.ID, author)
+	}
+	var moved domain.Revision
+	if err := fabric.WithinTransaction(t.Context(), func(ctx context.Context) error {
+		var err error
+		moved, _, err = store.Move(ctx, asset, first.Revision.ID, domain.RevisionInReview)
+		return err
+	}); err != nil || moved.CreatedBy != author {
+		t.Errorf("the revision once it is submitted: recorded by %+v, want %+v: %v", moved.CreatedBy, author, err)
+	}
+	found, _, err := store.Find(t.Context(), asset, first.Revision.ID)
+	if err != nil || found.CreatedBy != author {
+		t.Errorf("the revision as it is found: recorded by %+v, want %+v: %v", found.CreatedBy, author, err)
+	}
+	listed, err := store.List(t.Context(), asset, nil, 10)
+	if err != nil || len(listed) != 1 || listed[0].CreatedBy != author {
+		t.Errorf("the revision as it is listed: %+v, want it recorded by %+v: %v", listed, author, err)
+	}
+}
+
 const (
 	firstCommit  = "1111111111111111111111111111111111111111"
 	secondCommit = "2222222222222222222222222222222222222222"

@@ -221,7 +221,7 @@ func TestAReviewIsWithdrawnByWhoAskedForItWhileItIsOpen(t *testing.T) {
 		ReviewID: "review-1", Outcome: domain.ReviewWithdrawn, Reason: "the baseline was the wrong one",
 		ConcludedBy: carol, ConcludedAt: asked.Add(time.Hour),
 	}
-	if err != nil || conclusion != want || conclusion.ConcludedAt.Location() != time.UTC {
+	if err != nil || !reflect.DeepEqual(conclusion, want) || conclusion.ConcludedAt.Location() != time.UTC {
 		t.Fatalf("withdrawn as %+v, want %+v in UTC: %v", conclusion, want, err)
 	}
 	concluded := domain.Review{Request: request, Conclusion: &conclusion}
@@ -251,7 +251,7 @@ func TestAReviewIsWithdrawnByWhoAskedForItWhileItIsOpen(t *testing.T) {
 	}
 	for name, c := range refused {
 		t.Run(name, func(t *testing.T) {
-			if got, err := domain.Withdraw(c.review, c.by, c.reason, later); !errors.Is(err, c.want) || got != (domain.Conclusion{}) {
+			if got, err := domain.Withdraw(c.review, c.by, c.reason, later); !errors.Is(err, c.want) || !reflect.DeepEqual(got, domain.Conclusion{}) {
 				t.Errorf("got %+v and %v, want nothing and %v", got, err, c.want)
 			}
 		})
@@ -296,6 +296,20 @@ func TestAStoredReviewIsReadBackOnlyAsItWasRecorded(t *testing.T) {
 		"a conclusion of another review":  func(r *domain.Review) { r.Conclusion.ReviewID = "review-2" },
 		"a conclusion before the request": func(r *domain.Review) { r.Conclusion.ConcludedAt = asked.Add(-time.Second) },
 		"nobody who concluded":            func(r *domain.Review) { r.Conclusion.ConcludedBy.Issuer = "" },
+		"a withdrawal that holds for a time": func(r *domain.Review) {
+			r.Conclusion.ValidUntil = asked.Add(time.Hour)
+		},
+		"a withdrawal that waives a rule": func(r *domain.Review) {
+			r.Conclusion.Waivers = []domain.Waiver{{RuleID: "R-RULE-002", Reason: "accepted", ExpiresAt: asked.Add(time.Hour)}}
+		},
+		"an approval that holds for no time": func(r *domain.Review) { r.Conclusion.Outcome = domain.ReviewApproved },
+		"an approval that ended before it was given": func(r *domain.Review) {
+			r.Conclusion.Outcome, r.Conclusion.ValidUntil = domain.ReviewApproved, asked
+		},
+		"a rejection without a reason": func(r *domain.Review) { r.Conclusion.Outcome = domain.ReviewRejected },
+		"a rejection that holds for a time": func(r *domain.Review) {
+			r.Conclusion.Outcome, r.Conclusion.Reason, r.Conclusion.ValidUntil = domain.ReviewRejected, "not yet", asked.Add(time.Hour)
+		},
 	}
 	for name, damage := range damaged {
 		t.Run(name, func(t *testing.T) {

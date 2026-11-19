@@ -47,10 +47,16 @@ func revisionRef() domain.RevisionRef {
 	return domain.RevisionRef{ProductID: ids.NewUUID(), WorkspaceID: ids.NewUUID(), AssetID: ids.NewUUID(), RevisionID: ids.NewUUID()}
 }
 
-// check records a check of the revision under the baseline: one rule passed
-// and the others were not run.
-func (f *reviewFixture) check(revision domain.RevisionRef) domain.CheckRun {
+// check records a check of the revision under the baseline: one rule passed,
+// the rules that are named failed, and the others were not run.
+func (f *reviewFixture) check(revision domain.RevisionRef, failed ...string) domain.CheckRun {
 	f.t.Helper()
+	observed := []domain.Observation{{RuleID: "F04-GOV-001"}}
+	for _, rule := range failed {
+		observed = append(observed, domain.Observation{RuleID: rule, Findings: []domain.Finding{{
+			RuleID: rule, Path: "openapi.yaml", Line: 1, Message: "the rule is broken here",
+		}}})
+	}
 	policy := domain.Baseline()
 	source := domain.Source{
 		Entrypoint: "openapi.yaml", Digest: "sha256:" + strings.Repeat("a", 64),
@@ -65,7 +71,7 @@ func (f *reviewFixture) check(revision domain.RevisionRef) domain.CheckRun {
 		}
 		run, err = domain.Complete(domain.Draft{
 			ID: ids.NewUUID(), PolicySnapshotID: snapshot, Revision: revision, RequestedBy: carol, StartedAt: at,
-		}, policy, source, reviewTool, []domain.Observation{{RuleID: "F04-GOV-001"}}, at.Add(time.Second))
+		}, policy, source, reviewTool, observed, at.Add(time.Second))
 		if err != nil {
 			return err
 		}

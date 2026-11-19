@@ -91,4 +91,8 @@ type Revision struct {
 	SourceDigest     string
 	RefClosureDigest string
 	CreatedAt        time.Time
+	// CreatedBy is who recorded the revision: the author of its content as
+	// far as the registry knows. Whoever reviews a revision is someone
+	// else.
+	CreatedBy Principal
 }

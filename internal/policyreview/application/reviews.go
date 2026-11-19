@@ -33,8 +33,8 @@ type ReviewDependencies struct {
 }
 
 // Reviews are the use cases of the review of a revision: asking for a
-// decision, taking the request back, and reading what was asked and how it
-// ended.
+// decision, taking the request back, deciding, and reading what was asked
+// and how it ended.
 type Reviews struct {
 	deps   ReviewDependencies
 	policy domain.Policy
@@ -53,10 +53,18 @@ func NewReviews(deps ReviewDependencies) (*Reviews, error) {
 const (
 	ruleRequestReview  = "AC-50"
 	ruleWithdrawReview = "AC-51"
-	ruleRefused        = "DENY-03"
+	// AC-03 is the rule of the reviewer who decides, for either outcome.
+	ruleDecideReview = "AC-03"
+	// DENY-03 refuses who holds no grant that allows what was asked.
+	ruleRefused = "DENY-03"
+	// DENY-06 refuses a reviewer who had a part in what is reviewed: that
+	// caller holds the grant, and is refused for what it did before.
+	ruleNotIndependent = "DENY-06"
 
 	actionRequestReview  = "review.request"
 	actionWithdrawReview = "review.withdraw"
+	actionApproveReview  = "review.approve"
+	actionRejectReview   = "review.reject"
 )
 
 // tools are the tools a check is made with now.
@@ -202,13 +210,109 @@ func (r *Reviews) WithdrawReview(ctx context.Context, target ports.Target, id, r
 	return review, nil
 }
 
+// DecideReview concludes an open review with the decision of a reviewer: an
+// approval or a rejection. A current reviewer of the workspace decides, in a
+// product that takes new work, and only one who had no part in what is
+// reviewed: who recorded the revision, who ran the check and who asked for
+// the review decide nothing about it (F05 §6.2). The revision is approved or
+// rejected from then on.
+//
+// The conclusion with its waivers, the move of the revision, the audit
+// record and the event are written together or not at all.
+func (r *Reviews) DecideReview(ctx context.Context, target ports.Target, id string, decision domain.Decision) (domain.Review, error) {
+	revision, digest, err := r.deps.Revisions.Revision(ctx, target)
+	if err != nil {
+		return domain.Review{}, err
+	}
+	asked, found, err := r.deps.Reviews.Find(ctx, revision, id)
+	if err != nil {
+		return domain.Review{}, err
+	}
+	if !found {
+		return domain.Review{}, ErrReviewNotFound
+	}
+	run, found, err := r.deps.Checks.Find(ctx, revision, asked.Request.CheckRunID)
+	if err != nil {
+		return domain.Review{}, err
+	}
+	if !found || run.InputDigest != digest || asked.Request.InputDigest != digest {
+		return domain.Review{}, fmt.Errorf("review %s: %w", id, domain.ErrReviewDamaged)
+	}
+	recorder, err := r.deps.Revisions.Recorder(ctx, target)
+	if err != nil {
+		return domain.Review{}, err
+	}
+	involved := []domain.Principal{recorder, run.RequestedBy, asked.Request.RequestedBy}
+	action := actionRejectReview
+	to := domain.RevisionRejected
+	if decision.Outcome == domain.ReviewApproved {
+		action, to = actionApproveReview, domain.RevisionApproved
+	}
+
+	var review domain.Review
+	err = r.deps.Transactions.WithinTransaction(ctx, func(tx context.Context) error {
+		reviewer, active, err := r.deps.Revisions.LockReviewer(tx, target.Caller, revision)
+		if err != nil {
+			return err
+		}
+		if !reviewer {
+			return ErrForbidden
+		}
+		if !active {
+			return ErrProductSuspended
+		}
+		// What is wrong with the decision is said before anything moves,
+		// so the caller is told that and not where the revision is.
+		if _, err := domain.Decide(asked, run, r.policy, r.tools(), decision, involved, target.Caller, r.deps.Clock.Now()); err != nil {
+			return err
+		}
+		// The move locks the revision, so the review is read behind it as
+		// it stands: of two conclusions that arrive together the second
+		// finds the first.
+		if _, err := r.deps.Revisions.Move(tx, revision, to); err != nil {
+			return err
+		}
+		open, found, err := r.deps.Reviews.Find(tx, revision, id)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return ErrReviewNotFound
+		}
+		conclusion, err := domain.Decide(open, run, r.policy, r.tools(), decision, involved, target.Caller, r.deps.Clock.Now())
+		if err != nil {
+			return err
+		}
+		if err := r.deps.Reviews.Conclude(tx, conclusion); err != nil {
+			return err
+		}
+		review = domain.Review{Request: open.Request, Conclusion: &conclusion}
+		if err := r.deps.Audit(tx, ports.AuditEntry{
+			Target: target, ReviewID: id, Action: action, Rule: ruleDecideReview, Allowed: true,
+		}); err != nil {
+			return err
+		}
+		return r.deps.Events.Concluded(tx, review, target.CorrelationID)
+	})
+	if err != nil {
+		return domain.Review{}, r.refused(ctx, target, action, err)
+	}
+	return review, nil
+}
+
 // refused puts a refusal for who the caller is on record, outside the
-// transaction that was rolled back, and hands the cause on.
+// transaction that was rolled back, and hands the cause on. The record
+// names the rule that refused: the caller holds no grant that allows what
+// was asked, or holds it and had a part in what is reviewed.
 func (r *Reviews) refused(ctx context.Context, target ports.Target, action string, cause error) error {
-	if !errors.Is(cause, ErrForbidden) && !errors.Is(cause, domain.ErrNotRequester) {
+	rule := ruleRefused
+	switch {
+	case errors.Is(cause, domain.ErrNotIndependent):
+		rule = ruleNotIndependent
+	case !errors.Is(cause, ErrForbidden) && !errors.Is(cause, domain.ErrNotRequester):
 		return cause
 	}
-	if err := r.deps.Audit(ctx, ports.AuditEntry{Target: target, Action: action, Rule: ruleRefused}); err != nil {
+	if err := r.deps.Audit(ctx, ports.AuditEntry{Target: target, Action: action, Rule: rule}); err != nil {
 		return fmt.Errorf("%w: %w: %v", cause, ErrReviewNotAudited, err)
 	}
 	return cause

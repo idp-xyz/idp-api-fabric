@@ -16,6 +16,7 @@ import (
 type ContractReviews interface {
 	RequestReview(context.Context, ports.Target, checks.RequestReview) (domain.Review, error)
 	WithdrawReview(ctx context.Context, target ports.Target, id, reason string) (domain.Review, error)
+	DecideReview(ctx context.Context, target ports.Target, id string, decision domain.Decision) (domain.Review, error)
 	GetReview(ctx context.Context, target ports.Target, id string) (domain.Review, error)
 	ListReviews(context.Context, checks.ListReviews) (checks.ReviewPage, error)
 }
@@ -60,6 +61,36 @@ func (o operations) WithdrawRevisionReview(ctx context.Context, request Withdraw
 	}
 	return WithdrawRevisionReview200JSONResponse{
 		Body: showReview(review), Headers: WithdrawRevisionReview200ResponseHeaders{CacheControl: noStore},
+	}, nil
+}
+
+func (o operations) DecideRevisionReview(ctx context.Context, request DecideRevisionReviewRequestObject) (DecideRevisionReviewResponseObject, error) {
+	target, err := checkTarget(ctx, request.ProductID, request.APIAssetID, request.RevisionID)
+	if err != nil {
+		return nil, err
+	}
+	decision := domain.Decision{Outcome: domain.ReviewOutcome(request.Body.Outcome)}
+	if request.Body.Reason != nil {
+		decision.Reason = *request.Body.Reason
+	}
+	if request.Body.ValidUntil != nil {
+		decision.ValidUntil = *request.Body.ValidUntil
+	}
+	if request.Body.Waivers != nil {
+		for _, item := range *request.Body.Waivers {
+			waiver := domain.Waiver{RuleID: item.RuleID, Reason: item.Reason, ExpiresAt: item.ExpiresAt}
+			if item.CompensatingControl != nil {
+				waiver.CompensatingControl = *item.CompensatingControl
+			}
+			decision.Waivers = append(decision.Waivers, waiver)
+		}
+	}
+	review, err := o.policyReview.DecideReview(ctx, target, request.ReviewID, decision)
+	if err != nil {
+		return nil, err
+	}
+	return DecideRevisionReview200JSONResponse{
+		Body: showReview(review), Headers: DecideRevisionReview200ResponseHeaders{CacheControl: noStore},
 	}, nil
 }
 
@@ -132,6 +163,20 @@ func showReview(review domain.Review) Review {
 		if conclusion.Reason != "" {
 			shown.Reason = &conclusion.Reason
 		}
+		if !conclusion.ValidUntil.IsZero() {
+			shown.ValidUntil = &conclusion.ValidUntil
+		}
+		if len(conclusion.Waivers) > 0 {
+			waivers := make([]ReviewWaiver, 0, len(conclusion.Waivers))
+			for _, waiver := range conclusion.Waivers {
+				item := ReviewWaiver{RuleID: waiver.RuleID, Reason: waiver.Reason, ExpiresAt: waiver.ExpiresAt}
+				if waiver.CompensatingControl != "" {
+					item.CompensatingControl = &waiver.CompensatingControl
+				}
+				waivers = append(waivers, item)
+			}
+			shown.Waivers = &waivers
+		}
 		body.Conclusion = &shown
 	}
 	return body
@@ -145,6 +190,14 @@ func reviewProblem(err error) (Problem, bool) {
 		return problem(http.StatusBadRequest, CodeRequestInvalid, ""), true
 	case errors.Is(err, domain.ErrNotRequester):
 		return problem(http.StatusForbidden, CodeForbidden, "A review is withdrawn by whoever asked for it."), true
+	case errors.Is(err, domain.ErrNotIndependent):
+		return problem(http.StatusForbidden, "REVIEWER_NOT_INDEPENDENT",
+			"Whoever recorded the revision, ran its check or asked for the review does not decide on it."), true
+	case errors.Is(err, domain.ErrWaiverForbidden):
+		return problem(http.StatusUnprocessableEntity, "WAIVER_FORBIDDEN", "A rule that nothing waives cannot be waived."), true
+	case errors.Is(err, domain.ErrWaiverMissing):
+		return problem(http.StatusConflict, "WAIVER_REQUIRED",
+			"Rules failed or could not be judged in the check of the review. An approval waives each of them by name."), true
 	case errors.Is(err, domain.ErrCheckStale):
 		return problem(http.StatusConflict, "POLICY_STALE",
 			"The check was not made under the policy and by the tool versions a check is made with now. Run the check again."), true

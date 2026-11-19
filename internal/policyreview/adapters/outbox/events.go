@@ -28,6 +28,9 @@ func NewEvents(writer eventing.OutboxWriter, ids ports.Identifiers) *Events {
 const (
 	ReviewRequested = "fabric.policyreview.review.requested"
 	ReviewWithdrawn = "fabric.policyreview.review.withdrawn"
+	// ReviewDecided announces an approval or a rejection. Which of the two
+	// it was is the outcome it carries.
+	ReviewDecided = "fabric.policyreview.review.decided"
 )
 
 // reviewEvent is what an event of a review carries: what the review is of
@@ -46,16 +49,18 @@ type reviewEvent struct {
 	CheckRunID       string    `json:"check_run_id"`
 	InputDigest      string    `json:"input_digest"`
 	Outcome          string    `json:"outcome,omitempty"`
+	// ValidUntil is until when an approval holds.
+	ValidUntil *time.Time `json:"valid_until,omitempty"`
 }
 
-func (e *Events) review(ctx context.Context, kind string, version int, request domain.ReviewRequest, outcome string, at time.Time, correlationID string) error {
+func (e *Events) review(ctx context.Context, kind string, version int, request domain.ReviewRequest, outcome string, validUntil *time.Time, at time.Time, correlationID string) error {
 	const schema = 1
 	id := e.ids.NewID()
 	payload, err := json.Marshal(reviewEvent{
 		EventID: id, SchemaVersion: schema, OccurredAt: at, CorrelationID: correlationID,
 		ProductID: request.Revision.ProductID, AssetID: request.Revision.AssetID, RevisionID: request.Revision.RevisionID,
 		AggregateID: request.ID, AggregateVersion: version, CheckRunID: request.CheckRunID, InputDigest: request.InputDigest,
-		Outcome: outcome,
+		Outcome: outcome, ValidUntil: validUntil,
 	})
 	if err != nil {
 		return err
@@ -71,16 +76,25 @@ func (e *Events) review(ctx context.Context, kind string, version int, request d
 
 // Requested announces that a decision was asked for.
 func (e *Events) Requested(ctx context.Context, request domain.ReviewRequest, correlationID string) error {
-	return e.review(ctx, ReviewRequested, 1, request, "", request.RequestedAt, correlationID)
+	return e.review(ctx, ReviewRequested, 1, request, "", nil, request.RequestedAt, correlationID)
 }
 
-// Concluded announces how a review ended.
+// Concluded announces how a review ended: that it was withdrawn, or that it
+// was decided and how. It carries no reason and no waiver.
 func (e *Events) Concluded(ctx context.Context, review domain.Review, correlationID string) error {
 	conclusion := review.Conclusion
 	if conclusion == nil {
 		return errors.New("a review that is not concluded has no conclusion to announce")
 	}
-	return e.review(ctx, ReviewWithdrawn, 2, review.Request, string(conclusion.Outcome), conclusion.ConcludedAt, correlationID)
+	kind := ReviewDecided
+	if conclusion.Outcome == domain.ReviewWithdrawn {
+		kind = ReviewWithdrawn
+	}
+	var validUntil *time.Time
+	if !conclusion.ValidUntil.IsZero() {
+		validUntil = &conclusion.ValidUntil
+	}
+	return e.review(ctx, kind, 2, review.Request, string(conclusion.Outcome), validUntil, conclusion.ConcludedAt, correlationID)
 }
 
 func (e *Events) Completed(ctx context.Context, run domain.CheckRun, correlationID string) error {

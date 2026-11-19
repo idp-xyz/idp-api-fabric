@@ -907,6 +907,200 @@ func TestRunLeavesTheRevisionsOfTheBuildBeforeReviewsTheDraftsTheyAre(t *testing
 	}
 }
 
+// reviewDecision is the step with which a review can be decided: an
+// approval holds until a time and may waive rules, a rejection says why.
+const reviewDecision = "policyreview/004_review_decision"
+
+// A database the build before decisions has migrated and written to is
+// brought up to date with what it holds. Every review that was withdrawn is
+// the withdrawal it was, and what that build still concludes while this one
+// is rolled out is a withdrawal like the others. A process of this build
+// does not start until the database is migrated and its role may keep
+// waivers: one run of fabric-migrate -apply -grant-to gives it both.
+func TestRunLetsAReviewBeDecidedAndLeavesTheWithdrawalsOfTheBuildBeforeWhatTheyAre(t *testing.T) {
+	database := pgtest.FreshDatabase(t)
+	conn := pgtest.Connect(t, database.Migrator)
+
+	plan, err := migrate.Plan()
+	if err != nil {
+		t.Fatalf("build the plan: %v", err)
+	}
+	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool {
+		return step.Schema == "policyreview" && step.ID >= reviewDecision
+	})
+	if len(before) != len(plan)-1 {
+		t.Fatalf("the plan carries %d steps of Policy & Review from %s on, want that one; this test would not be of the build before",
+			len(plan)-len(before), reviewDecision)
+	}
+	if err := migrate.Apply(t.Context(), conn, quiet, before); err != nil {
+		t.Fatalf("migrate as the build before: %v", err)
+	}
+	grantOnWhatIsThere(t, conn, database.ApplicationRole)
+
+	// Reviews as a process of that build records them, with the statements
+	// it runs: a conclusion names no time it holds until.
+	const (
+		cargopai = "1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6"
+		team     = "4f2d7b0e-85a3-4c1b-a9d4-c3f6a5b7d8e9"
+		shipping = "3e1c6a9d-74f2-4b0a-98c3-b2e5f4a6c7d8"
+		snapshot = "9e70c25d-daf8-4b60-8e29-b8ebfa0c1d34"
+
+		recordPolicy = `
+			INSERT INTO policyreview.policy_snapshot (policy_snapshot_id, product_id, policy_set_id, policy_digest, policy_document, recorded_at)
+			VALUES ($1, $2, 'fabric-global-contract-governance', 'sha256:' || encode(sha256('{}'::bytea), 'hex'), '{}'::bytea, now())`
+		recordCheck = `
+			INSERT INTO policyreview.check_run (
+			    check_run_id, product_id, workspace_id, api_asset_id, revision_id, policy_snapshot_id, input_digest,
+			    tool_manifest, tool_digest, status, started_at, completed_at, requested_by_issuer, requested_by_subject
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, '[]'::bytea, 'sha256:' || encode(sha256('[]'::bytea), 'hex'), 'PASS',
+			          now(), now(), 'https://issuer.example', 'author')`
+		recordRequest = `
+			INSERT INTO policyreview.review_request (
+			    review_id, product_id, workspace_id, api_asset_id, revision_id, revision_status_version, check_run_id,
+			    input_digest, note, requested_at, requested_by_issuer, requested_by_subject
+			) VALUES ($1, $2, $3, $4, $5, 2, $6, $7, NULL, '2026-11-19T09:00:00Z', 'https://issuer.example', 'author')`
+		recordScope = `
+			INSERT INTO policyreview.review_scope (review_id, audience, environment) VALUES ($1, 'partner', 'sandbox')`
+		withdraw = `
+			INSERT INTO policyreview.review_conclusion (review_id, outcome, reason, concluded_at, concluded_by_issuer, concluded_by_subject)
+			VALUES ($1, 'WITHDRAWN', $2, '2026-11-19T10:00:00Z', 'https://issuer.example', 'author')`
+		// What this build writes for a decision.
+		decide = `
+			INSERT INTO policyreview.review_conclusion (
+			    review_id, outcome, reason, concluded_at, concluded_by_issuer, concluded_by_subject, valid_until
+			) VALUES ($1, $2, $3, '2026-11-19T10:00:00Z', 'https://issuer.example', 'reviewer', $4)`
+		waive = `
+			INSERT INTO policyreview.review_waiver (review_id, rule_id, reason, compensating_control, expires_at)
+			VALUES ($1, 'F04-GOV-003', 'generated clients are not used yet', NULL, '2027-01-19T10:00:00Z')`
+		checkViolation        = "23514"
+		undefinedColumn       = "42703"
+		undefinedTable        = "42P01"
+		insufficientPrivilege = "42501"
+	)
+	digest := "sha256:" + strings.Repeat("a", 64)
+	app := pgtest.Connect(t, database.Application)
+	if _, err := app.Exec(t.Context(), recordPolicy, snapshot, cargopai); err != nil {
+		t.Fatalf("record a policy as the build before: %v", err)
+	}
+	// Four revisions, each checked and in review.
+	reviews := []string{
+		"a1b2c3d4-0001-4a5b-8c6d-7e8f9a0b1c2d", "a1b2c3d4-0002-4a5b-8c6d-7e8f9a0b1c2d",
+		"a1b2c3d4-0003-4a5b-8c6d-7e8f9a0b1c2d", "a1b2c3d4-0004-4a5b-8c6d-7e8f9a0b1c2d",
+	}
+	for i, review := range reviews {
+		revision := "b2c3d4e5-000" + string(rune('1'+i)) + "-4b6c-9d7e-8f9a0b1c2d3e"
+		check := "c3d4e5f6-000" + string(rune('1'+i)) + "-4c7d-ae8f-9a0b1c2d3e4f"
+		if _, err := app.Exec(t.Context(), recordCheck, check, cargopai, team, shipping, revision, snapshot, digest); err != nil {
+			t.Fatalf("record a check as the build before: %v", err)
+		}
+		if _, err := app.Exec(t.Context(), recordRequest, review, cargopai, team, shipping, revision, check, digest); err != nil {
+			t.Fatalf("record a request as the build before: %v", err)
+		}
+		if _, err := app.Exec(t.Context(), recordScope, review); err != nil {
+			t.Fatalf("record a scope as the build before: %v", err)
+		}
+	}
+	if _, err := app.Exec(t.Context(), withdraw, reviews[0], "the wrong baseline"); err != nil {
+		t.Fatalf("withdraw a review as the build before: %v", err)
+	}
+
+	// The database of that build keeps no decision: what this build writes
+	// for one is refused there, and a process of this build does not start
+	// on it.
+	if _, err := app.Exec(t.Context(), decide, reviews[2], "APPROVED", nil, "2027-02-17T10:00:00Z"); sqlState(err) != undefinedColumn {
+		t.Errorf("a decision on the database of the build before: got %v, want it refused for the column that is not there", err)
+	}
+	if _, err := app.Exec(t.Context(), waive, reviews[2]); sqlState(err) != undefinedTable {
+		t.Errorf("a waiver on the database of the build before: got %v, want it refused for the table that is not there", err)
+	}
+	refused := func(when string, want error, naming string) {
+		t.Helper()
+
+		opened, err := db.Open(t.Context(), database.Application)
+		if err == nil {
+			opened.Close()
+		}
+		if !errors.Is(err, want) || !strings.Contains(err.Error(), naming) {
+			t.Fatalf("%s: got %v, want %v naming %q", when, err, want, naming)
+		}
+	}
+	refused("on the database as the build before left it", db.ErrNotMigrated, "policyreview.review_waiver does not exist")
+
+	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
+		t.Fatalf("migrate as this build: %v", err)
+	}
+	applied, planned := history(t, conn), planRows(t)
+	byID := func(a, b historyRow) int { return strings.Compare(a.ID, b.ID) }
+	slices.SortFunc(applied, byID)
+	slices.SortFunc(planned, byID)
+	if !slices.Equal(applied, planned) {
+		t.Errorf("the history records\n %+v\nwant every step of the plan, each once\n %+v", applied, planned)
+	}
+	// Migrated, its role still may not keep a waiver, and it says so.
+	refused("once it is migrated, before the grant", db.ErrNotGranted, "on policyreview.review_waiver")
+	if _, err := app.Exec(t.Context(), waive, reviews[2]); sqlState(err) != insufficientPrivilege {
+		t.Errorf("a waiver by the role as that build granted it: got %v, want it refused for lack of privilege", err)
+	}
+
+	// That build is still running while this one is rolled out, and
+	// withdraws a review the way it does.
+	if _, err := app.Exec(t.Context(), withdraw, reviews[1], nil); err != nil {
+		t.Fatalf("withdraw a review as the build before, after the migration: %v", err)
+	}
+
+	if err := migrate.Grant(t.Context(), conn, database.ApplicationRole); err != nil {
+		t.Fatalf("grant with this build: %v", err)
+	}
+	opened, err := db.Open(t.Context(), database.Application)
+	if err != nil {
+		t.Fatalf("once it is migrated and granted: %v", err)
+	}
+	opened.Close()
+
+	// Granted, the role records a decision: an approval with what it
+	// waives, and a rejection. What is no decision is still refused.
+	if _, err := app.Exec(t.Context(), decide, reviews[2], "APPROVED", nil, "2027-02-17T10:00:00Z"); err != nil {
+		t.Errorf("an approval once the role is granted: %v", err)
+	}
+	if _, err := app.Exec(t.Context(), waive, reviews[2]); err != nil {
+		t.Errorf("a waiver once the role is granted: %v", err)
+	}
+	if _, err := app.Exec(t.Context(), decide, reviews[3], "REJECTED", nil, nil); sqlState(err) != checkViolation {
+		t.Errorf("a rejection without a reason: got %v, want a check violation", err)
+	}
+	if _, err := app.Exec(t.Context(), decide, reviews[3], "REJECTED", "the partner team asked for paging first", nil); err != nil {
+		t.Errorf("a rejection once the role is granted: %v", err)
+	}
+
+	type conclusion struct {
+		Review  string
+		Outcome string
+		Reason  string
+		Holds   bool
+		Waivers int64
+	}
+	rows, err := conn.Query(t.Context(), `
+		SELECT c.review_id::text, c.outcome, coalesce(c.reason, ''), c.valid_until IS NOT NULL,
+		       (SELECT count(*) FROM policyreview.review_waiver w WHERE w.review_id = c.review_id)
+		FROM policyreview.review_conclusion c ORDER BY c.review_id`)
+	if err != nil {
+		t.Fatalf("read the conclusions: %v", err)
+	}
+	got, err := pgx.CollectRows(rows, pgx.RowToStructByPos[conclusion])
+	if err != nil {
+		t.Fatalf("read the conclusions: %v", err)
+	}
+	want := []conclusion{
+		{reviews[0], "WITHDRAWN", "the wrong baseline", false, 0},
+		{reviews[1], "WITHDRAWN", "", false, 0},
+		{reviews[2], "APPROVED", "", true, 1},
+		{reviews[3], "REJECTED", "the partner team asked for paging first", false, 0},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("the conclusions are\n %+v\nwant the withdrawals as they were and the decisions of this build\n %+v", got, want)
+	}
+}
+
 func TestRunRefusesAnAppliedArtifactThatChanged(t *testing.T) {
 	conn := pgtest.Connect(t, pgtest.MigratedDatabase(t).Migrator)
 

@@ -161,7 +161,7 @@ func showCheckOverview(run domain.Overview) CheckRunOverview {
 func checkProblem(err error) (Problem, bool) {
 	switch {
 	case errors.Is(err, checks.ErrForbidden):
-		return problem(http.StatusForbidden, CodeForbidden, "The caller is not a current internal author of the workspace."), true
+		return problem(http.StatusForbidden, CodeForbidden, "The caller holds no role in the workspace that allows this."), true
 	case errors.Is(err, checks.ErrCheckRunNotFound):
 		return problem(http.StatusNotFound, "CHECK_RUN_NOT_FOUND", ""), true
 	case errors.Is(err, checks.ErrInvalidPage):

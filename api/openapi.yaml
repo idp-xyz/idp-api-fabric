@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.18.0
+  version: 0.19.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -1254,6 +1254,76 @@ paths:
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/decision:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+      - $ref: '#/components/parameters/CheckAssetId'
+      - $ref: '#/components/parameters/CheckRevisionId'
+      - $ref: '#/components/parameters/ReviewId'
+    post:
+      operationId: decideRevisionReview
+      summary: Approve or reject a revision that is in review
+      description: >-
+        A current reviewer of the asset's workspace decides on an open
+        review of a revision of an active product: the revision is APPROVED
+        or REJECTED from then on, and the review is concluded.
+        Whoever decides had no part in what is reviewed. Whoever recorded
+        the revision, ran the check the review rests on or asked for the
+        review is refused (403 REVIEWER_NOT_INDEPENDENT), also when holding
+        the reviewer role.
+        A rejection says why. An approval rests on the check of the review
+        as the request did: a check that is no longer one of the current
+        policy and tool versions is refused (409 POLICY_STALE). Every rule
+        that failed or could not be judged in that check is waived by name,
+        for a reason and until a time; an approval that leaves one out is
+        refused (409 WAIVER_REQUIRED). A rule that nothing waives is never
+        waived (422 WAIVER_FORBIDDEN). A rule that warns and a rule no tool
+        evaluates need no waiver: the approval is bound to the check that
+        says so. The approval holds until valid_until, which is at most a
+        year away, and no waiver outlives it.
+        An approval approves the content the check read, for the scope of
+        the request and until its time, and nothing wider. The conclusion,
+        its waivers, the status of the revision, the audit record and the
+        event commit together.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewDecision'
+      responses:
+        '200':
+          description: The review was decided
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/products/{product_id}/audience-configs:
     get:
       operationId: listAudienceConfigs
@@ -2402,16 +2472,67 @@ components:
         Where a review stands: IN_REVIEW until it is concluded, then the way
         it ended.
       type: string
-      enum: [IN_REVIEW, WITHDRAWN]
+      enum: [IN_REVIEW, WITHDRAWN, APPROVED, REJECTED]
+    ReviewRuleId:
+      description: The identifier a rule has in the policy of a check, as in F04-GOV-013
+      type: string
+      maxLength: 60
+      pattern: '^[A-Z][A-Z0-9]*(-[A-Z0-9]+)+$'
+    ReviewWaiver:
+      description: >-
+        One rule that did not pass and that an approval lets stand: why, what
+        makes up for it if anything does, and until when. A waiver is part of
+        the approval it was given with and holds for nothing else.
+      type: object
+      additionalProperties: false
+      required: [rule_id, reason, expires_at]
+      properties:
+        rule_id:
+          $ref: '#/components/schemas/ReviewRuleId'
+        reason:
+          $ref: '#/components/schemas/ReviewReason'
+        compensating_control:
+          description: What makes up for the rule that does not hold
+          $ref: '#/components/schemas/ReviewReason'
+        expires_at:
+          description: Until when the waiver holds, no later than the approval
+          type: string
+          format: date-time
+    ReviewDecision:
+      description: >-
+        What a reviewer decides with. A rejection gives its reason and nothing
+        else. An approval gives the time it holds until and a waiver for
+        every rule that failed or could not be judged; its reason is
+        optional.
+      type: object
+      additionalProperties: false
+      required: [outcome]
+      properties:
+        outcome:
+          type: string
+          enum: [APPROVED, REJECTED]
+        reason:
+          $ref: '#/components/schemas/ReviewReason'
+        valid_until:
+          description: Until when an approval holds, at most a year away
+          type: string
+          format: date-time
+        waivers:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ReviewWaiver'
     ReviewConclusion:
-      description: How a review ended, who ended it and when
+      description: >-
+        How a review ended, who ended it and when. An approval says until
+        when it holds and which rules it waives.
       type: object
       additionalProperties: false
       required: [outcome, concluded_by, concluded_at]
       properties:
         outcome:
           type: string
-          enum: [WITHDRAWN]
+          enum: [WITHDRAWN, APPROVED, REJECTED]
         reason:
           $ref: '#/components/schemas/ReviewReason'
         concluded_by:
@@ -2419,6 +2540,16 @@ components:
         concluded_at:
           type: string
           format: date-time
+        valid_until:
+          description: Until when an approval holds
+          type: string
+          format: date-time
+        waivers:
+          description: The waivers of an approval, by rule
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ReviewWaiver'
     Review:
       description: >-
         A request for a decision on one revision, with its conclusion once it

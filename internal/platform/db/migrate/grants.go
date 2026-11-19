@@ -80,11 +80,12 @@ func ApplicationPrivileges() []TablePrivileges {
 		{"policyreview", "check_rule_outcome", []string{"SELECT", "INSERT"}},
 		{"policyreview", "check_finding", []string{"SELECT", "INSERT"}},
 		// A review is asked for once and concluded once: its request, its
-		// scope and its conclusion are recorded and read back, and no
-		// statement changes or removes any of them.
+		// scope, its conclusion and the waivers of an approval are recorded
+		// and read back, and no statement changes or removes any of them.
 		{"policyreview", "review_request", []string{"SELECT", "INSERT"}},
 		{"policyreview", "review_scope", []string{"SELECT", "INSERT"}},
 		{"policyreview", "review_conclusion", []string{"SELECT", "INSERT"}},
+		{"policyreview", "review_waiver", []string{"SELECT", "INSERT"}},
 	}
 }
 

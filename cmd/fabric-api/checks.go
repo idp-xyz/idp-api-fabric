@@ -83,6 +83,20 @@ func (r checkRevisions) LockAuthor(ctx context.Context, caller checkdomain.Princ
 	}, true)
 }
 
+func (r checkRevisions) LockReviewer(ctx context.Context, caller checkdomain.Principal, revision checkdomain.RevisionRef) (bool, bool, error) {
+	return r.scopes.governance.RevisionReviewer(ctx, governancedomain.Principal(caller),
+		governancedomain.ProductID(revision.ProductID), governancedomain.WorkspaceID(revision.WorkspaceID))
+}
+
+// Recorder is who recorded the revision, for whoever may read it.
+func (r checkRevisions) Recorder(ctx context.Context, target checkports.Target) (checkdomain.Principal, error) {
+	revision, err := r.registry.GetRevision(ctx, checkScope(target), target.RevisionID)
+	if err != nil {
+		return checkdomain.Principal{}, err
+	}
+	return checkdomain.Principal(revision.CreatedBy), nil
+}
+
 // Move changes the status the registry keeps of the revision, in the
 // transaction of the review that asks for it.
 func (r checkRevisions) Move(ctx context.Context, revision checkdomain.RevisionRef, to string) (int64, error) {
