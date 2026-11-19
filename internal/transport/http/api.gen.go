@@ -305,6 +305,7 @@ func (e WorkspaceStatus) Valid() bool {
 // Defines values for WorkspaceRole.
 const (
 	WorkspaceRoleInternalAuthor      WorkspaceRole = "internal_author"
+	WorkspaceRoleInternalReviewer    WorkspaceRole = "internal_reviewer"
 	WorkspaceRoleWorkspaceMaintainer WorkspaceRole = "workspace_maintainer"
 )
 
@@ -312,6 +313,8 @@ const (
 func (e WorkspaceRole) Valid() bool {
 	switch e {
 	case WorkspaceRoleInternalAuthor:
+		return true
+	case WorkspaceRoleInternalReviewer:
 		return true
 	case WorkspaceRoleWorkspaceMaintainer:
 		return true
@@ -744,7 +747,7 @@ type Membership struct {
 	// ProductID The product the workspace belongs to
 	ProductID Identifier `json:"product_id"`
 
-	// Role What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions. Neither manages the workspace or its members, which is for the owners of the product, and neither says anything about another workspace.
+	// Role What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions and runs their checks; an internal_reviewer reads those revisions and checks, and writes and runs none. None of them manages the workspace or its members, which is for the owners of the product, and none says anything about another workspace.
 	Role WorkspaceRole `json:"role"`
 
 	// WorkspaceID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
@@ -756,7 +759,7 @@ type MembershipGrant struct {
 	// Member A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
 	Member Principal `json:"member"`
 
-	// Role What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions. Neither manages the workspace or its members, which is for the owners of the product, and neither says anything about another workspace.
+	// Role What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions and runs their checks; an internal_reviewer reads those revisions and checks, and writes and runs none. None of them manages the workspace or its members, which is for the owners of the product, and none says anything about another workspace.
 	Role WorkspaceRole `json:"role"`
 }
 
@@ -938,7 +941,7 @@ type WorkspaceList struct {
 	NextPageToken *NextPageToken `json:"next_page_token,omitempty"`
 }
 
-// WorkspaceRole What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions. Neither manages the workspace or its members, which is for the owners of the product, and neither says anything about another workspace.
+// WorkspaceRole What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions and runs their checks; an internal_reviewer reads those revisions and checks, and writes and runs none. None of them manages the workspace or its members, which is for the owners of the product, and none says anything about another workspace.
 type WorkspaceRole string
 
 // AudienceConfigID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.

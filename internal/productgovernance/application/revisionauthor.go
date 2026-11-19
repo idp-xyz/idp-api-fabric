@@ -7,6 +7,22 @@ import (
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/domain"
 )
 
+// RevisionReader reports whether actor may read the contract revisions of
+// the workspace now: it holds the author or the reviewer grant there. A
+// reviewer reads what it is to decide on; it writes no revision. A read
+// takes no lock: the grant is read again with every request.
+func (s *ProductGovernance) RevisionReader(ctx context.Context, actor domain.Principal,
+	productID domain.ProductID, workspaceID domain.WorkspaceID) (bool, error) {
+	memberships, err := s.deps.Memberships.HeldBy(ctx, productID, actor)
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(memberships, func(membership domain.Membership) bool {
+		return membership.WorkspaceID == workspaceID &&
+			(membership.Role == domain.RoleInternalAuthor || membership.Role == domain.RoleInternalReviewer)
+	}), nil
+}
+
 // RevisionAuthor holds the current author grant in the asset's workspace.
 // For an import the membership is locked and the product's status is read
 // in the same transaction as registration.

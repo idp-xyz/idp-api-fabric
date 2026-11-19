@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.16.0
+  version: 0.17.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -628,8 +628,8 @@ paths:
       operationId: listRevisions
       summary: List draft revision metadata for an API asset
       description: >-
-        A current internal author of the asset's owning workspace can read
-        its revision history, oldest capture first. The cursor belongs to
+        A current internal author or reviewer of the asset's owning workspace
+        can read its revision history, oldest capture first. The cursor belongs to
         this product and asset and conveys no authorization. Results include
         source and closure digests and omit the original source bytes.
       parameters:
@@ -763,8 +763,8 @@ paths:
       operationId: getRevision
       summary: Read one immutable draft revision's metadata
       description: >-
-        A current internal author of the asset's owning workspace can read
-        a revision that belongs to this asset and product. A revision from
+        A current internal author or reviewer of the asset's owning workspace
+        can read a revision that belongs to this asset and product. A revision from
         a different asset is indistinguishable from one that is missing.
         The files the revision was recorded from are read with
         getRevisionSource.
@@ -811,7 +811,8 @@ paths:
       summary: Read the files a draft revision was recorded from
       description: >-
         Whoever may read a revision may read its source: a current internal
-        author of the asset's owning workspace. To anyone else the answer is
+        author or reviewer of the asset's owning workspace. To anyone else the
+        answer is
         the one getRevision gives, and a revision from a different asset is
         indistinguishable from one that is missing.
         The answer holds the closure that was recorded: the entrypoint and
@@ -872,8 +873,8 @@ paths:
       operationId: listRevisionChecks
       summary: List the recorded checks of one draft revision
       description: >-
-        A current author of the asset's workspace can read the check
-        summaries of the revision. The list is ordered by when the checks
+        A current author or reviewer of the asset's workspace can read the
+        check summaries of the revision. The list is ordered by when the checks
         completed and then their identifiers. Its page token belongs to
         this product, asset and revision. Each summary binds the result to
         its input, policy snapshot and tools.
@@ -910,8 +911,9 @@ paths:
       summary: Execute the policy check of a draft revision
       description: >-
         A current author of the asset's workspace can check a revision in an
-        active product. The check reads its recorded files after verifying the
-        source digests. It uses the built-in policy and versioned tools.
+        active product. A reviewer reads checks and runs none. The check
+        reads its recorded files after verifying the source digests. It uses
+        the built-in policy and versioned tools.
         Each rule reports its own result, including NOT_RUN for rules without
         an evaluator. If a baseline is selected, the compatibility rule uses
         the verified source of that revision of the same asset. The result
@@ -972,8 +974,8 @@ paths:
       operationId: getRevisionCheck
       summary: Read a recorded check with its rule outcomes and findings
       description: >-
-        A current author of the asset's workspace can read a check of the
-        requested revision. A check from another revision is reported as
+        A current author or reviewer of the asset's workspace can read a
+        check of the requested revision. A check from another revision is reported as
         missing. The recorded input digest must match the revision's
         reference closure digest.
       parameters:
@@ -1015,8 +1017,8 @@ paths:
       operationId: compareRevisionCompatibility
       summary: Compare a candidate revision with a chosen baseline
       description: >-
-        A current internal author of the asset's workspace can compare two
-        recorded revisions of that asset. The tool verifies both input
+        A current internal author or reviewer of the asset's workspace can
+        compare two recorded revisions of that asset. The tool verifies both input
         closures and reports observed changes and their classification.
         UNKNOWN denotes uncertainty in the comparison. The response names
         the comparator and its version.
@@ -2542,11 +2544,13 @@ components:
       description: >-
         What a member is in a workspace. A workspace_maintainer creates and
         updates the API assets of the workspace; an internal_author writes and
-        reads its contract revisions. Neither manages the workspace or its
-        members, which is for the owners of the product, and neither says
-        anything about another workspace.
+        reads its contract revisions and runs their checks; an
+        internal_reviewer reads those revisions and checks, and writes and
+        runs none. None of them manages the workspace or its members, which
+        is for the owners of the product, and none says anything about
+        another workspace.
       type: string
-      enum: [workspace_maintainer, internal_author]
+      enum: [workspace_maintainer, internal_author, internal_reviewer]
     MembershipGrant:
       type: object
       additionalProperties: false

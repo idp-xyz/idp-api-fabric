@@ -614,6 +614,139 @@ func TestRunLeavesTheSnapshotsOfTheBuildBeforeGitOriginsAsTheUploadsTheyAre(t *t
 	}
 }
 
+// reviewerRole is the step that gave a workspace its third role.
+const reviewerRole = "productgovernance/007_reviewer_role"
+
+// A database the build before the reviewer role has migrated and written to
+// is brought up to date with what it holds. Every membership stays what it
+// was granted as. Before the step the table takes no reviewer and a process
+// of this build does not start; after it the table takes one, with the
+// statement that build already ran, and still no role nobody defined. The
+// step adds no table and no privilege, so a process of this build starts as
+// soon as the database is migrated, and that build keeps granting the roles
+// it knows.
+func TestRunLetsAWorkspaceHaveReviewersAndLeavesItsMembersWhatTheyAre(t *testing.T) {
+	database := pgtest.FreshDatabase(t)
+	conn := pgtest.Connect(t, database.Migrator)
+
+	plan, err := migrate.Plan()
+	if err != nil {
+		t.Fatalf("build the plan: %v", err)
+	}
+	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool {
+		return step.Schema == "productgovernance" && step.ID >= reviewerRole
+	})
+	if len(before) == len(plan) {
+		t.Fatalf("the plan does not carry %s; this test would pass vacuously", reviewerRole)
+	}
+	if err := migrate.Apply(t.Context(), conn, quiet, before); err != nil {
+		t.Fatalf("migrate as the build before: %v", err)
+	}
+	grantOnWhatIsThere(t, conn, database.ApplicationRole)
+
+	// A product, a workspace and its members as a process of that build
+	// writes them, with the statements it runs.
+	const (
+		cargopai    = "1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6"
+		engineering = "3e1c6a9d-74f2-4b0a-98c3-b2e5f4a6c7d8"
+
+		registerProduct = `
+			INSERT INTO productgovernance.product
+			    (product_id, product_key, display_name, status, owner_identity_provider, owner_organization,
+			     aggregate_version, created_at, created_by_issuer, created_by_subject, updated_at)
+			VALUES ($1, 'cargopai', 'CargoPai', 'ACTIVE', 'https://issuer.example', 'org', 1, $2, 'https://issuer.example', 'platform-admin', $2)`
+		createWorkspace = `
+			INSERT INTO productgovernance.workspace
+			    (workspace_id, product_id, workspace_key, display_name, status, aggregate_version,
+			     created_at, created_by_issuer, created_by_subject, updated_at)
+			VALUES ($1, $2, 'engineering', 'Engineering', 'ACTIVE', 1, $3, 'https://issuer.example', 'alice', $3)`
+		grantMembership = `
+			INSERT INTO productgovernance.workspace_membership
+			    (membership_id, product_id, workspace_id, principal_issuer, principal_subject, role,
+			     membership_version, granted_at, granted_by_issuer, granted_by_subject)
+			VALUES (gen_random_uuid(), $1, $2, 'https://issuer.example', $3, $4, 1, $5, 'https://issuer.example', 'alice')`
+		checkViolation = "23514"
+	)
+	granted := time.Date(2026, 11, 19, 8, 0, 0, 0, time.UTC)
+	app := pgtest.Connect(t, database.Application)
+	if _, err := app.Exec(t.Context(), registerProduct, cargopai, granted); err != nil {
+		t.Fatalf("register a product as the build before: %v", err)
+	}
+	if _, err := app.Exec(t.Context(), createWorkspace, engineering, cargopai, granted); err != nil {
+		t.Fatalf("create a workspace as the build before: %v", err)
+	}
+	grant := func(subject, role string) error {
+		_, err := app.Exec(t.Context(), grantMembership, cargopai, engineering, subject, role, granted)
+		return err
+	}
+	if err := grant("bob", "workspace_maintainer"); err != nil {
+		t.Fatalf("grant a maintainer as the build before: %v", err)
+	}
+	if err := grant("carol", "internal_author"); err != nil {
+		t.Fatalf("grant an author as the build before: %v", err)
+	}
+	if err := grant("rita", "internal_reviewer"); sqlState(err) != checkViolation {
+		t.Fatalf("a reviewer before the step: got %v, want the table to refuse the role", err)
+	}
+
+	// A process of this build does not start on the database as that build
+	// left it, and says which step is missing.
+	opened, err := db.Open(t.Context(), database.Application)
+	if err == nil {
+		opened.Close()
+	}
+	if !errors.Is(err, db.ErrNotMigrated) || !strings.Contains(err.Error(), "migration "+reviewerRole+" is not recorded") {
+		t.Fatalf("on the database as the build before left it: got %v, want %v naming %s", err, db.ErrNotMigrated, reviewerRole)
+	}
+
+	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
+		t.Fatalf("migrate as this build: %v", err)
+	}
+	applied, planned := history(t, conn), planRows(t)
+	byID := func(a, b historyRow) int { return strings.Compare(a.ID, b.ID) }
+	slices.SortFunc(applied, byID)
+	slices.SortFunc(planned, byID)
+	if !slices.Equal(applied, planned) {
+		t.Errorf("the history records\n %+v\nwant every step of the plan, each once\n %+v", applied, planned)
+	}
+	// Migrated, it starts: the role was granted nothing since.
+	opened, err = db.Open(t.Context(), database.Application)
+	if err != nil {
+		t.Fatalf("once it is migrated: %v", err)
+	}
+	opened.Close()
+
+	if err := grant("rita", "internal_reviewer"); err != nil {
+		t.Errorf("a reviewer after the step: %v", err)
+	}
+	// That build is still running while this one is rolled out, and grants
+	// the roles it knows the way it does.
+	if err := grant("dave", "internal_author"); err != nil {
+		t.Errorf("an author as the build before grants one, after the migration: %v", err)
+	}
+	if err := grant("eve", "internal_observer"); sqlState(err) != checkViolation {
+		t.Errorf("a role nobody defined: got %v, want the table to refuse it", err)
+	}
+
+	type member struct{ Subject, Role string }
+	rows, err := conn.Query(t.Context(), `
+		SELECT principal_subject, role FROM productgovernance.workspace_membership
+		WHERE revoked_at IS NULL ORDER BY principal_subject`)
+	if err != nil {
+		t.Fatalf("read the memberships: %v", err)
+	}
+	members, err := pgx.CollectRows(rows, pgx.RowToStructByPos[member])
+	if err != nil {
+		t.Fatalf("read the memberships: %v", err)
+	}
+	want := []member{
+		{"bob", "workspace_maintainer"}, {"carol", "internal_author"}, {"dave", "internal_author"}, {"rita", "internal_reviewer"},
+	}
+	if !slices.Equal(members, want) {
+		t.Errorf("the members are\n %+v\nwant those of before as they were granted, and the reviewer\n %+v", members, want)
+	}
+}
+
 func TestRunRefusesAnAppliedArtifactThatChanged(t *testing.T) {
 	conn := pgtest.Connect(t, pgtest.MigratedDatabase(t).Migrator)
 

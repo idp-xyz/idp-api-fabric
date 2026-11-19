@@ -106,7 +106,7 @@ func TestTheSourceOfARevisionIsWithheldAsTheRevisionIs(t *testing.T) {
 		detail string
 	}{
 		"the caller is no author of the workspace": {
-			registry.ErrForbidden, http.StatusForbidden, CodeForbidden, "The caller is not a current internal author of the workspace."},
+			registry.ErrForbidden, http.StatusForbidden, CodeForbidden, "The caller holds no role in the workspace that allows this."},
 		"the asset has no such revision": {
 			fmt.Errorf("read the source: %w", registry.ErrRevisionNotFound), http.StatusNotFound, "REVISION_NOT_FOUND", ""},
 	}

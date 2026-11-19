@@ -39,6 +39,11 @@ func (s revisionScopes) Author(ctx context.Context, caller registrydomain.Princi
 		governancedomain.ProductID(asset.ProductID), governancedomain.WorkspaceID(asset.WorkspaceID), importing)
 }
 
+func (s revisionScopes) Reader(ctx context.Context, caller registrydomain.Principal, asset registrydomain.AssetRef) (bool, error) {
+	return s.governance.RevisionReader(ctx, governancedomain.Principal(caller),
+		governancedomain.ProductID(asset.ProductID), governancedomain.WorkspaceID(asset.WorkspaceID))
+}
+
 func (a auditTrail) recordRevision(ctx context.Context, entry registryports.AuditEntry) error {
 	return a.Record(ctx, governanceports.AuditEntry{
 		Actor: governancedomain.Principal(entry.Query.Caller), ProductID: governancedomain.ProductID(entry.Query.ProductID),

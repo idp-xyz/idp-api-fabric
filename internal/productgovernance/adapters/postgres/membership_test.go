@@ -461,6 +461,22 @@ func TestTheSchemaHoldsTheLineOfAMembership(t *testing.T) {
 	if sqlState(err) != checkViolation {
 		t.Errorf("a membership in the role that owns a product: got %v, want a check violation", err)
 	}
+	// Every role of a workspace is one the table takes and hands back, the
+	// reviewer's included, and a role nobody defined is none.
+	for _, role := range domain.WorkspaceRoles() {
+		holder := domain.Principal{Issuer: bob.Issuer, Subject: "holds-" + string(role)}
+		f.grant(t, membership(t, s.cargopai, s.engineering, holder, role))
+		held, err := f.memberships.HeldBy(t.Context(), s.cargopai.ID, holder)
+		if err != nil || len(held) != 1 || held[0].Role != role {
+			t.Errorf("a membership as %s is read back as %+v: %v", role, held, err)
+		}
+	}
+	observer := membership(t, s.cargopai, s.engineering, alice, domain.RoleInternalReviewer)
+	observer.Role = "internal_observer"
+	err = f.fabric.WithinTransaction(t.Context(), func(ctx context.Context) error { return f.memberships.Add(ctx, observer) })
+	if sqlState(err) != checkViolation {
+		t.Errorf("a membership in a role nobody defined: got %v, want a check violation", err)
+	}
 
 	// The application role, writing by hand.
 	const update = `UPDATE productgovernance.workspace_membership SET `
