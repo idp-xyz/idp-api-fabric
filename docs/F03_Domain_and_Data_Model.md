@@ -301,7 +301,44 @@ Git 来源是提交者的声明：仓库的 https 网址（至多 300 个字符�
 
 **升级。** 从 0.7.0 之后升级，执行 `fabric-migrate -apply -grant-to <application_role>`：应用上述迁移，并授予应用角色这四张表的权限。读取原文需要 `source_file` 的 `SELECT`，这项授权没有对应的迁移步骤，缺少时新进程拒绝启动并指出缺少的权限。迁移 002 把已有的快照保留为 `UPLOAD`。旧进程在迁移后的库上仍能登记上传，但它不认识 Git 来源，按内容查重时也不区分来源；过渡期内，一次与某个 Git 修订内容相同的上传可能得到那个 Git 修订。应在所有进程升级之后再开始带 Git 来源导入。
 
-**尚未实现。** 来源登记（每个资产允许的仓库和引用策略）、CI 服务身份、由 Fabric 读取 Git（FR-021，V1）、按提交查找修订、记录相同内容在后续提交中的出现、修订的状态流转，以及检查、评审和 Release。
+**尚未实现。** 来源登记（每个资产允许的仓库和引用策略）、CI 服务身份、由 Fabric 读取 Git（FR-021，V1）、按提交查找修订、记录相同内容在后续提交中的出现、修订的状态流转，以及评审和 Release。检查见 §5.8。
+
+### 5.8 已实现的契约检查
+
+本节记录 PR #22–#33（管理 API 0.13.0–0.16.0）的实现事实，不替代 §5.4 逻辑模型的候选状态。权威 DDL 为 `migrations/policyreview/001_check_run.sql` 和 `002_check_compatibility.sql`。接口见 F04 §11.4，权限见 F05 §6.5。
+
+**检查是证据，不是许可。** 一次检查（CheckRun）记下读了什么、按哪份策略、由哪些工具、对每条规则得出什么结论。它写入一次，之后不变；再检查一次是另一条记录。检查的结论不批准修订，也不发布任何东西：评审（ReviewDecision）、豁免和 Release 尚未实现，所以现在没有任何操作会因为检查的结论被拦下。Policy & Review 的表只通过 Contract Registry 和 API Catalog 签发的编号指向修订和资产，不设跨 schema 外键。
+
+| 表 | 内容 | 关键约束 |
+|---|---|---|
+| `policyreview.policy_snapshot` | 检查所依据的策略的原文：`policy_set_id`、`policy_digest`、`policy_document` 和记录时间 | 一个产品对一份策略只有一个快照（`(product_id, policy_digest)` 唯一）；表约束要求 `policy_digest` 等于文档的 SHA-256 |
+| `policyreview.check_run` | 一次检查：所属产品、Workspace、资产和修订，策略快照，`input_digest`（修订的 `ref_closure_digest`），`tool_manifest` 和 `tool_digest`，总状态，起止时间和发起人；带基线时还有 `baseline_revision_id` 和 `compatibility_document` | 总状态只能是 `PASS`、`WARN`、`FAIL`、`UNKNOWN`；`tool_digest` 等于工具清单的 SHA-256；结束不早于开始；基线和比较文档同有同无，基线不能是被检查的修订本身；唯一约束 `check_run_once_key` 见下 |
+| `policyreview.check_rule_outcome` | 策略里的每条规则一行：状态、发现总数、评估它的工具和版本、规则在策略里的位置 | 状态是 `PASS`、`WARN`、`FAIL`、`UNKNOWN`、`NOT_RUN` 之一；`NOT_RUN` 当且仅当没有工具；`PASS` 和 `NOT_RUN` 没有发现，`FAIL` 和 `WARN` 至少有一个 |
+| `policyreview.check_finding` | 发现：规则、级别（`BLOCK` 或 `WARN`）、文件路径、可选的 JSON Pointer 和行号、说明 | 说明 1–300 个字符，路径 1–200 个字符，指针至多 1024 个字符；外键保证发现属于本次检查的某条规则 |
+
+四张表都只增不改，应用角色只有 `SELECT` 和 `INSERT`。索引 `check_run_history (product_id, api_asset_id, revision_id, completed_at, check_run_id)` 支撑检查历史。
+
+**策略。** 目前只有一份策略：全局基线 `fabric-global-contract-governance`。它取 `governance/policies/F04_Rules_Registry.json` 里阶段为 MVP 的 23 条规则（V1 的 5 条不在内），写在代码里，由测试保证与登记表逐项一致。策略文档是规则集名称加上按编号排序的规则的规范化 JSON，`policy_digest` 是它的 SHA-256；规则有任何改动就是另一份策略，也就是另一个快照。产品还不能追加自己的规则（FR-026）。
+
+**工具和状态。** 工具清单是按名称排序的 `[{name, version}]` 的 JSON，`tool_digest` 是它的 SHA-256。现在有两个内置工具：`fabric-openapi-rules`（版本 3）评估 F04-GOV-001 到 012；`fabric-openapi-compatibility`（版本 1）只在检查指定了基线修订时参与，评估 F04-GOV-013。其余 10 条规则（F04-GOV-014 到 020、025 到 027）没有工具评估，每次检查都如实记为 `NOT_RUN`。工具对同样的文件会得出不同结论的任何改动，都要换版本号。
+
+一条规则的状态：有阻断级的发现是 `FAIL`；判断不了是 `UNKNOWN`；只有警告级的发现是 `WARN`；评估过且没有发现是 `PASS`；没有工具评估是 `NOT_RUN`。一次检查的总状态取风险上界，顺序是 `FAIL`、`UNKNOWN`、`WARN`、`PASS`：只要有规则没评估或判断不了，总状态就不会好于 `UNKNOWN`（F04 §8）。所以在那 10 条规则有工具之前，总状态只会是 `FAIL` 或 `UNKNOWN`，不会出现 `PASS` 或 `WARN`。
+
+每条规则最多保留 50 个发现，规则的发现总数记全部。发现的说明由工具写成一行，说哪里不对、怎么改，不复述命中的内容：发现凭证时只说那一行有凭证形式的内容和它的种类。
+
+**同一组输入只记一次。** 同一修订、同一策略快照、同一组工具、同一基线（或都没有基线）只有一条检查：唯一约束 `check_run_once_key (revision_id, policy_snapshot_id, tool_digest, baseline_revision_id)`，没有基线的按相同处理（`NULLS NOT DISTINCT`）。记录之前按修订加事务级咨询锁，同时到达的请求一个一个判断，后到的得到已经记录的那一次。策略、工具版本或基线有一样不同，就是另一次检查。
+
+**基线比较。** 指定基线时，检查读取同一资产的另一个修订的原文，由比较器给两者的差异分类。结果包括基线修订和它的输入摘要、比较器和版本、总分类、至多 100 条差异以及是否截断，作为规范化 JSON 存在 `compatibility_document` 里，是规则 F04-GOV-013 的证据。分类规则见 F04 §11.4。
+
+**读取时的核对。** 读出一次检查时重新核对：策略文档与摘要是否相符，工具清单是否是规范写法，每条规则是否都有结论，结论与规则的级别和发现数是否相符，总状态是否等于各规则结论的汇总，比较文档与规则 F04-GOV-013 的结论是否相符。此外，检查记录的 `input_digest` 必须等于修订现在的闭包摘要；带基线的，基线修订现在的摘要必须等于当时记录的。任何一项不符，都不返回这次检查。这些核对查的是各行是否自洽、是否仍对应那个修订。数据都在同一个数据库里，能把相关的行一起改写的人不会被发现，所以它不是防篡改证明。
+
+**事务和事件。** 策略快照、检查、各规则的结论、发现、成功审计和 Outbox 事件 `fabric.policyreview.check_run.completed`（版本 1）在一个事务内提交，任何一步失败都不留下任何一行。事件载荷是事件编号、时间、关联编号、产品、资产、修订、检查编号（聚合编号，聚合版本恒为 1）、输入摘要、策略摘要和总状态，不含规则结论和发现。返回已经记录的检查时不写审计，也不发事件。
+
+**与逻辑模型的对应。** §5.4 的 `PolicySnapshot` 和 `CheckRun` 有了物理表，`ReviewDecision` 和 `WaiverRef` 尚未实现。§9 的 `RequestCheckRun` 设想由 Worker 异步执行并写出报告制品；现在检查在请求内同步完成，原文通过 Contract Registry 读取（读出时已核对摘要，见 §5.7），不访问文件系统和网络，没有排队、重试和报告制品。检查也不绑定受众和环境。
+
+**升级。** 从 0.12.0 升级，执行 `fabric-migrate -apply -grant-to <application_role>`：应用上述两个迁移，并授予应用角色 `policyreview` 的 `USAGE` 和四张表的 `SELECT`、`INSERT`。库没有迁移时，新进程拒绝启动并指出缺少的表；迁移了但没有授权时，拒绝启动并列出缺少的权限。0.12.0 的进程在迁移后的库上照常运行，只是没有检查接口。迁移 002 的唯一约束用到 `NULLS NOT DISTINCT`，需要 PostgreSQL 15 或更高版本。
+
+**尚未实现。** 评审和豁免（FR-027、FR-028）、产品级策略（FR-026）、其余 10 条规则的工具、导入后自动检查、由 Worker 异步执行、检查与受众和环境的绑定、CI 服务身份读取检查，以及 Release。
 
 ## 6. 数据权威、制品摘要与可追溯发布链
 
