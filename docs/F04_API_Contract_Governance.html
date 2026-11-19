@@ -48,7 +48,7 @@
 @media(max-width:780px){.doc .table-scroll table{min-width:720px;width:max-content;display:table}.architecture-figure{overflow-wrap:anywhere}.fig-grid.cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.fig-grid.cols-3{grid-template-columns:1fr}.doc .architecture-figure{padding:12px 9px}}
 @media print{.doc .architecture-figure{break-inside:avoid}.doc .table-scroll table{min-width:0;width:100%}}
-</style></head><body><a class="skip-link" href="#main-content">跳到文档正文</a><button id="sideBackdrop" class="side-backdrop" aria-label="关闭章节目录" aria-hidden="true" tabindex="-1"></button><div class="layout"><aside class="side" id="sidebar"><a href="../index.html" style="text-decoration:none"><div class="logo">IDP API Fabric<small>ENGINEERING BASELINE</small></div></a><div class="side-kicker">文档体系</div><div class="navlist"><a href="F01_Product_Requirements.html" class="">F01 · Product Requirements</a><a href="F02_System_Architecture.html" class="">F02 · System Architecture</a><a href="F03_Domain_and_Data_Model.html" class="">F03 · Domain & Data Model</a><a href="F04_API_Contract_Governance.html" class="active">F04 · Contract Governance</a><a href="F05_Security_and_Multitenancy.html" class="">F05 · Security & Multitenancy</a><div class="pending">F06 · Dual Portal Experience <span class="mini">待编写</span></div><div class="pending">F07 · Engineering & Quality <span class="mini">待编写</span></div><a href="F08_Delivery_and_Acceptance.html" class="">F08 · Delivery & Acceptance</a></div><hr><div class="side-kicker">F04 · 目录</div><input id="navsearch" type="search" placeholder="筛选本文章节…" aria-label="筛选目录章节"><nav class="navlist" id="toc"><a href="#section-0" style="">0. 执行摘要与设计裁决</a><a href="#section-1" style="">1. 规范效力、适用范围和依赖</a><a href="#section-1-1" style="padding-left:24px">1.1 项目约束继承</a><a href="#section-1-2" style="padding-left:24px">1.2 规范与成熟度矩阵（截至 2026-11-09）</a><a href="#section-2" style="">2. 契约治理对象、身份与 Schema 边界</a><a href="#section-2-1" style="padding-left:24px">2.1 Canonical digest 与源文件保真</a><a href="#section-2-2" style="padding-left:24px">2.2 引用安全与供应链信任</a><a href="#section-3" style="">3. OpenAPI HTTP 契约设计基线</a><a href="#section-3-1" style="padding-left:24px">3.1 每个 Operation 必需的业务语义</a><a href="#section-3-1-1" style="padding-left:24px">3.1.1 已实现的列表与查询参数约定（PR #7，2026-11-17 同步）</a><a href="#section-3-2" style="padding-left:24px">3.2 Schema 表达规范</a><a href="#section-3-3" style="padding-left:24px">3.3 Fabric 自身的管理 HTTP 示例</a><a href="#section-4" style="">4. AsyncAPI / 事件契约（V1 详细设计，MVP 守住边界）</a><a href="#section-5" style="">5. 变更兼容性：四类判断而非单一 Pass/Fail</a><a href="#section-5-1" style="padding-left:24px">5.1 HTTP 变更决策矩阵</a><a href="#section-5-2" style="padding-left:24px">5.2 事件兼容矩阵</a><a href="#section-6" style="">6. 版本、废弃、迁移及政策发布</a><a href="#section-7" style="">7. 分层治理规则与策略评估顺序</a><a href="#section-7-1" style="padding-left:24px">7.1 Rule Registry 模型</a><a href="#section-7-2" style="padding-left:24px">7.2 优先级和冲突裁决</a><a href="#section-8" style="">8. 检查流水线及可核验输出</a><a href="#section-9" style="">9. ReviewDecision、批准、Waiver 与失效</a><a href="#section-10" style="">10. 多产品多受众的发布与恢复语义</a><a href="#section-10-1" style="padding-left:24px">10.1 典型失败模式</a><a href="#section-11" style="">11. Fabric 自身 API 的 HTTP/幂等/错误边界</a><a href="#section-11-1" style="padding-left:24px">11.1 已实现的受众配置与品牌接口（PR #10 / #11）</a><a href="#section-11-2" style="padding-left:24px">11.2 通用治理约定</a><a href="#section-11-3" style="padding-left:24px">11.3 已实现的 API 资产与契约修订接口</a><a href="#section-11-4" style="padding-left:24px">11.4 已实现的契约检查接口</a><a href="#section-12" style="">12. API Catalog 元数据、文档产物和发布加工</a><a href="#section-13" style="">13. CI/CD、Go 工程集成与制品清单</a><a href="#section-14" style="">14. 最小机器可执行资产与负向样例</a><a href="#section-15" style="">15. 契约治理场景与拒绝证明</a><a href="#section-16" style="">16. 上位规范符合性与风险分工</a><a href="#section-17" style="">17. 与 F01/F02/F03 的追溯关系</a><a href="#section-18" style="">18. 双门户必需的治理可解释性输入</a><a href="#section-19" style="">19. 决策未决清单及明确责任移交</a><a href="#section-20" style="">20. 交付完成定义与证据状态</a><a href="#section-21" style="">21. 规范参考与来源</a></nav><div class="side-foot">V1.0 · 设计候选 / 待具名批准<br>示范 lint PASS 不是官方规范与生产安全验证通过。</div></aside><div class="main"><header class="topbar"><div><button class="menu" id="menu" aria-label="展开目录" aria-controls="sidebar" aria-expanded="false">☰ 目录</button><span class="crumb"><strong>IDP API Fabric</strong>　/　设计基线　/　F04</span></div><div class="top-actions"><a class="desktop-only" href="../index.html">总目录</a><a href="F04_API_Contract_Governance.md">Markdown 源文件</a><button onclick="window.print()">打印 / PDF</button></div></header><main id="main-content" class="sheet" tabindex="-1"><header class="hero"><div class="eyebrow">F04 · API Contract Governance</div><h1>IDP API Fabric<br>API 契约与治理规范</h1><p>OpenAPI / AsyncAPI · 兼容性策略 · 不可变制品 · 安全发布 · 可执行规则 · 真实证据</p><div class="hero-meta"><span>V1.0 · 设计待评审</span><span>2026.11.09</span><span>正式工程目录</span><span>完整工具与业务验证 NOT_RUN</span></div></header><div class="metrics"><div class="metric"><b>8</b><span>专业规则及流程图</span></div><div class="metric"><b>28</b><span>可机读候选治理规则</span></div><div class="metric"><b>24</b><span>待执行集成验证场景</span></div><div class="metric"><b>89</b><span>F01 FR / NFR 追溯项</span></div></div><article class="doc">
+</style></head><body><a class="skip-link" href="#main-content">跳到文档正文</a><button id="sideBackdrop" class="side-backdrop" aria-label="关闭章节目录" aria-hidden="true" tabindex="-1"></button><div class="layout"><aside class="side" id="sidebar"><a href="../index.html" style="text-decoration:none"><div class="logo">IDP API Fabric<small>ENGINEERING BASELINE</small></div></a><div class="side-kicker">文档体系</div><div class="navlist"><a href="F01_Product_Requirements.html" class="">F01 · Product Requirements</a><a href="F02_System_Architecture.html" class="">F02 · System Architecture</a><a href="F03_Domain_and_Data_Model.html" class="">F03 · Domain & Data Model</a><a href="F04_API_Contract_Governance.html" class="active">F04 · Contract Governance</a><a href="F05_Security_and_Multitenancy.html" class="">F05 · Security & Multitenancy</a><div class="pending">F06 · Dual Portal Experience <span class="mini">待编写</span></div><div class="pending">F07 · Engineering & Quality <span class="mini">待编写</span></div><a href="F08_Delivery_and_Acceptance.html" class="">F08 · Delivery & Acceptance</a></div><hr><div class="side-kicker">F04 · 目录</div><input id="navsearch" type="search" placeholder="筛选本文章节…" aria-label="筛选目录章节"><nav class="navlist" id="toc"><a href="#section-0" style="">0. 执行摘要与设计裁决</a><a href="#section-1" style="">1. 规范效力、适用范围和依赖</a><a href="#section-1-1" style="padding-left:24px">1.1 项目约束继承</a><a href="#section-1-2" style="padding-left:24px">1.2 规范与成熟度矩阵（截至 2026-11-09）</a><a href="#section-2" style="">2. 契约治理对象、身份与 Schema 边界</a><a href="#section-2-1" style="padding-left:24px">2.1 Canonical digest 与源文件保真</a><a href="#section-2-2" style="padding-left:24px">2.2 引用安全与供应链信任</a><a href="#section-3" style="">3. OpenAPI HTTP 契约设计基线</a><a href="#section-3-1" style="padding-left:24px">3.1 每个 Operation 必需的业务语义</a><a href="#section-3-1-1" style="padding-left:24px">3.1.1 已实现的列表与查询参数约定（PR #7，2026-11-17 同步）</a><a href="#section-3-2" style="padding-left:24px">3.2 Schema 表达规范</a><a href="#section-3-3" style="padding-left:24px">3.3 Fabric 自身的管理 HTTP 示例</a><a href="#section-4" style="">4. AsyncAPI / 事件契约（V1 详细设计，MVP 守住边界）</a><a href="#section-5" style="">5. 变更兼容性：四类判断而非单一 Pass/Fail</a><a href="#section-5-1" style="padding-left:24px">5.1 HTTP 变更决策矩阵</a><a href="#section-5-2" style="padding-left:24px">5.2 事件兼容矩阵</a><a href="#section-6" style="">6. 版本、废弃、迁移及政策发布</a><a href="#section-7" style="">7. 分层治理规则与策略评估顺序</a><a href="#section-7-1" style="padding-left:24px">7.1 Rule Registry 模型</a><a href="#section-7-2" style="padding-left:24px">7.2 优先级和冲突裁决</a><a href="#section-8" style="">8. 检查流水线及可核验输出</a><a href="#section-9" style="">9. ReviewDecision、批准、Waiver 与失效</a><a href="#section-10" style="">10. 多产品多受众的发布与恢复语义</a><a href="#section-10-1" style="padding-left:24px">10.1 典型失败模式</a><a href="#section-11" style="">11. Fabric 自身 API 的 HTTP/幂等/错误边界</a><a href="#section-11-1" style="padding-left:24px">11.1 已实现的受众配置与品牌接口（PR #10 / #11）</a><a href="#section-11-2" style="padding-left:24px">11.2 通用治理约定</a><a href="#section-11-3" style="padding-left:24px">11.3 已实现的 API 资产与契约修订接口</a><a href="#section-11-4" style="padding-left:24px">11.4 已实现的契约检查接口</a><a href="#section-11-5" style="padding-left:24px">11.5 已实现的契约评审接口</a><a href="#section-12" style="">12. API Catalog 元数据、文档产物和发布加工</a><a href="#section-13" style="">13. CI/CD、Go 工程集成与制品清单</a><a href="#section-14" style="">14. 最小机器可执行资产与负向样例</a><a href="#section-15" style="">15. 契约治理场景与拒绝证明</a><a href="#section-16" style="">16. 上位规范符合性与风险分工</a><a href="#section-17" style="">17. 与 F01/F02/F03 的追溯关系</a><a href="#section-18" style="">18. 双门户必需的治理可解释性输入</a><a href="#section-19" style="">19. 决策未决清单及明确责任移交</a><a href="#section-20" style="">20. 交付完成定义与证据状态</a><a href="#section-21" style="">21. 规范参考与来源</a></nav><div class="side-foot">V1.0 · 设计候选 / 待具名批准<br>示范 lint PASS 不是官方规范与生产安全验证通过。</div></aside><div class="main"><header class="topbar"><div><button class="menu" id="menu" aria-label="展开目录" aria-controls="sidebar" aria-expanded="false">☰ 目录</button><span class="crumb"><strong>IDP API Fabric</strong>　/　设计基线　/　F04</span></div><div class="top-actions"><a class="desktop-only" href="../index.html">总目录</a><a href="F04_API_Contract_Governance.md">Markdown 源文件</a><button onclick="window.print()">打印 / PDF</button></div></header><main id="main-content" class="sheet" tabindex="-1"><header class="hero"><div class="eyebrow">F04 · API Contract Governance</div><h1>IDP API Fabric<br>API 契约与治理规范</h1><p>OpenAPI / AsyncAPI · 兼容性策略 · 不可变制品 · 安全发布 · 可执行规则 · 真实证据</p><div class="hero-meta"><span>V1.0 · 设计待评审</span><span>2026.11.09</span><span>正式工程目录</span><span>完整工具与业务验证 NOT_RUN</span></div></header><div class="metrics"><div class="metric"><b>8</b><span>专业规则及流程图</span></div><div class="metric"><b>28</b><span>可机读候选治理规则</span></div><div class="metric"><b>24</b><span>待执行集成验证场景</span></div><div class="metric"><b>89</b><span>F01 FR / NFR 追溯项</span></div></div><article class="doc">
 <p><strong>正式路径</strong>：<code>docs/F04_API_Contract_Governance.md</code> 　<strong>文档版本</strong>：V1.0（沿用工程基线）　<strong>日期</strong>：2026-11-09<br/>
 <strong>状态</strong>：完整设计候选，<strong>待具名领域/安全/架构批准</strong>；本稿中规则与示例是候选实施约束，不是已运行生产系统。<br/>
 <strong>输入</strong>：F01（FR-001–071 / NFR-01–18 / AT-01–12）、F02（AI-01–07、ADR-0001–0006 Proposed）、F03（INV-01–13、DM-01–18、OD-01–10）；上位规范 <code>IDP-SCG-STD-001</code>。<br/>
@@ -741,6 +741,7 @@
 </tbody>
 </table></div>
 <p>审批历史为追加式，状态迁移与事实不可变约束继承 F03。所有后台定期审查的 TTL、复核频次与应急权限仍待批准。</p>
+<p>已实现的提交评审、撤回、批准、驳回和豁免见 §11.5；上表中 <code>POLICY_STALE</code> 和 <code>WAIVER_FORBIDDEN</code> 已有对应的行为，其余各行要等 Release 引用批准时才判断。</p>
 <h2 id="section-10">10. 多产品多受众的发布与恢复语义</h2>
 <p><code>PublicationTarget = (product_id, audience, environment, portal_id)</code>；<code>PublicationSlot</code> 唯一 <code>(target_id,api_asset_id)</code>。同一 CargoPai Portal 可展示 Shipment 与 Tracking 两个 API，并独立更新。<strong>此为 F03 OD-03 对 ADR-0004 的细化候选，尚需正式架构批准</strong>。</p>
 <div aria-label="可左右滚动的 API 治理与测试表格" class="table-scroll" role="region" tabindex="0"><table>
@@ -927,7 +928,7 @@
 <p><strong>读取原文。</strong> 响应包含 <code>revision_id</code>、<code>source_snapshot_id</code>、<code>entrypoint</code>、<code>source_digest</code>、<code>ref_closure_digest</code> 和 <code>files</code>。入口文件的摘要就是 <code>source_digest</code>。提交时没有被引用到的文件不在其中。Fabric 在返回前按存储内容重新计算摘要；与修订记录不符时不返回文件，响应为 500 <code>INTERNAL_ERROR</code>；修订编号和原因写入日志，日志的 <code>correlation_id</code> 就是响应里的 <code>trace_id</code>。此时修订的元数据仍可读取。</p>
 <p><strong>兼容性。</strong> 0.11.0 给 <code>ContractRevision.source_kind</code> 增加了 <code>GIT</code>，并给 <code>ContractRevision</code> 增加了可选的 <code>git_origin</code>。按 §5.1，响应枚举增加成员属于 RISKY：把枚举当作封闭集合、或拒绝未知字段的客户端，需要先升级才能读取从 Git 导入的修订。没有带来源导入之前，响应与 0.10.0 相同。</p>
 <h3 id="section-11-4">11.4 已实现的契约检查接口</h3>
-<p>本节对应 PR #22–#33。下表路径以 <code>/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}</code> 开头。当前管理 API 为 0.16.0：0.13.0 加入发起检查，0.14.0 加入检查详情和历史，0.15.0 加入修订比较，0.16.0 让检查可以指定基线并带出比较结果。数据模型见 F03 §5.8，访问规则见 F05 §6.5。</p>
+<p>本节对应 PR #22–#33。下表路径以 <code>/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}</code> 开头。这些接口随管理 API 0.13.0–0.16.0 加入：0.13.0 加入发起检查，0.14.0 加入检查详情和历史，0.15.0 加入修订比较，0.16.0 让检查可以指定基线并带出比较结果。数据模型见 F03 §5.8，访问规则见 F05 §6.5。0.17.0 起评审人也能读检查和比较（§11.5）。</p>
 <div aria-label="可左右滚动的 API 治理与测试表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
 <tr>
@@ -1055,6 +1056,100 @@
 <p><strong>错误。</strong> 修订不属于该资产或不存在，返回 404 <code>REVISION_NOT_FOUND</code>；检查不属于该修订或不存在，返回 404 <code>CHECK_RUN_NOT_FOUND</code>。编号不是 UUID、页大小超过 100、比较时没有给基线，返回 400 <code>REQUEST_INVALID</code>；分页令牌属于另一个修订的列表，返回 400 <code>PAGE_TOKEN_INVALID</code>。产品已暂停时不能发起检查，返回 409 <code>PRODUCT_NOT_ACTIVE</code>，重复请求已有的检查也是如此；读取和比较不受影响。存储的检查与记录时不符（F03 §5.8），或修订的原文核对失败时，返回 500 <code>INTERNAL_ERROR</code>，响应不说原因；日志在 <code>correlation_id</code>（就是响应里的 <code>trace_id</code>）下写明是哪一次检查和原因。这时同一修订的检查历史也返回 500，其他修订不受影响。</p>
 <p><strong>与 §8 示例的差别。</strong> §8 的 CheckRun 示例里的 <code>target_scope</code> 没有实现：检查不绑定受众和环境。<code>tool_manifest</code> 的每项只有名称和版本，没有 <code>support_level</code>。</p>
 <p><strong>兼容性。</strong> 0.13.0–0.16.0 只增加操作和 schema，没有改变此前已有的响应。0.16.0 给 0.13.0 加入的发起检查增加了可选查询参数，并给检查的全文和概要增加了可选的 <code>compatibility</code>；不带基线发起的检查，响应里没有这个成员。</p>
+<h3 id="section-11-5">11.5 已实现的契约评审接口</h3>
+<p>本节对应管理 API 0.17.0–0.19.0，当前为 0.19.0：0.17.0 加入评审人角色，0.18.0 加入提交评审、撤回和读取，0.19.0 加入批准和驳回。下表路径以 <code>/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}</code> 开头。数据模型见 F03 §5.9，访问规则见 F05 §6.6。§9 的设计在这里落地了一部分，差别见本节末尾。</p>
+<div aria-label="可左右滚动的 API 治理与测试表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>操作</th>
+<th>请求与响应</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST …/reviews</code></td>
+<td>提交 <code>check_run_id</code>、<code>scope</code> 和可选的 <code>note</code>。成功返回 201、<code>Location</code> 和评审，修订变为 <code>IN_REVIEW</code></td>
+</tr>
+<tr>
+<td><code>GET …/reviews</code></td>
+<td>这个修订的评审历史，按申请时间从早到晚，同一时刻按编号，采用 §3.1.1 的分页约定</td>
+</tr>
+<tr>
+<td><code>GET …/reviews/{review_id}</code></td>
+<td>一条评审</td>
+</tr>
+<tr>
+<td><code>POST …/reviews/{review_id}/withdrawal</code></td>
+<td>请求体是 <code>{}</code> 或 <code>{"reason": …}</code>。成功返回 200 和评审，修订变为 <code>WITHDRAWN</code></td>
+</tr>
+<tr>
+<td><code>POST …/reviews/{review_id}/decision</code></td>
+<td>提交 <code>outcome</code>（<code>APPROVED</code> 或 <code>REJECTED</code>），以及 <code>reason</code>、<code>valid_until</code>、<code>waivers</code>。成功返回 200 和评审，修订变为 <code>APPROVED</code> 或 <code>REJECTED</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>全部响应带 <code>Cache-Control: no-store</code>。申请和结论记录后不变，所以没有 <code>ETag</code> 和 <code>If-Match</code>；并发由修订的状态保证，见“状态和并发”。三个写操作都没有 <code>Idempotency-Key</code>：重复提交、重复撤回和重复决定得到 409，不会产生第二条记录。</p>
+<p><strong>评审。</strong> 响应包含评审、产品、资产和修订的编号，<code>check_run_id</code> 和 <code>input_digest</code>（那次检查读的内容，即修订的闭包摘要），<code>status</code>，<code>scope</code>，可选的 <code>note</code>，<code>requested_by</code>（签发方和主体）和 <code>requested_at</code>；结束之后还有 <code>conclusion</code>。<code>status</code> 在结束之前是 <code>IN_REVIEW</code>，之后是结论的 <code>outcome</code>：<code>WITHDRAWN</code>、<code>APPROVED</code> 或 <code>REJECTED</code>。<code>conclusion</code> 有 <code>outcome</code>、可选的 <code>reason</code>、<code>concluded_by</code>、<code>concluded_at</code>；批准还有 <code>valid_until</code>，有豁免时还有 <code>waivers</code>，按规则编号排列。</p>
+<p><strong>提交。</strong> <code>scope</code> 是 1 到 6 个不重复的 <code>{audience, environment}</code>，受众是 <code>public</code>、<code>partner</code>、<code>internal</code>，环境是 <code>sandbox</code>、<code>production</code>；响应里按受众、环境排序。<code>note</code> 是 1–500 个字符的一行文字。<code>check_run_id</code> 必须是这个修订的一次检查，否则返回 404 <code>CHECK_RUN_NOT_FOUND</code>。这次检查还必须能作为决定的依据：</p>
+<div aria-label="可左右滚动的 API 治理与测试表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>情形</th>
+<th>响应</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>检查不是按现行策略和现行工具版本做的</td>
+<td>409 <code>POLICY_STALE</code>，重新检查后再提交</td>
+</tr>
+<tr>
+<td>检查里有不可豁免的规则是 <code>FAIL</code> 或 <code>UNKNOWN</code></td>
+<td>409 <code>REVIEW_BLOCKED</code>，要改契约，提交新修订</td>
+</tr>
+<tr>
+<td>修订不是 <code>DRAFT</code> 或 <code>WITHDRAWN</code></td>
+<td>409 <code>REVISION_STATUS_CONFLICT</code></td>
+</tr>
+<tr>
+<td>产品已暂停</td>
+<td>409 <code>PRODUCT_NOT_ACTIVE</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>“现行”指检查的 <code>policy_digest</code> 等于现在的基线策略，<code>tool_manifest</code> 里的每个工具都是现在的版本。带不带基线都可以；带了基线而 F04-GOV-013 没通过时，这条规则可豁免，见“决定”。可豁免的规则没通过不妨碍提交。</p>
+<p><strong>撤回。</strong> 只有提交这条申请的人能撤回，并且他仍是这个 Workspace 的作者；别人撤回返回 403 <code>FORBIDDEN</code>。评审已经结束时返回 409 <code>REVIEW_CONCLUDED</code>。<code>reason</code> 可选，1–1000 个字符的一行文字。产品暂停时仍可撤回。撤回后的修订可以再次提交，那是它的下一条评审。</p>
+<p><strong>决定。</strong> 驳回必须带 <code>reason</code>，不能带 <code>valid_until</code> 和 <code>waivers</code>。批准必须带 <code>valid_until</code>：晚于现在，至多 365 天之后；<code>reason</code> 可选。批准时检查必须仍是现行的，否则返回 409 <code>POLICY_STALE</code>；这样的评审仍然可以驳回或撤回。</p>
+<p><code>waivers</code> 的每一项是 <code>rule_id</code>、<code>reason</code>、可选的 <code>compensating_control</code> 和 <code>expires_at</code>，至多 100 项。批准必须给检查里每条可豁免而状态是 <code>FAIL</code> 或 <code>UNKNOWN</code> 的规则各一项豁免，不多不少：</p>
+<div aria-label="可左右滚动的 API 治理与测试表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>情形</th>
+<th>响应</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>有这样的规则没有豁免</td>
+<td>409 <code>WAIVER_REQUIRED</code></td>
+</tr>
+<tr>
+<td>豁免了不可豁免的规则，不论它的状态</td>
+<td>422 <code>WAIVER_FORBIDDEN</code></td>
+</tr>
+<tr>
+<td>豁免了可豁免但不需要豁免的规则（状态是 <code>PASS</code>、<code>WARN</code> 或 <code>NOT_RUN</code>），或策略里没有的规则；同一条规则豁免两次；豁免的到期时间不晚于现在或晚于 <code>valid_until</code></td>
+<td>422 <code>REQUEST_UNPROCESSABLE</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>哪些规则需要豁免，读那次检查就知道：<code>outcomes</code> 里 <code>waivable</code> 为真、状态是 <code>FAIL</code> 或 <code>UNKNOWN</code> 的那些。基线的 23 条规则里可豁免的是 F04-GOV-002、003、007 和 013，其中 007 的级别是 <code>WARN</code>：有发现时状态是 <code>WARN</code>，不需要豁免。带基线的检查里，F04-GOV-013 在 <code>BREAKING</code> 时是 <code>FAIL</code>，在 <code>RISKY</code> 和 <code>UNKNOWN</code> 时是 <code>UNKNOWN</code>（§11.4），两种情况批准时都要豁免：破坏性变更和判断不了的变更不会被自动放行，评审人要写明理由。</p>
+<p><code>WARN</code> 和 <code>NOT_RUN</code> 的规则不需要豁免。基线里有 10 条规则没有工具，每次检查都是 <code>NOT_RUN</code>（§11.4），所以现在的批准都是在这 10 条没有评估的情况下作出的。批准绑定在那次检查上，检查里记着它们没有评估。</p>
+<p>决定的人必须没有参与被评审的东西：登记修订的人、发起那次检查的人和提交申请的人作决定，返回 403 <code>REVIEWER_NOT_INDEPENDENT</code>，批准和驳回都一样。产品暂停时不能作决定，返回 409 <code>PRODUCT_NOT_ACTIVE</code>。</p>
+<p><strong>状态和并发。</strong> 修订的 <code>status</code> 是 <code>DRAFT</code>、<code>IN_REVIEW</code>、<code>APPROVED</code>、<code>REJECTED</code>、<code>WITHDRAWN</code> 之一（F03 §5.9）。每个写操作在事务里锁住修订再改状态，所以同时到达的几个请求只有一个成功：同时提交，其余得到 409 <code>REVISION_STATUS_CONFLICT</code>；同时决定或撤回，其余得到 409 <code>REVISION_STATUS_CONFLICT</code> 或 <code>REVIEW_CONCLUDED</code>。<code>APPROVED</code> 和 <code>REJECTED</code> 的修订不能再提交。相同内容再次导入，返回 200 和原来的修订，带着它现在的状态。</p>
+<p><strong>错误。</strong> 评审不属于该修订或不存在，返回 404 <code>REVIEW_NOT_FOUND</code>。请求体不符合契约（缺少必填成员、未声明的成员、取值不在枚举内、时间不是带时区的 RFC 3339、编号不是 UUID）返回 400 <code>REQUEST_INVALID</code>，三个写操作都要求有请求体。符合契约但模型不接受的（上面各表之外，还有说明或理由首尾带空白）返回 422 <code>REQUEST_UNPROCESSABLE</code>。分页令牌属于另一个修订的列表，返回 400 <code>PAGE_TOKEN_INVALID</code>。存储的评审与记录时不符（F03 §5.9）时返回 500 <code>INTERNAL_ERROR</code>，响应不说原因，日志在 <code>correlation_id</code> 下写明是哪一条评审。</p>
+<p><strong>与 §9 的差别。</strong> §9 的 <code>POLICY_STALE</code> 和 <code>WAIVER_FORBIDDEN</code> 按原意实现。其余几行还没有对应的行为：批准之后策略变了、评审人被撤销了、豁免或批准到期了，已有的批准记录不会改变，也没有操作去检查它们，因为还没有 Release 去引用批准；<code>APPROVAL_SCOPE_MISMATCH</code>、<code>REVIEWER_AUTH_REVOKED</code>、<code>WAIVER_EXPIRED</code> 和 <code>COMPATIBILITY_UNKNOWN</code> 这几个错误码都还没有。这些要在 Release 引用批准时判断。§7.2 要求豁免绑定的范围、内容摘要和评审人取自它所属的批准，豁免没有单独的 <code>owner</code>。§8 检查示例里的 <code>target_scope</code> 没有实现；范围是申请的一部分，不是检查的一部分。</p>
+<p><strong>兼容性。</strong> 三个版本都只增加操作和 schema，但各给已有的响应枚举增加了成员，按 §5.1 属于 RISKY：0.17.0 给 <code>WorkspaceRole</code> 增加 <code>internal_reviewer</code>；0.18.0 给 <code>ContractRevision.status</code> 增加四个值；0.19.0 给 <code>ReviewStatus</code> 和结论的 <code>outcome</code> 增加 <code>APPROVED</code>、<code>REJECTED</code>，并给结论增加可选的 <code>valid_until</code> 和 <code>waivers</code>。把这些枚举当作封闭集合、或拒绝未知成员的客户端，要先升级。没有人被授予评审人、没有修订被提交之前，响应与 0.16.0 相同。</p>
 <h2 id="section-12">12. API Catalog 元数据、文档产物和发布加工</h2>
 <ul>
 <li><code>contracts/examples/catalog/cargopai-api-asset.catalog.json</code> 仅为<strong>设计样本</strong>：由 API Asset 稳定 ID、产品、Owner、受众、标签、源修订关联等构成；它不是 Gateway 路由配置，也不能授予消费者调用权。</li>

@@ -650,6 +650,57 @@
         "product.active",
         "cas.match"
       ]
+    },
+    {
+      "rule_id": "AC-50",
+      "principal_role": "internal_author",
+      "action": "review.request",
+      "resource": "Review",
+      "when_all": [
+        "workspace.member",
+        "product.same",
+        "product.active",
+        "action.role",
+        "revision.draft_or_withdrawn",
+        "check.current",
+        "check.unblocked"
+      ]
+    },
+    {
+      "rule_id": "AC-51",
+      "principal_role": "internal_author",
+      "action": "review.withdraw",
+      "resource": "Review",
+      "when_all": [
+        "workspace.member",
+        "product.same",
+        "action.role",
+        "review.requester_same",
+        "review.open"
+      ]
+    },
+    {
+      "rule_id": "AC-52",
+      "principal_role": "internal_author_or_reviewer",
+      "action": "review.read",
+      "resource": "Review",
+      "when_all": [
+        "workspace.member",
+        "product.same",
+        "action.role",
+        "revision.same"
+      ]
+    },
+    {
+      "rule_id": "AC-53",
+      "principal_role": "internal_reviewer",
+      "action": "revision.read",
+      "resource": "ContractRevision",
+      "when_all": [
+        "workspace.member",
+        "product.same",
+        "action.role"
+      ]
     }
   ],
   "negative_rules": [

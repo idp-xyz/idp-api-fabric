@@ -21,11 +21,17 @@ PR #10 和 #11 的实现详见 [F03 §5.6](docs/F03_Domain_and_Data_Model.md#56-
 
 实现详见 [F03 §5.7](docs/F03_Domain_and_Data_Model.md#57-已实现的-api-目录和契约修订)、[F04 §11.3](docs/F04_API_Contract_Governance.md#113-已实现的-api-资产与契约修订接口) 和 [F05 §6.4](docs/F05_Security_and_Multitenancy.md#64-已实现的-api-目录和契约修订权限)。授权矩阵没有新增条目。
 
-管理 API 0.13.0–0.16.0 加入契约检查（PR #22–#33）：作者对一个草稿修订发起检查，Fabric 按内置的 23 条基线规则逐条给出结论并留存证据；可以读取检查的详情和历史；可以比较同一资产的两个修订是否向后兼容，也可以在检查时指定基线。23 条里有 13 条由内置工具评估（其中兼容性那一条只在指定基线时评估），其余 10 条如实记为 `NOT_RUN`，所以一次检查的总状态目前只会是 `FAIL` 或 `UNKNOWN`。检查是证据，不批准也不发布任何东西；评审和 Release 尚未实现。
+管理 API 0.13.0–0.16.0 加入契约检查（PR #22–#33）：作者对一个草稿修订发起检查，Fabric 按内置的 23 条基线规则逐条给出结论并留存证据；可以读取检查的详情和历史；可以比较同一资产的两个修订是否向后兼容，也可以在检查时指定基线。23 条里有 13 条由内置工具评估（其中兼容性那一条只在指定基线时评估），其余 10 条如实记为 `NOT_RUN`，所以一次检查的总状态目前只会是 `FAIL` 或 `UNKNOWN`。检查是证据，本身不批准也不发布任何东西；评审以它为依据（见下），Release 尚未实现。
 
 从 0.12.0 升级，仍执行 `fabric-migrate -apply -grant-to <application_role>`：应用 `policyreview/001` 和 `002`，并授予应用角色新表的权限。缺少迁移或权限时，新进程拒绝启动并指出缺什么。迁移 002 需要 PostgreSQL 15 或更高版本。
 
 实现详见 [F03 §5.8](docs/F03_Domain_and_Data_Model.md#58-已实现的契约检查)、[F04 §11.4](docs/F04_API_Contract_Governance.md#114-已实现的契约检查接口) 和 [F05 §6.5](docs/F05_Security_and_Multitenancy.md#65-已实现的契约检查权限)。授权矩阵没有新增条目。
+
+管理 API 0.17.0–0.19.0 加入契约评审：Workspace 多了评审人这种成员关系，评审人能读修订、原文和检查（0.17.0）；作者拿一次检查作依据，把草稿修订提交评审，写明要批准给哪些受众和环境，也可以撤回（0.18.0）；评审人批准或驳回，批准有到期时间，检查里没通过的可豁免规则要逐条写明理由豁免（0.19.0）。登记修订的人、发起那次检查的人和提交申请的人不能作决定。不可豁免的规则没通过的修订不能提交评审。修订的状态从 `DRAFT` 起随评审流转，内容不变。基线里仍有 10 条规则没有工具，批准不证明它们成立；批准还不能用来发布，Release 尚未实现。
+
+从 0.16.0 升级，仍执行 `fabric-migrate -apply -grant-to <application_role>`：应用 `productgovernance/007`、`contractregistry/003`、`policyreview/003` 和 `004`，并授予应用角色 `contract_revision` 的 `UPDATE` 和四张评审表的权限。缺少迁移或权限时，新进程拒绝启动并指出缺什么。全部进程升级后再授予评审人角色、提交评审和作出决定：0.16.0 的进程列不出有评审人的 Workspace 的成员（返回 500），0.18.0 的进程读不出已经批准或驳回的评审（返回 500），详见 F03 §5.9。
+
+实现详见 [F03 §5.9](docs/F03_Domain_and_Data_Model.md#59-已实现的契约评审)、[F04 §11.5](docs/F04_API_Contract_Governance.md#115-已实现的契约评审接口) 和 [F05 §6.6](docs/F05_Security_and_Multitenancy.md#66-已实现的契约评审权限)。授权矩阵新增 AC-50…53，仍保留设计候选状态。
 
 ## 阅读入口
 
@@ -173,7 +179,7 @@ python scripts/verify_manifest.py
 
 ## F05 安全设计的可审查资产与界限
 
-- [F05 授权矩阵](governance/policies/F05_Access_Matrix.csv) 收录 49 条候选操作级规则。负责人管理、列表、受众配置和品牌的实现见 F05 §6.1、§6.3。
+- [F05 授权矩阵](governance/policies/F05_Access_Matrix.csv) 收录 53 条候选操作级规则。负责人管理、列表、受众配置和品牌的实现见 F05 §6.1、§6.3，契约评审的实现见 F05 §6.6。
 - [F05 STRIDE 风险登记册](governance/policies/F05_Threat_Register.csv)：29 项威胁及待具名 Owner/残余风险。
 - [F05 授权策略设计 JSON](governance/policies/F05_Authorization_Policy_DRAFT.json)：仅为可读/可检查样例，不是可投入生产的 PDP。
 - [F05 安全测试计划](tests/acceptance/F05_security_scenarios.csv)：36 个场景均为 `NOT_RUN`。

@@ -254,6 +254,8 @@ V1 按 `Experimental → Stable → Deprecated → Retired` 表达资产生命�
 
 审批历史为追加式，状态迁移与事实不可变约束继承 F03。所有后台定期审查的 TTL、复核频次与应急权限仍待批准。
 
+已实现的提交评审、撤回、批准、驳回和豁免见 §11.5；上表中 `POLICY_STALE` 和 `WAIVER_FORBIDDEN` 已有对应的行为，其余各行要等 Release 引用批准时才判断。
+
 ## 10. 多产品多受众的发布与恢复语义
 
 `PublicationTarget = (product_id, audience, environment, portal_id)`；`PublicationSlot` 唯一 `(target_id,api_asset_id)`。同一 CargoPai Portal 可展示 Shipment 与 Tracking 两个 API，并独立更新。**此为 F03 OD-03 对 ADR-0004 的细化候选，尚需正式架构批准**。
@@ -337,7 +339,7 @@ V1 按 `Experimental → Stable → Deprecated → Retired` 表达资产生命�
 
 ### 11.4 已实现的契约检查接口
 
-本节对应 PR #22–#33。下表路径以 `/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}` 开头。当前管理 API 为 0.16.0：0.13.0 加入发起检查，0.14.0 加入检查详情和历史，0.15.0 加入修订比较，0.16.0 让检查可以指定基线并带出比较结果。数据模型见 F03 §5.8，访问规则见 F05 §6.5。
+本节对应 PR #22–#33。下表路径以 `/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}` 开头。这些接口随管理 API 0.13.0–0.16.0 加入：0.13.0 加入发起检查，0.14.0 加入检查详情和历史，0.15.0 加入修订比较，0.16.0 让检查可以指定基线并带出比较结果。数据模型见 F03 §5.8，访问规则见 F05 §6.5。0.17.0 起评审人也能读检查和比较（§11.5）。
 
 | 操作 | 请求与响应 |
 |---|---|
@@ -394,6 +396,59 @@ F04-GOV-014 到 020、025 到 027 这 10 条（Release 摘要链、发布授权�
 **与 §8 示例的差别。** §8 的 CheckRun 示例里的 `target_scope` 没有实现：检查不绑定受众和环境。`tool_manifest` 的每项只有名称和版本，没有 `support_level`。
 
 **兼容性。** 0.13.0–0.16.0 只增加操作和 schema，没有改变此前已有的响应。0.16.0 给 0.13.0 加入的发起检查增加了可选查询参数，并给检查的全文和概要增加了可选的 `compatibility`；不带基线发起的检查，响应里没有这个成员。
+
+### 11.5 已实现的契约评审接口
+
+本节对应管理 API 0.17.0–0.19.0，当前为 0.19.0：0.17.0 加入评审人角色，0.18.0 加入提交评审、撤回和读取，0.19.0 加入批准和驳回。下表路径以 `/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}` 开头。数据模型见 F03 §5.9，访问规则见 F05 §6.6。§9 的设计在这里落地了一部分，差别见本节末尾。
+
+| 操作 | 请求与响应 |
+|---|---|
+| `POST …/reviews` | 提交 `check_run_id`、`scope` 和可选的 `note`。成功返回 201、`Location` 和评审，修订变为 `IN_REVIEW` |
+| `GET …/reviews` | 这个修订的评审历史，按申请时间从早到晚，同一时刻按编号，采用 §3.1.1 的分页约定 |
+| `GET …/reviews/{review_id}` | 一条评审 |
+| `POST …/reviews/{review_id}/withdrawal` | 请求体是 `{}` 或 `{"reason": …}`。成功返回 200 和评审，修订变为 `WITHDRAWN` |
+| `POST …/reviews/{review_id}/decision` | 提交 `outcome`（`APPROVED` 或 `REJECTED`），以及 `reason`、`valid_until`、`waivers`。成功返回 200 和评审，修订变为 `APPROVED` 或 `REJECTED` |
+
+全部响应带 `Cache-Control: no-store`。申请和结论记录后不变，所以没有 `ETag` 和 `If-Match`；并发由修订的状态保证，见“状态和并发”。三个写操作都没有 `Idempotency-Key`：重复提交、重复撤回和重复决定得到 409，不会产生第二条记录。
+
+**评审。** 响应包含评审、产品、资产和修订的编号，`check_run_id` 和 `input_digest`（那次检查读的内容，即修订的闭包摘要），`status`，`scope`，可选的 `note`，`requested_by`（签发方和主体）和 `requested_at`；结束之后还有 `conclusion`。`status` 在结束之前是 `IN_REVIEW`，之后是结论的 `outcome`：`WITHDRAWN`、`APPROVED` 或 `REJECTED`。`conclusion` 有 `outcome`、可选的 `reason`、`concluded_by`、`concluded_at`；批准还有 `valid_until`，有豁免时还有 `waivers`，按规则编号排列。
+
+**提交。** `scope` 是 1 到 6 个不重复的 `{audience, environment}`，受众是 `public`、`partner`、`internal`，环境是 `sandbox`、`production`；响应里按受众、环境排序。`note` 是 1–500 个字符的一行文字。`check_run_id` 必须是这个修订的一次检查，否则返回 404 `CHECK_RUN_NOT_FOUND`。这次检查还必须能作为决定的依据：
+
+| 情形 | 响应 |
+|---|---|
+| 检查不是按现行策略和现行工具版本做的 | 409 `POLICY_STALE`，重新检查后再提交 |
+| 检查里有不可豁免的规则是 `FAIL` 或 `UNKNOWN` | 409 `REVIEW_BLOCKED`，要改契约，提交新修订 |
+| 修订不是 `DRAFT` 或 `WITHDRAWN` | 409 `REVISION_STATUS_CONFLICT` |
+| 产品已暂停 | 409 `PRODUCT_NOT_ACTIVE` |
+
+“现行”指检查的 `policy_digest` 等于现在的基线策略，`tool_manifest` 里的每个工具都是现在的版本。带不带基线都可以；带了基线而 F04-GOV-013 没通过时，这条规则可豁免，见“决定”。可豁免的规则没通过不妨碍提交。
+
+**撤回。** 只有提交这条申请的人能撤回，并且他仍是这个 Workspace 的作者；别人撤回返回 403 `FORBIDDEN`。评审已经结束时返回 409 `REVIEW_CONCLUDED`。`reason` 可选，1–1000 个字符的一行文字。产品暂停时仍可撤回。撤回后的修订可以再次提交，那是它的下一条评审。
+
+**决定。** 驳回必须带 `reason`，不能带 `valid_until` 和 `waivers`。批准必须带 `valid_until`：晚于现在，至多 365 天之后；`reason` 可选。批准时检查必须仍是现行的，否则返回 409 `POLICY_STALE`；这样的评审仍然可以驳回或撤回。
+
+`waivers` 的每一项是 `rule_id`、`reason`、可选的 `compensating_control` 和 `expires_at`，至多 100 项。批准必须给检查里每条可豁免而状态是 `FAIL` 或 `UNKNOWN` 的规则各一项豁免，不多不少：
+
+| 情形 | 响应 |
+|---|---|
+| 有这样的规则没有豁免 | 409 `WAIVER_REQUIRED` |
+| 豁免了不可豁免的规则，不论它的状态 | 422 `WAIVER_FORBIDDEN` |
+| 豁免了可豁免但不需要豁免的规则（状态是 `PASS`、`WARN` 或 `NOT_RUN`），或策略里没有的规则；同一条规则豁免两次；豁免的到期时间不晚于现在或晚于 `valid_until` | 422 `REQUEST_UNPROCESSABLE` |
+
+哪些规则需要豁免，读那次检查就知道：`outcomes` 里 `waivable` 为真、状态是 `FAIL` 或 `UNKNOWN` 的那些。基线的 23 条规则里可豁免的是 F04-GOV-002、003、007 和 013，其中 007 的级别是 `WARN`：有发现时状态是 `WARN`，不需要豁免。带基线的检查里，F04-GOV-013 在 `BREAKING` 时是 `FAIL`，在 `RISKY` 和 `UNKNOWN` 时是 `UNKNOWN`（§11.4），两种情况批准时都要豁免：破坏性变更和判断不了的变更不会被自动放行，评审人要写明理由。
+
+`WARN` 和 `NOT_RUN` 的规则不需要豁免。基线里有 10 条规则没有工具，每次检查都是 `NOT_RUN`（§11.4），所以现在的批准都是在这 10 条没有评估的情况下作出的。批准绑定在那次检查上，检查里记着它们没有评估。
+
+决定的人必须没有参与被评审的东西：登记修订的人、发起那次检查的人和提交申请的人作决定，返回 403 `REVIEWER_NOT_INDEPENDENT`，批准和驳回都一样。产品暂停时不能作决定，返回 409 `PRODUCT_NOT_ACTIVE`。
+
+**状态和并发。** 修订的 `status` 是 `DRAFT`、`IN_REVIEW`、`APPROVED`、`REJECTED`、`WITHDRAWN` 之一（F03 §5.9）。每个写操作在事务里锁住修订再改状态，所以同时到达的几个请求只有一个成功：同时提交，其余得到 409 `REVISION_STATUS_CONFLICT`；同时决定或撤回，其余得到 409 `REVISION_STATUS_CONFLICT` 或 `REVIEW_CONCLUDED`。`APPROVED` 和 `REJECTED` 的修订不能再提交。相同内容再次导入，返回 200 和原来的修订，带着它现在的状态。
+
+**错误。** 评审不属于该修订或不存在，返回 404 `REVIEW_NOT_FOUND`。请求体不符合契约（缺少必填成员、未声明的成员、取值不在枚举内、时间不是带时区的 RFC 3339、编号不是 UUID）返回 400 `REQUEST_INVALID`，三个写操作都要求有请求体。符合契约但模型不接受的（上面各表之外，还有说明或理由首尾带空白）返回 422 `REQUEST_UNPROCESSABLE`。分页令牌属于另一个修订的列表，返回 400 `PAGE_TOKEN_INVALID`。存储的评审与记录时不符（F03 §5.9）时返回 500 `INTERNAL_ERROR`，响应不说原因，日志在 `correlation_id` 下写明是哪一条评审。
+
+**与 §9 的差别。** §9 的 `POLICY_STALE` 和 `WAIVER_FORBIDDEN` 按原意实现。其余几行还没有对应的行为：批准之后策略变了、评审人被撤销了、豁免或批准到期了，已有的批准记录不会改变，也没有操作去检查它们，因为还没有 Release 去引用批准；`APPROVAL_SCOPE_MISMATCH`、`REVIEWER_AUTH_REVOKED`、`WAIVER_EXPIRED` 和 `COMPATIBILITY_UNKNOWN` 这几个错误码都还没有。这些要在 Release 引用批准时判断。§7.2 要求豁免绑定的范围、内容摘要和评审人取自它所属的批准，豁免没有单独的 `owner`。§8 检查示例里的 `target_scope` 没有实现；范围是申请的一部分，不是检查的一部分。
+
+**兼容性。** 三个版本都只增加操作和 schema，但各给已有的响应枚举增加了成员，按 §5.1 属于 RISKY：0.17.0 给 `WorkspaceRole` 增加 `internal_reviewer`；0.18.0 给 `ContractRevision.status` 增加四个值；0.19.0 给 `ReviewStatus` 和结论的 `outcome` 增加 `APPROVED`、`REJECTED`，并给结论增加可选的 `valid_until` 和 `waivers`。把这些枚举当作封闭集合、或拒绝未知成员的客户端，要先升级。没有人被授予评审人、没有修订被提交之前，响应与 0.16.0 相同。
 
 ## 12. API Catalog 元数据、文档产物和发布加工
 
