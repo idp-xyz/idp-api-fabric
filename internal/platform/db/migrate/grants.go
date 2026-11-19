@@ -69,6 +69,13 @@ func ApplicationPrivileges() []TablePrivileges {
 		{"contractregistry", "source_snapshot", []string{"SELECT", "INSERT"}},
 		{"contractregistry", "source_file", []string{"SELECT", "INSERT"}},
 		{"contractregistry", "contract_revision", []string{"SELECT", "INSERT"}},
+		// A check run is evidence: the policy it was held to, what it
+		// concluded of each rule and what it found are recorded once and
+		// read back. No statement changes or removes any of it.
+		{"policyreview", "policy_snapshot", []string{"SELECT", "INSERT"}},
+		{"policyreview", "check_run", []string{"SELECT", "INSERT"}},
+		{"policyreview", "check_rule_outcome", []string{"SELECT", "INSERT"}},
+		{"policyreview", "check_finding", []string{"SELECT", "INSERT"}},
 	}
 }
 

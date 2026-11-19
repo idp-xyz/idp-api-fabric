@@ -270,6 +270,51 @@ type CheckRun struct {
 // Summary counts the outcomes of the check.
 func (r CheckRun) Summary() Summary { return Summarize(r.Outcomes) }
 
+// Overview is a check run without its outcomes and its findings: what a
+// history of checks shows of each.
+type Overview struct {
+	ID               string
+	PolicySnapshotID string
+	Revision         RevisionRef
+	InputDigest      string
+	PolicySetID      string
+	PolicyDigest     string
+	Tools            []Tool
+	Status           Status
+	Summary          Summary
+	StartedAt        time.Time
+	CompletedAt      time.Time
+	RequestedBy      Principal
+}
+
+// Overview is the check run as a history shows it.
+func (r CheckRun) Overview() Overview {
+	return Overview{
+		ID: r.ID, PolicySnapshotID: r.PolicySnapshotID, Revision: r.Revision, InputDigest: r.InputDigest,
+		PolicySetID: r.PolicySetID, PolicyDigest: r.PolicyDigest, Tools: slices.Clone(r.Tools), Status: r.Status,
+		Summary: r.Summary(), StartedAt: r.StartedAt, CompletedAt: r.CompletedAt, RequestedBy: r.RequestedBy,
+	}
+}
+
+// RecordedOverview reads an overview back from what storage holds of a check
+// run. It fails with ErrCheckRunDamaged unless the status of the run is what
+// its counts add up to: a history must not show a run as better than the
+// outcomes it was recorded with.
+func RecordedOverview(overview Overview) (Overview, error) {
+	summary := overview.Summary
+	switch {
+	case overview.ID == "" || !digestForm.MatchString(overview.InputDigest) || !digestForm.MatchString(overview.PolicyDigest):
+		return Overview{}, ErrCheckRunDamaged
+	case len(overview.Tools) == 0 || overview.CompletedAt.Before(overview.StartedAt):
+		return Overview{}, ErrCheckRunDamaged
+	case min(summary.Pass, summary.Warn, summary.Fail, summary.Unknown, summary.NotRun, summary.Findings) < 0:
+		return Overview{}, ErrCheckRunDamaged
+	case summary.Pass+summary.Warn+summary.Fail+summary.Unknown+summary.NotRun == 0 || overview.Status != summary.Status():
+		return Overview{}, ErrCheckRunDamaged
+	}
+	return overview, nil
+}
+
 var (
 	// ErrInvalidEvaluation reports what a tool handed over that cannot be
 	// recorded. It is a failure of the tool, never of the source.
