@@ -2,7 +2,9 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -29,12 +31,13 @@ func NewCheckRuns(database *bentopostgres.DB) *CheckRuns {
 const selectRun = `
 SELECT c.check_run_id, c.policy_snapshot_id, c.product_id, c.workspace_id, c.api_asset_id, c.revision_id,
        c.input_digest, c.tool_manifest, c.status, c.started_at, c.completed_at,
-       c.requested_by_issuer, c.requested_by_subject, p.policy_digest, p.policy_document
+       c.requested_by_issuer, c.requested_by_subject, p.policy_digest, p.policy_document,
+       coalesce(c.baseline_revision_id::text, ''), c.compatibility_document
 FROM policyreview.check_run c
 JOIN policyreview.policy_snapshot p USING (product_id, policy_snapshot_id)
 WHERE c.product_id = $1 AND c.api_asset_id = $2 AND c.workspace_id = $3 AND c.revision_id = $4`
 
-func (s *CheckRuns) Recorded(ctx context.Context, revision domain.RevisionRef, policyDigest, toolDigest string) (domain.CheckRun, bool, error) {
+func (s *CheckRuns) Recorded(ctx context.Context, revision domain.RevisionRef, policyDigest, toolDigest, baselineID string) (domain.CheckRun, bool, error) {
 	writer, err := s.database.RequireExecutor(ctx)
 	if err != nil {
 		return domain.CheckRun{}, false, err
@@ -45,8 +48,8 @@ func (s *CheckRuns) Recorded(ctx context.Context, revision domain.RevisionRef, p
 	if _, err := writer.Exec(ctx, lock, revision.RevisionID); err != nil {
 		return domain.CheckRun{}, false, fmt.Errorf("lock the checks of a revision: %w", err)
 	}
-	return s.read(ctx, writer, selectRun+" AND p.policy_digest = $5 AND c.tool_digest = $6",
-		revision.ProductID, revision.AssetID, revision.WorkspaceID, revision.RevisionID, policyDigest, toolDigest)
+	return s.read(ctx, writer, selectRun+" AND p.policy_digest = $5 AND c.tool_digest = $6 AND c.baseline_revision_id IS NOT DISTINCT FROM $7::uuid",
+		revision.ProductID, revision.AssetID, revision.WorkspaceID, revision.RevisionID, policyDigest, toolDigest, optional(baselineID))
 }
 
 func (s *CheckRuns) Find(ctx context.Context, revision domain.RevisionRef, id string) (domain.CheckRun, bool, error) {
@@ -67,15 +70,16 @@ func (s *CheckRuns) read(ctx context.Context, reader bentopostgres.Querier, stat
 		return domain.CheckRun{}, false, fmt.Errorf("find a check run: %w", err)
 	}
 	type stored struct {
-		run                domain.CheckRun
-		manifest, document []byte
+		run                               domain.CheckRun
+		baselineID                        string
+		manifest, document, compatibility []byte
 	}
 	found, err := pgx.CollectOneRow(rows, func(row pgx.CollectableRow) (stored, error) {
 		var read stored
 		run := &read.run
 		err := row.Scan(&run.ID, &run.PolicySnapshotID, &run.Revision.ProductID, &run.Revision.WorkspaceID, &run.Revision.AssetID,
 			&run.Revision.RevisionID, &run.InputDigest, &read.manifest, &run.Status, &run.StartedAt, &run.CompletedAt,
-			&run.RequestedBy.Issuer, &run.RequestedBy.Subject, &run.PolicyDigest, &read.document)
+			&run.RequestedBy.Issuer, &run.RequestedBy.Subject, &run.PolicyDigest, &read.document, &read.baselineID, &read.compatibility)
 		return read, err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -93,6 +97,9 @@ func (s *CheckRuns) read(ctx context.Context, reader bentopostgres.Querier, stat
 	}
 	if run.Tools, err = domain.RecordedTools(string(found.manifest)); err != nil {
 		return domain.CheckRun{}, false, fmt.Errorf("the tools of check run %s: %w", run.ID, err)
+	}
+	if run.Compatibility, err = readCompatibility(found.baselineID, found.compatibility); err != nil {
+		return domain.CheckRun{}, false, fmt.Errorf("the comparison of check run %s: %w", run.ID, err)
 	}
 
 	const outcomes = `
@@ -134,6 +141,21 @@ FROM policyreview.check_finding WHERE check_run_id = $1 ORDER BY ordinal`
 	return recorded, true, nil
 }
 
+func readCompatibility(baselineID string, document []byte) (*domain.ComparisonEvidence, error) {
+	if baselineID == "" && document == nil {
+		return nil, nil
+	}
+	var evidence domain.ComparisonEvidence
+	if err := json.Unmarshal(document, &evidence); err != nil || baselineID == "" || evidence.Baseline.RevisionID != baselineID {
+		return nil, domain.ErrCheckRunDamaged
+	}
+	canonical, err := json.Marshal(evidence)
+	if err != nil || !bytes.Equal(canonical, document) {
+		return nil, domain.ErrCheckRunDamaged
+	}
+	return &evidence, nil
+}
+
 func (s *CheckRuns) Snapshot(ctx context.Context, productID string, policy domain.Policy, id string, at time.Time) (string, error) {
 	writer, err := s.database.RequireExecutor(ctx)
 	if err != nil {
@@ -172,12 +194,22 @@ func (s *CheckRuns) Record(ctx context.Context, run domain.CheckRun) error {
 	const insertRun = `
 INSERT INTO policyreview.check_run (
     check_run_id, product_id, workspace_id, api_asset_id, revision_id, policy_snapshot_id, input_digest,
-    tool_manifest, tool_digest, status, started_at, completed_at, requested_by_issuer, requested_by_subject
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`
+    tool_manifest, tool_digest, status, started_at, completed_at, requested_by_issuer, requested_by_subject,
+    baseline_revision_id, compatibility_document
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`
+	var baselineID *string
+	var compatibility []byte
+	if run.Compatibility != nil {
+		baselineID = &run.Compatibility.Baseline.RevisionID
+		compatibility, err = json.Marshal(run.Compatibility)
+		if err != nil {
+			return fmt.Errorf("encode the compatibility evidence: %w", err)
+		}
+	}
 	revision := run.Revision
 	if _, err := writer.Exec(ctx, insertRun, run.ID, revision.ProductID, revision.WorkspaceID, revision.AssetID, revision.RevisionID,
 		run.PolicySnapshotID, run.InputDigest, []byte(domain.ToolManifest(run.Tools)), domain.ToolDigest(run.Tools), string(run.Status),
-		run.StartedAt, run.CompletedAt, run.RequestedBy.Issuer, run.RequestedBy.Subject); err != nil {
+		run.StartedAt, run.CompletedAt, run.RequestedBy.Issuer, run.RequestedBy.Subject, baselineID, compatibility); err != nil {
 		return fmt.Errorf("store a check run: %w", err)
 	}
 
@@ -251,7 +283,8 @@ func (s *CheckRuns) List(ctx context.Context, revision domain.RevisionRef, after
 SELECT c.check_run_id, c.policy_snapshot_id, c.product_id, c.workspace_id, c.api_asset_id, c.revision_id,
        c.input_digest, c.tool_manifest, c.status, c.started_at, c.completed_at,
        c.requested_by_issuer, c.requested_by_subject, p.policy_set_id, p.policy_digest,
-       o.passed, o.warned, o.failed, o.unknown, o.not_run, o.findings
+       o.passed, o.warned, o.failed, o.unknown, o.not_run, o.findings,
+       coalesce(c.baseline_revision_id::text, ''), c.compatibility_document
 FROM policyreview.check_run c
 JOIN policyreview.policy_snapshot p USING (product_id, policy_snapshot_id)
 CROSS JOIN LATERAL (
@@ -278,13 +311,15 @@ LIMIT $7`
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Overview, error) {
 		var overview domain.Overview
-		var manifest []byte
+		var manifest, compatibility []byte
+		var baselineID string
 		summary := &overview.Summary
 		if err := row.Scan(&overview.ID, &overview.PolicySnapshotID, &overview.Revision.ProductID, &overview.Revision.WorkspaceID,
 			&overview.Revision.AssetID, &overview.Revision.RevisionID, &overview.InputDigest, &manifest, &overview.Status,
 			&overview.StartedAt, &overview.CompletedAt, &overview.RequestedBy.Issuer, &overview.RequestedBy.Subject,
 			&overview.PolicySetID, &overview.PolicyDigest,
-			&summary.Pass, &summary.Warn, &summary.Fail, &summary.Unknown, &summary.NotRun, &summary.Findings); err != nil {
+			&summary.Pass, &summary.Warn, &summary.Fail, &summary.Unknown, &summary.NotRun, &summary.Findings,
+			&baselineID, &compatibility); err != nil {
 			return domain.Overview{}, err
 		}
 		overview.StartedAt, overview.CompletedAt = overview.StartedAt.UTC(), overview.CompletedAt.UTC()
@@ -293,6 +328,9 @@ LIMIT $7`
 			return domain.Overview{}, fmt.Errorf("the tools of check run %s: %w", overview.ID, err)
 		}
 		overview.Tools = tools
+		if overview.Compatibility, err = readCompatibility(baselineID, compatibility); err != nil {
+			return domain.Overview{}, fmt.Errorf("the comparison of check run %s: %w", overview.ID, err)
+		}
 		recorded, err := domain.RecordedOverview(overview)
 		if err != nil {
 			return domain.Overview{}, fmt.Errorf("check run %s: %w", overview.ID, err)

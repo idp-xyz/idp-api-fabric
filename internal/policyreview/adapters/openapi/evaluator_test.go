@@ -80,15 +80,12 @@ func (r report) expect(t *testing.T, findings map[string][]string, undecided str
 }
 
 // The rules that read the documents, by their three digits.
-const readers = "001 002 003 005 006 007 008"
+const readers = "001 002 003 005 006 007 008 011"
 
 // The rules about every operation.
 const aboutOperations = "003 006 007 008"
 
-// The tool evaluates the automated subset of the rule registry, the ten
-// rules F04-GOV-001 to 010, and says nothing of any other rule: what it
-// does not evaluate a check records as not run.
-func TestTheToolEvaluatesTheAutomatedSubsetAndNothingElse(t *testing.T) {
+func TestTheToolEvaluatesTheAutomatedSubsetAndOfficialSchema(t *testing.T) {
 	tool := openapi.Evaluator{}.Tool()
 	if tool.Name != "fabric-openapi-rules" || tool.Version != openapi.Version {
 		t.Fatalf("the tool is %+v, want fabric-openapi-rules at version %s", tool, openapi.Version)
@@ -100,15 +97,15 @@ func TestTheToolEvaluatesTheAutomatedSubsetAndNothingElse(t *testing.T) {
 	}
 	want := []string{
 		"F04-GOV-001", "F04-GOV-002", "F04-GOV-003", "F04-GOV-004", "F04-GOV-005",
-		"F04-GOV-006", "F04-GOV-007", "F04-GOV-008", "F04-GOV-009", "F04-GOV-010",
+		"F04-GOV-006", "F04-GOV-007", "F04-GOV-008", "F04-GOV-009", "F04-GOV-010", "F04-GOV-011",
 	}
 	if !slices.Equal(evaluated, want) {
 		t.Fatalf("the tool reports on %v, want %v in that order", evaluated, want)
 	}
 	said.expect(t, nil, "")
 	for _, rule := range domain.Baseline().Rules() {
-		if automated := rule.VerificationMode == "AUTOMATED_SUBSET"; automated != slices.Contains(evaluated, rule.ID) {
-			t.Errorf("rule %s is of the automated subset: %t, and is evaluated: %t", rule.ID, automated, !automated)
+		if supported := rule.VerificationMode == "AUTOMATED_SUBSET" || rule.Evaluator == "official_oas_validation"; supported != slices.Contains(evaluated, rule.ID) {
+			t.Errorf("rule %s is supported: %t, and is evaluated: %t", rule.ID, supported, !supported)
 		}
 	}
 
@@ -120,6 +117,26 @@ func TestTheToolEvaluatesTheAutomatedSubsetAndNothingElse(t *testing.T) {
 	source := domain.Source{Entrypoint: "openapi.yaml", Files: []domain.SourceFile{file("openapi.yaml", minimal)}}
 	if got := (openapi.Evaluator{}).Evaluate(source, []domain.Rule{unknown, renamed}); len(got) != 1 || got[0].RuleID != "T-RULE-001" {
 		t.Errorf("the tool reports %+v, want one observation of T-RULE-001", got)
+	}
+}
+
+func TestTheClosureRuleReportsOnlyVerifiedSourceEvidence(t *testing.T) {
+	rule := domain.Rule{ID: "F04-GOV-012", Evaluator: "ref_closure_budget"}
+	source := domain.Source{Entrypoint: "openapi.yaml", Files: []domain.SourceFile{file("openapi.yaml", minimal)}}
+	for _, tc := range []struct {
+		status    domain.ReferenceClosure
+		findings  int
+		undecided bool
+	}{
+		{status: domain.ClosureVerified},
+		{status: domain.ClosureInvalid, findings: 1},
+		{status: domain.ClosureUndecided, undecided: true},
+	} {
+		source.Closure = tc.status
+		observations := (openapi.Evaluator{}).Evaluate(source, []domain.Rule{rule})
+		if len(observations) != 1 || len(observations[0].Findings) != tc.findings || observations[0].Undecided != tc.undecided {
+			t.Errorf("closure evidence %d: %+v", tc.status, observations)
+		}
 	}
 }
 
@@ -160,7 +177,7 @@ func TestTheSamplesOfF04AreJudgedAsF04SaysTheyAre(t *testing.T) {
 		findings  map[string][]string
 		undecided string
 	}{
-		"unsupported_version":    {map[string][]string{"001": {"openapi.yaml:1 /openapi"}}, ""},
+		"unsupported_version":    {map[string][]string{"001": {"openapi.yaml:1 /openapi"}, "011": {"openapi.yaml:1 /openapi"}}, ""},
 		"embedded_secret":        {map[string][]string{"004": {"openapi.yaml:5"}}, ""},
 		"external_ref":           {map[string][]string{"005": {"openapi.yaml:14 /paths/~1v1~1example/get/responses/200/content/application~1json/schema/$ref"}}, ""},
 		"missing_security":       {map[string][]string{"006": {"openapi.yaml:5 /paths/~1v1~1open/get"}}, ""},
@@ -184,7 +201,7 @@ func TestTheSamplesOfF04AreJudgedAsF04SaysTheyAre(t *testing.T) {
 // finds something else in the same files than it did: raise
 // openapi.Version, and record the new behaviour here with it.
 func TestTheBehaviourOfTheToolIsTheBehaviourOfItsVersion(t *testing.T) {
-	const recorded = "1 sha256:5259d37022100bf6d492abc9a51cf520dd3939887892829153f07b1645717a79"
+	const recorded = "3 sha256:5c178b5a03644cc9d76ad08d8d40ebd69e4e23a015607358736d2ecbbe8c5f36"
 
 	sources := [][]domain.SourceFile{
 		{file("openapi.yaml", minimal)},
@@ -281,5 +298,6 @@ func TestAContractInSeveralFilesIsJudgedAsOne(t *testing.T) {
 			},
 			"008": {"api/openapi.yaml:23 /webhooks/shipped/post/operationId"},
 			"010": {"api/openapi.yaml:4", "api/paths/tracking.yaml:9"},
+			"011": {"api/openapi.yaml:2 /info/version"},
 		}, "")
 }

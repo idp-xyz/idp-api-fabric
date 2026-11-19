@@ -37,7 +37,7 @@ func TestARecordedCheckKeepsThePolicyOutcomesAndFindings(t *testing.T) {
 	at := time.Now().UTC()
 	var original domain.CheckRun
 	err = fabric.WithinTransaction(t.Context(), func(ctx context.Context) error {
-		if _, found, err := store.Recorded(ctx, revision, policy.Digest(), toolDigest); err != nil || found {
+		if _, found, err := store.Recorded(ctx, revision, policy.Digest(), toolDigest, ""); err != nil || found {
 			t.Fatalf("look up the first check: found %v, error %v", found, err)
 		}
 		snapshot, err := store.Snapshot(ctx, revision.ProductID, policy, ids.NewUUID(), at)
@@ -63,7 +63,7 @@ func TestARecordedCheckKeepsThePolicyOutcomesAndFindings(t *testing.T) {
 	}
 
 	err = fabric.WithinTransaction(t.Context(), func(ctx context.Context) error {
-		again, found, err := store.Recorded(ctx, revision, policy.Digest(), toolDigest)
+		again, found, err := store.Recorded(ctx, revision, policy.Digest(), toolDigest, "")
 		if err != nil {
 			return err
 		}
@@ -96,5 +96,43 @@ func TestARecordedCheckKeepsThePolicyOutcomesAndFindings(t *testing.T) {
 	app := pgtest.Connect(t, database.Application)
 	if _, err := app.Exec(t.Context(), "UPDATE policyreview.check_run SET status = 'PASS' WHERE check_run_id = $1", original.ID); err == nil {
 		t.Fatal("the application role can rewrite check evidence")
+	}
+
+	comparator := domain.Tool{Name: "fabric-openapi-compatibility", Version: "1"}
+	comparedTools := domain.ToolDigest([]domain.Tool{tool, comparator})
+	err = fabric.WithinTransaction(t.Context(), func(ctx context.Context) error {
+		for range 2 {
+			evidence := &domain.ComparisonEvidence{
+				Baseline:   domain.ComparisonBaseline{RevisionID: ids.NewUUID(), InputDigest: source.Digest},
+				Tool:       comparator,
+				Comparison: domain.Comparison{Classification: domain.Compatible},
+			}
+			baselineID := evidence.Baseline.RevisionID
+			if _, found, err := store.Recorded(ctx, revision, policy.Digest(), comparedTools, baselineID); err != nil || found {
+				t.Fatalf("lookup for a new baseline: found %v, error %v", found, err)
+			}
+			run, err := domain.Complete(domain.Draft{
+				ID: ids.NewUUID(), PolicySnapshotID: original.PolicySnapshotID, Revision: revision,
+				RequestedBy: original.RequestedBy, StartedAt: at, Compatibility: evidence,
+			}, policy, source, tool, nil, at)
+			if err != nil {
+				return err
+			}
+			if err := store.Record(ctx, run); err != nil {
+				return err
+			}
+			got, found, err := store.Recorded(ctx, revision, policy.Digest(), comparedTools, baselineID)
+			if err != nil || !found || got.ID != run.ID || !reflect.DeepEqual(got.Compatibility, evidence) {
+				t.Fatalf("stored comparison for %s: found %v, evidence %+v, error %v", baselineID, found, got.Compatibility, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs, err := store.List(t.Context(), revision, nil, 4)
+	if err != nil || len(runs) != 3 || runs[0].Compatibility == nil || runs[1].Compatibility == nil || runs[2].Compatibility != nil {
+		t.Fatalf("comparison history: %+v, error %v", runs, err)
 	}
 }

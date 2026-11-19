@@ -22,12 +22,12 @@ type Position struct {
 // whose policy is not the document its digest was computed from, is an
 // error (domain.ErrCheckRunDamaged, domain.ErrPolicyDamaged) and not a run.
 type CheckRuns interface {
-	// Recorded returns the run of the revision under the policy with the
-	// digest, by the tools with the digest, when there is one. It makes the
+	// Recorded returns the run of the revision under the policy and tools
+	// with the requested digests and optional baseline ID. It makes the
 	// transaction it is called in the only one that records a check of the
 	// revision until it ends, so that a caller who finds none and records
 	// one is the only one to do so.
-	Recorded(ctx context.Context, revision domain.RevisionRef, policyDigest, toolDigest string) (domain.CheckRun, bool, error)
+	Recorded(ctx context.Context, revision domain.RevisionRef, policyDigest, toolDigest, baselineID string) (domain.CheckRun, bool, error)
 	// Snapshot returns the identifier of the snapshot of the policy for
 	// the product, and records the snapshot under id when the product has
 	// none of that policy yet.

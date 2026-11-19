@@ -3,10 +3,8 @@
 // of F04 §7.1. It reads the files it is handed and nothing else: no
 // reference makes it open a file or an address.
 //
-// What it does not evaluate it does not report on. Validation against the
-// official OpenAPI schema, the comparison with a published baseline and the
-// rules about review, release and publication are not here, and a check
-// records them as not run.
+// Checks cover the official document schema and the built-in rules.
+// A check records rules without an evaluator as not run.
 package openapi
 
 import (
@@ -20,7 +18,7 @@ import (
 // something else in the same files is another version: a rule it judges
 // differently, a credential form it learns, a bound it changes. A test
 // holds the behaviour to the version.
-const Version = "1"
+const Version = "3"
 
 // Evaluator is the built-in tool of a check.
 type Evaluator struct{}
@@ -40,16 +38,18 @@ var evaluators = map[string]struct {
 	judge func(*bundle) judgment
 	reads bool
 }{
-	"supported_spec_version": {(*bundle).specVersion, true},
-	"info_required":          {(*bundle).infoRequired, true},
-	"operation_id_required":  {(*bundle).operationIDRequired, true},
-	"operation_id_unique":    {(*bundle).operationIDUnique, true},
-	"operation_security":     {(*bundle).operationSecurity, true},
-	"problem_content":        {(*bundle).problemContent, true},
-	"ref_safety":             {(*bundle).refSafety, true},
-	"parse_safety":           {(*bundle).parseSafety, false},
-	"secret_scan":            {func(b *bundle) judgment { return b.scan(credentialOn) }, false},
-	"internal_url_scan":      {func(b *bundle) judgment { return b.scan(internalAddressOn) }, false},
+	"supported_spec_version":  {(*bundle).specVersion, true},
+	"info_required":           {(*bundle).infoRequired, true},
+	"operation_id_required":   {(*bundle).operationIDRequired, true},
+	"operation_id_unique":     {(*bundle).operationIDUnique, true},
+	"operation_security":      {(*bundle).operationSecurity, true},
+	"problem_content":         {(*bundle).problemContent, true},
+	"official_oas_validation": {(*bundle).officialValidation, true},
+	"ref_closure_budget":      {(*bundle).referenceClosure, false},
+	"ref_safety":              {(*bundle).refSafety, true},
+	"parse_safety":            {(*bundle).parseSafety, false},
+	"secret_scan":             {func(b *bundle) judgment { return b.scan(credentialOn) }, false},
+	"internal_url_scan":       {func(b *bundle) judgment { return b.scan(internalAddressOn) }, false},
 }
 
 // Evaluate judges the source by the rules whose evaluator is one of
@@ -59,7 +59,7 @@ func (Evaluator) Evaluate(source domain.Source, rules []domain.Rule) []domain.Ob
 	var observations []domain.Observation
 	for _, rule := range rules {
 		evaluator, implemented := evaluators[rule.Evaluator]
-		if !implemented {
+		if !implemented || (rule.Evaluator == "ref_closure_budget" && source.Closure == 0) {
 			continue
 		}
 		observation := domain.Observation{RuleID: rule.ID}
@@ -77,4 +77,15 @@ func (Evaluator) Evaluate(source domain.Source, rules []domain.Rule) []domain.Ob
 		observations = append(observations, observation)
 	}
 	return observations
+}
+
+func (b *bundle) referenceClosure() judgment {
+	switch b.source.Closure {
+	case domain.ClosureVerified:
+		return judgment{}
+	case domain.ClosureInvalid:
+		return judgment{findings: []found{{place{file: b.source.Entrypoint}, "the recorded reference closure could not be verified within the import bounds"}}}
+	default:
+		return judgment{undecided: true}
+	}
 }

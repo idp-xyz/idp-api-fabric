@@ -817,17 +817,18 @@ func TestWriteProblemAnswersInternalErrorForWhatIsNotAProblem(t *testing.T) {
 
 func TestTheTransportIsWiredCompletelyOrNotAtAll(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
-	complete := Config{Logger: logger, Build: buildinfo.Info{}, Verifier: tokens{}, Governance: newGovernance(), Catalog: unusedCatalog{}, Registry: unusedRegistry{}}
+	complete := Config{Logger: logger, Build: buildinfo.Info{}, Verifier: tokens{}, Governance: newGovernance(), Catalog: unusedCatalog{}, Registry: unusedRegistry{}, PolicyReview: unusedPolicyReview{}}
 	if _, err := NewHandler(complete); err != nil {
 		t.Fatalf("a complete wiring was refused: %v", err)
 	}
 
 	for name, remove := range map[string]func(c *Config){
-		"a logger":      func(c *Config) { c.Logger = nil },
-		"a verifier":    func(c *Config) { c.Verifier = nil },
-		"the use cases": func(c *Config) { c.Governance = nil },
-		"the Catalog":   func(c *Config) { c.Catalog = nil },
-		"the Registry":  func(c *Config) { c.Registry = nil },
+		"a logger":        func(c *Config) { c.Logger = nil },
+		"a verifier":      func(c *Config) { c.Verifier = nil },
+		"the use cases":   func(c *Config) { c.Governance = nil },
+		"the Catalog":     func(c *Config) { c.Catalog = nil },
+		"the Registry":    func(c *Config) { c.Registry = nil },
+		"Policy & Review": func(c *Config) { c.PolicyReview = nil },
 	} {
 		incomplete := complete
 		remove(&incomplete)

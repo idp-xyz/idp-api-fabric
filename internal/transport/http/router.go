@@ -26,6 +26,7 @@ import (
 	registry "go.idp.xyz/idp-api-fabric/internal/contractregistry/application"
 	"go.idp.xyz/idp-api-fabric/internal/platform/buildinfo"
 	"go.idp.xyz/idp-api-fabric/internal/platform/ids"
+	checks "go.idp.xyz/idp-api-fabric/internal/policyreview/application"
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/application"
 )
 
@@ -36,9 +37,10 @@ type Config struct {
 	// Verifier judges the bearer token of a request.
 	Verifier TokenVerifier
 	// Governance are the use cases of Product Governance.
-	Governance ProductGovernance
-	Catalog    APICatalog
-	Registry   ContractRegistry
+	Governance   ProductGovernance
+	Catalog      APICatalog
+	Registry     ContractRegistry
+	PolicyReview PolicyReview
 }
 
 // NewHandler returns the root handler of fabric-api.
@@ -54,8 +56,10 @@ func NewHandler(config Config) (http.Handler, error) {
 		return nil, errors.New("the transport needs the use cases of API Catalog")
 	case config.Registry == nil:
 		return nil, errors.New("the transport needs the use cases of Contract Registry")
+	case config.PolicyReview == nil:
+		return nil, errors.New("the transport needs the use cases of Policy & Review")
 	}
-	return newHandler(config.Logger, config.Verifier, operations{build: config.Build, governance: config.Governance, catalog: config.Catalog, registry: config.Registry})
+	return newHandler(config.Logger, config.Verifier, operations{build: config.Build, governance: config.Governance, catalog: config.Catalog, registry: config.Registry, policyReview: config.PolicyReview})
 }
 
 // newHandler routes the operations of the contract to server, behind the
@@ -102,10 +106,11 @@ func requireResponse(next StrictHandlerFunc, operationID string) StrictHandlerFu
 // operations implements the operations of the contract: those no bounded
 // context owns, here, and those of Product Governance in productgovernance.go.
 type operations struct {
-	build      buildinfo.Info
-	governance ProductGovernance
-	catalog    APICatalog
-	registry   ContractRegistry
+	build        buildinfo.Info
+	governance   ProductGovernance
+	catalog      APICatalog
+	registry     ContractRegistry
+	policyReview PolicyReview
 }
 
 func (operations) GetHealthz(context.Context, GetHealthzRequestObject) (GetHealthzResponseObject, error) {
@@ -152,7 +157,7 @@ func (f failures) operationFailed(w http.ResponseWriter, r *http.Request, err er
 		return
 	}
 	switch {
-	case errors.Is(err, application.ErrRefusalNotAudited), errors.Is(err, catalog.ErrRefusalNotAudited), errors.Is(err, registry.ErrRefusalNotAudited):
+	case errors.Is(err, application.ErrRefusalNotAudited), errors.Is(err, catalog.ErrRefusalNotAudited), errors.Is(err, registry.ErrRefusalNotAudited), errors.Is(err, checks.ErrRefusalNotAudited):
 		// The caller was refused all the same. Whoever operates the service
 		// has to know that the audit trail has a gap.
 		f.logger.ErrorContext(r.Context(), "a refusal could not be audited",
