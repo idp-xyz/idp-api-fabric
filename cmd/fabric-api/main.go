@@ -281,6 +281,7 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 		Revisions:    checkRevisions{registry: contractRegistry, scopes: revisionScope},
 		Checks:       checkdb.NewCheckRuns(database.Framework),
 		Evaluator:    checkopenapi.Evaluator{},
+		Comparator:   checkopenapi.Comparator{},
 		Audit:        audit.recordCheck,
 		Events:       checkoutbox.NewEvents(outbox, identifiers),
 		Clock:        clock,

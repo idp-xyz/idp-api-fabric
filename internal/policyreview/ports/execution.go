@@ -25,6 +25,11 @@ type Revisions interface {
 	LockAuthor(context.Context, domain.Principal, domain.RevisionRef) (author, productActive bool, err error)
 }
 
+type Comparator interface {
+	Tool() domain.Tool
+	Compare(baseline, candidate domain.Source) domain.Comparison
+}
+
 type Transactions interface {
 	WithinTransaction(context.Context, func(context.Context) error) error
 }

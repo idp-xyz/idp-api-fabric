@@ -15,6 +15,7 @@ type PolicyReview interface {
 	Run(context.Context, ports.Target) (checks.Execution, error)
 	Get(context.Context, ports.Target, string) (domain.CheckRun, error)
 	List(context.Context, checks.ListChecks) (checks.Page, error)
+	Compare(context.Context, ports.Target, string) (checks.RevisionComparison, error)
 }
 
 func checkTarget(ctx context.Context, product, asset, revision string) (ports.Target, error) {

@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.14.0
+  version: 0.15.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -991,6 +991,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CheckRun'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/compatibility:
+    get:
+      operationId: compareRevisionCompatibility
+      summary: Compare a candidate revision with a chosen baseline
+      description: >-
+        A current internal author of the asset's workspace can compare two
+        recorded revisions of that asset. The tool verifies both input
+        closures and reports observed changes and their classification.
+        UNKNOWN denotes uncertainty in the comparison. The response names
+        the comparator and its version.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/CheckAssetId'
+        - $ref: '#/components/parameters/CheckRevisionId'
+        - name: baseline_revision_id
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Identifier'
+      responses:
+        '200':
+          description: The comparison, bound to both verified input digests
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevisionCompatibility'
         '400':
           $ref: '#/components/responses/Problem'
         '401':
@@ -2156,6 +2200,53 @@ components:
             The branch or tag that pointed at the commit when the files were
             read. It is informational: a reference moves, the commit does not.
           $ref: '#/components/schemas/GitRef'
+    CompatibilityClassification:
+      type: string
+      enum: [COMPATIBLE, RISKY, UNKNOWN, BREAKING]
+    ComparedRevision:
+      type: object
+      required: [revision_id, input_digest]
+      additionalProperties: false
+      properties:
+        revision_id:
+          $ref: '#/components/schemas/Identifier'
+        input_digest:
+          $ref: '#/components/schemas/ContractDigest'
+    CompatibilityChange:
+      type: object
+      required: [classification, code]
+      additionalProperties: false
+      properties:
+        classification:
+          $ref: '#/components/schemas/CompatibilityClassification'
+        code:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          maxLength: 64
+        pointer:
+          description: JSON Pointer in the relevant revision's entrypoint
+          type: string
+          maxLength: 1024
+    RevisionCompatibility:
+      type: object
+      required: [baseline, candidate, tool, classification, changes, truncated]
+      additionalProperties: false
+      properties:
+        baseline:
+          $ref: '#/components/schemas/ComparedRevision'
+        candidate:
+          $ref: '#/components/schemas/ComparedRevision'
+        tool:
+          $ref: '#/components/schemas/CheckRunTool'
+        classification:
+          $ref: '#/components/schemas/CompatibilityClassification'
+        changes:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/CompatibilityChange'
+        truncated:
+          type: boolean
     ContractDigest:
       type: string
       pattern: '^sha256:[a-f0-9]{64}$'

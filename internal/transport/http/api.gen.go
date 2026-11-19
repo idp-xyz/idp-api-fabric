@@ -149,6 +149,30 @@ func (e CheckRunStatus) Valid() bool {
 	}
 }
 
+// Defines values for CompatibilityClassification.
+const (
+	CompatibilityClassificationBREAKING   CompatibilityClassification = "BREAKING"
+	CompatibilityClassificationCOMPATIBLE CompatibilityClassification = "COMPATIBLE"
+	CompatibilityClassificationRISKY      CompatibilityClassification = "RISKY"
+	CompatibilityClassificationUNKNOWN    CompatibilityClassification = "UNKNOWN"
+)
+
+// Valid indicates whether the value is a known member of the CompatibilityClassification enum.
+func (e CompatibilityClassification) Valid() bool {
+	switch e {
+	case CompatibilityClassificationBREAKING:
+		return true
+	case CompatibilityClassificationCOMPATIBLE:
+		return true
+	case CompatibilityClassificationRISKY:
+		return true
+	case CompatibilityClassificationUNKNOWN:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ContractRevisionSourceKind.
 const (
 	ContractRevisionSourceKindGIT    ContractRevisionSourceKind = "GIT"
@@ -530,6 +554,26 @@ type CheckRunTool struct {
 // Color A colour: "#" and six hexadecimal digits, two each for red, green and blue, in either case. It is kept as it is given.
 type Color = string
 
+// ComparedRevision defines model for ComparedRevision.
+type ComparedRevision struct {
+	InputDigest ContractDigest `json:"input_digest"`
+
+	// RevisionID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	RevisionID Identifier `json:"revision_id"`
+}
+
+// CompatibilityChange defines model for CompatibilityChange.
+type CompatibilityChange struct {
+	Classification CompatibilityClassification `json:"classification"`
+	Code           string                      `json:"code"`
+
+	// Pointer JSON Pointer in the relevant revision's entrypoint
+	Pointer *string `json:"pointer,omitempty"`
+}
+
+// CompatibilityClassification defines model for CompatibilityClassification.
+type CompatibilityClassification string
+
 // ContractDigest defines model for ContractDigest.
 type ContractDigest = string
 
@@ -837,6 +881,16 @@ type ProductRoleGrant struct {
 // Reference A reference into another system, compared for equality and never interpreted: 1 to 255 characters, without control characters.
 type Reference = string
 
+// RevisionCompatibility defines model for RevisionCompatibility.
+type RevisionCompatibility struct {
+	Baseline       ComparedRevision            `json:"baseline"`
+	Candidate      ComparedRevision            `json:"candidate"`
+	Changes        []CompatibilityChange       `json:"changes"`
+	Classification CompatibilityClassification `json:"classification"`
+	Tool           CheckRunTool                `json:"tool"`
+	Truncated      bool                        `json:"truncated"`
+}
+
 // Workspace defines model for Workspace.
 type Workspace struct {
 	CreatedAt time.Time `json:"created_at"`
@@ -951,6 +1005,11 @@ type ListRevisionChecksParams struct {
 
 	// PageToken Where the page starts: the next_page_token of the page before, as it was given. Without it the list starts at its beginning. The token is opaque. It names a position in one list and grants nothing: what the caller may read is decided again with every page, from what it holds then. One that is not a token of this list is refused (400 PAGE_TOKEN_INVALID).
 	PageToken *PageToken `form:"page_token,omitempty" json:"page_token,omitempty"`
+}
+
+// CompareRevisionCompatibilityParams defines parameters for CompareRevisionCompatibility.
+type CompareRevisionCompatibilityParams struct {
+	BaselineRevisionID Identifier `form:"baseline_revision_id" json:"baseline_revision_id"`
 }
 
 // ListAudienceConfigsParams defines parameters for ListAudienceConfigs.
@@ -1069,6 +1128,9 @@ type ServerInterface interface {
 	// GetRevisionCheck Read a recorded check with its rule outcomes and findings
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs/{check_run_id})
 	GetRevisionCheck(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, checkRunID Identifier)
+	// CompareRevisionCompatibility Compare a candidate revision with a chosen baseline
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/compatibility)
+	CompareRevisionCompatibility(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, params CompareRevisionCompatibilityParams)
 	// GetRevisionSource Read the files a draft revision was recorded from
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/source)
 	GetRevisionSource(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier, revisionID Identifier)
@@ -1709,6 +1771,66 @@ func (siw *ServerInterfaceWrapper) GetRevisionCheck(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetRevisionCheck(w, r, productID, apiAssetID, revisionID, checkRunID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompareRevisionCompatibility operation middleware
+func (siw *ServerInterfaceWrapper) CompareRevisionCompatibility(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID CheckAssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "revision_id" -------------
+	var revisionID CheckRevisionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "revision_id", r.PathValue("revision_id"), &revisionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revision_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CompareRevisionCompatibilityParams
+
+	// ------------- Required query parameter "baseline_revision_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "baseline_revision_id", r.URL.Query(), &params.BaselineRevisionID, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "baseline_revision_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "baseline_revision_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompareRevisionCompatibility(w, r, productID, apiAssetID, revisionID, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2630,6 +2752,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs", wrapper.ListRevisionChecks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs", wrapper.RunRevisionCheck)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs/{check_run_id}", wrapper.GetRevisionCheck)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/compatibility", wrapper.CompareRevisionCompatibility)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ListAudienceConfigs)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ConfigureAudience)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs/{audience_config_id}", wrapper.RemoveAudienceConfig)
@@ -4235,6 +4358,131 @@ type GetRevisionCheckdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetRevisionCheckdefaultApplicationProblemPlusJSONResponse) VisitGetRevisionCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareRevisionCompatibilityRequestObject struct {
+	ProductID  ProductID       `json:"product_id"`
+	APIAssetID CheckAssetID    `json:"api_asset_id"`
+	RevisionID CheckRevisionID `json:"revision_id"`
+	Params     CompareRevisionCompatibilityParams
+}
+
+type CompareRevisionCompatibilityResponseObject interface {
+	VisitCompareRevisionCompatibilityResponse(w http.ResponseWriter) error
+}
+
+type CompareRevisionCompatibility200ResponseHeaders struct {
+	CacheControl string
+}
+
+type CompareRevisionCompatibility200JSONResponse struct {
+	Body    RevisionCompatibility
+	Headers CompareRevisionCompatibility200ResponseHeaders
+}
+
+func (response CompareRevisionCompatibility200JSONResponse) VisitCompareRevisionCompatibilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareRevisionCompatibility400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response CompareRevisionCompatibility400ApplicationProblemPlusJSONResponse) VisitCompareRevisionCompatibilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareRevisionCompatibility401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response CompareRevisionCompatibility401ApplicationProblemPlusJSONResponse) VisitCompareRevisionCompatibilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareRevisionCompatibility403ApplicationProblemPlusJSONResponse Problem
+
+func (response CompareRevisionCompatibility403ApplicationProblemPlusJSONResponse) VisitCompareRevisionCompatibilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareRevisionCompatibility404ApplicationProblemPlusJSONResponse Problem
+
+func (response CompareRevisionCompatibility404ApplicationProblemPlusJSONResponse) VisitCompareRevisionCompatibilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareRevisionCompatibility503ApplicationProblemPlusJSONResponse Problem
+
+func (response CompareRevisionCompatibility503ApplicationProblemPlusJSONResponse) VisitCompareRevisionCompatibilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareRevisionCompatibilitydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response CompareRevisionCompatibilitydefaultApplicationProblemPlusJSONResponse) VisitCompareRevisionCompatibilityResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -6655,6 +6903,9 @@ type StrictServerInterface interface {
 	// GetRevisionCheck Read a recorded check with its rule outcomes and findings
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs/{check_run_id})
 	GetRevisionCheck(ctx context.Context, request GetRevisionCheckRequestObject) (GetRevisionCheckResponseObject, error)
+	// CompareRevisionCompatibility Compare a candidate revision with a chosen baseline
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/compatibility)
+	CompareRevisionCompatibility(ctx context.Context, request CompareRevisionCompatibilityRequestObject) (CompareRevisionCompatibilityResponseObject, error)
 	// GetRevisionSource Read the files a draft revision was recorded from
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/source)
 	GetRevisionSource(ctx context.Context, request GetRevisionSourceRequestObject) (GetRevisionSourceResponseObject, error)
@@ -7116,6 +7367,35 @@ func (sh *strictHandler) GetRevisionCheck(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetRevisionCheckResponseObject); ok {
 		if err := validResponse.VisitGetRevisionCheckResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CompareRevisionCompatibility operation middleware
+func (sh *strictHandler) CompareRevisionCompatibility(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, params CompareRevisionCompatibilityParams) {
+	var request CompareRevisionCompatibilityRequestObject
+
+	request.ProductID = productID
+	request.APIAssetID = apiAssetID
+	request.RevisionID = revisionID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CompareRevisionCompatibility(ctx, request.(CompareRevisionCompatibilityRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompareRevisionCompatibility")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CompareRevisionCompatibilityResponseObject); ok {
+		if err := validResponse.VisitCompareRevisionCompatibilityResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

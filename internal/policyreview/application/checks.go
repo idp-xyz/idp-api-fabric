@@ -20,6 +20,7 @@ type Dependencies struct {
 	Revisions    ports.Revisions
 	Checks       ports.CheckRuns
 	Evaluator    ports.Evaluator
+	Comparator   ports.Comparator
 	Audit        func(context.Context, ports.AuditEntry) error
 	Events       ports.Events
 	Clock        ports.Clock
@@ -33,9 +34,9 @@ type Checks struct {
 
 func NewChecks(deps Dependencies) (*Checks, error) {
 	if deps.Transactions == nil || deps.Revisions == nil || deps.Checks == nil ||
-		deps.Evaluator == nil || deps.Audit == nil || deps.Events == nil ||
+		deps.Evaluator == nil || deps.Comparator == nil || deps.Audit == nil || deps.Events == nil ||
 		deps.Clock == nil || deps.Identifiers == nil {
-		return nil, errors.New("Policy & Review needs transactions, revisions, check storage, an evaluator, audit, events, clock and identifiers")
+		return nil, errors.New("Policy & Review needs transactions, revisions, check storage, an evaluator, a comparator, audit, events, clock and identifiers")
 	}
 	return &Checks{deps: deps, policy: domain.Baseline()}, nil
 }
