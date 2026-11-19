@@ -286,7 +286,7 @@ V1 按 `Experimental → Stable → Deprecated → Retired` 表达资产生命�
 
 ### 11.1 已实现的受众配置与品牌接口（PR #10 / #11）
 
-下表路径以 `/v1/products/{product_id}` 开头。当前管理 API 为 0.7.0，访问规则见 F05 §6.3。
+下表路径以 `/v1/products/{product_id}` 开头。这些接口随管理 API 0.6.0 和 0.7.0 加入，访问规则见 F05 §6.3。
 
 | 操作 | 请求与响应 |
 |---|---|
@@ -313,7 +313,7 @@ V1 按 `Experimental → Stable → Deprecated → Retired` 表达资产生命�
 
 ### 11.3 已实现的 API 资产与契约修订接口
 
-本节对应 PR #12、#14–#17 以及随后的 Git 来源和原文读取。下表路径以 `/v1/products/{product_id}` 开头。当前管理 API 为 0.12.0：0.8.0 加入资产登记与查询，0.9.0 加入修订导入，0.10.0 加入修订详情与历史，0.11.0 加入 Git 来源，0.12.0 加入原文读取。数据模型见 F03 §5.7，访问规则见 F05 §6.4。
+本节对应 PR #12、#14–#17 以及随后的 Git 来源和原文读取。下表路径以 `/v1/products/{product_id}` 开头。这些接口随管理 API 0.8.0–0.12.0 加入：0.8.0 加入资产登记与查询，0.9.0 加入修订导入，0.10.0 加入修订详情与历史，0.11.0 加入 Git 来源，0.12.0 加入原文读取。数据模型见 F03 §5.7，访问规则见 F05 §6.4。
 
 | 操作 | 请求与响应 |
 |---|---|
@@ -334,6 +334,66 @@ V1 按 `Experimental → Stable → Deprecated → Retired` 表达资产生命�
 **读取原文。** 响应包含 `revision_id`、`source_snapshot_id`、`entrypoint`、`source_digest`、`ref_closure_digest` 和 `files`。入口文件的摘要就是 `source_digest`。提交时没有被引用到的文件不在其中。Fabric 在返回前按存储内容重新计算摘要；与修订记录不符时不返回文件，响应为 500 `INTERNAL_ERROR`；修订编号和原因写入日志，日志的 `correlation_id` 就是响应里的 `trace_id`。此时修订的元数据仍可读取。
 
 **兼容性。** 0.11.0 给 `ContractRevision.source_kind` 增加了 `GIT`，并给 `ContractRevision` 增加了可选的 `git_origin`。按 §5.1，响应枚举增加成员属于 RISKY：把枚举当作封闭集合、或拒绝未知字段的客户端，需要先升级才能读取从 Git 导入的修订。没有带来源导入之前，响应与 0.10.0 相同。
+
+### 11.4 已实现的契约检查接口
+
+本节对应 PR #22–#33。下表路径以 `/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}` 开头。当前管理 API 为 0.16.0：0.13.0 加入发起检查，0.14.0 加入检查详情和历史，0.15.0 加入修订比较，0.16.0 让检查可以指定基线并带出比较结果。数据模型见 F03 §5.8，访问规则见 F05 §6.5。
+
+| 操作 | 请求与响应 |
+|---|---|
+| `POST …/check-runs` | 没有请求体，可选查询参数 `baseline_revision_id`。记录了新的检查返回 201、`Location` 和检查全文；同一修订、策略、工具和基线已有记录时，返回 200 和那一次检查，不带 `Location` |
+| `GET …/check-runs` | 这个修订的检查历史，按完成时间从早到晚，同一时刻按编号，采用 §3.1.1 的分页约定。每项是概要，不含规则结论和发现 |
+| `GET …/check-runs/{check_run_id}` | 一次检查的全文 |
+| `GET …/compatibility?baseline_revision_id=…` | 比较这个修订（候选）和同一资产的另一个修订（基线）。只读，不记录检查 |
+
+全部响应带 `Cache-Control: no-store`。检查记录后不变，所以没有 `ETag` 和 `If-Match`。检查在请求内同步完成，没有排队和进度状态，读到的检查都是已完成的。没有 `Idempotency-Key`：同一组输入只记一次，重复请求以 200 而不是 201 区分。
+
+**检查全文。** 包含 `check_run`（概要）、`outcomes` 和 `findings`，带基线时还有 `compatibility`。概要有检查、产品、资产和修订的编号，`input_digest`（修订的闭包摘要），`policy_snapshot_id`、`policy_set_id`、`policy_digest`，`tool_manifest`，`status`，`summary`（各状态的规则数和发现总数）和起止时间；带基线时另有基线修订及其摘要、总分类和比较器。`outcomes` 每条规则一项：编号、描述、类别、级别、可否豁免、状态、发现数，以及评估它的工具（`NOT_RUN` 的规则没有工具）。`findings` 每项是规则、级别、文件路径、可选的 JSON Pointer 和行号、说明，按规则编号排列；每条规则最多列出 50 个，发现数记的是全部。
+
+**状态。** 规则的状态是 §8 的五种。一次检查的 `status` 取各规则的风险上界，顺序是 `FAIL`、`UNKNOWN`、`WARN`、`PASS`，不会是 `NOT_RUN`。基线的 23 条规则里有 10 条还没有工具（见下表之后），所以目前 `status` 只会是 `FAIL` 或 `UNKNOWN`：没有阻断级发现的检查是 `UNKNOWN`，不是 `PASS`。这是 §8“单个 PASS 不得传播成整个流水线 PASS”的直接结果。
+
+**规则。** 策略是 §7.1 登记表里阶段为 MVP 的 23 条规则，策略集名称 `fabric-global-contract-governance`。内置工具评估下面 13 条；除标明的以外，级别都是 `BLOCK`。
+
+| 规则 | 评估的内容 |
+|---|---|
+| F04-GOV-001 | 入口文件声明的 `openapi` 是 3.1.2 |
+| F04-GOV-002 | `info.title` 和 `info.version` 是非空的文本 |
+| F04-GOV-003 | `paths` 下的每个操作有 `operationId` |
+| F04-GOV-004 | 任何文件的任何一行都没有凭证形式的内容：Bearer 令牌，赋给 `password`、`api_key`、`client_secret` 这类名字的值，私钥头，JWT，AWS、GitHub、GitLab、Slack 的令牌，带密码的 URL。前两种以 `DESIGN_EXAMPLE` 开头或不含数字的不算 |
+| F04-GOV-005 | 没有引用指向提交的文件之外：网址、绝对路径、越出包的路径、没有提交的文件 |
+| F04-GOV-006 | `paths` 下的每个操作都有生效的安全要求，可以是操作自己的，也可以是文档级的；空列表不算 |
+| F04-GOV-007（`WARN`） | `paths` 下各操作的错误响应（4xx、5xx、`default`）提供 `application/problem+json` |
+| F04-GOV-008 | `operationId` 在整份文档内不重复，`webhooks` 下的操作也算在内 |
+| F04-GOV-009 | 每个文件都是一份良构、读法唯一的文档 |
+| F04-GOV-010 | 任何一行都没有内网主机的 URL：回环、私有和链路本地地址，`localhost`，`.internal`、`.local`、`.corp` 等后缀，以及 http、https、ws、wss 下不带点的主机名 |
+| F04-GOV-011 | 入口文档符合官方 OpenAPI 3.1 JSON Schema。Schema 内嵌在程序里（`schema-base/2026-11-05`，方言 `dialect/2024-11-10`），校验时不访问网络。文档声明了别的 `jsonSchemaDialect`，或数值超出校验上限时，为 `UNKNOWN` |
+| F04-GOV-012 | 按导入时的限制重新解析登记的文件，得到的闭包摘要与修订记录的一致 |
+| F04-GOV-013 | 只在检查指定了基线时评估，见“检查里的基线” |
+
+F04-GOV-014 到 020、025 到 027 这 10 条（Release 摘要链、发布授权、审批绑定、渲染清理、独立评审等）没有工具，每次检查都记为 `NOT_RUN`。F04-GOV-001、005、009、012 复核的是导入时已经执行过的限制。读文档内容的规则（001–003、005–008、011）在文件不是良构文档或超出读取上限时为 `UNKNOWN`；004 和 010 按行读原始字节，注释里的内容也在内。F04-GOV-004 和 010 按已知的形式匹配，`PASS` 只说明没有匹配到这些形式，不是“没有凭证”的证明。发现的说明不复述命中的内容。
+
+登记表里 F04-GOV-011、012、013 的 `verification_mode` 仍是 `F07_TOOL_ADAPTER`。§7.1 说这一类规则不应在输出中标记 `PASS`；内置工具现在评估这三条，评估通过时给出 `PASS`。登记表没有随实现更新，这一处不一致待裁决。
+
+**修订比较。** 比较器 `fabric-openapi-compatibility` 只比较两个修订的入口文档，并要求两边都是通过官方 Schema 的 3.1.2 文档、闭包都核对通过。它按 §5 的四类给每处差异分类，总分类取最重的一类，从重到轻是 `BREAKING`、`UNKNOWN`、`RISKY`、`COMPATIBLE`。没有列在下表里的差异一律是 `UNKNOWN`。
+
+| 分类 | 差异和它的代码 |
+|---|---|
+| `BREAKING` | 删除路径 `PATH_REMOVED`；删除操作 `OPERATION_REMOVED`；参数变为必填或新增必填参数 `PARAMETER_REQUIRED`；请求体变为必填 `REQUEST_BODY_REQUIRED`；请求 schema 收紧 `REQUEST_SCHEMA_TIGHTENED`（对象新增必填成员、字符串枚举减少成员、`maxLength` 新增或变小） |
+| `RISKY` | 安全要求或安全方案改变 `SECURITY_CHANGED`；新路径可能与已有的路径模板重叠 `PATH_MAY_OVERLAP`；错误响应（4xx、5xx、`default`）改变 `ERROR_RESPONSE_CHANGED`；响应的字符串枚举增加成员 `RESPONSE_ENUM_EXPANDED` |
+| `COMPATIBLE` | 新增路径 `PATH_ADDED`；新增操作 `OPERATION_ADDED`；新增可选参数或参数变为可选 `OPTIONAL_PARAMETER`；新增可选请求体或请求体变为可选 `OPTIONAL_REQUEST_BODY`。只改标题、摘要、描述、版本号和 `externalDocs` 不算差异 |
+| `UNKNOWN` | 文档不受支持 `DOCUMENT_UNSUPPORTED`；闭包没有核对通过 `REFERENCE_CLOSURE_UNVERIFIED`；入口路径或被引用的文件有变 `REFERENCE_FILES_CHANGED`；安全方案之外的 `components` 有变 `COMPONENTS_CHANGED`；以及其余没有分类的改动：`DOCUMENT_CHANGED`、`PATHS_EXTENSION_CHANGED`、`PATH_REFERENCE_CHANGED`、`PATH_SETTINGS_CHANGED`、`OPERATION_CHANGED`、`PARAMETER_CHANGED`、`PARAMETER_REFERENCE_OR_DUPLICATE`、`REQUEST_BODY_CHANGED`、`REQUEST_CONTENT_CHANGED`、`RESPONSE_CHANGED` |
+
+对照 §5.1 的矩阵：删除路径和操作、请求约束变严、响应枚举增加成员、安全和错误响应的改变、只改文字，这几行已有对应的分类；安全的改变一律记为 `RISKY`。返回字段的删除和类型变化、新增可选响应字段、幂等和分页语义的改变还没有专门的判断，落在 `UNKNOWN`。
+
+比较的响应包含 `baseline` 和 `candidate`（各有修订编号和输入摘要）、`tool`、`classification`、`changes` 和 `truncated`。`changes` 每项是分类、代码和可选的 JSON Pointer，至多 100 条；超过时保留最重的 100 条，`truncated` 为 `true`，总分类不受截断影响。方向有意义：删掉一条路径是 `BREAKING`，反过来比是新增路径，`COMPATIBLE`。一个修订与自己比较是 `COMPATIBLE`，没有差异。
+
+**检查里的基线。** 发起检查时带 `baseline_revision_id`，比较结果就写进这次检查，并决定规则 F04-GOV-013：`BREAKING` 为 `FAIL`，每处破坏性差异一条发现；`RISKY` 和 `UNKNOWN` 为 `UNKNOWN`，即还需要别的证据才能放行（§5 的 Fail Closed）；`COMPATIBLE` 为 `PASS`。不带基线时这条规则是 `NOT_RUN`。同一个修订带不同的基线，或不带基线，各是一次检查。基线必须是同一资产的另一个修订：与被检查的修订相同返回 400 `REQUEST_INVALID`，不属于这个资产或不存在返回 404 `REVISION_NOT_FOUND`。基线由调用方指定；Release 还没有，Fabric 不会自己选“上一个已发布的版本”。
+
+**错误。** 修订不属于该资产或不存在，返回 404 `REVISION_NOT_FOUND`；检查不属于该修订或不存在，返回 404 `CHECK_RUN_NOT_FOUND`。编号不是 UUID、页大小超过 100、比较时没有给基线，返回 400 `REQUEST_INVALID`；分页令牌属于另一个修订的列表，返回 400 `PAGE_TOKEN_INVALID`。产品已暂停时不能发起检查，返回 409 `PRODUCT_NOT_ACTIVE`，重复请求已有的检查也是如此；读取和比较不受影响。存储的检查与记录时不符（F03 §5.8），或修订的原文核对失败时，返回 500 `INTERNAL_ERROR`，响应不说原因；日志在 `correlation_id`（就是响应里的 `trace_id`）下写明是哪一次检查和原因。这时同一修订的检查历史也返回 500，其他修订不受影响。
+
+**与 §8 示例的差别。** §8 的 CheckRun 示例里的 `target_scope` 没有实现：检查不绑定受众和环境。`tool_manifest` 的每项只有名称和版本，没有 `support_level`。
+
+**兼容性。** 0.13.0–0.16.0 只增加操作和 schema，没有改变此前已有的响应。0.16.0 给 0.13.0 加入的发起检查增加了可选查询参数，并给检查的全文和概要增加了可选的 `compatibility`；不带基线发起的检查，响应里没有这个成员。
 
 ## 12. API Catalog 元数据、文档产物和发布加工
 
