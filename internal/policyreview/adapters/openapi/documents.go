@@ -40,6 +40,7 @@ type node struct {
 	// !!float or !!timestamp.
 	tag   string
 	value string
+	plain bool
 	// line is the line the value begins on, and keyLine the line of its key
 	// when it is the value of one. A mapping written as a block begins on
 	// the line of its first key, which is the line after the key it is the
@@ -205,7 +206,7 @@ func (b *bundle) convert(from *yaml.Node, file string, parent *node, token strin
 		b.overBudget = true
 		return nil
 	}
-	converted := &node{file: file, parent: parent, token: token, line: from.Line}
+	converted := &node{file: file, parent: parent, token: token, line: from.Line, plain: from.Style == 0}
 	if from.Kind == yaml.AliasNode {
 		*problems = append(*problems, found{at(converted), "the document uses a YAML alias; write the value out where it is used"})
 		return converted

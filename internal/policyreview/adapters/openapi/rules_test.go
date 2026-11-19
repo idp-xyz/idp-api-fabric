@@ -378,7 +378,7 @@ func TestARuleAboutEveryOperationIsUndecidedWhereOperationsMayBeOutOfSight(t *te
 		"a path item without operations":         "paths:\n  /a: {summary: nothing yet, parameters: []}\n",
 		"an extension under paths":               "paths:\n  x-generated: true\n  x-owners: [carol]\n",
 		"a path item that is a reference to one": "paths:\n  /a: {$ref: '#/components/pathItems/A'}\ncomponents:\n  pathItems:\n    A: {summary: nothing yet}\n",
-		"a reference beside operations":          "paths:\n  /a:\n    $ref: '#/components/pathItems/A'\n    get: {operationId: a, security: [{k: []}], responses: {}}\ncomponents:\n  pathItems:\n    A: {put: {operationId: b, security: [{k: []}], responses: {}}}\n",
+		"a reference beside operations":          "paths:\n  /a:\n    $ref: '#/components/pathItems/A'\n    get: {operationId: a, security: [{k: []}], responses: {'200': {description: OK}}}\ncomponents:\n  pathItems:\n    A: {put: {operationId: b, security: [{k: []}], responses: {'200': {description: OK}}}}\n",
 	}
 	for name, written := range clear {
 		t.Run(name, func(t *testing.T) {
@@ -448,14 +448,15 @@ func TestEveryFileIsOneDocumentThatReadsOneWay(t *testing.T) {
 		})
 	}
 
+	const valid = sound + "paths: {}\n"
 	wellFormed := map[string][]domain.SourceFile{
-		"a document":                     {file("openapi.yaml", sound)},
-		"a document behind a marker":     {file("openapi.yaml", "---\n"+sound)},
-		"a document with an anchor":      {file("openapi.yaml", sound+"x-a: &unused {b: 1}\n")},
-		"values of every plain kind":     {file("openapi.yaml", sound+"x-a: [1, 1.5, true, null, 2026-11-18, text, {}]\n")},
-		"JSON":                           {file("openapi.json", `{"openapi": "3.1.2", "info": {"title": "a", "version": "1"}}`)},
-		"a referenced file of one value": {file("openapi.yaml", sound), file("schemas/any.yaml", "true\n")},
-		"keys nobody else would write":   {file("openapi.yaml", sound+"x-a: {'': 1, ' ': 2, 'a/b': 3, 'a~b': 4, '200': 5, 'true': 6}\n")},
+		"a document":                     {file("openapi.yaml", valid)},
+		"a document behind a marker":     {file("openapi.yaml", "---\n"+valid)},
+		"a document with an anchor":      {file("openapi.yaml", valid+"x-a: &unused {b: 1}\n")},
+		"values of every plain kind":     {file("openapi.yaml", valid+"x-a: [1, 1.5, true, null, 2026-11-18, text, {}]\n")},
+		"JSON":                           {file("openapi.json", `{"openapi": "3.1.2", "info": {"title": "a", "version": "1"}, "paths": {}}`)},
+		"a referenced file of one value": {file("openapi.yaml", valid), file("schemas/any.yaml", "true\n")},
+		"keys nobody else would write":   {file("openapi.yaml", valid+"x-a: {'': 1, ' ': 2, 'a/b': 3, 'a~b': 4, '200': 5, 'true': 6}\n")},
 	}
 	for name, files := range wellFormed {
 		t.Run(name, func(t *testing.T) {
@@ -475,7 +476,7 @@ func TestEveryFileIsOneDocumentThatReadsOneWay(t *testing.T) {
 // either: the rules about the documents are undecided, the one about their
 // form included.
 func TestASourceBeyondTheBoundsOfTheToolIsUndecided(t *testing.T) {
-	const sound = "openapi: 3.1.2\ninfo: {title: Shipments, version: '1'}\n"
+	const sound = "openapi: 3.1.2\ninfo: {title: Shipments, version: '1'}\npaths: {}\n"
 	nested := func(levels int) string {
 		var written strings.Builder
 		written.WriteString(sound + "x-deep:\n")
@@ -494,9 +495,9 @@ func TestASourceBeyondTheBoundsOfTheToolIsUndecided(t *testing.T) {
 	}{
 		"nesting at the bound":     {[]domain.SourceFile{file("openapi.yaml", nested(62))}, true},
 		"nesting beyond the bound": {[]domain.SourceFile{file("openapi.yaml", nested(63))}, false},
-		// The document holds six values besides the items of the list.
-		"as many values as are read":    {[]domain.SourceFile{file("openapi.yaml", many(8192-6))}, true},
-		"one value more":                {[]domain.SourceFile{file("openapi.yaml", many(8192-5))}, false},
+		// The document holds seven values besides the items of the list.
+		"as many values as are read":    {[]domain.SourceFile{file("openapi.yaml", many(8192-7))}, true},
+		"one value more":                {[]domain.SourceFile{file("openapi.yaml", many(8192-6))}, false},
 		"values counted over the files": {[]domain.SourceFile{file("openapi.yaml", many(5000)), file("b.yaml", many(4000))}, false},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -505,7 +506,7 @@ func TestASourceBeyondTheBoundsOfTheToolIsUndecided(t *testing.T) {
 				said.expect(t, nil, "")
 				return
 			}
-			said.expect(t, nil, "001 002 003 005 006 007 008 009")
+			said.expect(t, nil, "001 002 003 005 006 007 008 009 011")
 		})
 	}
 }

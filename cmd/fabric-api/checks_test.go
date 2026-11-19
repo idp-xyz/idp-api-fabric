@@ -78,7 +78,8 @@ func TestARevisionCheckRecordsAndReusesItsEvidence(t *testing.T) {
 		item := raw.(map[string]any)
 		outcomes[item["rule_id"].(string)] = item["status"]
 	}
-	if outcomes["F04-GOV-003"] != "FAIL" || outcomes["F04-GOV-011"] != "NOT_RUN" || len(created.body["findings"].([]any)) == 0 {
+	if outcomes["F04-GOV-003"] != "FAIL" || outcomes["F04-GOV-011"] != "PASS" ||
+		outcomes["F04-GOV-013"] != "NOT_RUN" || len(created.body["findings"].([]any)) == 0 {
 		t.Fatalf("rule evidence: %v, findings %v", outcomes, created.body["findings"])
 	}
 
