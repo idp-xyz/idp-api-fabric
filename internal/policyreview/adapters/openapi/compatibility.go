@@ -97,7 +97,7 @@ func (d *comparison) add(classification domain.Compatibility, code, pointer stri
 		pointer = ""
 	}
 	d.Changes = append(d.Changes, domain.CompatibilityChange{Classification: classification, Code: code, Pointer: pointer})
-	if priority(classification) > priority(d.Classification) {
+	if classification.Priority() > d.Classification.Priority() {
 		d.Classification = classification
 	}
 }
@@ -105,25 +105,12 @@ func (d *comparison) add(classification domain.Compatibility, code, pointer stri
 func (d *comparison) result() domain.Comparison {
 	if len(d.Changes) > domain.MaxCompatibilityChanges {
 		slices.SortStableFunc(d.Changes, func(a, b domain.CompatibilityChange) int {
-			return cmp.Compare(priority(b.Classification), priority(a.Classification))
+			return cmp.Compare(b.Classification.Priority(), a.Classification.Priority())
 		})
 		d.Changes = d.Changes[:domain.MaxCompatibilityChanges]
 		d.Truncated = true
 	}
 	return domain.Comparison(*d)
-}
-
-func priority(classification domain.Compatibility) int {
-	switch classification {
-	case domain.Breaking:
-		return 3
-	case domain.Unknown:
-		return 2
-	case domain.Risky:
-		return 1
-	default:
-		return 0
-	}
 }
 
 func (d *comparison) paths(before, after object) {

@@ -248,6 +248,7 @@ type Draft struct {
 	Revision         RevisionRef
 	RequestedBy      Principal
 	StartedAt        time.Time
+	Compatibility    *ComparisonEvidence
 }
 
 // CheckRun is the evidence of one check: what was read, the policy it was
@@ -263,10 +264,11 @@ type CheckRun struct {
 	// InputDigest is the digest of the closure that was read.
 	InputDigest string
 	// PolicySetID and PolicyDigest name the policy the check was held to.
-	PolicySetID  string
-	PolicyDigest string
-	Tools        []Tool
-	Status       Status
+	PolicySetID   string
+	PolicyDigest  string
+	Tools         []Tool
+	Status        Status
+	Compatibility *ComparisonEvidence
 	// Outcomes holds one outcome for each rule of the policy, in the order
 	// of the rule identifiers.
 	Outcomes []Outcome
@@ -296,6 +298,7 @@ type Overview struct {
 	StartedAt        time.Time
 	CompletedAt      time.Time
 	RequestedBy      Principal
+	Compatibility    *ComparisonEvidence
 }
 
 // Overview is the check run as a history shows it.
@@ -304,6 +307,7 @@ func (r CheckRun) Overview() Overview {
 		ID: r.ID, PolicySnapshotID: r.PolicySnapshotID, Revision: r.Revision, InputDigest: r.InputDigest,
 		PolicySetID: r.PolicySetID, PolicyDigest: r.PolicyDigest, Tools: slices.Clone(r.Tools), Status: r.Status,
 		Summary: r.Summary(), StartedAt: r.StartedAt, CompletedAt: r.CompletedAt, RequestedBy: r.RequestedBy,
+		Compatibility: r.Compatibility.clone(),
 	}
 }
 
@@ -317,6 +321,9 @@ func RecordedOverview(overview Overview) (Overview, error) {
 	case overview.ID == "" || !digestForm.MatchString(overview.InputDigest) || !digestForm.MatchString(overview.PolicyDigest):
 		return Overview{}, ErrCheckRunDamaged
 	case len(overview.Tools) == 0 || overview.CompletedAt.Before(overview.StartedAt):
+		return Overview{}, ErrCheckRunDamaged
+	case overview.Compatibility != nil && (!overview.Compatibility.validFor(overview.Revision.RevisionID) ||
+		!slices.Contains(overview.Tools, overview.Compatibility.Tool)):
 		return Overview{}, ErrCheckRunDamaged
 	case min(summary.Pass, summary.Warn, summary.Fail, summary.Unknown, summary.NotRun, summary.Findings) < 0:
 		return Overview{}, ErrCheckRunDamaged
@@ -364,12 +371,19 @@ func Complete(draft Draft, policy Policy, source Source, tool Tool, observations
 	for _, file := range source.Files {
 		files[file.Path] = true
 	}
+	comparison := draft.Compatibility
+	if comparison != nil && (!comparison.validFor(revision.RevisionID) || comparison.Tool.Name == tool.Name || !files[source.Entrypoint]) {
+		return CheckRun{}, invalidEvaluation("the compatibility evidence does not bind a distinct baseline, comparator and entrypoint")
+	}
 
 	observed := make(map[string]Observation, len(observations))
 	for _, observation := range observations {
 		rule, known := policy.Rule(observation.RuleID)
 		if !known {
 			return CheckRun{}, invalidEvaluation("a rule was evaluated that the policy does not have")
+		}
+		if rule.Evaluator == comparisonEvaluator {
+			return CheckRun{}, invalidEvaluation("compatibility must be evaluated from a bound comparison")
 		}
 		if _, twice := observed[rule.ID]; twice {
 			return CheckRun{}, invalidEvaluation("rule " + rule.ID + " was evaluated twice")
@@ -393,7 +407,11 @@ func Complete(draft Draft, policy Policy, source Source, tool Tool, observations
 		ID: draft.ID, PolicySnapshotID: draft.PolicySnapshotID, Revision: revision, InputDigest: source.Digest,
 		PolicySetID: policy.setID, PolicyDigest: policy.Digest(), Tools: []Tool{tool},
 		Outcomes: make([]Outcome, 0, len(policy.rules)), RequestedBy: draft.RequestedBy,
-		StartedAt: draft.StartedAt.UTC().Truncate(time.Microsecond),
+		StartedAt: draft.StartedAt.UTC().Truncate(time.Microsecond), Compatibility: comparison.clone(),
+	}
+	if comparison != nil {
+		run.Tools = append(run.Tools, comparison.Tool)
+		slices.SortFunc(run.Tools, func(a, b Tool) int { return strings.Compare(a.Name, b.Name) })
 	}
 	// A clock that was set back between the two readings does not make a
 	// check end before it began.
@@ -401,14 +419,20 @@ func Complete(draft Draft, policy Policy, source Source, tool Tool, observations
 	if run.CompletedAt.Before(run.StartedAt) {
 		run.CompletedAt = run.StartedAt
 	}
+	var compared bool
 	for _, rule := range policy.rules {
 		observation, evaluated := observed[rule.ID]
+		reportingTool := tool
+		if comparison != nil && rule.Evaluator == comparisonEvaluator {
+			observation = comparison.observation(rule, source.Entrypoint)
+			reportingTool, evaluated, compared = comparison.Tool, true, true
+		}
 		if !evaluated {
 			run.Outcomes = append(run.Outcomes, Outcome{Rule: rule, Status: StatusNotRun})
 			continue
 		}
 		run.Outcomes = append(run.Outcomes, Outcome{
-			Rule: rule, Status: statusOf(rule, observation), Findings: len(observation.Findings), Tool: tool,
+			Rule: rule, Status: statusOf(rule, observation), Findings: len(observation.Findings), Tool: reportingTool,
 		})
 		found := slices.Clone(observation.Findings)
 		slices.SortStableFunc(found, func(a, b Finding) int {
@@ -422,6 +446,9 @@ func Complete(draft Draft, policy Policy, source Source, tool Tool, observations
 			finding.Level = rule.Severity
 			run.Findings = append(run.Findings, finding)
 		}
+	}
+	if comparison != nil && !compared {
+		return CheckRun{}, invalidEvaluation("the policy has no compatibility rule")
 	}
 	run.Status = run.Summary().Status()
 	return run, nil
@@ -463,6 +490,8 @@ func Recorded(run CheckRun, policy Policy) (CheckRun, error) {
 		return CheckRun{}, ErrCheckRunDamaged
 	case len(run.Tools) == 0 || len(run.Outcomes) != len(policy.rules) || run.CompletedAt.Before(run.StartedAt):
 		return CheckRun{}, ErrCheckRunDamaged
+	case run.Compatibility != nil && !run.Compatibility.validFor(revision.RevisionID):
+		return CheckRun{}, ErrCheckRunDamaged
 	}
 	for _, tool := range run.Tools {
 		if !tool.valid() {
@@ -477,16 +506,23 @@ func Recorded(run CheckRun, policy Policy) (CheckRun, error) {
 	for _, finding := range run.Findings {
 		kept[finding.RuleID]++
 	}
+	var comparisonRule bool
 	for i, outcome := range run.Outcomes {
 		rule := policy.rules[i]
 		if outcome.Rule.ID != rule.ID || !agrees(rule, outcome, run.Tools) || kept[rule.ID] != min(outcome.Findings, MaxFindingsPerRule) {
 			return CheckRun{}, ErrCheckRunDamaged
 		}
+		if rule.Evaluator == comparisonEvaluator {
+			comparisonRule = true
+			if !run.Compatibility.matches(rule, outcome) {
+				return CheckRun{}, ErrCheckRunDamaged
+			}
+		}
 		outcome.Rule = rule
 		recorded.Outcomes[i] = outcome
 		delete(kept, rule.ID)
 	}
-	if len(kept) != 0 || run.Status != recorded.Summary().Status() {
+	if len(kept) != 0 || run.Status != recorded.Summary().Status() || (run.Compatibility != nil && !comparisonRule) {
 		return CheckRun{}, ErrCheckRunDamaged
 	}
 	for _, finding := range run.Findings {
