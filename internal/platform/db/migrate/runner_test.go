@@ -548,12 +548,23 @@ func TestRunLeavesTheSnapshotsOfTheBuildBeforeGitOriginsAsTheUploadsTheyAre(t *t
 	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
 		t.Fatalf("migrate as this build: %v", err)
 	}
-	// The step is recorded last, behind the steps of the contexts the plan
-	// lists after Contract Registry: the history is in the order of what
-	// happened, and a later run finds nothing left to apply.
+	// The step and what Contract Registry added after it are recorded
+	// last, behind the steps of the contexts the plan lists after Contract
+	// Registry: the history is in the order of what happened, and a later
+	// run finds nothing left to apply.
 	applied, planned := history(t, conn), planRows(t)
-	if len(applied) == 0 || applied[len(applied)-1].ID != gitOrigin {
-		t.Errorf("the history records\n %+v\nwant %s applied last", applied, gitOrigin)
+	var late []string
+	for _, step := range plan {
+		if step.Schema == "contractregistry" && step.ID >= gitOrigin {
+			late = append(late, step.ID)
+		}
+	}
+	var last []string
+	for _, row := range applied[max(0, len(applied)-len(late)):] {
+		last = append(last, row.ID)
+	}
+	if !slices.Equal(last, late) {
+		t.Errorf("the history records\n %+v\nwant %v applied last, in that order", applied, late)
 	}
 	byID := func(a, b historyRow) int { return strings.Compare(a.ID, b.ID) }
 	slices.SortFunc(applied, byID)
@@ -744,6 +755,155 @@ func TestRunLetsAWorkspaceHaveReviewersAndLeavesItsMembersWhatTheyAre(t *testing
 	}
 	if !slices.Equal(members, want) {
 		t.Errorf("the members are\n %+v\nwant those of before as they were granted, and the reviewer\n %+v", members, want)
+	}
+}
+
+// reviewState and reviewRecords are the steps that let a revision be
+// reviewed: its status moves, and Policy & Review keeps what was asked.
+const (
+	reviewState   = "contractregistry/003_revision_review_state"
+	reviewRecords = "policyreview/003_review"
+)
+
+// A database the build before reviews has migrated and written to is brought
+// up to date with what it holds. Every revision stays the draft it is, at
+// version 1 of its status, and what that build still records while this one
+// is rolled out is a draft like the others. A process of this build does not
+// start until the database is migrated and its role may move a status and
+// keep reviews: one run of fabric-migrate -apply -grant-to gives it both.
+func TestRunLeavesTheRevisionsOfTheBuildBeforeReviewsTheDraftsTheyAre(t *testing.T) {
+	database := pgtest.FreshDatabase(t)
+	conn := pgtest.Connect(t, database.Migrator)
+	role := pgx.Identifier{database.ApplicationRole}.Sanitize()
+
+	plan, err := migrate.Plan()
+	if err != nil {
+		t.Fatalf("build the plan: %v", err)
+	}
+	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool {
+		return (step.Schema == "contractregistry" && step.ID >= reviewState) || (step.Schema == "policyreview" && step.ID >= reviewRecords)
+	})
+	if len(before) > len(plan)-2 {
+		t.Fatalf("the plan does not carry %s and %s; this test would pass vacuously", reviewState, reviewRecords)
+	}
+	if err := migrate.Apply(t.Context(), conn, quiet, before); err != nil {
+		t.Fatalf("migrate as the build before: %v", err)
+	}
+	// What that build granted: on the tables it had, and no statement that
+	// changed a revision.
+	grantOnWhatIsThere(t, conn, database.ApplicationRole)
+	if _, err := conn.Exec(t.Context(), `REVOKE UPDATE ON contractregistry.contract_revision FROM `+role); err != nil {
+		t.Fatalf("take back what that build did not grant: %v", err)
+	}
+
+	// A revision as a process of that build records it, with the statements
+	// it runs: they name no version of a status.
+	const (
+		shipping = "3e1c6a9d-74f2-4b0a-98c3-b2e5f4a6c7d8"
+		cargopai = "1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6"
+		team     = "4f2d7b0e-85a3-4c1b-a9d4-c3f6a5b7d8e9"
+
+		recordSnapshot = `
+			INSERT INTO contractregistry.source_snapshot (
+			    source_snapshot_id, product_id, api_asset_id, source_kind, entrypoint, source_digest,
+			    ref_closure_digest, ref_closure_manifest, captured_at, captured_by_issuer, captured_by_subject
+			) VALUES ($1, $2, $3, 'UPLOAD', 'openapi.yaml', $4, $4, '{}', now(), 'https://issuer.example', 'author')`
+		recordRevision = `
+			INSERT INTO contractregistry.contract_revision (
+			    revision_id, product_id, workspace_id, api_asset_id, source_snapshot_id, revision_sequence, spec_version, status
+			) VALUES ($1, $2, $3, $4, $5, $6, '3.1.2', 'DRAFT')`
+		submit = `
+			UPDATE contractregistry.contract_revision SET status = 'IN_REVIEW', status_version = 2 WHERE revision_id = $1`
+		insufficientPrivilege = "42501"
+	)
+	digest := func(of string) string { return "sha256:" + strings.Repeat(of, 64) }
+	app := pgtest.Connect(t, database.Application)
+	record := func(revision, snapshot, closure string, sequence int) error {
+		if _, err := app.Exec(t.Context(), recordSnapshot, snapshot, cargopai, shipping, digest(closure)); err != nil {
+			return err
+		}
+		_, err := app.Exec(t.Context(), recordRevision, revision, cargopai, team, shipping, snapshot, sequence)
+		return err
+	}
+	const first, second = "5a3c8e1f-96b4-4d2c-8ae5-d4a7b6c8e9f0", "6b4d9f2a-a7c5-4e3d-9bf6-e5b8c7d9fa01"
+	if err := record(first, "7c5ea03b-b8d6-4f4e-8c07-f6c9d8eafb12", "a", 1); err != nil {
+		t.Fatalf("record a revision as the build before: %v", err)
+	}
+
+	// A process of this build does not start on the database as that build
+	// left it: tables it keeps reviews in are not there.
+	refused := func(when string, want error, naming string) {
+		t.Helper()
+
+		opened, err := db.Open(t.Context(), database.Application)
+		if err == nil {
+			opened.Close()
+		}
+		if !errors.Is(err, want) || !strings.Contains(err.Error(), naming) {
+			t.Fatalf("%s: got %v, want %v naming %q", when, err, want, naming)
+		}
+	}
+	refused("on the database as the build before left it", db.ErrNotMigrated, "policyreview.review_request does not exist")
+
+	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
+		t.Fatalf("migrate as this build: %v", err)
+	}
+	applied, planned := history(t, conn), planRows(t)
+	byID := func(a, b historyRow) int { return strings.Compare(a.ID, b.ID) }
+	slices.SortFunc(applied, byID)
+	slices.SortFunc(planned, byID)
+	if !slices.Equal(applied, planned) {
+		t.Errorf("the history records\n %+v\nwant every step of the plan, each once\n %+v", applied, planned)
+	}
+	// Migrated, its role still may not move a status, and it says so.
+	refused("once it is migrated, before the grant", db.ErrNotGranted, "UPDATE on contractregistry.contract_revision")
+	if _, err := app.Exec(t.Context(), submit, first); sqlState(err) != insufficientPrivilege {
+		t.Errorf("a submission by the role as that build granted it: got %v, want it refused for lack of privilege", err)
+	}
+
+	// That build is still running while this one is rolled out, and records
+	// a draft the way it does.
+	if err := record(second, "8d6fb14c-c9e7-4a5f-9d18-a7dae9fb0c23", "b", 2); err != nil {
+		t.Fatalf("record a revision as the build before, after the migration: %v", err)
+	}
+
+	if err := migrate.Grant(t.Context(), conn, database.ApplicationRole); err != nil {
+		t.Fatalf("grant with this build: %v", err)
+	}
+	opened, err := db.Open(t.Context(), database.Application)
+	if err != nil {
+		t.Fatalf("once it is migrated and granted: %v", err)
+	}
+	opened.Close()
+
+	type revision struct {
+		Sequence int64
+		Status   string
+		Version  int64
+	}
+	read := func() []revision {
+		t.Helper()
+		rows, err := conn.Query(t.Context(), `
+			SELECT revision_sequence, status, status_version FROM contractregistry.contract_revision ORDER BY revision_sequence`)
+		if err != nil {
+			t.Fatalf("read the revisions: %v", err)
+		}
+		revisions, err := pgx.CollectRows(rows, pgx.RowToStructByPos[revision])
+		if err != nil {
+			t.Fatalf("read the revisions: %v", err)
+		}
+		return revisions
+	}
+	if got, want := read(), []revision{{1, "DRAFT", 1}, {2, "DRAFT", 1}}; !slices.Equal(got, want) {
+		t.Errorf("the revisions are %+v, want the drafts they were recorded as, at version 1 of their status: %+v", got, want)
+	}
+	// Granted, the role moves a status, and the revision of that build is
+	// one that can be submitted.
+	if _, err := app.Exec(t.Context(), submit, first); err != nil {
+		t.Errorf("a submission once the role is granted: %v", err)
+	}
+	if got, want := read(), []revision{{1, "IN_REVIEW", 2}, {2, "DRAFT", 1}}; !slices.Equal(got, want) {
+		t.Errorf("the revisions are %+v, want %+v", got, want)
 	}
 }
 

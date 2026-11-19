@@ -1,0 +1,160 @@
+package postgres
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	bentopostgres "go.idp.xyz/idp-bento-go/postgres"
+
+	"go.idp.xyz/idp-api-fabric/internal/policyreview/domain"
+	"go.idp.xyz/idp-api-fabric/internal/policyreview/ports"
+)
+
+type Reviews struct {
+	database *bentopostgres.DB
+}
+
+var _ ports.Reviews = (*Reviews)(nil)
+
+func NewReviews(database *bentopostgres.DB) *Reviews {
+	return &Reviews{database: database}
+}
+
+// A review is read under the product, the asset, the workspace and the
+// revision it belongs to, never by its identifier alone. Its scope is read
+// in the order the model keeps it in.
+const selectReview = `
+SELECT q.review_id, q.product_id, q.workspace_id, q.api_asset_id, q.revision_id, q.check_run_id, q.input_digest,
+       coalesce(q.note, ''), q.requested_at, q.requested_by_issuer, q.requested_by_subject,
+       ARRAY(SELECT s.audience || '/' || s.environment FROM policyreview.review_scope s
+             WHERE s.review_id = q.review_id ORDER BY s.audience COLLATE "C", s.environment COLLATE "C"),
+       c.outcome, coalesce(c.reason, ''), c.concluded_at, c.concluded_by_issuer, c.concluded_by_subject
+FROM policyreview.review_request q
+LEFT JOIN policyreview.review_conclusion c USING (review_id)
+WHERE q.product_id = $1 AND q.api_asset_id = $2 AND q.workspace_id = $3 AND q.revision_id = $4`
+
+func scanReview(row pgx.CollectableRow) (domain.Review, error) {
+	var (
+		review          domain.Review
+		scope           []string
+		outcome         *string
+		reason          string
+		concludedAt     *time.Time
+		issuer, subject *string
+	)
+	request := &review.Request
+	if err := row.Scan(&request.ID, &request.Revision.ProductID, &request.Revision.WorkspaceID, &request.Revision.AssetID,
+		&request.Revision.RevisionID, &request.CheckRunID, &request.InputDigest, &request.Note, &request.RequestedAt,
+		&request.RequestedBy.Issuer, &request.RequestedBy.Subject, &scope,
+		&outcome, &reason, &concludedAt, &issuer, &subject); err != nil {
+		return domain.Review{}, err
+	}
+	request.RequestedAt = request.RequestedAt.UTC()
+	for _, target := range scope {
+		audience, environment, _ := strings.Cut(target, "/")
+		request.Scope = append(request.Scope, domain.Target{Audience: audience, Environment: environment})
+	}
+	if outcome != nil && concludedAt != nil && issuer != nil && subject != nil {
+		review.Conclusion = &domain.Conclusion{
+			ReviewID: request.ID, Outcome: domain.ReviewOutcome(*outcome), Reason: reason, ConcludedAt: concludedAt.UTC(),
+			ConcludedBy: domain.Principal{Issuer: *issuer, Subject: *subject},
+		}
+	}
+	recorded, err := domain.RecordedReview(review)
+	if err != nil {
+		return domain.Review{}, fmt.Errorf("review %s: %w", request.ID, err)
+	}
+	return recorded, nil
+}
+
+func (s *Reviews) Request(ctx context.Context, request domain.ReviewRequest, statusVersion int64) error {
+	writer, err := s.database.RequireExecutor(ctx)
+	if err != nil {
+		return err
+	}
+	const insertRequest = `
+INSERT INTO policyreview.review_request (
+    review_id, product_id, workspace_id, api_asset_id, revision_id, revision_status_version, check_run_id,
+    input_digest, note, requested_at, requested_by_issuer, requested_by_subject
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`
+	revision := request.Revision
+	if _, err := writer.Exec(ctx, insertRequest, request.ID, revision.ProductID, revision.WorkspaceID, revision.AssetID,
+		revision.RevisionID, statusVersion, request.CheckRunID, request.InputDigest, optional(request.Note),
+		request.RequestedAt, request.RequestedBy.Issuer, request.RequestedBy.Subject); err != nil {
+		return fmt.Errorf("store a review request: %w", err)
+	}
+	var audiences, environments []string
+	for _, target := range request.Scope {
+		audiences, environments = append(audiences, target.Audience), append(environments, target.Environment)
+	}
+	const insertScope = `
+INSERT INTO policyreview.review_scope (review_id, audience, environment)
+SELECT $1::uuid, * FROM unnest($2::text[], $3::text[])`
+	if _, err := writer.Exec(ctx, insertScope, request.ID, audiences, environments); err != nil {
+		return fmt.Errorf("store the scope of a review: %w", err)
+	}
+	return nil
+}
+
+func (s *Reviews) Conclude(ctx context.Context, conclusion domain.Conclusion) error {
+	writer, err := s.database.RequireExecutor(ctx)
+	if err != nil {
+		return err
+	}
+	const insert = `
+INSERT INTO policyreview.review_conclusion (review_id, outcome, reason, concluded_at, concluded_by_issuer, concluded_by_subject)
+VALUES ($1,$2,$3,$4,$5,$6)`
+	if _, err := writer.Exec(ctx, insert, conclusion.ReviewID, string(conclusion.Outcome), optional(conclusion.Reason),
+		conclusion.ConcludedAt, conclusion.ConcludedBy.Issuer, conclusion.ConcludedBy.Subject); err != nil {
+		return fmt.Errorf("store the conclusion of a review: %w", err)
+	}
+	return nil
+}
+
+func (s *Reviews) Find(ctx context.Context, revision domain.RevisionRef, id string) (domain.Review, bool, error) {
+	reader, err := s.database.ReadExecutor(ctx)
+	if err != nil {
+		return domain.Review{}, false, err
+	}
+	rows, err := reader.Query(ctx, selectReview+" AND q.review_id = $5",
+		revision.ProductID, revision.AssetID, revision.WorkspaceID, revision.RevisionID, id)
+	if err != nil {
+		return domain.Review{}, false, fmt.Errorf("find a review: %w", err)
+	}
+	reviews, err := pgx.CollectRows(rows, scanReview)
+	if err != nil {
+		return domain.Review{}, false, fmt.Errorf("read a review: %w", err)
+	}
+	if len(reviews) == 0 {
+		return domain.Review{}, false, nil
+	}
+	return reviews[0], true, nil
+}
+
+func (s *Reviews) List(ctx context.Context, revision domain.RevisionRef, after *ports.Position, limit int) ([]domain.Review, error) {
+	reader, err := s.database.ReadExecutor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	const list = selectReview + `
+  AND (q.requested_at, q.review_id) >
+      (COALESCE($5::timestamptz, '-infinity'), COALESCE($6::uuid, '00000000-0000-0000-0000-000000000000'))
+ORDER BY q.requested_at, q.review_id
+LIMIT $7`
+	var at, id any
+	if after != nil {
+		at, id = after.At, after.ID
+	}
+	rows, err := reader.Query(ctx, list, revision.ProductID, revision.AssetID, revision.WorkspaceID, revision.RevisionID, at, id, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list reviews: %w", err)
+	}
+	reviews, err := pgx.CollectRows(rows, scanReview)
+	if err != nil {
+		return nil, fmt.Errorf("read reviews: %w", err)
+	}
+	return reviews, nil
+}

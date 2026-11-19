@@ -276,14 +276,32 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 	if err != nil {
 		return nil, err
 	}
-	policyReview, err := checks.NewChecks(checks.Dependencies{
+	checkedRevisions := checkRevisions{registry: contractRegistry, scopes: revisionScope}
+	checkRuns := checkdb.NewCheckRuns(database.Framework)
+	checkEvents := checkoutbox.NewEvents(outbox, identifiers)
+	contractChecks, err := checks.NewChecks(checks.Dependencies{
 		Transactions: transactions,
-		Revisions:    checkRevisions{registry: contractRegistry, scopes: revisionScope},
-		Checks:       checkdb.NewCheckRuns(database.Framework),
+		Revisions:    checkedRevisions,
+		Checks:       checkRuns,
 		Evaluator:    checkopenapi.Evaluator{},
 		Comparator:   checkopenapi.Comparator{},
 		Audit:        audit.recordCheck,
-		Events:       checkoutbox.NewEvents(outbox, identifiers),
+		Events:       checkEvents,
+		Clock:        clock,
+		Identifiers:  identifiers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	contractReviews, err := checks.NewReviews(checks.ReviewDependencies{
+		Transactions: transactions,
+		Revisions:    checkedRevisions,
+		Checks:       checkRuns,
+		Reviews:      checkdb.NewReviews(database.Framework),
+		Evaluator:    checkopenapi.Evaluator{},
+		Comparator:   checkopenapi.Comparator{},
+		Audit:        audit.recordCheck,
+		Events:       checkEvents,
 		Clock:        clock,
 		Identifiers:  identifiers,
 	})
@@ -291,7 +309,8 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 		return nil, err
 	}
 	return httptransport.NewHandler(httptransport.Config{
-		Logger: logger, Build: buildinfo.Current(), Verifier: verifier, Governance: productGovernance, Catalog: apiCatalog, Registry: contractRegistry, PolicyReview: policyReview,
+		Logger: logger, Build: buildinfo.Current(), Verifier: verifier, Governance: productGovernance, Catalog: apiCatalog, Registry: contractRegistry,
+		PolicyReview: policyReview{Checks: contractChecks, Reviews: contractReviews},
 	})
 }
 

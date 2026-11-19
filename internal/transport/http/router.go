@@ -157,7 +157,7 @@ func (f failures) operationFailed(w http.ResponseWriter, r *http.Request, err er
 		return
 	}
 	switch {
-	case errors.Is(err, application.ErrRefusalNotAudited), errors.Is(err, catalog.ErrRefusalNotAudited), errors.Is(err, registry.ErrRefusalNotAudited), errors.Is(err, checks.ErrRefusalNotAudited):
+	case errors.Is(err, application.ErrRefusalNotAudited), errors.Is(err, catalog.ErrRefusalNotAudited), errors.Is(err, registry.ErrRefusalNotAudited), errors.Is(err, checks.ErrRefusalNotAudited), errors.Is(err, checks.ErrReviewNotAudited):
 		// The caller was refused all the same. Whoever operates the service
 		// has to know that the audit trail has a gap.
 		f.logger.ErrorContext(r.Context(), "a refusal could not be audited",

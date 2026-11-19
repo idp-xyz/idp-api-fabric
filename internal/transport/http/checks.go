@@ -16,6 +16,7 @@ type PolicyReview interface {
 	Get(context.Context, ports.Target, string) (domain.CheckRun, error)
 	List(context.Context, checks.ListChecks) (checks.Page, error)
 	Compare(context.Context, ports.Target, string) (checks.RevisionComparison, error)
+	ContractReviews
 }
 
 func checkTarget(ctx context.Context, product, asset, revision string) (ports.Target, error) {
@@ -170,6 +171,6 @@ func checkProblem(err error) (Problem, bool) {
 	case errors.Is(err, checks.ErrProductSuspended):
 		return problem(http.StatusConflict, CodeProductNotActive, "The product is suspended and takes no new work."), true
 	default:
-		return Problem{}, false
+		return reviewProblem(err)
 	}
 }

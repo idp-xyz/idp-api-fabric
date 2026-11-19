@@ -23,6 +23,11 @@ type Revisions interface {
 	Source(context.Context, Target) (domain.RevisionRef, domain.Source, error)
 	// LockAuthor rechecks the current author membership while recording a check.
 	LockAuthor(context.Context, domain.Principal, domain.RevisionRef) (author, productActive bool, err error)
+	// Move changes the status the registry keeps of the revision, within
+	// the transaction it is called in, and returns the version that status
+	// has then. The registry decides which moves there are and refuses the
+	// others; of several moves that arrive together it makes one.
+	Move(ctx context.Context, revision domain.RevisionRef, to string) (statusVersion int64, err error)
 }
 
 type Comparator interface {
@@ -37,9 +42,12 @@ type Transactions interface {
 type AuditEntry struct {
 	Target     Target
 	CheckRunID string
-	Action     string
-	Rule       string
-	Allowed    bool
+	// ReviewID names the review an entry is about, for the entries of a
+	// review. It is empty for the entry of a check.
+	ReviewID string
+	Action   string
+	Rule     string
+	Allowed  bool
 }
 
 type Events interface {

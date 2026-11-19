@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.17.0
+  version: 0.18.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -1056,6 +1056,204 @@ paths:
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+      - $ref: '#/components/parameters/CheckAssetId'
+      - $ref: '#/components/parameters/CheckRevisionId'
+    get:
+      operationId: listRevisionReviews
+      summary: List the reviews of one revision
+      description: >-
+        A current author or reviewer of the asset's workspace can read the
+        reviews of the revision, in the order they were asked for. The page
+        token belongs to this product, asset and revision. Each review says
+        what was asked, on which check, for which scope, and how it ended
+        if it has ended.
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: One page of reviews
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: requestRevisionReview
+      summary: Submit a revision for review
+      description: >-
+        A current author of the asset's workspace asks for a decision on a
+        revision of an active product. The request names one recorded check
+        of the revision, the evidence the decision is asked on, and the scope
+        the revision is to be approved for: audiences in environments.
+        The check has to be one a decision can rest on now. A check made
+        under another policy or by other tool versions than a check is made
+        with today is refused (409 POLICY_STALE): run the check again. A
+        check in which a rule that nothing waives failed or could not be
+        judged is refused as well (409 REVIEW_BLOCKED): no decision approves
+        such a revision.
+        A revision is submitted as a DRAFT, or again once it was WITHDRAWN,
+        and is IN_REVIEW from then on, under this one request. Any other
+        status is refused (409 REVISION_STATUS_CONFLICT). The request, the
+        status of the revision, the audit record and the event commit
+        together.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewSubmission'
+      responses:
+        '201':
+          description: The review was asked for and the revision is in review
+          headers:
+            Location:
+              required: true
+              schema:
+                type: string
+                format: uri-reference
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+      - $ref: '#/components/parameters/CheckAssetId'
+      - $ref: '#/components/parameters/CheckRevisionId'
+      - $ref: '#/components/parameters/ReviewId'
+    get:
+      operationId: getRevisionReview
+      summary: Read one review of a revision
+      description: >-
+        A current author or reviewer of the asset's workspace can read a
+        review of the requested revision. A review of another revision is
+        reported as missing.
+      responses:
+        '200':
+          description: The review
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/withdrawal:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+      - $ref: '#/components/parameters/CheckAssetId'
+      - $ref: '#/components/parameters/CheckRevisionId'
+      - $ref: '#/components/parameters/ReviewId'
+    post:
+      operationId: withdrawRevisionReview
+      summary: Take a request for review back
+      description: >-
+        Whoever asked for a review takes the request back, while still an
+        author of the asset's workspace and while the review is open. The
+        revision is WITHDRAWN from then on and can be submitted again. A
+        review that has its conclusion is refused (409 REVIEW_CONCLUDED).
+        The conclusion, the status of the revision, the audit record and
+        the event commit together.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewWithdrawal'
+      responses:
+        '200':
+          description: The review was withdrawn
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/products/{product_id}/audience-configs:
     get:
       operationId: listAudienceConfigs
@@ -1671,6 +1869,12 @@ components:
       required: true
       schema:
         $ref: '#/components/schemas/Identifier'
+    ReviewId:
+      name: review_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Identifier'
     ProductId:
       name: product_id
       in: path
@@ -2141,6 +2345,131 @@ components:
             $ref: '#/components/schemas/CheckRunOverview'
         next_page_token:
           $ref: '#/components/schemas/NextPageToken'
+    ReviewTarget:
+      description: >-
+        One audience in one environment. The scope of a review is the targets
+        a revision is asked to be approved for.
+      type: object
+      additionalProperties: false
+      required: [audience, environment]
+      properties:
+        audience:
+          $ref: '#/components/schemas/Audience'
+        environment:
+          $ref: '#/components/schemas/Environment'
+    ReviewNote:
+      description: >-
+        What whoever asks for a review says of it: one line of 1 to 500
+        characters, without control characters and without space around it.
+      type: string
+      minLength: 1
+      maxLength: 500
+      pattern: '^[^\p{Cc}]+$'
+    ReviewReason:
+      description: >-
+        Why a review ended the way it did: one line of 1 to 1000 characters,
+        without control characters and without space around it.
+      type: string
+      minLength: 1
+      maxLength: 1000
+      pattern: '^[^\p{Cc}]+$'
+    ReviewSubmission:
+      type: object
+      additionalProperties: false
+      required: [check_run_id, scope]
+      properties:
+        check_run_id:
+          description: A recorded check of the revision, the evidence the decision is asked on
+          $ref: '#/components/schemas/Identifier'
+        scope:
+          description: What the revision is to be approved for, each target once
+          type: array
+          minItems: 1
+          maxItems: 6
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/ReviewTarget'
+        note:
+          $ref: '#/components/schemas/ReviewNote'
+    ReviewWithdrawal:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          $ref: '#/components/schemas/ReviewReason'
+    ReviewStatus:
+      description: >-
+        Where a review stands: IN_REVIEW until it is concluded, then the way
+        it ended.
+      type: string
+      enum: [IN_REVIEW, WITHDRAWN]
+    ReviewConclusion:
+      description: How a review ended, who ended it and when
+      type: object
+      additionalProperties: false
+      required: [outcome, concluded_by, concluded_at]
+      properties:
+        outcome:
+          type: string
+          enum: [WITHDRAWN]
+        reason:
+          $ref: '#/components/schemas/ReviewReason'
+        concluded_by:
+          $ref: '#/components/schemas/Principal'
+        concluded_at:
+          type: string
+          format: date-time
+    Review:
+      description: >-
+        A request for a decision on one revision, with its conclusion once it
+        has one. Neither changes once it is recorded.
+      type: object
+      additionalProperties: false
+      required: [review_id, product_id, api_asset_id, revision_id, check_run_id, input_digest, status, scope, requested_by, requested_at]
+      properties:
+        review_id:
+          $ref: '#/components/schemas/Identifier'
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        api_asset_id:
+          $ref: '#/components/schemas/Identifier'
+        revision_id:
+          $ref: '#/components/schemas/Identifier'
+        check_run_id:
+          description: The check the decision is asked on
+          $ref: '#/components/schemas/Identifier'
+        input_digest:
+          description: What that check read, the reference closure digest of the revision
+          $ref: '#/components/schemas/ContractDigest'
+        status:
+          $ref: '#/components/schemas/ReviewStatus'
+        scope:
+          description: The targets the revision is to be approved for, by audience and then environment
+          type: array
+          minItems: 1
+          maxItems: 6
+          items:
+            $ref: '#/components/schemas/ReviewTarget'
+        note:
+          $ref: '#/components/schemas/ReviewNote'
+        requested_by:
+          $ref: '#/components/schemas/Principal'
+        requested_at:
+          type: string
+          format: date-time
+        conclusion:
+          $ref: '#/components/schemas/ReviewConclusion'
+    ReviewList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Review'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
     ContractSourcePath:
       type: string
       minLength: 1
@@ -2292,8 +2621,13 @@ components:
           format: int64
           minimum: 1
         status:
+          description: >-
+            Where the revision stands in its review. It is recorded as a
+            DRAFT, is IN_REVIEW from the moment it is submitted, and leaves
+            the review APPROVED, REJECTED or WITHDRAWN. Its content is the
+            same at every status.
           type: string
-          enum: [DRAFT]
+          enum: [DRAFT, IN_REVIEW, APPROVED, REJECTED, WITHDRAWN]
         source_kind:
           description: GIT for a source submitted with a Git origin, UPLOAD for one without
           type: string

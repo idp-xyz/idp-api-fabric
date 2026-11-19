@@ -68,7 +68,10 @@ func ApplicationPrivileges() []TablePrivileges {
 		// read the revision. No statement changes or removes one.
 		{"contractregistry", "source_snapshot", []string{"SELECT", "INSERT"}},
 		{"contractregistry", "source_file", []string{"SELECT", "INSERT"}},
-		{"contractregistry", "contract_revision", []string{"SELECT", "INSERT"}},
+		// The status of a revision moves along its review. The table lets
+		// an UPDATE do that and nothing else, and no statement removes a
+		// revision.
+		{"contractregistry", "contract_revision", []string{"SELECT", "INSERT", "UPDATE"}},
 		// A check run is evidence: the policy it was held to, what it
 		// concluded of each rule and what it found are recorded once and
 		// read back. No statement changes or removes any of it.
@@ -76,6 +79,12 @@ func ApplicationPrivileges() []TablePrivileges {
 		{"policyreview", "check_run", []string{"SELECT", "INSERT"}},
 		{"policyreview", "check_rule_outcome", []string{"SELECT", "INSERT"}},
 		{"policyreview", "check_finding", []string{"SELECT", "INSERT"}},
+		// A review is asked for once and concluded once: its request, its
+		// scope and its conclusion are recorded and read back, and no
+		// statement changes or removes any of them.
+		{"policyreview", "review_request", []string{"SELECT", "INSERT"}},
+		{"policyreview", "review_scope", []string{"SELECT", "INSERT"}},
+		{"policyreview", "review_conclusion", []string{"SELECT", "INSERT"}},
 	}
 }
 
