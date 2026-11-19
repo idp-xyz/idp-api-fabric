@@ -30,7 +30,11 @@ func (o operations) RunRevisionCheck(ctx context.Context, request RunRevisionChe
 	if err != nil {
 		return nil, err
 	}
-	result, err := o.policyReview.Run(ctx, target, "")
+	var baselineID string
+	if request.Params.BaselineRevisionID != nil {
+		baselineID = *request.Params.BaselineRevisionID
+	}
+	result, err := o.policyReview.Run(ctx, target, baselineID)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +119,16 @@ func showCheck(run domain.CheckRun) CheckRun {
 		}
 		findings = append(findings, item)
 	}
-	return CheckRun{CheckRun: showCheckOverview(run.Overview()), Outcomes: outcomes, Findings: findings}
+	body := CheckRun{CheckRun: showCheckOverview(run.Overview()), Outcomes: outcomes, Findings: findings}
+	if evidence := run.Compatibility; evidence != nil {
+		comparison := showRevisionComparison(
+			ComparedRevision{RevisionID: evidence.Baseline.RevisionID, InputDigest: evidence.Baseline.InputDigest},
+			ComparedRevision{RevisionID: run.Revision.RevisionID, InputDigest: run.InputDigest},
+			evidence.Tool, evidence.Comparison,
+		)
+		body.Compatibility = &comparison
+	}
+	return body
 }
 
 func showCheckOverview(run domain.Overview) CheckRunOverview {
@@ -124,7 +137,7 @@ func showCheckOverview(run domain.Overview) CheckRunOverview {
 		tools = append(tools, CheckRunTool{Name: tool.Name, Version: tool.Version})
 	}
 	summary := run.Summary
-	return CheckRunOverview{
+	item := CheckRunOverview{
 		CheckRunID: run.ID, PolicySnapshotID: run.PolicySnapshotID, ProductID: run.Revision.ProductID,
 		APIAssetID: run.Revision.AssetID, RevisionID: run.Revision.RevisionID, InputDigest: run.InputDigest,
 		PolicySetID: run.PolicySetID, PolicyDigest: run.PolicyDigest, ToolManifest: tools, Status: CheckRunStatus(run.Status),
@@ -134,6 +147,14 @@ func showCheckOverview(run domain.Overview) CheckRunOverview {
 		},
 		StartedAt: run.StartedAt, CompletedAt: run.CompletedAt,
 	}
+	if evidence := run.Compatibility; evidence != nil {
+		item.Compatibility = &CheckRunComparison{
+			Baseline:       ComparedRevision{RevisionID: evidence.Baseline.RevisionID, InputDigest: evidence.Baseline.InputDigest},
+			Classification: CompatibilityClassification(evidence.Classification),
+			Tool:           CheckRunTool{Name: evidence.Tool.Name, Version: evidence.Tool.Version},
+		}
+	}
+	return item
 }
 
 func checkProblem(err error) (Problem, bool) {

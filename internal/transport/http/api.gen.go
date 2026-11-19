@@ -477,9 +477,17 @@ type CheckRuleStatus string
 
 // CheckRun defines model for CheckRun.
 type CheckRun struct {
-	CheckRun CheckRunOverview   `json:"check_run"`
-	Findings []CheckRunFinding  `json:"findings"`
-	Outcomes []CheckRuleOutcome `json:"outcomes"`
+	CheckRun      CheckRunOverview       `json:"check_run"`
+	Compatibility *RevisionCompatibility `json:"compatibility,omitempty"`
+	Findings      []CheckRunFinding      `json:"findings"`
+	Outcomes      []CheckRuleOutcome     `json:"outcomes"`
+}
+
+// CheckRunComparison defines model for CheckRunComparison.
+type CheckRunComparison struct {
+	Baseline       ComparedRevision            `json:"baseline"`
+	Classification CompatibilityClassification `json:"classification"`
+	Tool           CheckRunTool                `json:"tool"`
 }
 
 // CheckRunFinding defines model for CheckRunFinding.
@@ -508,8 +516,9 @@ type CheckRunOverview struct {
 	APIAssetID Identifier `json:"api_asset_id"`
 
 	// CheckRunID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
-	CheckRunID  Identifier `json:"check_run_id"`
-	CompletedAt time.Time  `json:"completed_at"`
+	CheckRunID    Identifier          `json:"check_run_id"`
+	Compatibility *CheckRunComparison `json:"compatibility,omitempty"`
+	CompletedAt   time.Time           `json:"completed_at"`
 
 	// InputDigest SHA-256 digest of the revision's reference closure
 	InputDigest  ContractDigest `json:"input_digest"`
@@ -1007,6 +1016,12 @@ type ListRevisionChecksParams struct {
 	PageToken *PageToken `form:"page_token,omitempty" json:"page_token,omitempty"`
 }
 
+// RunRevisionCheckParams defines parameters for RunRevisionCheck.
+type RunRevisionCheckParams struct {
+	// BaselineRevisionID A different recorded revision of the same API asset
+	BaselineRevisionID *Identifier `form:"baseline_revision_id,omitempty" json:"baseline_revision_id,omitempty"`
+}
+
 // CompareRevisionCompatibilityParams defines parameters for CompareRevisionCompatibility.
 type CompareRevisionCompatibilityParams struct {
 	BaselineRevisionID Identifier `form:"baseline_revision_id" json:"baseline_revision_id"`
@@ -1122,9 +1137,9 @@ type ServerInterface interface {
 	// ListRevisionChecks List the recorded checks of one draft revision
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs)
 	ListRevisionChecks(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, params ListRevisionChecksParams)
-	// RunRevisionCheck Execute the baseline check of a draft revision
+	// RunRevisionCheck Execute the policy check of a draft revision
 	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs)
-	RunRevisionCheck(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID)
+	RunRevisionCheck(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, params RunRevisionCheckParams)
 	// GetRevisionCheck Read a recorded check with its rule outcomes and findings
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs/{check_run_id})
 	GetRevisionCheck(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, checkRunID Identifier)
@@ -1716,8 +1731,24 @@ func (siw *ServerInterfaceWrapper) RunRevisionCheck(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RunRevisionCheckParams
+
+	// ------------- Optional query parameter "baseline_revision_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "baseline_revision_id", r.URL.Query(), &params.BaselineRevisionID, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "baseline_revision_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "baseline_revision_id", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.RunRevisionCheck(w, r, productID, apiAssetID, revisionID)
+		siw.Handler.RunRevisionCheck(w, r, productID, apiAssetID, revisionID, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4086,6 +4117,7 @@ type RunRevisionCheckRequestObject struct {
 	ProductID  ProductID       `json:"product_id"`
 	APIAssetID CheckAssetID    `json:"api_asset_id"`
 	RevisionID CheckRevisionID `json:"revision_id"`
+	Params     RunRevisionCheckParams
 }
 
 type RunRevisionCheckResponseObject interface {
@@ -6897,7 +6929,7 @@ type StrictServerInterface interface {
 	// ListRevisionChecks List the recorded checks of one draft revision
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs)
 	ListRevisionChecks(ctx context.Context, request ListRevisionChecksRequestObject) (ListRevisionChecksResponseObject, error)
-	// RunRevisionCheck Execute the baseline check of a draft revision
+	// RunRevisionCheck Execute the policy check of a draft revision
 	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs)
 	RunRevisionCheck(ctx context.Context, request RunRevisionCheckRequestObject) (RunRevisionCheckResponseObject, error)
 	// GetRevisionCheck Read a recorded check with its rule outcomes and findings
@@ -7318,12 +7350,13 @@ func (sh *strictHandler) ListRevisionChecks(w http.ResponseWriter, r *http.Reque
 }
 
 // RunRevisionCheck operation middleware
-func (sh *strictHandler) RunRevisionCheck(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID) {
+func (sh *strictHandler) RunRevisionCheck(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, params RunRevisionCheckParams) {
 	var request RunRevisionCheckRequestObject
 
 	request.ProductID = productID
 	request.APIAssetID = apiAssetID
 	request.RevisionID = revisionID
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.RunRevisionCheck(ctx, request.(RunRevisionCheckRequestObject))

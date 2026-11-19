@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.15.0
+  version: 0.16.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -907,15 +907,22 @@ paths:
           $ref: '#/components/responses/Problem'
     post:
       operationId: runRevisionCheck
-      summary: Execute the baseline check of a draft revision
+      summary: Execute the policy check of a draft revision
       description: >-
         A current author of the asset's workspace can check a revision in an
         active product. The check reads its recorded files after verifying the
-        source digests. It uses the built-in baseline policy and tool version.
+        source digests. It uses the built-in policy and versioned tools.
         Each rule reports its own result, including NOT_RUN for rules without
-        an evaluator. The result records evidence for review. The first check
-        for this revision, policy and tool manifest records a new run. The
-        same request returns the recorded evidence on retry.
+        an evaluator. If a baseline is selected, the compatibility rule uses
+        the verified source of that revision of the same asset. The result
+        preserves the comparison and both input digests. Retrying with the
+        same candidate, baseline selection, policy and tools reuses the run.
+      parameters:
+        - name: baseline_revision_id
+          in: query
+          description: A different recorded revision of the same API asset
+          schema:
+            $ref: '#/components/schemas/Identifier'
       responses:
         '201':
           description: A check run was recorded
@@ -935,7 +942,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/CheckRun'
         '200':
-          description: The check run was already recorded for the same revision, policy and tools
+          description: The check run was already recorded for the same inputs, policy and tools
           headers:
             Cache-Control:
               required: true
@@ -2044,6 +2051,8 @@ components:
           $ref: '#/components/schemas/CheckRunStatus'
         summary:
           $ref: '#/components/schemas/CheckRunSummary'
+        compatibility:
+          $ref: '#/components/schemas/CheckRunComparison'
         started_at:
           type: string
           format: date-time
@@ -2106,6 +2115,19 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CheckRunFinding'
+        compatibility:
+          $ref: '#/components/schemas/RevisionCompatibility'
+    CheckRunComparison:
+      type: object
+      additionalProperties: false
+      required: [baseline, classification, tool]
+      properties:
+        baseline:
+          $ref: '#/components/schemas/ComparedRevision'
+        classification:
+          $ref: '#/components/schemas/CompatibilityClassification'
+        tool:
+          $ref: '#/components/schemas/CheckRunTool'
     CheckRunList:
       type: object
       additionalProperties: false

@@ -1,6 +1,10 @@
 package http
 
-import "context"
+import (
+	"context"
+
+	"go.idp.xyz/idp-api-fabric/internal/policyreview/domain"
+)
 
 func (o operations) CompareRevisionCompatibility(ctx context.Context, request CompareRevisionCompatibilityRequestObject) (CompareRevisionCompatibilityResponseObject, error) {
 	target, err := checkTarget(ctx, request.ProductID, request.APIAssetID, request.RevisionID)
@@ -11,7 +15,17 @@ func (o operations) CompareRevisionCompatibility(ctx context.Context, request Co
 	if err != nil {
 		return nil, err
 	}
-	diff := result.Comparison
+	return CompareRevisionCompatibility200JSONResponse{
+		Body: showRevisionComparison(
+			ComparedRevision{RevisionID: result.Baseline.ID, InputDigest: result.Baseline.InputDigest},
+			ComparedRevision{RevisionID: result.Candidate.ID, InputDigest: result.Candidate.InputDigest},
+			result.Tool, result.Comparison,
+		),
+		Headers: CompareRevisionCompatibility200ResponseHeaders{CacheControl: noStore},
+	}, nil
+}
+
+func showRevisionComparison(baseline, candidate ComparedRevision, tool domain.Tool, diff domain.Comparison) RevisionCompatibility {
 	changes := make([]CompatibilityChange, 0, len(diff.Changes))
 	for _, change := range diff.Changes {
 		item := CompatibilityChange{Classification: CompatibilityClassification(change.Classification), Code: change.Code}
@@ -20,15 +34,8 @@ func (o operations) CompareRevisionCompatibility(ctx context.Context, request Co
 		}
 		changes = append(changes, item)
 	}
-	return CompareRevisionCompatibility200JSONResponse{
-		Body: RevisionCompatibility{
-			Baseline:       ComparedRevision{RevisionID: result.Baseline.ID, InputDigest: result.Baseline.InputDigest},
-			Candidate:      ComparedRevision{RevisionID: result.Candidate.ID, InputDigest: result.Candidate.InputDigest},
-			Tool:           CheckRunTool{Name: result.Tool.Name, Version: result.Tool.Version},
-			Classification: CompatibilityClassification(diff.Classification),
-			Changes:        changes,
-			Truncated:      diff.Truncated,
-		},
-		Headers: CompareRevisionCompatibility200ResponseHeaders{CacheControl: noStore},
-	}, nil
+	return RevisionCompatibility{
+		Baseline: baseline, Candidate: candidate, Tool: CheckRunTool{Name: tool.Name, Version: tool.Version},
+		Classification: CompatibilityClassification(diff.Classification), Changes: changes, Truncated: diff.Truncated,
+	}
 }
