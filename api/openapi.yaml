@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.12.0
+  version: 0.13.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -863,6 +863,61 @@ paths:
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+      - $ref: '#/components/parameters/CheckAssetId'
+      - $ref: '#/components/parameters/CheckRevisionId'
+    post:
+      operationId: runRevisionCheck
+      summary: Execute the baseline check of a draft revision
+      description: >-
+        A current author of the asset's workspace can check a revision in an
+        active product. The check reads its recorded files after verifying the
+        source digests. It uses the built-in baseline policy and tool version.
+        Each rule reports its own result, including NOT_RUN for rules without
+        an evaluator. The result records evidence for review. The first check
+        for this revision, policy and tool manifest records a new run. The
+        same request returns the recorded evidence on retry.
+      responses:
+        '201':
+          description: A check run was recorded
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckRun'
+        '200':
+          description: The check run was already recorded for the same revision, policy and tools
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckRun'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/products/{product_id}/audience-configs:
     get:
       operationId: listAudienceConfigs
@@ -1466,6 +1521,18 @@ components:
         them. A token says who the caller is; what the caller may do is
         decided from the roles the server holds, so no scope is declared.
   parameters:
+    CheckAssetId:
+      name: api_asset_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Identifier'
+    CheckRevisionId:
+      name: revision_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Identifier'
     ProductId:
       name: product_id
       in: path
@@ -1775,6 +1842,141 @@ components:
         granted_at:
           type: string
           format: date-time
+    CheckRunStatus:
+      type: string
+      enum: [PASS, WARN, FAIL, UNKNOWN]
+    CheckRuleStatus:
+      type: string
+      enum: [PASS, WARN, FAIL, UNKNOWN, NOT_RUN]
+    CheckRuleSeverity:
+      type: string
+      enum: [BLOCK, WARN]
+    CheckRunTool:
+      type: object
+      additionalProperties: false
+      required: [name, version]
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+    CheckRunSummary:
+      type: object
+      additionalProperties: false
+      required: [pass, warn, fail, unknown, not_run, finding_count]
+      properties:
+        pass:
+          type: integer
+          minimum: 0
+        warn:
+          type: integer
+          minimum: 0
+        fail:
+          type: integer
+          minimum: 0
+        unknown:
+          type: integer
+          minimum: 0
+        not_run:
+          type: integer
+          minimum: 0
+        finding_count:
+          description: Total findings before limiting the detail returned by each rule
+          type: integer
+          minimum: 0
+    CheckRunOverview:
+      type: object
+      additionalProperties: false
+      required: [check_run_id, product_id, api_asset_id, revision_id, input_digest, policy_snapshot_id, policy_set_id, policy_digest, tool_manifest, status, summary, started_at, completed_at]
+      properties:
+        check_run_id:
+          $ref: '#/components/schemas/Identifier'
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        api_asset_id:
+          $ref: '#/components/schemas/Identifier'
+        revision_id:
+          $ref: '#/components/schemas/Identifier'
+        input_digest:
+          description: SHA-256 digest of the revision's reference closure
+          $ref: '#/components/schemas/ContractDigest'
+        policy_snapshot_id:
+          $ref: '#/components/schemas/Identifier'
+        policy_set_id:
+          type: string
+        policy_digest:
+          $ref: '#/components/schemas/ContractDigest'
+        tool_manifest:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CheckRunTool'
+        status:
+          $ref: '#/components/schemas/CheckRunStatus'
+        summary:
+          $ref: '#/components/schemas/CheckRunSummary'
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+    CheckRuleOutcome:
+      type: object
+      additionalProperties: false
+      required: [rule_id, description, category, severity, waivable, status, finding_count]
+      properties:
+        rule_id:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        severity:
+          $ref: '#/components/schemas/CheckRuleSeverity'
+        waivable:
+          type: boolean
+        status:
+          $ref: '#/components/schemas/CheckRuleStatus'
+        finding_count:
+          type: integer
+          minimum: 0
+        tool:
+          $ref: '#/components/schemas/CheckRunTool'
+    CheckRunFinding:
+      type: object
+      additionalProperties: false
+      required: [rule_id, level, path, message]
+      properties:
+        rule_id:
+          type: string
+        level:
+          $ref: '#/components/schemas/CheckRuleSeverity'
+        path:
+          $ref: '#/components/schemas/ContractSourcePath'
+        pointer:
+          description: JSON Pointer to the finding, when known
+          type: string
+        line:
+          type: integer
+          minimum: 1
+        message:
+          type: string
+    CheckRun:
+      type: object
+      additionalProperties: false
+      required: [check_run, outcomes, findings]
+      properties:
+        check_run:
+          $ref: '#/components/schemas/CheckRunOverview'
+        outcomes:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckRuleOutcome'
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckRunFinding'
     ContractSourcePath:
       type: string
       minLength: 1

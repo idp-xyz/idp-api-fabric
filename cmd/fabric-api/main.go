@@ -55,6 +55,10 @@ import (
 	operationsdb "go.idp.xyz/idp-api-fabric/internal/platformoperations/adapters/postgres"
 	operations "go.idp.xyz/idp-api-fabric/internal/platformoperations/application"
 	operationsdomain "go.idp.xyz/idp-api-fabric/internal/platformoperations/domain"
+	checkopenapi "go.idp.xyz/idp-api-fabric/internal/policyreview/adapters/openapi"
+	checkoutbox "go.idp.xyz/idp-api-fabric/internal/policyreview/adapters/outbox"
+	checkdb "go.idp.xyz/idp-api-fabric/internal/policyreview/adapters/postgres"
+	checks "go.idp.xyz/idp-api-fabric/internal/policyreview/application"
 	governanceoutbox "go.idp.xyz/idp-api-fabric/internal/productgovernance/adapters/outbox"
 	governancedb "go.idp.xyz/idp-api-fabric/internal/productgovernance/adapters/postgres"
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/adapters/static"
@@ -258,9 +262,10 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 	if err != nil {
 		return nil, err
 	}
+	revisionScope := revisionScopes{catalog: apiCatalog, governance: productGovernance}
 	contractRegistry, err := registry.New(registry.Dependencies{
 		Transactions: transactions,
-		Scopes:       revisionScopes{catalog: apiCatalog, governance: productGovernance},
+		Scopes:       revisionScope,
 		Capture:      registryopenapi.Capture,
 		Revisions:    registrydb.NewRevisions(database.Framework),
 		Audit:        audit.recordRevision,
@@ -271,8 +276,21 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 	if err != nil {
 		return nil, err
 	}
+	policyReview, err := checks.NewChecks(checks.Dependencies{
+		Transactions: transactions,
+		Revisions:    checkRevisions{registry: contractRegistry, scopes: revisionScope},
+		Checks:       checkdb.NewCheckRuns(database.Framework),
+		Evaluator:    checkopenapi.Evaluator{},
+		Audit:        audit.recordCheck,
+		Events:       checkoutbox.NewEvents(outbox, identifiers),
+		Clock:        clock,
+		Identifiers:  identifiers,
+	})
+	if err != nil {
+		return nil, err
+	}
 	return httptransport.NewHandler(httptransport.Config{
-		Logger: logger, Build: buildinfo.Current(), Verifier: verifier, Governance: productGovernance, Catalog: apiCatalog, Registry: contractRegistry,
+		Logger: logger, Build: buildinfo.Current(), Verifier: verifier, Governance: productGovernance, Catalog: apiCatalog, Registry: contractRegistry, PolicyReview: policyReview,
 	})
 }
 

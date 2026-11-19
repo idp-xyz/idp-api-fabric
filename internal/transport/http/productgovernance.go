@@ -739,5 +739,8 @@ func problemOf(err error) (Problem, bool) {
 	if found, ok := catalogProblem(err); ok {
 		return found, true
 	}
-	return registryProblem(err)
+	if found, ok := registryProblem(err); ok {
+		return found, true
+	}
+	return checkProblem(err)
 }
