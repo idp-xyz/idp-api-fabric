@@ -70,7 +70,7 @@ func (c *Checks) Run(ctx context.Context, target ports.Target) (Execution, error
 		if !active {
 			return ErrProductSuspended
 		}
-		recorded, found, err := c.deps.Checks.Recorded(tx, revision, policyDigest, toolDigest)
+		recorded, found, err := c.deps.Checks.Recorded(tx, revision, policyDigest, toolDigest, "")
 		if err != nil {
 			return err
 		}
