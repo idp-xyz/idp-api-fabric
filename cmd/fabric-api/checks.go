@@ -31,6 +31,14 @@ func checkRevision(revision registrydomain.Revision) checkdomain.RevisionRef {
 	}
 }
 
+func (r checkRevisions) Revision(ctx context.Context, target checkports.Target) (checkdomain.RevisionRef, string, error) {
+	revision, err := r.registry.GetRevision(ctx, checkScope(target), target.RevisionID)
+	if err != nil {
+		return checkdomain.RevisionRef{}, "", err
+	}
+	return checkRevision(revision), revision.RefClosureDigest, nil
+}
+
 func (r checkRevisions) Source(ctx context.Context, target checkports.Target) (checkdomain.RevisionRef, checkdomain.Source, error) {
 	recorded, err := r.registry.GetRevisionSource(ctx, checkScope(target), target.RevisionID)
 	if err != nil {

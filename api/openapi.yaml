@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.13.0
+  version: 0.14.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -868,6 +868,43 @@ paths:
       - $ref: '#/components/parameters/ProductId'
       - $ref: '#/components/parameters/CheckAssetId'
       - $ref: '#/components/parameters/CheckRevisionId'
+    get:
+      operationId: listRevisionChecks
+      summary: List the recorded checks of one draft revision
+      description: >-
+        A current author of the asset's workspace can read the check
+        summaries of the revision. The list is ordered by when the checks
+        completed and then their identifiers. Its page token belongs to
+        this product, asset and revision. Each summary binds the result to
+        its input, policy snapshot and tools.
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: One page of recorded checks
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckRunList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
     post:
       operationId: runRevisionCheck
       summary: Execute the baseline check of a draft revision
@@ -883,6 +920,11 @@ paths:
         '201':
           description: A check run was recorded
           headers:
+            Location:
+              required: true
+              schema:
+                type: string
+                format: uri-reference
             Cache-Control:
               required: true
               schema:
@@ -913,6 +955,49 @@ paths:
         '404':
           $ref: '#/components/responses/Problem'
         '409':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs/{check_run_id}:
+    get:
+      operationId: getRevisionCheck
+      summary: Read a recorded check with its rule outcomes and findings
+      description: >-
+        A current author of the asset's workspace can read a check of the
+        requested revision. A check from another revision is reported as
+        missing. The recorded input digest must match the revision's
+        reference closure digest.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/CheckAssetId'
+        - $ref: '#/components/parameters/CheckRevisionId'
+        - name: check_run_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Identifier'
+      responses:
+        '200':
+          description: The check and its evidence
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckRun'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
           $ref: '#/components/responses/Problem'
         '503':
           $ref: '#/components/responses/Problem'
@@ -1977,6 +2062,17 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CheckRunFinding'
+    CheckRunList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckRunOverview'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
     ContractSourcePath:
       type: string
       minLength: 1

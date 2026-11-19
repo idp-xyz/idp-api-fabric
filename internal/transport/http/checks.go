@@ -8,10 +8,13 @@ import (
 	checks "go.idp.xyz/idp-api-fabric/internal/policyreview/application"
 	"go.idp.xyz/idp-api-fabric/internal/policyreview/domain"
 	"go.idp.xyz/idp-api-fabric/internal/policyreview/ports"
+	governanceports "go.idp.xyz/idp-api-fabric/internal/productgovernance/ports"
 )
 
 type PolicyReview interface {
 	Run(context.Context, ports.Target) (checks.Execution, error)
+	Get(context.Context, ports.Target, string) (domain.CheckRun, error)
+	List(context.Context, checks.ListChecks) (checks.Page, error)
 }
 
 func checkTarget(ctx context.Context, product, asset, revision string) (ports.Target, error) {
@@ -32,9 +35,57 @@ func (o operations) RunRevisionCheck(ctx context.Context, request RunRevisionChe
 	}
 	body := showCheck(result.Run)
 	if result.Created {
-		return RunRevisionCheck201JSONResponse{Body: body, Headers: RunRevisionCheck201ResponseHeaders{CacheControl: noStore}}, nil
+		location := "/v1/products/" + target.ProductID + "/assets/" + target.AssetID + "/revisions/" + target.RevisionID + "/check-runs/" + result.Run.ID
+		return RunRevisionCheck201JSONResponse{Body: body, Headers: RunRevisionCheck201ResponseHeaders{
+			CacheControl: noStore, Location: location,
+		}}, nil
 	}
 	return RunRevisionCheck200JSONResponse{Body: body, Headers: RunRevisionCheck200ResponseHeaders{CacheControl: noStore}}, nil
+}
+
+func (o operations) GetRevisionCheck(ctx context.Context, request GetRevisionCheckRequestObject) (GetRevisionCheckResponseObject, error) {
+	target, err := checkTarget(ctx, request.ProductID, request.APIAssetID, request.RevisionID)
+	if err != nil {
+		return nil, err
+	}
+	run, err := o.policyReview.Get(ctx, target, request.CheckRunID)
+	if err != nil {
+		return nil, err
+	}
+	return GetRevisionCheck200JSONResponse{
+		Body: showCheck(run), Headers: GetRevisionCheck200ResponseHeaders{CacheControl: noStore},
+	}, nil
+}
+
+func (o operations) ListRevisionChecks(ctx context.Context, request ListRevisionChecksRequestObject) (ListRevisionChecksResponseObject, error) {
+	target, err := checkTarget(ctx, request.ProductID, request.APIAssetID, request.RevisionID)
+	if err != nil {
+		return nil, err
+	}
+	list := "check-runs/" + target.ProductID + "/" + target.AssetID + "/" + target.RevisionID
+	size, position, err := paging(list, request.Params.PageSize, request.Params.PageToken)
+	if err != nil {
+		return nil, err
+	}
+	var after *ports.Position
+	if position != nil {
+		after = &ports.Position{At: position.At, ID: position.ID}
+	}
+	page, err := o.policyReview.List(ctx, checks.ListChecks{Target: target, PageSize: size, After: after})
+	if err != nil {
+		return nil, err
+	}
+	items := make([]CheckRunOverview, 0, len(page.Items))
+	for _, item := range page.Items {
+		items = append(items, showCheckOverview(item))
+	}
+	var next *NextPageToken
+	if page.Next != nil {
+		next = nextPageToken(list, &governanceports.Position{At: page.Next.At, ID: page.Next.ID})
+	}
+	return ListRevisionChecks200JSONResponse{
+		Body: CheckRunList{Items: items, NextPageToken: next}, Headers: ListRevisionChecks200ResponseHeaders{CacheControl: noStore},
+	}, nil
 }
 
 func showCheck(run domain.CheckRun) CheckRun {
@@ -88,6 +139,10 @@ func checkProblem(err error) (Problem, bool) {
 	switch {
 	case errors.Is(err, checks.ErrForbidden):
 		return problem(http.StatusForbidden, CodeForbidden, "The caller is not a current internal author of the workspace."), true
+	case errors.Is(err, checks.ErrCheckRunNotFound):
+		return problem(http.StatusNotFound, "CHECK_RUN_NOT_FOUND", ""), true
+	case errors.Is(err, checks.ErrInvalidPage):
+		return problem(http.StatusBadRequest, CodeRequestInvalid, ""), true
 	case errors.Is(err, checks.ErrProductSuspended):
 		return problem(http.StatusConflict, CodeProductNotActive, "The product is suspended and takes no new work."), true
 	default:

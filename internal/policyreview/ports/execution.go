@@ -17,6 +17,8 @@ type Target struct {
 }
 
 type Revisions interface {
+	// Revision authorizes reading the revision and returns its reference closure digest.
+	Revision(context.Context, Target) (revision domain.RevisionRef, inputDigest string, err error)
 	// Source authorizes reading the revision and verifies its recorded files.
 	Source(context.Context, Target) (domain.RevisionRef, domain.Source, error)
 	// LockAuthor rechecks the current author membership while recording a check.

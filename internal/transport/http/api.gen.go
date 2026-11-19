@@ -470,6 +470,14 @@ type CheckRunFinding struct {
 	RuleID  string  `json:"rule_id"`
 }
 
+// CheckRunList defines model for CheckRunList.
+type CheckRunList struct {
+	Items []CheckRunOverview `json:"items"`
+
+	// NextPageToken The page_token of the page that follows this one, to be sent back as it is. A page carries it for as long as items follow: the last page of a list has none, also when it is full.
+	NextPageToken *NextPageToken `json:"next_page_token,omitempty"`
+}
+
 // CheckRunOverview defines model for CheckRunOverview.
 type CheckRunOverview struct {
 	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
@@ -936,6 +944,15 @@ type ListRevisionsParams struct {
 	PageToken *PageToken `form:"page_token,omitempty" json:"page_token,omitempty"`
 }
 
+// ListRevisionChecksParams defines parameters for ListRevisionChecks.
+type ListRevisionChecksParams struct {
+	// PageSize How many items the page holds at most. A list is read to its end by asking for the page that follows, never by asking for a larger one.
+	PageSize *PageSize `form:"page_size,omitempty" json:"page_size,omitempty"`
+
+	// PageToken Where the page starts: the next_page_token of the page before, as it was given. Without it the list starts at its beginning. The token is opaque. It names a position in one list and grants nothing: what the caller may read is decided again with every page, from what it holds then. One that is not a token of this list is refused (400 PAGE_TOKEN_INVALID).
+	PageToken *PageToken `form:"page_token,omitempty" json:"page_token,omitempty"`
+}
+
 // ListAudienceConfigsParams defines parameters for ListAudienceConfigs.
 type ListAudienceConfigsParams struct {
 	// PageSize How many items the page holds at most. A list is read to its end by asking for the page that follows, never by asking for a larger one.
@@ -1043,9 +1060,15 @@ type ServerInterface interface {
 	// GetRevision Read one immutable draft revision's metadata
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id})
 	GetRevision(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier, revisionID Identifier)
+	// ListRevisionChecks List the recorded checks of one draft revision
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs)
+	ListRevisionChecks(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, params ListRevisionChecksParams)
 	// RunRevisionCheck Execute the baseline check of a draft revision
 	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs)
 	RunRevisionCheck(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID)
+	// GetRevisionCheck Read a recorded check with its rule outcomes and findings
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs/{check_run_id})
+	GetRevisionCheck(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, checkRunID Identifier)
 	// GetRevisionSource Read the files a draft revision was recorded from
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/source)
 	GetRevisionSource(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier, revisionID Identifier)
@@ -1525,6 +1548,79 @@ func (siw *ServerInterfaceWrapper) GetRevision(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// ListRevisionChecks operation middleware
+func (siw *ServerInterfaceWrapper) ListRevisionChecks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID CheckAssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "revision_id" -------------
+	var revisionID CheckRevisionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "revision_id", r.PathValue("revision_id"), &revisionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revision_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRevisionChecksParams
+
+	// ------------- Optional query parameter "page_size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_size", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_size", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page_token" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_token", r.URL.Query(), &params.PageToken, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_token"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_token", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRevisionChecks(w, r, productID, apiAssetID, revisionID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RunRevisionCheck operation middleware
 func (siw *ServerInterfaceWrapper) RunRevisionCheck(w http.ResponseWriter, r *http.Request) {
 
@@ -1560,6 +1656,59 @@ func (siw *ServerInterfaceWrapper) RunRevisionCheck(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RunRevisionCheck(w, r, productID, apiAssetID, revisionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRevisionCheck operation middleware
+func (siw *ServerInterfaceWrapper) GetRevisionCheck(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID CheckAssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "revision_id" -------------
+	var revisionID CheckRevisionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "revision_id", r.PathValue("revision_id"), &revisionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revision_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "check_run_id" -------------
+	var checkRunID Identifier
+
+	err = runtime.BindStyledParameterWithOptions("simple", "check_run_id", r.PathValue("check_run_id"), &checkRunID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "check_run_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRevisionCheck(w, r, productID, apiAssetID, revisionID, checkRunID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2478,7 +2627,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions", wrapper.ImportRevision)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}", wrapper.GetRevision)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/source", wrapper.GetRevisionSource)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs", wrapper.ListRevisionChecks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs", wrapper.RunRevisionCheck)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs/{check_run_id}", wrapper.GetRevisionCheck)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ListAudienceConfigs)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ConfigureAudience)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs/{audience_config_id}", wrapper.RemoveAudienceConfig)
@@ -3683,6 +3834,131 @@ func (response GetRevisiondefaultApplicationProblemPlusJSONResponse) VisitGetRev
 	return err
 }
 
+type ListRevisionChecksRequestObject struct {
+	ProductID  ProductID       `json:"product_id"`
+	APIAssetID CheckAssetID    `json:"api_asset_id"`
+	RevisionID CheckRevisionID `json:"revision_id"`
+	Params     ListRevisionChecksParams
+}
+
+type ListRevisionChecksResponseObject interface {
+	VisitListRevisionChecksResponse(w http.ResponseWriter) error
+}
+
+type ListRevisionChecks200ResponseHeaders struct {
+	CacheControl string
+}
+
+type ListRevisionChecks200JSONResponse struct {
+	Body    CheckRunList
+	Headers ListRevisionChecks200ResponseHeaders
+}
+
+func (response ListRevisionChecks200JSONResponse) VisitListRevisionChecksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRevisionChecks400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListRevisionChecks400ApplicationProblemPlusJSONResponse) VisitListRevisionChecksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRevisionChecks401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ListRevisionChecks401ApplicationProblemPlusJSONResponse) VisitListRevisionChecksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRevisionChecks403ApplicationProblemPlusJSONResponse Problem
+
+func (response ListRevisionChecks403ApplicationProblemPlusJSONResponse) VisitListRevisionChecksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRevisionChecks404ApplicationProblemPlusJSONResponse Problem
+
+func (response ListRevisionChecks404ApplicationProblemPlusJSONResponse) VisitListRevisionChecksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRevisionChecks503ApplicationProblemPlusJSONResponse Problem
+
+func (response ListRevisionChecks503ApplicationProblemPlusJSONResponse) VisitListRevisionChecksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRevisionChecksdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListRevisionChecksdefaultApplicationProblemPlusJSONResponse) VisitListRevisionChecksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RunRevisionCheckRequestObject struct {
 	ProductID  ProductID       `json:"product_id"`
 	APIAssetID CheckAssetID    `json:"api_asset_id"`
@@ -3717,6 +3993,7 @@ func (response RunRevisionCheck200JSONResponse) VisitRunRevisionCheckResponse(w 
 
 type RunRevisionCheck201ResponseHeaders struct {
 	CacheControl string
+	Location     string
 }
 
 type RunRevisionCheck201JSONResponse struct {
@@ -3732,6 +4009,7 @@ func (response RunRevisionCheck201JSONResponse) VisitRunRevisionCheckResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
 	w.WriteHeader(201)
 	_, err := buf.WriteTo(w)
 	return err
@@ -3832,6 +4110,131 @@ type RunRevisionCheckdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response RunRevisionCheckdefaultApplicationProblemPlusJSONResponse) VisitRunRevisionCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisionCheckRequestObject struct {
+	ProductID  ProductID       `json:"product_id"`
+	APIAssetID CheckAssetID    `json:"api_asset_id"`
+	RevisionID CheckRevisionID `json:"revision_id"`
+	CheckRunID Identifier      `json:"check_run_id"`
+}
+
+type GetRevisionCheckResponseObject interface {
+	VisitGetRevisionCheckResponse(w http.ResponseWriter) error
+}
+
+type GetRevisionCheck200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetRevisionCheck200JSONResponse struct {
+	Body    CheckRun
+	Headers GetRevisionCheck200ResponseHeaders
+}
+
+func (response GetRevisionCheck200JSONResponse) VisitGetRevisionCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisionCheck400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetRevisionCheck400ApplicationProblemPlusJSONResponse) VisitGetRevisionCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisionCheck401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetRevisionCheck401ApplicationProblemPlusJSONResponse) VisitGetRevisionCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisionCheck403ApplicationProblemPlusJSONResponse Problem
+
+func (response GetRevisionCheck403ApplicationProblemPlusJSONResponse) VisitGetRevisionCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisionCheck404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetRevisionCheck404ApplicationProblemPlusJSONResponse) VisitGetRevisionCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisionCheck503ApplicationProblemPlusJSONResponse Problem
+
+func (response GetRevisionCheck503ApplicationProblemPlusJSONResponse) VisitGetRevisionCheckResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRevisionCheckdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetRevisionCheckdefaultApplicationProblemPlusJSONResponse) VisitGetRevisionCheckResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -6243,9 +6646,15 @@ type StrictServerInterface interface {
 	// GetRevision Read one immutable draft revision's metadata
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id})
 	GetRevision(ctx context.Context, request GetRevisionRequestObject) (GetRevisionResponseObject, error)
+	// ListRevisionChecks List the recorded checks of one draft revision
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs)
+	ListRevisionChecks(ctx context.Context, request ListRevisionChecksRequestObject) (ListRevisionChecksResponseObject, error)
 	// RunRevisionCheck Execute the baseline check of a draft revision
 	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs)
 	RunRevisionCheck(ctx context.Context, request RunRevisionCheckRequestObject) (RunRevisionCheckResponseObject, error)
+	// GetRevisionCheck Read a recorded check with its rule outcomes and findings
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs/{check_run_id})
+	GetRevisionCheck(ctx context.Context, request GetRevisionCheckRequestObject) (GetRevisionCheckResponseObject, error)
 	// GetRevisionSource Read the files a draft revision was recorded from
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/source)
 	GetRevisionSource(ctx context.Context, request GetRevisionSourceRequestObject) (GetRevisionSourceResponseObject, error)
@@ -6628,6 +7037,35 @@ func (sh *strictHandler) GetRevision(w http.ResponseWriter, r *http.Request, pro
 	}
 }
 
+// ListRevisionChecks operation middleware
+func (sh *strictHandler) ListRevisionChecks(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, params ListRevisionChecksParams) {
+	var request ListRevisionChecksRequestObject
+
+	request.ProductID = productID
+	request.APIAssetID = apiAssetID
+	request.RevisionID = revisionID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRevisionChecks(ctx, request.(ListRevisionChecksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRevisionChecks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRevisionChecksResponseObject); ok {
+		if err := validResponse.VisitListRevisionChecksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // RunRevisionCheck operation middleware
 func (sh *strictHandler) RunRevisionCheck(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID) {
 	var request RunRevisionCheckRequestObject
@@ -6649,6 +7087,35 @@ func (sh *strictHandler) RunRevisionCheck(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RunRevisionCheckResponseObject); ok {
 		if err := validResponse.VisitRunRevisionCheckResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRevisionCheck operation middleware
+func (sh *strictHandler) GetRevisionCheck(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, checkRunID Identifier) {
+	var request GetRevisionCheckRequestObject
+
+	request.ProductID = productID
+	request.APIAssetID = apiAssetID
+	request.RevisionID = revisionID
+	request.CheckRunID = checkRunID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRevisionCheck(ctx, request.(GetRevisionCheckRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRevisionCheck")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRevisionCheckResponseObject); ok {
+		if err := validResponse.VisitGetRevisionCheckResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
