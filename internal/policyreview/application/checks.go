@@ -13,6 +13,7 @@ var (
 	ErrForbidden         = errors.New("the caller may not check this revision")
 	ErrProductSuspended  = errors.New("the product is suspended")
 	ErrRefusalNotAudited = errors.New("a check refusal could not be audited")
+	ErrInvalidBaseline   = errors.New("the baseline must be a different revision of the same API asset")
 )
 
 type Dependencies struct {
@@ -46,15 +47,31 @@ type Execution struct {
 	Created bool
 }
 
-// Run evaluates a verified revision under the current baseline. Identical
-// policy and tool inputs reuse the evidence already recorded for the revision.
-func (c *Checks) Run(ctx context.Context, target ports.Target) (Execution, error) {
+// Run evaluates a verified revision under the current policy. The optional
+// baseline selects a second verified revision of the same API asset.
+func (c *Checks) Run(ctx context.Context, target ports.Target, baselineID string) (Execution, error) {
 	revision, source, err := c.deps.Revisions.Source(ctx, target)
 	if err != nil {
 		return Execution{}, err
 	}
 	tool := c.deps.Evaluator.Tool()
-	toolDigest := domain.ToolDigest([]domain.Tool{tool})
+	tools := []domain.Tool{tool}
+	var baseline domain.Source
+	var comparator domain.Tool
+	if baselineID != "" {
+		if baselineID == revision.RevisionID {
+			return Execution{}, ErrInvalidBaseline
+		}
+		baselineTarget := target
+		baselineTarget.RevisionID = baselineID
+		_, baseline, err = c.deps.Revisions.Source(ctx, baselineTarget)
+		if err != nil {
+			return Execution{}, err
+		}
+		comparator = c.deps.Comparator.Tool()
+		tools = append(tools, comparator)
+	}
+	toolDigest := domain.ToolDigest(tools)
 	policyDigest := c.policy.Digest()
 
 	const action = "revision.check"
@@ -70,7 +87,7 @@ func (c *Checks) Run(ctx context.Context, target ports.Target) (Execution, error
 		if !active {
 			return ErrProductSuspended
 		}
-		recorded, found, err := c.deps.Checks.Recorded(tx, revision, policyDigest, toolDigest, "")
+		recorded, found, err := c.deps.Checks.Recorded(tx, revision, policyDigest, toolDigest, baselineID)
 		if err != nil {
 			return err
 		}
@@ -78,12 +95,26 @@ func (c *Checks) Run(ctx context.Context, target ports.Target) (Execution, error
 			if recorded.InputDigest != source.Digest {
 				return domain.ErrCheckRunDamaged
 			}
+			if baselineID != "" {
+				if recorded.Compatibility == nil ||
+					recorded.Compatibility.Baseline != (domain.ComparisonBaseline{RevisionID: baselineID, InputDigest: baseline.Digest}) {
+					return domain.ErrCheckRunDamaged
+				}
+			}
 			result = Execution{Run: recorded}
 			return nil
 		}
 
 		started := c.deps.Clock.Now()
 		observations := c.deps.Evaluator.Evaluate(source, c.policy.Rules())
+		var comparison *domain.ComparisonEvidence
+		if baselineID != "" {
+			comparison = &domain.ComparisonEvidence{
+				Baseline:   domain.ComparisonBaseline{RevisionID: baselineID, InputDigest: baseline.Digest},
+				Tool:       comparator,
+				Comparison: c.deps.Comparator.Compare(baseline, source),
+			}
+		}
 		completed := c.deps.Clock.Now()
 		snapshot, err := c.deps.Checks.Snapshot(tx, revision.ProductID, c.policy, c.deps.Identifiers.NewID(), started)
 		if err != nil {
@@ -91,7 +122,7 @@ func (c *Checks) Run(ctx context.Context, target ports.Target) (Execution, error
 		}
 		run, err := domain.Complete(domain.Draft{
 			ID: c.deps.Identifiers.NewID(), PolicySnapshotID: snapshot, Revision: revision,
-			RequestedBy: target.Caller, StartedAt: started,
+			RequestedBy: target.Caller, StartedAt: started, Compatibility: comparison,
 		}, c.policy, source, tool, observations, completed)
 		if err != nil {
 			return err

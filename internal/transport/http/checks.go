@@ -12,7 +12,7 @@ import (
 )
 
 type PolicyReview interface {
-	Run(context.Context, ports.Target) (checks.Execution, error)
+	Run(context.Context, ports.Target, string) (checks.Execution, error)
 	Get(context.Context, ports.Target, string) (domain.CheckRun, error)
 	List(context.Context, checks.ListChecks) (checks.Page, error)
 	Compare(context.Context, ports.Target, string) (checks.RevisionComparison, error)
@@ -30,7 +30,7 @@ func (o operations) RunRevisionCheck(ctx context.Context, request RunRevisionChe
 	if err != nil {
 		return nil, err
 	}
-	result, err := o.policyReview.Run(ctx, target)
+	result, err := o.policyReview.Run(ctx, target, "")
 	if err != nil {
 		return nil, err
 	}
@@ -144,6 +144,8 @@ func checkProblem(err error) (Problem, bool) {
 		return problem(http.StatusNotFound, "CHECK_RUN_NOT_FOUND", ""), true
 	case errors.Is(err, checks.ErrInvalidPage):
 		return problem(http.StatusBadRequest, CodeRequestInvalid, ""), true
+	case errors.Is(err, checks.ErrInvalidBaseline):
+		return problem(http.StatusBadRequest, CodeRequestInvalid, "The baseline must be a different revision of the same API asset."), true
 	case errors.Is(err, checks.ErrProductSuspended):
 		return problem(http.StatusConflict, CodeProductNotActive, "The product is suspended and takes no new work."), true
 	default:

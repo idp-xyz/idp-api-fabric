@@ -28,6 +28,11 @@ func (c *Checks) Get(ctx context.Context, target ports.Target, id string) (domai
 	if run.InputDigest != digest {
 		return domain.CheckRun{}, domain.ErrCheckRunDamaged
 	}
+	if run.Compatibility != nil {
+		if err := c.verifyBaseline(ctx, target, run.Compatibility.Baseline); err != nil {
+			return domain.CheckRun{}, err
+		}
+	}
 	return run, nil
 }
 
@@ -58,9 +63,17 @@ func (c *Checks) List(ctx context.Context, query ListChecks) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
+	verified := make(map[domain.ComparisonBaseline]bool)
 	for _, item := range items {
 		if item.InputDigest != digest {
 			return Page{}, domain.ErrCheckRunDamaged
+		}
+		if item.Compatibility != nil && !verified[item.Compatibility.Baseline] {
+			baseline := item.Compatibility.Baseline
+			if err := c.verifyBaseline(ctx, query.Target, baseline); err != nil {
+				return Page{}, err
+			}
+			verified[baseline] = true
 		}
 	}
 	if len(items) <= size {
@@ -68,4 +81,16 @@ func (c *Checks) List(ctx context.Context, query ListChecks) (Page, error) {
 	}
 	last := items[size-1]
 	return Page{Items: items[:size], Next: &ports.Position{At: last.CompletedAt, ID: last.ID}}, nil
+}
+
+func (c *Checks) verifyBaseline(ctx context.Context, target ports.Target, baseline domain.ComparisonBaseline) error {
+	target.RevisionID = baseline.RevisionID
+	_, digest, err := c.deps.Revisions.Revision(ctx, target)
+	if err != nil {
+		return err
+	}
+	if digest != baseline.InputDigest {
+		return domain.ErrCheckRunDamaged
+	}
+	return nil
 }
