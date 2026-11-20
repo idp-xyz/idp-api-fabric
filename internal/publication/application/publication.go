@@ -109,10 +109,15 @@ func (s *Publication) ListTargets(ctx context.Context, request domain.Request, a
 	return TargetPage{Items: items[:limit], Next: &ports.TargetPosition{At: last.CreatedAt, ID: last.ID}}, nil
 }
 
+// GetSlot reads what a slot points at and what stands between that release
+// and whoever asks for its artifact: an access block, and an approval that
+// does not hold any more. A read of the artifact that is refused for either
+// says nothing of why; whoever may read the slot is told here.
 func (s *Publication) GetSlot(ctx context.Context, request domain.Request) (domain.SlotView, error) {
 	var result domain.SlotView
 	err := s.deps.Transactions.WithinTransaction(ctx, func(tx context.Context) error {
-		if _, err := s.asset(tx, request, false); err != nil {
+		access, err := s.asset(tx, request, false)
+		if err != nil {
 			return err
 		}
 		target, err := s.target(tx, request, ports.HoldTarget)
@@ -124,7 +129,13 @@ func (s *Publication) GetSlot(ctx context.Context, request domain.Request) (doma
 			return err
 		}
 		blocked, err := s.deps.Store.HasBlock(tx, target, request.AssetID, slot.ActiveReleaseID)
+		if err != nil {
+			return err
+		}
 		result = domain.SlotView{Slot: slot, Blocked: blocked}
+		if slot.ActiveReleaseID != "" {
+			result.Unapproved, err = s.deps.Authority.Approval(tx, request, access.WorkspaceID, target, slot.ActiveReleaseID)
+		}
 		return err
 	})
 	return result, s.refused(ctx, request, "publication.read", "PublicationSlot", err)

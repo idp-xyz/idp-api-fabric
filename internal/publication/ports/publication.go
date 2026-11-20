@@ -67,6 +67,12 @@ type Authority interface {
 	// Material verifies a release, its approval and its digest. previousID
 	// pins the comparison for activation, and reading omits publisher duties.
 	Material(ctx context.Context, request domain.Request, workspaceID string, target domain.Target, releaseID, previousID string, reading bool) (Artifact, error)
+	// Approval verifies, as a read of the artifact does, that the approval
+	// a release rests on holds for the target now. unapproved is why it
+	// does not: the refusal an activation of the release would meet. It is
+	// nil when the approval holds. Anything else that goes wrong, a
+	// release or evidence that is not what was recorded, is err.
+	Approval(ctx context.Context, request domain.Request, workspaceID string, target domain.Target, releaseID string) (unapproved, err error)
 }
 
 type AuditEntry struct {

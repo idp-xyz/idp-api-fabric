@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.24.0
+  version: 0.25.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -2185,6 +2185,12 @@ paths:
       description: >-
         An asset without a slot starts at generation zero. The slot reports the
         database pointer, origin blocking, and the separate delivery status.
+        It also says whether the approval the active release rests on still
+        holds for this target. The artifact of a release whose approval does
+        not hold is not served, and getPublishedArtifact answers 404 without
+        a reason; approval_problem names the reason here, to whoever may read
+        the slot. A revision whose approval does not hold is approved again
+        with a supplementary review, and released and activated under it.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -2809,6 +2815,14 @@ components:
           $ref: '#/components/schemas/Identifier'
         blocked:
           type: boolean
+        approval_problem:
+          description: >-
+            Why the approval the active release rests on does not hold for
+            this target now: the error code an activation of that release
+            would be refused with. Absent when the approval holds and when
+            no release is active.
+          type: string
+          enum: [APPROVAL_REQUIRED, APPROVAL_EXPIRED, WAIVER_EXPIRED, REVIEWER_AUTH_REVOKED, APPROVAL_SCOPE_MISMATCH, POLICY_STALE]
         delivery_status:
           type: string
           enum: [UNKNOWN]

@@ -138,6 +138,44 @@ func (s publicationAuthority) BlockScope(ctx context.Context, block publicationd
 
 func (s publicationAuthority) Material(ctx context.Context, request publicationdomain.Request, workspaceID string,
 	target publicationdomain.Target, releaseID, previousID string, reading bool) (publicationports.Artifact, error) {
+	artifact, err := s.material(ctx, request, workspaceID, target, releaseID, previousID, reading)
+	switch {
+	case errors.Is(err, checks.ErrPublisherInvolved):
+		err = errors.Join(err, publication.ErrForbidden)
+	case reading && unapproved(err):
+		// A read says that there is nothing to serve, and not why.
+		err = publication.ErrNoVisibleArtifact
+	}
+	return artifact, err
+}
+
+// Approval verifies the approval a release rests on as a read of its
+// artifact does, and answers why it does not hold instead of serving
+// nothing: the slot says what the read keeps to itself.
+func (s publicationAuthority) Approval(ctx context.Context, request publicationdomain.Request, workspaceID string,
+	target publicationdomain.Target, releaseID string) (error, error) {
+	_, err := s.material(ctx, request, workspaceID, target, releaseID, "", true)
+	if unapproved(err) {
+		return err, nil
+	}
+	return nil, err
+}
+
+// unapproved reports whether err says that the approval a release rests on
+// does not hold now: it is not one, it ran out or a waiver of it did, it
+// does not reach the target, its reviewer lost the grant, or the policy and
+// the tools moved on from its check. These are the reasons for which a
+// published artifact is not served.
+func unapproved(err error) bool {
+	return errors.Is(err, checks.ErrApprovalExpired) || errors.Is(err, checks.ErrApprovalRequired) ||
+		errors.Is(err, checks.ErrApprovalScope) || errors.Is(err, checks.ErrWaiverExpired) ||
+		errors.Is(err, checks.ErrReviewerGrantRevoked) || errors.Is(err, checkdomain.ErrCheckStale)
+}
+
+// material reads a release and its artifact and verifies the approval the
+// release rests on, for the target. It hands on what it finds as it is.
+func (s publicationAuthority) material(ctx context.Context, request publicationdomain.Request, workspaceID string,
+	target publicationdomain.Target, releaseID, previousID string, reading bool) (publicationports.Artifact, error) {
 	asset := registrydomain.AssetRef{ProductID: request.ProductID, WorkspaceID: workspaceID, AssetID: request.AssetID}
 	release, err := s.releases.FindRelease(ctx, asset, releaseID)
 	if err != nil {
@@ -164,14 +202,6 @@ func (s publicationAuthority) Material(ctx context.Context, request publicationd
 	evidence, err := s.approval(ctx, revision, release.ReviewID, actor,
 		&checkdomain.Target{Audience: target.Audience, Environment: target.Environment}, baseline)
 	if err != nil {
-		if errors.Is(err, checks.ErrPublisherInvolved) {
-			err = errors.Join(err, publication.ErrForbidden)
-		}
-		if reading && (errors.Is(err, checks.ErrApprovalExpired) || errors.Is(err, checks.ErrApprovalRequired) ||
-			errors.Is(err, checks.ErrApprovalScope) || errors.Is(err, checks.ErrWaiverExpired) ||
-			errors.Is(err, checks.ErrReviewerGrantRevoked) || errors.Is(err, checkdomain.ErrCheckStale)) {
-			err = publication.ErrNoVisibleArtifact
-		}
 		return publicationports.Artifact{}, err
 	}
 	if release.Approval != evidence {

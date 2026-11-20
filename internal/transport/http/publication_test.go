@@ -1,11 +1,180 @@
 package http
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 
+	checks "go.idp.xyz/idp-api-fabric/internal/policyreview/application"
+	reviewdomain "go.idp.xyz/idp-api-fabric/internal/policyreview/domain"
 	"go.idp.xyz/idp-api-fabric/internal/publication/domain"
 )
+
+const (
+	publicationTargetID = "2b3c4d5e-6f70-4a81-9b2c-3d4e5f6a7b8c"
+	publicationSlotID   = "4d5e6f70-8192-4a3b-8c4d-5e6f7a8b9c0d"
+	releaseID           = "6f708192-a3b4-4c5d-9e6f-7a8b9c0d1e2f"
+	// publicationSlot is where the slot of the asset on the target is read.
+	publicationSlot = "/v1/products/" + productID + "/publication-targets/" + publicationTargetID + "/assets/" + apiAssetID
+)
+
+// publications stands in for the use cases of publication. It answers the
+// slot the test set, and refuses a change with the error the test set.
+type publications struct {
+	Publications
+
+	slot domain.SlotView
+	err  error
+
+	read    []domain.Request
+	changed []domain.Change
+}
+
+func (p *publications) GetSlot(_ context.Context, request domain.Request) (domain.SlotView, error) {
+	p.read = append(p.read, request)
+	return p.slot, p.err
+}
+
+func (p *publications) ChangeSlot(_ context.Context, _ domain.Request, change domain.Change) (domain.Operation, error) {
+	p.changed = append(p.changed, change)
+	return domain.Operation{}, p.err
+}
+
+func newPublicationService(t *testing.T, fake *publications) *service {
+	t.Helper()
+
+	s := &service{governance: newGovernance(), log: &bytes.Buffer{}}
+	handler, err := NewHandler(Config{
+		Logger: slog.New(slog.NewTextHandler(s.log, nil)), Build: testBuild, Verifier: tokens{}, Governance: s.governance,
+		Catalog: unusedCatalog{}, Registry: unusedRegistry{}, PolicyReview: unusedPolicyReview{},
+		Releases: unusedReleases{}, Publication: fake,
+	})
+	if err != nil {
+		t.Fatalf("build the handler: %v", err)
+	}
+	s.handler = handler
+	return s
+}
+
+// activeSlot is a slot that points at a release, at its third generation.
+func activeSlot() domain.SlotView {
+	return domain.SlotView{Slot: domain.Slot{
+		ID: publicationSlotID, ProductID: productID, TargetID: publicationTargetID, AssetID: apiAssetID,
+		ActiveReleaseID: releaseID, Generation: 3,
+	}}
+}
+
+// A slot says why the approval of the release it points at does not hold, in
+// the words an activation of that release is refused with: the same cause
+// has the same code in both. A slot whose release is approved says nothing
+// of it, and a cause the contract has no word for on a slot is a failure of
+// the service.
+func TestASlotSaysWhyTheApprovalOfItsReleaseDoesNotHoldAsAnActivationWould(t *testing.T) {
+	shown := map[string]any{
+		"slot_id": publicationSlotID, "publication_target_id": publicationTargetID, "api_asset_id": apiAssetID,
+		"active_release_id": releaseID, "generation": float64(3), "visibility": "ACTIVE", "blocked": false,
+		"delivery_status": "UNKNOWN",
+	}
+	read := call{Method: http.MethodGet, Target: publicationSlot, Token: alice.Subject}
+
+	fake := &publications{slot: activeSlot()}
+	recorder := newPublicationService(t, fake).do(t, read)
+	if got := members(t, recorder); recorder.Code != http.StatusOK || !reflect.DeepEqual(got, shown) ||
+		recorder.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("a slot whose release is approved: %d\n %v\nwant 200\n %v", recorder.Code, got, shown)
+	}
+	if len(fake.read) != 1 || fake.read[0].CorrelationID == "" {
+		t.Fatalf("the use case was asked %+v, want one read under the identifier of the request", fake.read)
+	}
+	asked := fake.read[0]
+	asked.CorrelationID = ""
+	if want := (domain.Request{
+		Caller: domain.Principal(alice), ProductID: productID, TargetID: publicationTargetID, AssetID: apiAssetID,
+	}); asked != want {
+		t.Errorf("the use case was asked for %+v, want %+v", asked, want)
+	}
+
+	causes := map[string]struct {
+		err  error
+		code string
+	}{
+		"no approval":                          {checks.ErrApprovalRequired, "APPROVAL_REQUIRED"},
+		"an approval that ran out":             {checks.ErrApprovalExpired, "APPROVAL_EXPIRED"},
+		"a waiver that ran out":                {checks.ErrWaiverExpired, "WAIVER_EXPIRED"},
+		"a reviewer who lost the grant":        {checks.ErrReviewerGrantRevoked, "REVIEWER_AUTH_REVOKED"},
+		"a target the approval does not name":  {checks.ErrApprovalScope, "APPROVAL_SCOPE_MISMATCH"},
+		"a check the tools have moved on from": {fmt.Errorf("review %s: %w", reviewID, reviewdomain.ErrCheckStale), "POLICY_STALE"},
+	}
+	activate := call{
+		Method: http.MethodPost, Target: publicationSlot + "/operations", Token: alice.Subject,
+		Body:   `{"action":"ACTIVATE","expected_generation":3,"release_id":"` + releaseID + `"}`,
+		Header: map[string]string{"Idempotency-Key": "again"},
+	}
+	var said []any
+	for name, c := range causes {
+		t.Run(name, func(t *testing.T) {
+			slot := activeSlot()
+			slot.Unapproved = c.err
+			recorder := newPublicationService(t, &publications{slot: slot}).do(t, read)
+			want := map[string]any{"approval_problem": c.code}
+			for member, value := range shown {
+				want[member] = value
+			}
+			if got := members(t, recorder); recorder.Code != http.StatusOK || !reflect.DeepEqual(got, want) {
+				t.Fatalf("the slot: %d\n %v\nwant 200\n %v", recorder.Code, got, want)
+			}
+			// An activation that is refused for the same cause is
+			// answered with the same code.
+			refused := &publications{err: c.err}
+			wantRefusal(t, newPublicationService(t, refused).do(t, activate), http.StatusConflict, c.code)
+			if len(refused.changed) != 1 {
+				t.Errorf("the use case was asked for %d changes, want the one", len(refused.changed))
+			}
+		})
+		said = append(said, c.code)
+	}
+
+	// The contract states the causes a slot can name, and no other.
+	contract, err := loadContract()
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared := slices.Clone(contract.Components.Schemas["PublicationSlot"].Value.Properties["approval_problem"].Value.Enum)
+	byName := func(a, b any) int { return strings.Compare(a.(string), b.(string)) }
+	slices.SortFunc(declared, byName)
+	slices.SortFunc(said, byName)
+	if !reflect.DeepEqual(declared, said) {
+		t.Errorf("the contract states the causes %v, a slot names %v", declared, said)
+	}
+
+	// What an activation is refused for besides is no word about the
+	// approval of what is active, and a slot does not answer with it.
+	for name, cause := range map[string]error{
+		"a publisher who had a part in the revision": checks.ErrPublisherInvolved,
+		"a check that compared with something else":  checks.ErrBaselineMismatch,
+		"a check that left a rule out":               fmt.Errorf("%w: F04-GOV-004", checks.ErrReleaseCheckMissing),
+		"a review that is not what was recorded":     fmt.Errorf("review %s: %w", reviewID, reviewdomain.ErrReviewDamaged),
+		"anything else":                              errors.New("the connection is gone"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			slot := activeSlot()
+			slot.Unapproved = cause
+			s := newPublicationService(t, &publications{slot: slot})
+			wantProblem(t, s.do(t, read), http.StatusInternalServerError, CodeInternalError, "")
+			if logged := s.log.String(); !strings.Contains(logged, "the slot cannot say why the approval of its release does not hold") ||
+				!strings.Contains(logged, cause.Error()) {
+				t.Errorf("the log does not say what the slot could not name: %s", logged)
+			}
+		})
+	}
+}
 
 // The contract states a change of a slot, a target and a block in the words
 // of the model, so what the validator lets through is what the model
