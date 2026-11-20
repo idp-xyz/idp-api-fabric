@@ -2,6 +2,7 @@ package migrate_test
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"regexp"
 	"slices"
@@ -958,12 +959,19 @@ func TestRunLetsAReviewBeDecidedAndLeavesTheWithdrawalsOfTheBuildBeforeWhatTheyA
 	if err != nil {
 		t.Fatalf("build the plan: %v", err)
 	}
+	// That build had the steps of Policy & Review before this one: neither
+	// this one nor the one that came after it.
+	var later []string
 	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool {
-		return step.Schema == "policyreview" && step.ID >= reviewDecision
+		if step.Schema != "policyreview" || step.ID < reviewDecision {
+			return false
+		}
+		later = append(later, step.ID)
+		return true
 	})
-	if len(before) != len(plan)-1 {
-		t.Fatalf("the plan carries %d steps of Policy & Review from %s on, want that one; this test would not be of the build before",
-			len(plan)-len(before), reviewDecision)
+	if want := []string{reviewDecision, supplementaryReview}; !slices.Equal(later, want) {
+		t.Fatalf("the plan carries the steps %v of Policy & Review from %s on, want %v; this test would not be of the build before",
+			later, reviewDecision, want)
 	}
 	if err := migrate.Apply(t.Context(), conn, quiet, before); err != nil {
 		t.Fatalf("migrate as the build before: %v", err)
@@ -1131,6 +1139,172 @@ func TestRunLetsAReviewBeDecidedAndLeavesTheWithdrawalsOfTheBuildBeforeWhatTheyA
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("the conclusions are\n %+v\nwant the withdrawals as they were and the decisions of this build\n %+v", got, want)
+	}
+}
+
+// supplementaryReview is the step with which a revision that is approved can
+// be reviewed again: a request says whether it is of such a revision.
+const supplementaryReview = "policyreview/005_supplementary_review"
+
+// A database the build before supplementary reviews has migrated and written
+// to is brought up to date with what it holds. Every request that build
+// recorded is one that put its revision in review, and what it still records
+// while this one is rolled out is a request like those: it names no kind,
+// and a revision is in review under one of them at a time as before. A
+// process of this build does not start until the step is applied; its role
+// needs nothing it did not have.
+func TestRunLetsAnApprovedRevisionBeReviewedAgainAndLeavesTheRequestsOfTheBuildBeforeWhatTheyAre(t *testing.T) {
+	database := pgtest.FreshDatabase(t)
+	conn := pgtest.Connect(t, database.Migrator)
+
+	plan, err := migrate.Plan()
+	if err != nil {
+		t.Fatalf("build the plan: %v", err)
+	}
+	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool { return step.ID == supplementaryReview })
+	if len(before) != len(plan)-1 || slices.ContainsFunc(plan, func(step migrate.Step) bool {
+		return step.Schema == "policyreview" && step.ID > supplementaryReview
+	}) {
+		t.Fatalf("the plan does not carry %s as the last step of Policy & Review; this test would not be of the build before", supplementaryReview)
+	}
+	if err := migrate.Apply(t.Context(), conn, quiet, before); err != nil {
+		t.Fatalf("migrate as the build before: %v", err)
+	}
+	if err := migrate.Grant(t.Context(), conn, database.ApplicationRole); err != nil {
+		t.Fatalf("grant as the build before: %v", err)
+	}
+
+	const (
+		cargopai = "1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6"
+		team     = "4f2d7b0e-85a3-4c1b-a9d4-c3f6a5b7d8e9"
+		shipping = "3e1c6a9d-74f2-4b0a-98c3-b2e5f4a6c7d8"
+		snapshot = "9e70c25d-daf8-4b60-8e29-b8ebfa0c1d34"
+
+		recordPolicy = `
+			INSERT INTO policyreview.policy_snapshot (policy_snapshot_id, product_id, policy_set_id, policy_digest, policy_document, recorded_at)
+			VALUES ($1, $2, 'fabric-global-contract-governance', 'sha256:' || encode(sha256('{}'::bytea), 'hex'), '{}'::bytea, now())`
+		recordCheck = `
+			INSERT INTO policyreview.check_run (
+			    check_run_id, product_id, workspace_id, api_asset_id, revision_id, policy_snapshot_id, input_digest,
+			    tool_manifest, tool_digest, status, started_at, completed_at, requested_by_issuer, requested_by_subject
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, '[]'::bytea, 'sha256:' || encode(sha256('[]'::bytea), 'hex'), 'PASS',
+			          now(), now(), 'https://issuer.example', 'author')`
+		// What the build before writes for a request: it names no kind.
+		recordRequest = `
+			INSERT INTO policyreview.review_request (
+			    review_id, product_id, workspace_id, api_asset_id, revision_id, revision_status_version, check_run_id,
+			    input_digest, note, requested_at, requested_by_issuer, requested_by_subject
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, now(), 'https://issuer.example', 'author')`
+		// What this build writes for one.
+		recordKind = `
+			INSERT INTO policyreview.review_request (
+			    review_id, product_id, workspace_id, api_asset_id, revision_id, revision_status_version, check_run_id,
+			    input_digest, note, requested_at, requested_by_issuer, requested_by_subject, supplementary
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, now(), 'https://issuer.example', 'author', $9)`
+		uniqueViolation = "23505"
+		undefinedColumn = "42703"
+	)
+	digest := "sha256:" + strings.Repeat("a", 64)
+	app := pgtest.Connect(t, database.Application)
+	if _, err := app.Exec(t.Context(), recordPolicy, snapshot, cargopai); err != nil {
+		t.Fatalf("record a policy as the build before: %v", err)
+	}
+	revisions := []string{"b2c3d4e5-0001-4b6c-9d7e-8f9a0b1c2d3e", "b2c3d4e5-0002-4b6c-9d7e-8f9a0b1c2d3e"}
+	checks := []string{"c3d4e5f6-0001-4c7d-ae8f-9a0b1c2d3e4f", "c3d4e5f6-0002-4c7d-ae8f-9a0b1c2d3e4f"}
+	for i := range revisions {
+		if _, err := app.Exec(t.Context(), recordCheck, checks[i], cargopai, team, shipping, revisions[i], snapshot, digest); err != nil {
+			t.Fatalf("record a check as the build before: %v", err)
+		}
+	}
+	review := func(n int) string { return fmt.Sprintf("a1b2c3d4-%04d-4a5b-8c6d-7e8f9a0b1c2d", n) }
+	request := func(statement string, n int, revision int, version int64, more ...any) error {
+		arguments := append([]any{review(n), cargopai, team, shipping, revisions[revision], version, checks[revision], digest}, more...)
+		_, err := app.Exec(t.Context(), statement, arguments...)
+		return err
+	}
+	if err := request(recordRequest, 1, 0, 2); err != nil {
+		t.Fatalf("record a request as the build before: %v", err)
+	}
+	if err := request(recordRequest, 2, 0, 2); sqlState(err) != uniqueViolation {
+		t.Errorf("a second request at a version, on the database of the build before: got %v, want it refused", err)
+	}
+
+	// The database of that build knows no kind of request: what this build
+	// writes is refused there, and a process of this build does not start
+	// on it.
+	if err := request(recordKind, 3, 0, 3, true); sqlState(err) != undefinedColumn {
+		t.Errorf("a supplementary request on the database of the build before: got %v, want it refused for the column that is not there", err)
+	}
+	opened, err := db.Open(t.Context(), database.Application)
+	if err == nil {
+		opened.Close()
+	}
+	if !errors.Is(err, db.ErrNotMigrated) || !strings.Contains(err.Error(), "migration "+supplementaryReview+" is not recorded") {
+		t.Fatalf("on the database as the build before left it: got %v, want %v naming the step", err, db.ErrNotMigrated)
+	}
+
+	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
+		t.Fatalf("migrate as this build: %v", err)
+	}
+	applied, planned := history(t, conn), planRows(t)
+	byID := func(a, b historyRow) int { return strings.Compare(a.ID, b.ID) }
+	slices.SortFunc(applied, byID)
+	slices.SortFunc(planned, byID)
+	if !slices.Equal(applied, planned) {
+		t.Errorf("the history records\n %+v\nwant every step of the plan, each once\n %+v", applied, planned)
+	}
+	// The step adds no table and asks for no privilege: migrated, a process
+	// of this build starts with the role as that build granted it.
+	opened, err = db.Open(t.Context(), database.Application)
+	if err != nil {
+		t.Fatalf("once it is migrated: %v", err)
+	}
+	opened.Close()
+
+	// That build is still running while this one is rolled out, and
+	// records a request the way it does: one at a version, as before.
+	if err := request(recordRequest, 4, 1, 2); err != nil {
+		t.Fatalf("record a request as the build before, after the migration: %v", err)
+	}
+	if err := request(recordRequest, 5, 1, 2); sqlState(err) != uniqueViolation {
+		t.Errorf("a second request at a version as the build before, after the migration: got %v, want it refused", err)
+	}
+	// This build records supplementary requests, any number at the version
+	// of the approved revision, and one request of the other kind there.
+	for _, n := range []int{6, 7} {
+		if err := request(recordKind, n, 0, 3, true); err != nil {
+			t.Errorf("a supplementary request once the database is migrated: %v", err)
+		}
+	}
+	if err := request(recordKind, 8, 0, 3, false); err != nil {
+		t.Errorf("a request that is not supplementary at a version only supplementary ones have: %v", err)
+	}
+	if err := request(recordKind, 9, 0, 3, false); sqlState(err) != uniqueViolation {
+		t.Errorf("a second request of that kind at the version: got %v, want it refused", err)
+	}
+	if err := request(recordKind, 10, 0, 2, false); sqlState(err) != uniqueViolation {
+		t.Errorf("a second request at the version the build before recorded one at: got %v, want it refused", err)
+	}
+
+	type recorded struct {
+		Review        string
+		Version       int64
+		Supplementary bool
+	}
+	rows, err := conn.Query(t.Context(), `
+		SELECT review_id::text, revision_status_version, supplementary FROM policyreview.review_request ORDER BY review_id`)
+	if err != nil {
+		t.Fatalf("read the requests: %v", err)
+	}
+	got, err := pgx.CollectRows(rows, pgx.RowToStructByPos[recorded])
+	if err != nil {
+		t.Fatalf("read the requests: %v", err)
+	}
+	want := []recorded{
+		{review(1), 2, false}, {review(4), 2, false}, {review(6), 3, true}, {review(7), 3, true}, {review(8), 3, false},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("the requests are\n %+v\nwant those of the build before as requests that are not supplementary, and those of this build\n %+v", got, want)
 	}
 }
 

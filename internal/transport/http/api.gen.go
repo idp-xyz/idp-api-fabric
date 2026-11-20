@@ -390,6 +390,36 @@ func (e PublicationAction) Valid() bool {
 	}
 }
 
+// Defines values for PublicationSlotApprovalProblem.
+const (
+	PublicationSlotApprovalProblemAPPROVALEXPIRED       PublicationSlotApprovalProblem = "APPROVAL_EXPIRED"
+	PublicationSlotApprovalProblemAPPROVALREQUIRED      PublicationSlotApprovalProblem = "APPROVAL_REQUIRED"
+	PublicationSlotApprovalProblemAPPROVALSCOPEMISMATCH PublicationSlotApprovalProblem = "APPROVAL_SCOPE_MISMATCH"
+	PublicationSlotApprovalProblemPOLICYSTALE           PublicationSlotApprovalProblem = "POLICY_STALE"
+	PublicationSlotApprovalProblemREVIEWERAUTHREVOKED   PublicationSlotApprovalProblem = "REVIEWER_AUTH_REVOKED"
+	PublicationSlotApprovalProblemWAIVEREXPIRED         PublicationSlotApprovalProblem = "WAIVER_EXPIRED"
+)
+
+// Valid indicates whether the value is a known member of the PublicationSlotApprovalProblem enum.
+func (e PublicationSlotApprovalProblem) Valid() bool {
+	switch e {
+	case PublicationSlotApprovalProblemAPPROVALEXPIRED:
+		return true
+	case PublicationSlotApprovalProblemAPPROVALREQUIRED:
+		return true
+	case PublicationSlotApprovalProblemAPPROVALSCOPEMISMATCH:
+		return true
+	case PublicationSlotApprovalProblemPOLICYSTALE:
+		return true
+	case PublicationSlotApprovalProblemREVIEWERAUTHREVOKED:
+		return true
+	case PublicationSlotApprovalProblemWAIVEREXPIRED:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PublicationSlotDeliveryStatus.
 const (
 	PublicationSlotDeliveryStatusUNKNOWN PublicationSlotDeliveryStatus = "UNKNOWN"
@@ -1255,10 +1285,13 @@ type PublicationSlot struct {
 	ActiveReleaseID *Identifier `json:"active_release_id,omitempty"`
 
 	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
-	APIAssetID     Identifier                    `json:"api_asset_id"`
-	Blocked        bool                          `json:"blocked"`
-	DeliveryStatus PublicationSlotDeliveryStatus `json:"delivery_status"`
-	Generation     int64                         `json:"generation"`
+	APIAssetID Identifier `json:"api_asset_id"`
+
+	// ApprovalProblem Why the approval the active release rests on does not hold for this target now: the error code an activation of that release would be refused with. Absent when the approval holds and when no release is active.
+	ApprovalProblem *PublicationSlotApprovalProblem `json:"approval_problem,omitempty"`
+	Blocked         bool                            `json:"blocked"`
+	DeliveryStatus  PublicationSlotDeliveryStatus   `json:"delivery_status"`
+	Generation      int64                           `json:"generation"`
 
 	// PublicationTargetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 	PublicationTargetID Identifier `json:"publication_target_id"`
@@ -1267,6 +1300,9 @@ type PublicationSlot struct {
 	SlotID     *Identifier               `json:"slot_id,omitempty"`
 	Visibility PublicationSlotVisibility `json:"visibility"`
 }
+
+// PublicationSlotApprovalProblem Why the approval the active release rests on does not hold for this target now: the error code an activation of that release would be refused with. Absent when the approval holds and when no release is active.
+type PublicationSlotApprovalProblem string
 
 // PublicationSlotDeliveryStatus defines model for PublicationSlot.DeliveryStatus.
 type PublicationSlotDeliveryStatus string
@@ -1358,6 +1394,9 @@ type Review struct {
 
 	// Status Where a review stands: IN_REVIEW until it is concluded, then the way it ended.
 	Status ReviewStatus `json:"status"`
+
+	// Supplementary Whether the revision was APPROVED already when the review was asked for. Such a review does not move the revision.
+	Supplementary bool `json:"supplementary"`
 }
 
 // ReviewConclusion How a review ended, who ended it and when. An approval says until when it holds and which rules it waives.

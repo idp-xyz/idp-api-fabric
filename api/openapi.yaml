@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.22.0
+  version: 0.25.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -628,8 +628,8 @@ paths:
       operationId: listRevisions
       summary: List draft revision metadata for an API asset
       description: >-
-        A current internal author or reviewer of the asset's owning workspace
-        can read its revision history, oldest capture first. The cursor belongs to
+        A current internal author, reviewer or publisher of the asset's owning
+        workspace can read its revision history, oldest capture first. The cursor belongs to
         this product and asset and conveys no authorization. Results include
         source and closure digests and omit the original source bytes.
       parameters:
@@ -763,8 +763,8 @@ paths:
       operationId: getRevision
       summary: Read one immutable draft revision's metadata
       description: >-
-        A current internal author or reviewer of the asset's owning workspace
-        can read a revision that belongs to this asset and product. A revision from
+        A current internal author, reviewer or publisher of the asset's owning
+        workspace can read a revision that belongs to this asset and product. A revision from
         a different asset is indistinguishable from one that is missing.
         The files the revision was recorded from are read with
         getRevisionSource.
@@ -811,7 +811,8 @@ paths:
       summary: Read the files a draft revision was recorded from
       description: >-
         Whoever may read a revision may read its source: a current internal
-        author or reviewer of the asset's owning workspace. To anyone else the
+        author, reviewer or publisher of the asset's owning workspace. To
+        anyone else the
         answer is
         the one getRevision gives, and a revision from a different asset is
         indistinguishable from one that is missing.
@@ -873,8 +874,8 @@ paths:
       operationId: listRevisionChecks
       summary: List the recorded checks of one draft revision
       description: >-
-        A current author or reviewer of the asset's workspace can read the
-        check summaries of the revision. The list is ordered by when the checks
+        A current author, reviewer or publisher of the asset's workspace can
+        read the check summaries of the revision. The list is ordered by when the checks
         completed and then their identifiers. Its page token belongs to
         this product, asset and revision. Each summary binds the result to
         its input, policy snapshot and tools.
@@ -974,8 +975,8 @@ paths:
       operationId: getRevisionCheck
       summary: Read a recorded check with its rule outcomes and findings
       description: >-
-        A current author or reviewer of the asset's workspace can read a
-        check of the requested revision. A check from another revision is reported as
+        A current author, reviewer or publisher of the asset's workspace can
+        read a check of the requested revision. A check from another revision is reported as
         missing. The recorded input digest must match the revision's
         reference closure digest.
       parameters:
@@ -1017,8 +1018,8 @@ paths:
       operationId: compareRevisionCompatibility
       summary: Compare a candidate revision with a chosen baseline
       description: >-
-        A current internal author or reviewer of the asset's workspace can
-        compare two recorded revisions of that asset. The tool verifies both input
+        A current internal author, reviewer or publisher of the asset's
+        workspace can compare two recorded revisions of that asset. The tool verifies both input
         closures and reports observed changes and their classification.
         UNKNOWN denotes uncertainty in the comparison. The response names
         the comparator and its version.
@@ -1065,8 +1066,8 @@ paths:
       operationId: listRevisionReviews
       summary: List the reviews of one revision
       description: >-
-        A current author or reviewer of the asset's workspace can read the
-        reviews of the revision, in the order they were asked for. The page
+        A current author, reviewer or publisher of the asset's workspace can
+        read the reviews of the revision, in the order they were asked for. The page
         token belongs to this product, asset and revision. Each review says
         what was asked, on which check, for which scope, and how it ended
         if it has ended.
@@ -1113,10 +1114,20 @@ paths:
         judged is refused as well (409 REVIEW_BLOCKED): no decision approves
         such a revision.
         A revision is submitted as a DRAFT, or again once it was WITHDRAWN,
-        and is IN_REVIEW from then on, under this one request. Any other
-        status is refused (409 REVISION_STATUS_CONFLICT). The request, the
-        status of the revision, the audit record and the event commit
-        together.
+        and is IN_REVIEW from then on, under this one request. A revision
+        that is IN_REVIEW or REJECTED is refused (409
+        REVISION_STATUS_CONFLICT).
+        A revision that is APPROVED is reviewed again the same way: for a
+        scope its approval did not name, or once that approval holds no
+        longer because it ran out, its reviewer lost the grant, or the
+        policy and the tools moved on from its check. That review is
+        supplementary. It moves nothing: the revision stays APPROVED while
+        the review is open and however it ends, and what was approved before
+        holds or lapses on its own terms. A revision is under one review at
+        a time, so the request is refused while another review of it is
+        open (409 REVIEW_IN_PROGRESS).
+        The request, the status of the revision where it moves, the audit
+        record and the event commit together.
       requestBody:
         required: true
         content:
@@ -1125,7 +1136,9 @@ paths:
               $ref: '#/components/schemas/ReviewSubmission'
       responses:
         '201':
-          description: The review was asked for and the revision is in review
+          description: >-
+            The review was asked for. The revision is in review, or stays
+            approved under a supplementary review
           headers:
             Location:
               required: true
@@ -1171,8 +1184,9 @@ paths:
       operationId: getRevisionReview
       summary: Read one review of a revision
       description: >-
-        A current author or reviewer of the asset's workspace can read a
-        review of the requested revision. A review of another revision is
+        A current author, reviewer or publisher of the asset's workspace can
+        read a review of the requested revision. A publisher reads here
+        which review approved the revision it is to release. A review of another revision is
         reported as missing.
       responses:
         '200':
@@ -1212,9 +1226,10 @@ paths:
         Whoever asked for a review takes the request back, while still an
         author of the asset's workspace and while the review is open. The
         revision is WITHDRAWN from then on and can be submitted again. A
-        review that has its conclusion is refused (409 REVIEW_CONCLUDED).
-        The conclusion, the status of the revision, the audit record and
-        the event commit together.
+        supplementary review that is taken back leaves the revision
+        APPROVED. A review that has its conclusion is refused (409
+        REVIEW_CONCLUDED). The conclusion, the status of the revision where
+        it moves, the audit record and the event commit together.
       requestBody:
         required: true
         content:
@@ -1267,6 +1282,10 @@ paths:
         A current reviewer of the asset's workspace decides on an open
         review of a revision of an active product: the revision is APPROVED
         or REJECTED from then on, and the review is concluded.
+        A supplementary review leaves the revision APPROVED either way. Its
+        approval is another approval of the same content, for the scope and
+        the time it names; its rejection takes back nothing that was
+        approved before.
         Whoever decides had no part in what is reviewed. Whoever recorded
         the revision, ran the check the review rests on or asked for the
         review is refused (403 REVIEWER_NOT_INDEPENDENT), also when holding
@@ -1283,8 +1302,8 @@ paths:
         year away, and no waiver outlives it.
         An approval approves the content the check read, for the scope of
         the request and until its time, and nothing wider. The conclusion,
-        its waivers, the status of the revision, the audit record and the
-        event commit together.
+        its waivers, the status of the revision where it moves, the audit
+        record and the event commit together.
       requestBody:
         required: true
         content:
@@ -2166,6 +2185,12 @@ paths:
       description: >-
         An asset without a slot starts at generation zero. The slot reports the
         database pointer, origin blocking, and the separate delivery status.
+        It also says whether the approval the active release rests on still
+        holds for this target. The artifact of a release whose approval does
+        not hold is not served, and getPublishedArtifact answers 404 without
+        a reason; approval_problem names the reason here, to whoever may read
+        the slot. A revision whose approval does not hold is approved again
+        with a supplementary review, and released and activated under it.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -2790,6 +2815,14 @@ components:
           $ref: '#/components/schemas/Identifier'
         blocked:
           type: boolean
+        approval_problem:
+          description: >-
+            Why the approval the active release rests on does not hold for
+            this target now: the error code an activation of that release
+            would be refused with. Absent when the approval holds and when
+            no release is active.
+          type: string
+          enum: [APPROVAL_REQUIRED, APPROVAL_EXPIRED, WAIVER_EXPIRED, REVIEWER_AUTH_REVOKED, APPROVAL_SCOPE_MISMATCH, POLICY_STALE]
         delivery_status:
           type: string
           enum: [UNKNOWN]
@@ -3441,7 +3474,7 @@ components:
         has one. Neither changes once it is recorded.
       type: object
       additionalProperties: false
-      required: [review_id, product_id, api_asset_id, revision_id, check_run_id, input_digest, status, scope, requested_by, requested_at]
+      required: [review_id, product_id, api_asset_id, revision_id, check_run_id, input_digest, status, supplementary, scope, requested_by, requested_at]
       properties:
         review_id:
           $ref: '#/components/schemas/Identifier'
@@ -3459,6 +3492,11 @@ components:
           $ref: '#/components/schemas/ContractDigest'
         status:
           $ref: '#/components/schemas/ReviewStatus'
+        supplementary:
+          description: >-
+            Whether the revision was APPROVED already when the review was
+            asked for. Such a review does not move the revision.
+          type: boolean
         scope:
           description: The targets the revision is to be approved for, by audience and then environment
           type: array
