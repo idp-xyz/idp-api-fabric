@@ -65,6 +65,9 @@ import (
 	governance "go.idp.xyz/idp-api-fabric/internal/productgovernance/application"
 	governancedomain "go.idp.xyz/idp-api-fabric/internal/productgovernance/domain"
 	governanceports "go.idp.xyz/idp-api-fabric/internal/productgovernance/ports"
+	publicationoutbox "go.idp.xyz/idp-api-fabric/internal/publication/adapters/outbox"
+	publicationdb "go.idp.xyz/idp-api-fabric/internal/publication/adapters/postgres"
+	publication "go.idp.xyz/idp-api-fabric/internal/publication/application"
 	httptransport "go.idp.xyz/idp-api-fabric/internal/transport/http"
 )
 
@@ -319,10 +322,19 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 	if err != nil {
 		return nil, err
 	}
+	publications, err := publication.New(publication.Dependencies{
+		Transactions: transactions, Store: publicationdb.NewStore(database.Framework),
+		Authority: publicationAuthority{releaseAuthority: releaseScope, releases: contractReleases},
+		Audit:     audit.recordPublication, Enqueue: publicationoutbox.NewEvents(outbox, identifiers).Enqueue,
+		Clock: clock, IDs: identifiers,
+	})
+	if err != nil {
+		return nil, err
+	}
 	return httptransport.NewHandler(httptransport.Config{
 		Logger: logger, Build: buildinfo.Current(), Verifier: verifier, Governance: productGovernance, Catalog: apiCatalog, Registry: contractRegistry,
 		PolicyReview: policyReview{Checks: contractChecks, Reviews: contractReviews},
-		Releases:     contractReleases,
+		Releases:     contractReleases, Publication: publications,
 	})
 }
 

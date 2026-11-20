@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.21.0
+  version: 0.22.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -13,9 +13,9 @@ info:
     never on its title or detail.
 
 
-    A list is read a page at a time, in an order that is fixed: oldest first,
-    by the instant an item was created or granted, and what is of one instant
-    by its identifier. Neither ever changes, so an item keeps its place for as
+    A list is read a page at a time, in a fixed order. Publication and block
+    history use generations. Other lists are oldest first, by the instant an
+    item was created or granted, then by identifier. An item keeps its place for as
     long as it is listed. A page holds at most 100 items and says where the
     next one starts. It starts behind a position, not at an offset: an offset
     shifts whenever an item before it is added or ends, which repeats or skips
@@ -2040,6 +2040,462 @@ paths:
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets:
+    get:
+      operationId: listPublicationTargets
+      summary: List a product's publication targets
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: A page of targets
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationTargetList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: registerPublicationTarget
+      summary: Register a publication target for a product
+      description: >-
+        The product owner binds a portal key to an active audience configuration.
+        A repeated registration of the same configuration and key is idempotent.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicationTargetRegistration'
+      responses:
+        '200':
+          description: The target was recorded already
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationTarget'
+        '201':
+          description: The target was registered
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+            Location:
+              required: true
+              schema:
+                type: string
+                format: uri-reference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationTarget'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets/{publication_target_id}:
+    get:
+      operationId: getPublicationTarget
+      summary: Read the scope and block generation of a target
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+      responses:
+        '200':
+          description: The target
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationTarget'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}:
+    get:
+      operationId: getPublicationSlot
+      summary: Read the current publication slot and its generation
+      description: >-
+        An asset without a slot starts at generation zero. The slot reports the
+        database pointer, origin blocking, and the separate delivery status.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+        - $ref: '#/components/parameters/CheckAssetId'
+      responses:
+        '200':
+          description: The current slot or its empty state
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationSlot'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}/operations:
+    get:
+      operationId: listPublicationOperations
+      summary: Read a page of slot operations in generation order
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+        - $ref: '#/components/parameters/CheckAssetId'
+        - $ref: '#/components/parameters/AfterGeneration'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: A page of slot operations
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationOperationList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: changePublicationSlot
+      summary: Activate, withdraw or restore a release with compare-and-swap
+      description: >-
+        The publisher names the generation read from the slot. Activation or
+        restoration requires a current approval for this target. A restoration
+        references a release already active on this slot. External audiences
+        need delivery and access adapters. A completed retry returns the
+        original operation.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+        - $ref: '#/components/parameters/CheckAssetId'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: A stable retry key scoped to the slot. Reusing it with changed input is a conflict.
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._:-]{1,128}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicationChange'
+      responses:
+        '200':
+          description: The committed slot operation
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationOperation'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '412':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}/artifact:
+    get:
+      operationId: getPublishedArtifact
+      summary: Download the current authorized artifact from the internal origin
+      description: >-
+        The octet stream contains the exact release JSON bytes. The origin checks
+        current workspace membership, target configuration, the active pointer,
+        approval and effective access blocks on every read.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+        - $ref: '#/components/parameters/CheckAssetId'
+      responses:
+        '200':
+          description: The verified artifact bytes
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+            X-Artifact-Digest:
+              description: SHA-256 of the response bytes, formatted as sha256 followed by a colon and lowercase hex.
+              required: true
+              schema:
+                $ref: '#/components/schemas/ContractDigest'
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks:
+    get:
+      operationId: listAccessBlocks
+      summary: Read a page of access blocks in block generation order
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+        - $ref: '#/components/parameters/AfterGeneration'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: A page of access blocks
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessBlockList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: blockPublicationAccess
+      summary: Immediately block an origin target, slot or release
+      description: >-
+        A product security administrator supplies a reason. Omitting the asset
+        blocks the target. Naming an asset blocks its slot, or one release when
+        a release ID is given. The slot generation and pointer stay independent.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessBlockRequest'
+      responses:
+        '200':
+          description: An identical block is active already
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessBlock'
+        '201':
+          description: The block is active at the origin
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+            Location:
+              required: true
+              schema:
+                type: string
+                format: uri-reference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessBlock'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks/{access_block_id}:
+    get:
+      operationId: getAccessBlock
+      summary: Read a block and its clearance history
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+        - $ref: '#/components/parameters/AccessBlockId'
+      responses:
+        '200':
+          description: The access block
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessBlock'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks/{access_block_id}/clearance:
+    post:
+      operationId: clearPublicationAccessBlock
+      summary: Clear an access block after its affected releases are withdrawn
+      description: >-
+        A separate product security reviewer supplies a reason. Clearing a
+        block does not restore a slot. Restore uses a new CAS and revalidates
+        approval and artifact integrity.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+        - $ref: '#/components/parameters/AccessBlockId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessBlockClearance'
+      responses:
+        '200':
+          description: The cleared access block
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessBlock'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
 components:
   securitySchemes:
     bearerToken:
@@ -2052,12 +2508,32 @@ components:
         them. A token says who the caller is; what the caller may do is
         decided from the roles the server holds, so no scope is declared.
   parameters:
+    PublicationTargetId:
+      name: publication_target_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Identifier'
     ContractReleaseId:
       name: release_id
       in: path
       required: true
       schema:
         $ref: '#/components/schemas/Identifier'
+    AccessBlockId:
+      name: access_block_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Identifier'
+    AfterGeneration:
+      name: after_generation
+      in: query
+      description: The last generation from the previous page, or zero for the first page.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
     CheckAssetId:
       name: api_asset_id
       in: path
@@ -2246,6 +2722,220 @@ components:
             $ref: '#/components/schemas/ContractRelease'
         next_page_token:
           $ref: '#/components/schemas/NextPageToken'
+    PublicationTargetRegistration:
+      type: object
+      additionalProperties: false
+      required: [audience_config_id, portal_key]
+      properties:
+        audience_config_id:
+          $ref: '#/components/schemas/Identifier'
+        portal_key:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
+    PublicationTarget:
+      type: object
+      additionalProperties: false
+      required: [publication_target_id, product_id, audience_config_id, portal_key, audience, environment, block_generation, created_at]
+      properties:
+        publication_target_id:
+          $ref: '#/components/schemas/Identifier'
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        audience_config_id:
+          $ref: '#/components/schemas/Identifier'
+        portal_key:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
+        audience:
+          $ref: '#/components/schemas/Audience'
+        environment:
+          $ref: '#/components/schemas/Environment'
+        block_generation:
+          type: integer
+          format: int64
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+    PublicationTargetList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicationTarget'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
+    PublicationSlot:
+      type: object
+      additionalProperties: false
+      required: [publication_target_id, api_asset_id, generation, visibility, blocked, delivery_status]
+      properties:
+        slot_id:
+          $ref: '#/components/schemas/Identifier'
+        publication_target_id:
+          $ref: '#/components/schemas/Identifier'
+        api_asset_id:
+          $ref: '#/components/schemas/Identifier'
+        generation:
+          type: integer
+          format: int64
+          minimum: 0
+        visibility:
+          type: string
+          enum: [EMPTY, ACTIVE, WITHDRAWN]
+        active_release_id:
+          $ref: '#/components/schemas/Identifier'
+        blocked:
+          type: boolean
+        delivery_status:
+          type: string
+          enum: [UNKNOWN]
+    PublicationChange:
+      type: object
+      additionalProperties: false
+      required: [action, expected_generation]
+      properties:
+        action:
+          $ref: '#/components/schemas/PublicationAction'
+        expected_generation:
+          type: integer
+          format: int64
+          minimum: 0
+        release_id:
+          $ref: '#/components/schemas/Identifier'
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    PublicationOperation:
+      type: object
+      additionalProperties: false
+      required: [operation_id, slot_id, generation, action, performed_by, occurred_at]
+      properties:
+        operation_id:
+          $ref: '#/components/schemas/Identifier'
+        slot_id:
+          $ref: '#/components/schemas/Identifier'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        action:
+          $ref: '#/components/schemas/PublicationAction'
+        previous_release_id:
+          $ref: '#/components/schemas/Identifier'
+        release_id:
+          $ref: '#/components/schemas/Identifier'
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+        performed_by:
+          $ref: '#/components/schemas/Principal'
+        occurred_at:
+          type: string
+          format: date-time
+    PublicationOperationList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicationOperation'
+        next_after_generation:
+          type: integer
+          format: int64
+          minimum: 1
+    AccessBlockRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        api_asset_id:
+          $ref: '#/components/schemas/Identifier'
+        release_id:
+          $ref: '#/components/schemas/Identifier'
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    AccessBlockClearance:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    AccessBlock:
+      type: object
+      additionalProperties: false
+      required: [access_block_id, publication_target_id, product_id, generation, reason, created_by, created_at, status, edge_status]
+      properties:
+        access_block_id:
+          $ref: '#/components/schemas/Identifier'
+        publication_target_id:
+          $ref: '#/components/schemas/Identifier'
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        api_asset_id:
+          $ref: '#/components/schemas/Identifier'
+        release_id:
+          $ref: '#/components/schemas/Identifier'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+        created_by:
+          $ref: '#/components/schemas/Principal'
+        created_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [BLOCK_ACTIVE, CLEARED]
+        edge_status:
+          type: string
+          enum: [UNKNOWN]
+        clear_generation:
+          type: integer
+          format: int64
+          minimum: 1
+        clear_reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+        cleared_by:
+          $ref: '#/components/schemas/Principal'
+        cleared_at:
+          type: string
+          format: date-time
+    AccessBlockList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccessBlock'
+        next_after_generation:
+          type: integer
+          format: int64
+          minimum: 1
+    PublicationAction:
+      type: string
+      enum: [ACTIVATE, WITHDRAW, RESTORE]
     Health:
       type: object
       required: [status]

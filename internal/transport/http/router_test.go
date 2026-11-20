@@ -820,7 +820,7 @@ func TestTheTransportIsWiredCompletelyOrNotAtAll(t *testing.T) {
 	complete := Config{
 		Logger: logger, Build: buildinfo.Info{}, Verifier: tokens{}, Governance: newGovernance(),
 		Catalog: unusedCatalog{}, Registry: unusedRegistry{}, PolicyReview: unusedPolicyReview{},
-		Releases: unusedReleases{},
+		Releases: unusedReleases{}, Publication: unusedPublications{},
 	}
 	if _, err := NewHandler(complete); err != nil {
 		t.Fatalf("a complete wiring was refused: %v", err)
@@ -834,6 +834,7 @@ func TestTheTransportIsWiredCompletelyOrNotAtAll(t *testing.T) {
 		"the Registry":    func(c *Config) { c.Registry = nil },
 		"Policy & Review": func(c *Config) { c.PolicyReview = nil },
 		"the Releases":    func(c *Config) { c.Releases = nil },
+		"Publication":     func(c *Config) { c.Publication = nil },
 	} {
 		incomplete := complete
 		remove(&incomplete)

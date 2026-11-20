@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -35,6 +36,39 @@ func (e APIAssetLifecycle) Valid() bool {
 	case APIAssetLifecycleRETIRED:
 		return true
 	case APIAssetLifecycleSTABLE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccessBlockEdgeStatus.
+const (
+	AccessBlockEdgeStatusUNKNOWN AccessBlockEdgeStatus = "UNKNOWN"
+)
+
+// Valid indicates whether the value is a known member of the AccessBlockEdgeStatus enum.
+func (e AccessBlockEdgeStatus) Valid() bool {
+	switch e {
+	case AccessBlockEdgeStatusUNKNOWN:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccessBlockStatus.
+const (
+	AccessBlockStatusBLOCKACTIVE AccessBlockStatus = "BLOCK_ACTIVE"
+	AccessBlockStatusCLEARED     AccessBlockStatus = "CLEARED"
+)
+
+// Valid indicates whether the value is a known member of the AccessBlockStatus enum.
+func (e AccessBlockStatus) Valid() bool {
+	switch e {
+	case AccessBlockStatusBLOCKACTIVE:
+		return true
+	case AccessBlockStatusCLEARED:
 		return true
 	default:
 		return false
@@ -335,6 +369,63 @@ func (e ProductRole) Valid() bool {
 	}
 }
 
+// Defines values for PublicationAction.
+const (
+	PublicationActionACTIVATE PublicationAction = "ACTIVATE"
+	PublicationActionRESTORE  PublicationAction = "RESTORE"
+	PublicationActionWITHDRAW PublicationAction = "WITHDRAW"
+)
+
+// Valid indicates whether the value is a known member of the PublicationAction enum.
+func (e PublicationAction) Valid() bool {
+	switch e {
+	case PublicationActionACTIVATE:
+		return true
+	case PublicationActionRESTORE:
+		return true
+	case PublicationActionWITHDRAW:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PublicationSlotDeliveryStatus.
+const (
+	PublicationSlotDeliveryStatusUNKNOWN PublicationSlotDeliveryStatus = "UNKNOWN"
+)
+
+// Valid indicates whether the value is a known member of the PublicationSlotDeliveryStatus enum.
+func (e PublicationSlotDeliveryStatus) Valid() bool {
+	switch e {
+	case PublicationSlotDeliveryStatusUNKNOWN:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PublicationSlotVisibility.
+const (
+	PublicationSlotVisibilityACTIVE    PublicationSlotVisibility = "ACTIVE"
+	PublicationSlotVisibilityEMPTY     PublicationSlotVisibility = "EMPTY"
+	PublicationSlotVisibilityWITHDRAWN PublicationSlotVisibility = "WITHDRAWN"
+)
+
+// Valid indicates whether the value is a known member of the PublicationSlotVisibility enum.
+func (e PublicationSlotVisibility) Valid() bool {
+	switch e {
+	case PublicationSlotVisibilityACTIVE:
+		return true
+	case PublicationSlotVisibilityEMPTY:
+		return true
+	case PublicationSlotVisibilityWITHDRAWN:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ReviewConclusionOutcome.
 const (
 	ReviewConclusionOutcomeAPPROVED  ReviewConclusionOutcome = "APPROVED"
@@ -463,6 +554,65 @@ type APIAsset struct {
 
 // APIAssetLifecycle defines model for APIAsset.Lifecycle.
 type APIAssetLifecycle string
+
+// AccessBlock defines model for AccessBlock.
+type AccessBlock struct {
+	// AccessBlockID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	AccessBlockID Identifier `json:"access_block_id"`
+
+	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	APIAssetID      *Identifier `json:"api_asset_id,omitempty"`
+	ClearGeneration *int64      `json:"clear_generation,omitempty"`
+	ClearReason     *string     `json:"clear_reason,omitempty"`
+	ClearedAt       *time.Time  `json:"cleared_at,omitempty"`
+
+	// ClearedBy A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
+	ClearedBy *Principal `json:"cleared_by,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+
+	// CreatedBy A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
+	CreatedBy  Principal             `json:"created_by"`
+	EdgeStatus AccessBlockEdgeStatus `json:"edge_status"`
+	Generation int64                 `json:"generation"`
+
+	// ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ProductID Identifier `json:"product_id"`
+
+	// PublicationTargetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	PublicationTargetID Identifier `json:"publication_target_id"`
+	Reason              string     `json:"reason"`
+
+	// ReleaseID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ReleaseID *Identifier       `json:"release_id,omitempty"`
+	Status    AccessBlockStatus `json:"status"`
+}
+
+// AccessBlockEdgeStatus defines model for AccessBlock.EdgeStatus.
+type AccessBlockEdgeStatus string
+
+// AccessBlockStatus defines model for AccessBlock.Status.
+type AccessBlockStatus string
+
+// AccessBlockClearance defines model for AccessBlockClearance.
+type AccessBlockClearance struct {
+	Reason string `json:"reason"`
+}
+
+// AccessBlockList defines model for AccessBlockList.
+type AccessBlockList struct {
+	Items               []AccessBlock `json:"items"`
+	NextAfterGeneration *int64        `json:"next_after_generation,omitempty"`
+}
+
+// AccessBlockRequest defines model for AccessBlockRequest.
+type AccessBlockRequest struct {
+	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	APIAssetID *Identifier `json:"api_asset_id,omitempty"`
+	Reason     string      `json:"reason"`
+
+	// ReleaseID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ReleaseID *Identifier `json:"release_id,omitempty"`
+}
 
 // AssetKind defines model for AssetKind.
 type AssetKind string
@@ -1057,6 +1207,109 @@ type ProductRoleGrant struct {
 	Role ProductRole `json:"role"`
 }
 
+// PublicationAction defines model for PublicationAction.
+type PublicationAction string
+
+// PublicationChange defines model for PublicationChange.
+type PublicationChange struct {
+	Action             PublicationAction `json:"action"`
+	ExpectedGeneration int64             `json:"expected_generation"`
+	Reason             *string           `json:"reason,omitempty"`
+
+	// ReleaseID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ReleaseID *Identifier `json:"release_id,omitempty"`
+}
+
+// PublicationOperation defines model for PublicationOperation.
+type PublicationOperation struct {
+	Action     PublicationAction `json:"action"`
+	Generation int64             `json:"generation"`
+	OccurredAt time.Time         `json:"occurred_at"`
+
+	// OperationID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	OperationID Identifier `json:"operation_id"`
+
+	// PerformedBy A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
+	PerformedBy Principal `json:"performed_by"`
+
+	// PreviousReleaseID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	PreviousReleaseID *Identifier `json:"previous_release_id,omitempty"`
+	Reason            *string     `json:"reason,omitempty"`
+
+	// ReleaseID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ReleaseID *Identifier `json:"release_id,omitempty"`
+
+	// SlotID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	SlotID Identifier `json:"slot_id"`
+}
+
+// PublicationOperationList defines model for PublicationOperationList.
+type PublicationOperationList struct {
+	Items               []PublicationOperation `json:"items"`
+	NextAfterGeneration *int64                 `json:"next_after_generation,omitempty"`
+}
+
+// PublicationSlot defines model for PublicationSlot.
+type PublicationSlot struct {
+	// ActiveReleaseID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ActiveReleaseID *Identifier `json:"active_release_id,omitempty"`
+
+	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	APIAssetID     Identifier                    `json:"api_asset_id"`
+	Blocked        bool                          `json:"blocked"`
+	DeliveryStatus PublicationSlotDeliveryStatus `json:"delivery_status"`
+	Generation     int64                         `json:"generation"`
+
+	// PublicationTargetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	PublicationTargetID Identifier `json:"publication_target_id"`
+
+	// SlotID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	SlotID     *Identifier               `json:"slot_id,omitempty"`
+	Visibility PublicationSlotVisibility `json:"visibility"`
+}
+
+// PublicationSlotDeliveryStatus defines model for PublicationSlot.DeliveryStatus.
+type PublicationSlotDeliveryStatus string
+
+// PublicationSlotVisibility defines model for PublicationSlot.Visibility.
+type PublicationSlotVisibility string
+
+// PublicationTarget defines model for PublicationTarget.
+type PublicationTarget struct {
+	// Audience Who a product documents its APIs for. public is anybody, signed in or not; partner is the external developers of the organizations the product gives access to; internal is the engineers of IDP. What each of them may read is a rule of the platform, the same for every product, so a product names no audience of its own.
+	Audience Audience `json:"audience"`
+
+	// AudienceConfigID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	AudienceConfigID Identifier `json:"audience_config_id"`
+	BlockGeneration  int64      `json:"block_generation"`
+	CreatedAt        time.Time  `json:"created_at"`
+
+	// Environment Where the APIs a product documents run: a sandbox is where a developer tries an API, production is where its business runs.
+	Environment Environment `json:"environment"`
+	PortalKey   string      `json:"portal_key"`
+
+	// ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ProductID Identifier `json:"product_id"`
+
+	// PublicationTargetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	PublicationTargetID Identifier `json:"publication_target_id"`
+}
+
+// PublicationTargetList defines model for PublicationTargetList.
+type PublicationTargetList struct {
+	Items []PublicationTarget `json:"items"`
+
+	// NextPageToken The page_token of the page that follows this one, to be sent back as it is. A page carries it for as long as items follow: the last page of a list has none, also when it is full.
+	NextPageToken *NextPageToken `json:"next_page_token,omitempty"`
+}
+
+// PublicationTargetRegistration defines model for PublicationTargetRegistration.
+type PublicationTargetRegistration struct {
+	// AudienceConfigID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	AudienceConfigID Identifier `json:"audience_config_id"`
+	PortalKey        string     `json:"portal_key"`
+}
+
 // Reference A reference into another system, compared for equality and never interpreted: 1 to 255 characters, without control characters.
 type Reference = string
 
@@ -1256,6 +1509,12 @@ type WorkspaceList struct {
 // WorkspaceRole What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions and runs their checks; an internal_reviewer reads revisions and checks and decides on reviews. An internal_publisher prepares and publishes approved releases. Owners of the product manage the workspace and its members.
 type WorkspaceRole string
 
+// AccessBlockID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+type AccessBlockID = Identifier
+
+// AfterGeneration defines model for AfterGeneration.
+type AfterGeneration = int64
+
 // AudienceConfigID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 type AudienceConfigID = Identifier
 
@@ -1282,6 +1541,9 @@ type PageToken = string
 
 // ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 type ProductID = Identifier
+
+// PublicationTargetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+type PublicationTargetID = Identifier
 
 // ReviewID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 type ReviewID = Identifier
@@ -1387,6 +1649,39 @@ type ChangeProductBrandParams struct {
 	IfMatch *IfMatch `json:"If-Match,omitempty"`
 }
 
+// ListPublicationTargetsParams defines parameters for ListPublicationTargets.
+type ListPublicationTargetsParams struct {
+	// PageSize How many items the page holds at most. A list is read to its end by asking for the page that follows, never by asking for a larger one.
+	PageSize *PageSize `form:"page_size,omitempty" json:"page_size,omitempty"`
+
+	// PageToken Where the page starts: the next_page_token of the page before, as it was given. Without it the list starts at its beginning. The token is opaque. It names a position in one list and grants nothing: what the caller may read is decided again with every page, from what it holds then. One that is not a token of this list is refused (400 PAGE_TOKEN_INVALID).
+	PageToken *PageToken `form:"page_token,omitempty" json:"page_token,omitempty"`
+}
+
+// ListAccessBlocksParams defines parameters for ListAccessBlocks.
+type ListAccessBlocksParams struct {
+	// AfterGeneration The last generation from the previous page, or zero for the first page.
+	AfterGeneration *AfterGeneration `form:"after_generation,omitempty" json:"after_generation,omitempty"`
+
+	// PageSize How many items the page holds at most. A list is read to its end by asking for the page that follows, never by asking for a larger one.
+	PageSize *PageSize `form:"page_size,omitempty" json:"page_size,omitempty"`
+}
+
+// ListPublicationOperationsParams defines parameters for ListPublicationOperations.
+type ListPublicationOperationsParams struct {
+	// AfterGeneration The last generation from the previous page, or zero for the first page.
+	AfterGeneration *AfterGeneration `form:"after_generation,omitempty" json:"after_generation,omitempty"`
+
+	// PageSize How many items the page holds at most. A list is read to its end by asking for the page that follows, never by asking for a larger one.
+	PageSize *PageSize `form:"page_size,omitempty" json:"page_size,omitempty"`
+}
+
+// ChangePublicationSlotParams defines parameters for ChangePublicationSlot.
+type ChangePublicationSlotParams struct {
+	// IdempotencyKey A stable retry key scoped to the slot. Reusing it with changed input is a conflict.
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
 // ListProductRolesParams defines parameters for ListProductRoles.
 type ListProductRolesParams struct {
 	// PageSize How many items the page holds at most. A list is read to its end by asking for the page that follows, never by asking for a larger one.
@@ -1443,6 +1738,18 @@ type ChangeAudienceConfigJSONRequestBody = AudienceConfigChange
 
 // ChangeProductBrandJSONRequestBody defines body for ChangeProductBrand for application/json ContentType.
 type ChangeProductBrandJSONRequestBody = BrandChange
+
+// RegisterPublicationTargetJSONRequestBody defines body for RegisterPublicationTarget for application/json ContentType.
+type RegisterPublicationTargetJSONRequestBody = PublicationTargetRegistration
+
+// BlockPublicationAccessJSONRequestBody defines body for BlockPublicationAccess for application/json ContentType.
+type BlockPublicationAccessJSONRequestBody = AccessBlockRequest
+
+// ClearPublicationAccessBlockJSONRequestBody defines body for ClearPublicationAccessBlock for application/json ContentType.
+type ClearPublicationAccessBlockJSONRequestBody = AccessBlockClearance
+
+// ChangePublicationSlotJSONRequestBody defines body for ChangePublicationSlot for application/json ContentType.
+type ChangePublicationSlotJSONRequestBody = PublicationChange
 
 // GrantProductRoleJSONRequestBody defines body for GrantProductRole for application/json ContentType.
 type GrantProductRoleJSONRequestBody = ProductRoleGrant
@@ -1542,6 +1849,39 @@ type ServerInterface interface {
 	// ChangeProductBrand Change the brand of a product
 	// (PUT /v1/products/{product_id}/brand)
 	ChangeProductBrand(w http.ResponseWriter, r *http.Request, productID ProductID, params ChangeProductBrandParams)
+	// ListPublicationTargets List a product's publication targets
+	// (GET /v1/products/{product_id}/publication-targets)
+	ListPublicationTargets(w http.ResponseWriter, r *http.Request, productID ProductID, params ListPublicationTargetsParams)
+	// RegisterPublicationTarget Register a publication target for a product
+	// (POST /v1/products/{product_id}/publication-targets)
+	RegisterPublicationTarget(w http.ResponseWriter, r *http.Request, productID ProductID)
+	// GetPublicationTarget Read the scope and block generation of a target
+	// (GET /v1/products/{product_id}/publication-targets/{publication_target_id})
+	GetPublicationTarget(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID)
+	// ListAccessBlocks Read a page of access blocks in block generation order
+	// (GET /v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks)
+	ListAccessBlocks(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID, params ListAccessBlocksParams)
+	// BlockPublicationAccess Immediately block an origin target, slot or release
+	// (POST /v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks)
+	BlockPublicationAccess(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID)
+	// GetAccessBlock Read a block and its clearance history
+	// (GET /v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks/{access_block_id})
+	GetAccessBlock(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID, accessBlockID AccessBlockID)
+	// ClearPublicationAccessBlock Clear an access block after its affected releases are withdrawn
+	// (POST /v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks/{access_block_id}/clearance)
+	ClearPublicationAccessBlock(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID, accessBlockID AccessBlockID)
+	// GetPublicationSlot Read the current publication slot and its generation
+	// (GET /v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id})
+	GetPublicationSlot(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID, apiAssetID CheckAssetID)
+	// GetPublishedArtifact Download the current authorized artifact from the internal origin
+	// (GET /v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}/artifact)
+	GetPublishedArtifact(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID, apiAssetID CheckAssetID)
+	// ListPublicationOperations Read a page of slot operations in generation order
+	// (GET /v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}/operations)
+	ListPublicationOperations(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID, apiAssetID CheckAssetID, params ListPublicationOperationsParams)
+	// ChangePublicationSlot Activate, withdraw or restore a release with compare-and-swap
+	// (POST /v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}/operations)
+	ChangePublicationSlot(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID, apiAssetID CheckAssetID, params ChangePublicationSlotParams)
 	// ListProductRoles List the role assignments of a product
 	// (GET /v1/products/{product_id}/role-assignments)
 	ListProductRoles(w http.ResponseWriter, r *http.Request, productID ProductID, params ListProductRolesParams)
@@ -2969,6 +3309,542 @@ func (siw *ServerInterfaceWrapper) ChangeProductBrand(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// ListPublicationTargets operation middleware
+func (siw *ServerInterfaceWrapper) ListPublicationTargets(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPublicationTargetsParams
+
+	// ------------- Optional query parameter "page_size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_size", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_size", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page_token" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_token", r.URL.Query(), &params.PageToken, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_token"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_token", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPublicationTargets(w, r, productID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RegisterPublicationTarget operation middleware
+func (siw *ServerInterfaceWrapper) RegisterPublicationTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RegisterPublicationTarget(w, r, productID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPublicationTarget operation middleware
+func (siw *ServerInterfaceWrapper) GetPublicationTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "publication_target_id" -------------
+	var publicationTargetID PublicationTargetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "publication_target_id", r.PathValue("publication_target_id"), &publicationTargetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "publication_target_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPublicationTarget(w, r, productID, publicationTargetID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAccessBlocks operation middleware
+func (siw *ServerInterfaceWrapper) ListAccessBlocks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "publication_target_id" -------------
+	var publicationTargetID PublicationTargetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "publication_target_id", r.PathValue("publication_target_id"), &publicationTargetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "publication_target_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAccessBlocksParams
+
+	// ------------- Optional query parameter "after_generation" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after_generation", r.URL.Query(), &params.AfterGeneration, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after_generation"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after_generation", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page_size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_size", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_size", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccessBlocks(w, r, productID, publicationTargetID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BlockPublicationAccess operation middleware
+func (siw *ServerInterfaceWrapper) BlockPublicationAccess(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "publication_target_id" -------------
+	var publicationTargetID PublicationTargetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "publication_target_id", r.PathValue("publication_target_id"), &publicationTargetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "publication_target_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BlockPublicationAccess(w, r, productID, publicationTargetID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccessBlock operation middleware
+func (siw *ServerInterfaceWrapper) GetAccessBlock(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "publication_target_id" -------------
+	var publicationTargetID PublicationTargetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "publication_target_id", r.PathValue("publication_target_id"), &publicationTargetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "publication_target_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "access_block_id" -------------
+	var accessBlockID AccessBlockID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "access_block_id", r.PathValue("access_block_id"), &accessBlockID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "access_block_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccessBlock(w, r, productID, publicationTargetID, accessBlockID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ClearPublicationAccessBlock operation middleware
+func (siw *ServerInterfaceWrapper) ClearPublicationAccessBlock(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "publication_target_id" -------------
+	var publicationTargetID PublicationTargetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "publication_target_id", r.PathValue("publication_target_id"), &publicationTargetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "publication_target_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "access_block_id" -------------
+	var accessBlockID AccessBlockID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "access_block_id", r.PathValue("access_block_id"), &accessBlockID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "access_block_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClearPublicationAccessBlock(w, r, productID, publicationTargetID, accessBlockID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPublicationSlot operation middleware
+func (siw *ServerInterfaceWrapper) GetPublicationSlot(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "publication_target_id" -------------
+	var publicationTargetID PublicationTargetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "publication_target_id", r.PathValue("publication_target_id"), &publicationTargetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "publication_target_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID CheckAssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPublicationSlot(w, r, productID, publicationTargetID, apiAssetID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPublishedArtifact operation middleware
+func (siw *ServerInterfaceWrapper) GetPublishedArtifact(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "publication_target_id" -------------
+	var publicationTargetID PublicationTargetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "publication_target_id", r.PathValue("publication_target_id"), &publicationTargetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "publication_target_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID CheckAssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPublishedArtifact(w, r, productID, publicationTargetID, apiAssetID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPublicationOperations operation middleware
+func (siw *ServerInterfaceWrapper) ListPublicationOperations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "publication_target_id" -------------
+	var publicationTargetID PublicationTargetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "publication_target_id", r.PathValue("publication_target_id"), &publicationTargetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "publication_target_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID CheckAssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPublicationOperationsParams
+
+	// ------------- Optional query parameter "after_generation" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after_generation", r.URL.Query(), &params.AfterGeneration, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after_generation"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after_generation", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page_size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_size", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_size", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPublicationOperations(w, r, productID, publicationTargetID, apiAssetID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChangePublicationSlot operation middleware
+func (siw *ServerInterfaceWrapper) ChangePublicationSlot(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "publication_target_id" -------------
+	var publicationTargetID PublicationTargetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "publication_target_id", r.PathValue("publication_target_id"), &publicationTargetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "publication_target_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID CheckAssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ChangePublicationSlotParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChangePublicationSlot(w, r, productID, publicationTargetID, apiAssetID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListProductRoles operation middleware
 func (siw *ServerInterfaceWrapper) ListProductRoles(w http.ResponseWriter, r *http.Request) {
 
@@ -3598,6 +4474,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/releases", wrapper.ListContractReleases)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/releases", wrapper.PrepareContractRelease)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}", wrapper.GetContractRelease)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/publication-targets", wrapper.ListPublicationTargets)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/publication-targets", wrapper.RegisterPublicationTarget)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/publication-targets/{publication_target_id}", wrapper.GetPublicationTarget)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}", wrapper.GetPublicationSlot)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}/operations", wrapper.ListPublicationOperations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}/operations", wrapper.ChangePublicationSlot)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}/artifact", wrapper.GetPublishedArtifact)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks", wrapper.ListAccessBlocks)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks", wrapper.BlockPublicationAccess)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks/{access_block_id}", wrapper.GetAccessBlock)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks/{access_block_id}/clearance", wrapper.ClearPublicationAccessBlock)
 
 	return m
 }
@@ -7452,6 +8339,1439 @@ func (response ChangeProductBranddefaultApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type ListPublicationTargetsRequestObject struct {
+	ProductID ProductID `json:"product_id"`
+	Params    ListPublicationTargetsParams
+}
+
+type ListPublicationTargetsResponseObject interface {
+	VisitListPublicationTargetsResponse(w http.ResponseWriter) error
+}
+
+type ListPublicationTargets200ResponseHeaders struct {
+	CacheControl string
+}
+
+type ListPublicationTargets200JSONResponse struct {
+	Body    PublicationTargetList
+	Headers ListPublicationTargets200ResponseHeaders
+}
+
+func (response ListPublicationTargets200JSONResponse) VisitListPublicationTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPublicationTargets400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListPublicationTargets400ApplicationProblemPlusJSONResponse) VisitListPublicationTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPublicationTargets401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ListPublicationTargets401ApplicationProblemPlusJSONResponse) VisitListPublicationTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPublicationTargets404ApplicationProblemPlusJSONResponse Problem
+
+func (response ListPublicationTargets404ApplicationProblemPlusJSONResponse) VisitListPublicationTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPublicationTargetsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListPublicationTargetsdefaultApplicationProblemPlusJSONResponse) VisitListPublicationTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPublicationTargetRequestObject struct {
+	ProductID ProductID `json:"product_id"`
+	Body      *RegisterPublicationTargetJSONRequestBody
+}
+
+type RegisterPublicationTargetResponseObject interface {
+	VisitRegisterPublicationTargetResponse(w http.ResponseWriter) error
+}
+
+type RegisterPublicationTarget200ResponseHeaders struct {
+	CacheControl string
+}
+
+type RegisterPublicationTarget200JSONResponse struct {
+	Body    PublicationTarget
+	Headers RegisterPublicationTarget200ResponseHeaders
+}
+
+func (response RegisterPublicationTarget200JSONResponse) VisitRegisterPublicationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPublicationTarget201ResponseHeaders struct {
+	CacheControl string
+	Location     string
+}
+
+type RegisterPublicationTarget201JSONResponse struct {
+	Body    PublicationTarget
+	Headers RegisterPublicationTarget201ResponseHeaders
+}
+
+func (response RegisterPublicationTarget201JSONResponse) VisitRegisterPublicationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPublicationTarget400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterPublicationTarget400ApplicationProblemPlusJSONResponse) VisitRegisterPublicationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPublicationTarget401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response RegisterPublicationTarget401ApplicationProblemPlusJSONResponse) VisitRegisterPublicationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPublicationTarget403ApplicationProblemPlusJSONResponse Problem
+
+func (response RegisterPublicationTarget403ApplicationProblemPlusJSONResponse) VisitRegisterPublicationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPublicationTarget404ApplicationProblemPlusJSONResponse Problem
+
+func (response RegisterPublicationTarget404ApplicationProblemPlusJSONResponse) VisitRegisterPublicationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPublicationTarget409ApplicationProblemPlusJSONResponse Problem
+
+func (response RegisterPublicationTarget409ApplicationProblemPlusJSONResponse) VisitRegisterPublicationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPublicationTarget422ApplicationProblemPlusJSONResponse Problem
+
+func (response RegisterPublicationTarget422ApplicationProblemPlusJSONResponse) VisitRegisterPublicationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPublicationTarget503ApplicationProblemPlusJSONResponse Problem
+
+func (response RegisterPublicationTarget503ApplicationProblemPlusJSONResponse) VisitRegisterPublicationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPublicationTargetdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response RegisterPublicationTargetdefaultApplicationProblemPlusJSONResponse) VisitRegisterPublicationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublicationTargetRequestObject struct {
+	ProductID           ProductID           `json:"product_id"`
+	PublicationTargetID PublicationTargetID `json:"publication_target_id"`
+}
+
+type GetPublicationTargetResponseObject interface {
+	VisitGetPublicationTargetResponse(w http.ResponseWriter) error
+}
+
+type GetPublicationTarget200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetPublicationTarget200JSONResponse struct {
+	Body    PublicationTarget
+	Headers GetPublicationTarget200ResponseHeaders
+}
+
+func (response GetPublicationTarget200JSONResponse) VisitGetPublicationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublicationTarget400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublicationTarget400ApplicationProblemPlusJSONResponse) VisitGetPublicationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublicationTarget401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublicationTarget401ApplicationProblemPlusJSONResponse) VisitGetPublicationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublicationTarget403ApplicationProblemPlusJSONResponse Problem
+
+func (response GetPublicationTarget403ApplicationProblemPlusJSONResponse) VisitGetPublicationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublicationTarget404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetPublicationTarget404ApplicationProblemPlusJSONResponse) VisitGetPublicationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublicationTargetdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetPublicationTargetdefaultApplicationProblemPlusJSONResponse) VisitGetPublicationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessBlocksRequestObject struct {
+	ProductID           ProductID           `json:"product_id"`
+	PublicationTargetID PublicationTargetID `json:"publication_target_id"`
+	Params              ListAccessBlocksParams
+}
+
+type ListAccessBlocksResponseObject interface {
+	VisitListAccessBlocksResponse(w http.ResponseWriter) error
+}
+
+type ListAccessBlocks200ResponseHeaders struct {
+	CacheControl string
+}
+
+type ListAccessBlocks200JSONResponse struct {
+	Body    AccessBlockList
+	Headers ListAccessBlocks200ResponseHeaders
+}
+
+func (response ListAccessBlocks200JSONResponse) VisitListAccessBlocksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessBlocks400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListAccessBlocks400ApplicationProblemPlusJSONResponse) VisitListAccessBlocksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessBlocks401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ListAccessBlocks401ApplicationProblemPlusJSONResponse) VisitListAccessBlocksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessBlocks403ApplicationProblemPlusJSONResponse Problem
+
+func (response ListAccessBlocks403ApplicationProblemPlusJSONResponse) VisitListAccessBlocksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessBlocks404ApplicationProblemPlusJSONResponse Problem
+
+func (response ListAccessBlocks404ApplicationProblemPlusJSONResponse) VisitListAccessBlocksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessBlocksdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListAccessBlocksdefaultApplicationProblemPlusJSONResponse) VisitListAccessBlocksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockPublicationAccessRequestObject struct {
+	ProductID           ProductID           `json:"product_id"`
+	PublicationTargetID PublicationTargetID `json:"publication_target_id"`
+	Body                *BlockPublicationAccessJSONRequestBody
+}
+
+type BlockPublicationAccessResponseObject interface {
+	VisitBlockPublicationAccessResponse(w http.ResponseWriter) error
+}
+
+type BlockPublicationAccess200ResponseHeaders struct {
+	CacheControl string
+}
+
+type BlockPublicationAccess200JSONResponse struct {
+	Body    AccessBlock
+	Headers BlockPublicationAccess200ResponseHeaders
+}
+
+func (response BlockPublicationAccess200JSONResponse) VisitBlockPublicationAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockPublicationAccess201ResponseHeaders struct {
+	CacheControl string
+	Location     string
+}
+
+type BlockPublicationAccess201JSONResponse struct {
+	Body    AccessBlock
+	Headers BlockPublicationAccess201ResponseHeaders
+}
+
+func (response BlockPublicationAccess201JSONResponse) VisitBlockPublicationAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockPublicationAccess400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response BlockPublicationAccess400ApplicationProblemPlusJSONResponse) VisitBlockPublicationAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockPublicationAccess401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response BlockPublicationAccess401ApplicationProblemPlusJSONResponse) VisitBlockPublicationAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockPublicationAccess403ApplicationProblemPlusJSONResponse Problem
+
+func (response BlockPublicationAccess403ApplicationProblemPlusJSONResponse) VisitBlockPublicationAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockPublicationAccess404ApplicationProblemPlusJSONResponse Problem
+
+func (response BlockPublicationAccess404ApplicationProblemPlusJSONResponse) VisitBlockPublicationAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockPublicationAccess409ApplicationProblemPlusJSONResponse Problem
+
+func (response BlockPublicationAccess409ApplicationProblemPlusJSONResponse) VisitBlockPublicationAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockPublicationAccess422ApplicationProblemPlusJSONResponse Problem
+
+func (response BlockPublicationAccess422ApplicationProblemPlusJSONResponse) VisitBlockPublicationAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockPublicationAccess503ApplicationProblemPlusJSONResponse Problem
+
+func (response BlockPublicationAccess503ApplicationProblemPlusJSONResponse) VisitBlockPublicationAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockPublicationAccessdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response BlockPublicationAccessdefaultApplicationProblemPlusJSONResponse) VisitBlockPublicationAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccessBlockRequestObject struct {
+	ProductID           ProductID           `json:"product_id"`
+	PublicationTargetID PublicationTargetID `json:"publication_target_id"`
+	AccessBlockID       AccessBlockID       `json:"access_block_id"`
+}
+
+type GetAccessBlockResponseObject interface {
+	VisitGetAccessBlockResponse(w http.ResponseWriter) error
+}
+
+type GetAccessBlock200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetAccessBlock200JSONResponse struct {
+	Body    AccessBlock
+	Headers GetAccessBlock200ResponseHeaders
+}
+
+func (response GetAccessBlock200JSONResponse) VisitGetAccessBlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccessBlock400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetAccessBlock400ApplicationProblemPlusJSONResponse) VisitGetAccessBlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccessBlock401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetAccessBlock401ApplicationProblemPlusJSONResponse) VisitGetAccessBlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccessBlock403ApplicationProblemPlusJSONResponse Problem
+
+func (response GetAccessBlock403ApplicationProblemPlusJSONResponse) VisitGetAccessBlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccessBlock404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetAccessBlock404ApplicationProblemPlusJSONResponse) VisitGetAccessBlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccessBlockdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetAccessBlockdefaultApplicationProblemPlusJSONResponse) VisitGetAccessBlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearPublicationAccessBlockRequestObject struct {
+	ProductID           ProductID           `json:"product_id"`
+	PublicationTargetID PublicationTargetID `json:"publication_target_id"`
+	AccessBlockID       AccessBlockID       `json:"access_block_id"`
+	Body                *ClearPublicationAccessBlockJSONRequestBody
+}
+
+type ClearPublicationAccessBlockResponseObject interface {
+	VisitClearPublicationAccessBlockResponse(w http.ResponseWriter) error
+}
+
+type ClearPublicationAccessBlock200ResponseHeaders struct {
+	CacheControl string
+}
+
+type ClearPublicationAccessBlock200JSONResponse struct {
+	Body    AccessBlock
+	Headers ClearPublicationAccessBlock200ResponseHeaders
+}
+
+func (response ClearPublicationAccessBlock200JSONResponse) VisitClearPublicationAccessBlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearPublicationAccessBlock400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ClearPublicationAccessBlock400ApplicationProblemPlusJSONResponse) VisitClearPublicationAccessBlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearPublicationAccessBlock401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ClearPublicationAccessBlock401ApplicationProblemPlusJSONResponse) VisitClearPublicationAccessBlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearPublicationAccessBlock403ApplicationProblemPlusJSONResponse Problem
+
+func (response ClearPublicationAccessBlock403ApplicationProblemPlusJSONResponse) VisitClearPublicationAccessBlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearPublicationAccessBlock404ApplicationProblemPlusJSONResponse Problem
+
+func (response ClearPublicationAccessBlock404ApplicationProblemPlusJSONResponse) VisitClearPublicationAccessBlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearPublicationAccessBlock409ApplicationProblemPlusJSONResponse Problem
+
+func (response ClearPublicationAccessBlock409ApplicationProblemPlusJSONResponse) VisitClearPublicationAccessBlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearPublicationAccessBlock422ApplicationProblemPlusJSONResponse Problem
+
+func (response ClearPublicationAccessBlock422ApplicationProblemPlusJSONResponse) VisitClearPublicationAccessBlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearPublicationAccessBlock503ApplicationProblemPlusJSONResponse Problem
+
+func (response ClearPublicationAccessBlock503ApplicationProblemPlusJSONResponse) VisitClearPublicationAccessBlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearPublicationAccessBlockdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ClearPublicationAccessBlockdefaultApplicationProblemPlusJSONResponse) VisitClearPublicationAccessBlockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublicationSlotRequestObject struct {
+	ProductID           ProductID           `json:"product_id"`
+	PublicationTargetID PublicationTargetID `json:"publication_target_id"`
+	APIAssetID          CheckAssetID        `json:"api_asset_id"`
+}
+
+type GetPublicationSlotResponseObject interface {
+	VisitGetPublicationSlotResponse(w http.ResponseWriter) error
+}
+
+type GetPublicationSlot200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetPublicationSlot200JSONResponse struct {
+	Body    PublicationSlot
+	Headers GetPublicationSlot200ResponseHeaders
+}
+
+func (response GetPublicationSlot200JSONResponse) VisitGetPublicationSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublicationSlot400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublicationSlot400ApplicationProblemPlusJSONResponse) VisitGetPublicationSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublicationSlot401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublicationSlot401ApplicationProblemPlusJSONResponse) VisitGetPublicationSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublicationSlot403ApplicationProblemPlusJSONResponse Problem
+
+func (response GetPublicationSlot403ApplicationProblemPlusJSONResponse) VisitGetPublicationSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublicationSlot404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetPublicationSlot404ApplicationProblemPlusJSONResponse) VisitGetPublicationSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublicationSlotdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetPublicationSlotdefaultApplicationProblemPlusJSONResponse) VisitGetPublicationSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedArtifactRequestObject struct {
+	ProductID           ProductID           `json:"product_id"`
+	PublicationTargetID PublicationTargetID `json:"publication_target_id"`
+	APIAssetID          CheckAssetID        `json:"api_asset_id"`
+}
+
+type GetPublishedArtifactResponseObject interface {
+	VisitGetPublishedArtifactResponse(w http.ResponseWriter) error
+}
+
+type GetPublishedArtifact200ResponseHeaders struct {
+	CacheControl    string
+	XArtifactDigest ContractDigest
+}
+
+type GetPublishedArtifact200ApplicationOctetStreamResponse struct {
+	Body          io.Reader
+	Headers       GetPublishedArtifact200ResponseHeaders
+	ContentLength int64
+}
+
+func (response GetPublishedArtifact200ApplicationOctetStreamResponse) VisitGetPublishedArtifactResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("X-Artifact-Digest", fmt.Sprint(response.Headers.XArtifactDigest))
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetPublishedArtifact400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublishedArtifact400ApplicationProblemPlusJSONResponse) VisitGetPublishedArtifactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedArtifact401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublishedArtifact401ApplicationProblemPlusJSONResponse) VisitGetPublishedArtifactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedArtifact403ApplicationProblemPlusJSONResponse Problem
+
+func (response GetPublishedArtifact403ApplicationProblemPlusJSONResponse) VisitGetPublishedArtifactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedArtifact404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetPublishedArtifact404ApplicationProblemPlusJSONResponse) VisitGetPublishedArtifactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublishedArtifactdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetPublishedArtifactdefaultApplicationProblemPlusJSONResponse) VisitGetPublishedArtifactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPublicationOperationsRequestObject struct {
+	ProductID           ProductID           `json:"product_id"`
+	PublicationTargetID PublicationTargetID `json:"publication_target_id"`
+	APIAssetID          CheckAssetID        `json:"api_asset_id"`
+	Params              ListPublicationOperationsParams
+}
+
+type ListPublicationOperationsResponseObject interface {
+	VisitListPublicationOperationsResponse(w http.ResponseWriter) error
+}
+
+type ListPublicationOperations200ResponseHeaders struct {
+	CacheControl string
+}
+
+type ListPublicationOperations200JSONResponse struct {
+	Body    PublicationOperationList
+	Headers ListPublicationOperations200ResponseHeaders
+}
+
+func (response ListPublicationOperations200JSONResponse) VisitListPublicationOperationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPublicationOperations400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListPublicationOperations400ApplicationProblemPlusJSONResponse) VisitListPublicationOperationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPublicationOperations401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ListPublicationOperations401ApplicationProblemPlusJSONResponse) VisitListPublicationOperationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPublicationOperations403ApplicationProblemPlusJSONResponse Problem
+
+func (response ListPublicationOperations403ApplicationProblemPlusJSONResponse) VisitListPublicationOperationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPublicationOperations404ApplicationProblemPlusJSONResponse Problem
+
+func (response ListPublicationOperations404ApplicationProblemPlusJSONResponse) VisitListPublicationOperationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPublicationOperationsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListPublicationOperationsdefaultApplicationProblemPlusJSONResponse) VisitListPublicationOperationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangePublicationSlotRequestObject struct {
+	ProductID           ProductID           `json:"product_id"`
+	PublicationTargetID PublicationTargetID `json:"publication_target_id"`
+	APIAssetID          CheckAssetID        `json:"api_asset_id"`
+	Params              ChangePublicationSlotParams
+	Body                *ChangePublicationSlotJSONRequestBody
+}
+
+type ChangePublicationSlotResponseObject interface {
+	VisitChangePublicationSlotResponse(w http.ResponseWriter) error
+}
+
+type ChangePublicationSlot200ResponseHeaders struct {
+	CacheControl string
+}
+
+type ChangePublicationSlot200JSONResponse struct {
+	Body    PublicationOperation
+	Headers ChangePublicationSlot200ResponseHeaders
+}
+
+func (response ChangePublicationSlot200JSONResponse) VisitChangePublicationSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangePublicationSlot400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ChangePublicationSlot400ApplicationProblemPlusJSONResponse) VisitChangePublicationSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangePublicationSlot401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ChangePublicationSlot401ApplicationProblemPlusJSONResponse) VisitChangePublicationSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangePublicationSlot403ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangePublicationSlot403ApplicationProblemPlusJSONResponse) VisitChangePublicationSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangePublicationSlot404ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangePublicationSlot404ApplicationProblemPlusJSONResponse) VisitChangePublicationSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangePublicationSlot409ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangePublicationSlot409ApplicationProblemPlusJSONResponse) VisitChangePublicationSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangePublicationSlot412ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangePublicationSlot412ApplicationProblemPlusJSONResponse) VisitChangePublicationSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangePublicationSlot422ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangePublicationSlot422ApplicationProblemPlusJSONResponse) VisitChangePublicationSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangePublicationSlot503ApplicationProblemPlusJSONResponse Problem
+
+func (response ChangePublicationSlot503ApplicationProblemPlusJSONResponse) VisitChangePublicationSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangePublicationSlotdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ChangePublicationSlotdefaultApplicationProblemPlusJSONResponse) VisitChangePublicationSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListProductRolesRequestObject struct {
 	ProductID ProductID `json:"product_id"`
 	Params    ListProductRolesParams
@@ -8978,6 +11298,39 @@ type StrictServerInterface interface {
 	// ChangeProductBrand Change the brand of a product
 	// (PUT /v1/products/{product_id}/brand)
 	ChangeProductBrand(ctx context.Context, request ChangeProductBrandRequestObject) (ChangeProductBrandResponseObject, error)
+	// ListPublicationTargets List a product's publication targets
+	// (GET /v1/products/{product_id}/publication-targets)
+	ListPublicationTargets(ctx context.Context, request ListPublicationTargetsRequestObject) (ListPublicationTargetsResponseObject, error)
+	// RegisterPublicationTarget Register a publication target for a product
+	// (POST /v1/products/{product_id}/publication-targets)
+	RegisterPublicationTarget(ctx context.Context, request RegisterPublicationTargetRequestObject) (RegisterPublicationTargetResponseObject, error)
+	// GetPublicationTarget Read the scope and block generation of a target
+	// (GET /v1/products/{product_id}/publication-targets/{publication_target_id})
+	GetPublicationTarget(ctx context.Context, request GetPublicationTargetRequestObject) (GetPublicationTargetResponseObject, error)
+	// ListAccessBlocks Read a page of access blocks in block generation order
+	// (GET /v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks)
+	ListAccessBlocks(ctx context.Context, request ListAccessBlocksRequestObject) (ListAccessBlocksResponseObject, error)
+	// BlockPublicationAccess Immediately block an origin target, slot or release
+	// (POST /v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks)
+	BlockPublicationAccess(ctx context.Context, request BlockPublicationAccessRequestObject) (BlockPublicationAccessResponseObject, error)
+	// GetAccessBlock Read a block and its clearance history
+	// (GET /v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks/{access_block_id})
+	GetAccessBlock(ctx context.Context, request GetAccessBlockRequestObject) (GetAccessBlockResponseObject, error)
+	// ClearPublicationAccessBlock Clear an access block after its affected releases are withdrawn
+	// (POST /v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks/{access_block_id}/clearance)
+	ClearPublicationAccessBlock(ctx context.Context, request ClearPublicationAccessBlockRequestObject) (ClearPublicationAccessBlockResponseObject, error)
+	// GetPublicationSlot Read the current publication slot and its generation
+	// (GET /v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id})
+	GetPublicationSlot(ctx context.Context, request GetPublicationSlotRequestObject) (GetPublicationSlotResponseObject, error)
+	// GetPublishedArtifact Download the current authorized artifact from the internal origin
+	// (GET /v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}/artifact)
+	GetPublishedArtifact(ctx context.Context, request GetPublishedArtifactRequestObject) (GetPublishedArtifactResponseObject, error)
+	// ListPublicationOperations Read a page of slot operations in generation order
+	// (GET /v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}/operations)
+	ListPublicationOperations(ctx context.Context, request ListPublicationOperationsRequestObject) (ListPublicationOperationsResponseObject, error)
+	// ChangePublicationSlot Activate, withdraw or restore a release with compare-and-swap
+	// (POST /v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}/operations)
+	ChangePublicationSlot(ctx context.Context, request ChangePublicationSlotRequestObject) (ChangePublicationSlotResponseObject, error)
 	// ListProductRoles List the role assignments of a product
 	// (GET /v1/products/{product_id}/role-assignments)
 	ListProductRoles(ctx context.Context, request ListProductRolesRequestObject) (ListProductRolesResponseObject, error)
@@ -9914,6 +12267,339 @@ func (sh *strictHandler) ChangeProductBrand(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ChangeProductBrandResponseObject); ok {
 		if err := validResponse.VisitChangeProductBrandResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPublicationTargets operation middleware
+func (sh *strictHandler) ListPublicationTargets(w http.ResponseWriter, r *http.Request, productID ProductID, params ListPublicationTargetsParams) {
+	var request ListPublicationTargetsRequestObject
+
+	request.ProductID = productID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPublicationTargets(ctx, request.(ListPublicationTargetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPublicationTargets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPublicationTargetsResponseObject); ok {
+		if err := validResponse.VisitListPublicationTargetsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RegisterPublicationTarget operation middleware
+func (sh *strictHandler) RegisterPublicationTarget(w http.ResponseWriter, r *http.Request, productID ProductID) {
+	var request RegisterPublicationTargetRequestObject
+
+	request.ProductID = productID
+
+	var body RegisterPublicationTargetJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RegisterPublicationTarget(ctx, request.(RegisterPublicationTargetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RegisterPublicationTarget")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RegisterPublicationTargetResponseObject); ok {
+		if err := validResponse.VisitRegisterPublicationTargetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPublicationTarget operation middleware
+func (sh *strictHandler) GetPublicationTarget(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID) {
+	var request GetPublicationTargetRequestObject
+
+	request.ProductID = productID
+	request.PublicationTargetID = publicationTargetID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPublicationTarget(ctx, request.(GetPublicationTargetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPublicationTarget")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPublicationTargetResponseObject); ok {
+		if err := validResponse.VisitGetPublicationTargetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAccessBlocks operation middleware
+func (sh *strictHandler) ListAccessBlocks(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID, params ListAccessBlocksParams) {
+	var request ListAccessBlocksRequestObject
+
+	request.ProductID = productID
+	request.PublicationTargetID = publicationTargetID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccessBlocks(ctx, request.(ListAccessBlocksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccessBlocks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccessBlocksResponseObject); ok {
+		if err := validResponse.VisitListAccessBlocksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BlockPublicationAccess operation middleware
+func (sh *strictHandler) BlockPublicationAccess(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID) {
+	var request BlockPublicationAccessRequestObject
+
+	request.ProductID = productID
+	request.PublicationTargetID = publicationTargetID
+
+	var body BlockPublicationAccessJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BlockPublicationAccess(ctx, request.(BlockPublicationAccessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BlockPublicationAccess")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BlockPublicationAccessResponseObject); ok {
+		if err := validResponse.VisitBlockPublicationAccessResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccessBlock operation middleware
+func (sh *strictHandler) GetAccessBlock(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID, accessBlockID AccessBlockID) {
+	var request GetAccessBlockRequestObject
+
+	request.ProductID = productID
+	request.PublicationTargetID = publicationTargetID
+	request.AccessBlockID = accessBlockID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccessBlock(ctx, request.(GetAccessBlockRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccessBlock")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccessBlockResponseObject); ok {
+		if err := validResponse.VisitGetAccessBlockResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ClearPublicationAccessBlock operation middleware
+func (sh *strictHandler) ClearPublicationAccessBlock(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID, accessBlockID AccessBlockID) {
+	var request ClearPublicationAccessBlockRequestObject
+
+	request.ProductID = productID
+	request.PublicationTargetID = publicationTargetID
+	request.AccessBlockID = accessBlockID
+
+	var body ClearPublicationAccessBlockJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ClearPublicationAccessBlock(ctx, request.(ClearPublicationAccessBlockRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ClearPublicationAccessBlock")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ClearPublicationAccessBlockResponseObject); ok {
+		if err := validResponse.VisitClearPublicationAccessBlockResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPublicationSlot operation middleware
+func (sh *strictHandler) GetPublicationSlot(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID, apiAssetID CheckAssetID) {
+	var request GetPublicationSlotRequestObject
+
+	request.ProductID = productID
+	request.PublicationTargetID = publicationTargetID
+	request.APIAssetID = apiAssetID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPublicationSlot(ctx, request.(GetPublicationSlotRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPublicationSlot")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPublicationSlotResponseObject); ok {
+		if err := validResponse.VisitGetPublicationSlotResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPublishedArtifact operation middleware
+func (sh *strictHandler) GetPublishedArtifact(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID, apiAssetID CheckAssetID) {
+	var request GetPublishedArtifactRequestObject
+
+	request.ProductID = productID
+	request.PublicationTargetID = publicationTargetID
+	request.APIAssetID = apiAssetID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPublishedArtifact(ctx, request.(GetPublishedArtifactRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPublishedArtifact")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPublishedArtifactResponseObject); ok {
+		if err := validResponse.VisitGetPublishedArtifactResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPublicationOperations operation middleware
+func (sh *strictHandler) ListPublicationOperations(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID, apiAssetID CheckAssetID, params ListPublicationOperationsParams) {
+	var request ListPublicationOperationsRequestObject
+
+	request.ProductID = productID
+	request.PublicationTargetID = publicationTargetID
+	request.APIAssetID = apiAssetID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPublicationOperations(ctx, request.(ListPublicationOperationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPublicationOperations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPublicationOperationsResponseObject); ok {
+		if err := validResponse.VisitListPublicationOperationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ChangePublicationSlot operation middleware
+func (sh *strictHandler) ChangePublicationSlot(w http.ResponseWriter, r *http.Request, productID ProductID, publicationTargetID PublicationTargetID, apiAssetID CheckAssetID, params ChangePublicationSlotParams) {
+	var request ChangePublicationSlotRequestObject
+
+	request.ProductID = productID
+	request.PublicationTargetID = publicationTargetID
+	request.APIAssetID = apiAssetID
+	request.Params = params
+
+	var body ChangePublicationSlotJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ChangePublicationSlot(ctx, request.(ChangePublicationSlotRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ChangePublicationSlot")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ChangePublicationSlotResponseObject); ok {
+		if err := validResponse.VisitChangePublicationSlotResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

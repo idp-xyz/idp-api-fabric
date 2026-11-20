@@ -128,6 +128,14 @@ func (s *AudienceConfigs) Lock(ctx context.Context, productID domain.ProductID, 
 	return foundAudienceConfig(executor.QueryRow(ctx, lockAudienceConfig, string(productID), string(id)), "lock an audience configuration")
 }
 
+func (s *AudienceConfigs) Hold(ctx context.Context, productID domain.ProductID, id domain.AudienceConfigID) (domain.AudienceConfig, bool, error) {
+	executor, err := s.framework.RequireExecutor(ctx)
+	if err != nil {
+		return domain.AudienceConfig{}, false, fmt.Errorf("hold an audience configuration: %w", err)
+	}
+	return foundAudienceConfig(executor.QueryRow(ctx, findAudienceConfig+` FOR SHARE`, string(productID), string(id)), "hold an audience configuration")
+}
+
 // foundAudienceConfig reads the one row a statement of a single
 // configuration returns, if it returns one.
 func foundAudienceConfig(row interface{ Scan(dest ...any) error }, what string) (domain.AudienceConfig, bool, error) {

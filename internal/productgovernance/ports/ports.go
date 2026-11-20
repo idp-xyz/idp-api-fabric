@@ -233,6 +233,8 @@ type AudienceConfigs interface {
 	// returns it as that one left it: once removed, it is not found. What is
 	// decided from it holds when the change is stored.
 	Lock(ctx context.Context, productID domain.ProductID, id domain.AudienceConfigID) (config domain.AudienceConfig, found bool, err error)
+	// Hold keeps an in-force configuration from being removed during a publication.
+	Hold(ctx context.Context, productID domain.ProductID, id domain.AudienceConfigID) (config domain.AudienceConfig, found bool, err error)
 	// Change stores, in the transaction ctx carries, the entry of changed,
 	// who changed it and when, at its version. It fails with
 	// ErrAudienceConfigGone when the configuration is not in force at the

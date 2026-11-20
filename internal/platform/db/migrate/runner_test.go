@@ -170,7 +170,7 @@ func TestRunUpgradesTheReviewBuildForPublication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	publicationSteps := []string{"contractregistry/004_immutable_release", "productgovernance/008_publication_roles"}
+	publicationSteps := []string{"contractregistry/004_immutable_release", "productgovernance/008_publication_roles", "publication/001_targets_and_slots"}
 	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool { return slices.Contains(publicationSteps, step.ID) })
 	if len(plan)-len(before) != len(publicationSteps) {
 		t.Fatal("the plan is missing a publication migration")
@@ -193,7 +193,7 @@ func TestRunUpgradesTheReviewBuildForPublication(t *testing.T) {
 	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
 		t.Fatalf("apply publication migrations: %v", err)
 	}
-	refused(db.ErrNotGranted, "contractregistry.contract_release")
+	refused(db.ErrNotGranted, "publication.operation")
 	if err := migrate.Grant(t.Context(), conn, database.ApplicationRole); err != nil {
 		t.Fatalf("grant publication privileges: %v", err)
 	}

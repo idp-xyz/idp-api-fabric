@@ -129,18 +129,29 @@ func (c *Catalog) GetAsset(ctx context.Context, query GetAsset) (domain.Asset, e
 	if err != nil {
 		return domain.Asset{}, err
 	}
-	if !domain.ValidIdentifier(query.AssetID) {
+	asset, err := c.AssetInProduct(ctx, query.ProductID, query.AssetID)
+	if err != nil {
+		return domain.Asset{}, err
+	}
+	if !scope.CanRead(asset.WorkspaceID) {
+		return domain.Asset{}, c.refuse(ctx, query.Request, actionRead, string(asset.ID), ErrAssetNotFound)
+	}
+	return asset, nil
+}
+
+// AssetInProduct verifies the scope of an asset for a use case that already
+// authorized the product, such as placing an emergency block. It does not
+// grant Catalog read access to its caller.
+func (c *Catalog) AssetInProduct(ctx context.Context, product domain.ProductID, id domain.AssetID) (domain.Asset, error) {
+	if !domain.ValidIdentifier(product) || !domain.ValidIdentifier(id) {
 		return domain.Asset{}, ErrAssetNotFound
 	}
-	asset, found, err := c.deps.Assets.Find(ctx, query.ProductID, query.AssetID)
+	asset, found, err := c.deps.Assets.Find(ctx, product, id)
 	if err != nil {
 		return domain.Asset{}, err
 	}
 	if !found {
 		return domain.Asset{}, ErrAssetNotFound
-	}
-	if !scope.CanRead(asset.WorkspaceID) {
-		return domain.Asset{}, c.refuse(ctx, query.Request, actionRead, string(asset.ID), ErrAssetNotFound)
 	}
 	return asset, nil
 }

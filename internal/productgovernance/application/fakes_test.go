@@ -643,6 +643,10 @@ func (s configStore) Find(_ context.Context, productID domain.ProductID, id doma
 // Lock finds an audience configuration in force as Find does, once what
 // another transaction committed in the meantime is in. As with the owners,
 // there is nobody to wait for.
+func (s configStore) Hold(ctx context.Context, productID domain.ProductID, id domain.AudienceConfigID) (domain.AudienceConfig, bool, error) {
+	return s.Lock(ctx, productID, id)
+}
+
 func (s configStore) Lock(ctx context.Context, productID domain.ProductID, id domain.AudienceConfigID) (domain.AudienceConfig, bool, error) {
 	if !transacted(ctx) {
 		return domain.AudienceConfig{}, false, fmt.Errorf("an audience configuration was locked outside a transaction")
