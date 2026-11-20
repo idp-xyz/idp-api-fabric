@@ -817,7 +817,11 @@ func TestWriteProblemAnswersInternalErrorForWhatIsNotAProblem(t *testing.T) {
 
 func TestTheTransportIsWiredCompletelyOrNotAtAll(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
-	complete := Config{Logger: logger, Build: buildinfo.Info{}, Verifier: tokens{}, Governance: newGovernance(), Catalog: unusedCatalog{}, Registry: unusedRegistry{}, PolicyReview: unusedPolicyReview{}}
+	complete := Config{
+		Logger: logger, Build: buildinfo.Info{}, Verifier: tokens{}, Governance: newGovernance(),
+		Catalog: unusedCatalog{}, Registry: unusedRegistry{}, PolicyReview: unusedPolicyReview{},
+		Releases: unusedReleases{},
+	}
 	if _, err := NewHandler(complete); err != nil {
 		t.Fatalf("a complete wiring was refused: %v", err)
 	}
@@ -829,6 +833,7 @@ func TestTheTransportIsWiredCompletelyOrNotAtAll(t *testing.T) {
 		"the Catalog":     func(c *Config) { c.Catalog = nil },
 		"the Registry":    func(c *Config) { c.Registry = nil },
 		"Policy & Review": func(c *Config) { c.PolicyReview = nil },
+		"the Releases":    func(c *Config) { c.Releases = nil },
 	} {
 		incomplete := complete
 		remove(&incomplete)

@@ -45,9 +45,13 @@ func (s revisionScopes) Reader(ctx context.Context, caller registrydomain.Princi
 }
 
 func (a auditTrail) recordRevision(ctx context.Context, entry registryports.AuditEntry) error {
+	resource, id := "ContractRevision", entry.RevisionID
+	if entry.Action == "release.prepare" || entry.Action == "release.read" {
+		resource, id = "ContractRelease", entry.ReleaseID
+	}
 	return a.Record(ctx, governanceports.AuditEntry{
 		Actor: governancedomain.Principal(entry.Query.Caller), ProductID: governancedomain.ProductID(entry.Query.ProductID),
-		ResourceType: "ContractRevision", ResourceID: entry.RevisionID, CorrelationID: entry.Query.CorrelationID,
+		ResourceType: resource, ResourceID: id, CorrelationID: entry.Query.CorrelationID,
 		Action: entry.Action, Rule: entry.Rule, Allowed: entry.Allowed,
 	})
 }

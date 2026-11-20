@@ -86,6 +86,9 @@ func ApplicationPrivileges() []TablePrivileges {
 		{"policyreview", "review_scope", []string{"SELECT", "INSERT"}},
 		{"policyreview", "review_conclusion", []string{"SELECT", "INSERT"}},
 		{"policyreview", "review_waiver", []string{"SELECT", "INSERT"}},
+		// Ready releases and the bytes of their artifacts are append-only.
+		{"contractregistry", "release_artifact", []string{"SELECT", "INSERT"}},
+		{"contractregistry", "contract_release", []string{"SELECT", "INSERT"}},
 	}
 }
 

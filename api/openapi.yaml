@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.20.0
+  version: 0.21.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -1915,6 +1915,131 @@ paths:
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/releases:
+    get:
+      operationId: listContractReleases
+      summary: List the immutable releases of the API asset
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/CheckAssetId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: A page of releases
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractReleaseList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: prepareContractRelease
+      summary: Prepare an immutable release from an approved revision
+      description: >-
+        A publisher of the asset workspace supplies the revision, review and a
+        version label unique to the asset. The artifact is verified before the
+        release is recorded. Repeating the same preparation returns the release.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/CheckAssetId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReleasePreparation'
+      responses:
+        '200':
+          description: The release was recorded already
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractRelease'
+        '201':
+          description: The release is ready
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+            Location:
+              required: true
+              schema:
+                type: string
+                format: uri-reference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractRelease'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}:
+    get:
+      operationId: getContractRelease
+      summary: Read the metadata of a release of the API asset
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/CheckAssetId'
+        - $ref: '#/components/parameters/ContractReleaseId'
+      responses:
+        '200':
+          description: The release and its evidence references
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractRelease'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
 components:
   securitySchemes:
     bearerToken:
@@ -1927,6 +2052,12 @@ components:
         them. A token says who the caller is; what the caller may do is
         decided from the roles the server holds, so no scope is declared.
   parameters:
+    ContractReleaseId:
+      name: release_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Identifier'
     CheckAssetId:
       name: api_asset_id
       in: path
@@ -2051,6 +2182,70 @@ components:
       schema:
         $ref: '#/components/schemas/EntityTag'
   schemas:
+    ReleasePreparation:
+      type: object
+      additionalProperties: false
+      required: [revision_id, review_id, version]
+      properties:
+        revision_id:
+          $ref: '#/components/schemas/Identifier'
+        review_id:
+          $ref: '#/components/schemas/Identifier'
+        version:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$'
+    ContractRelease:
+      type: object
+      additionalProperties: false
+      required: [release_id, product_id, workspace_id, api_asset_id, revision_id, review_id, check_run_id, policy_snapshot_id, policy_digest, ref_closure_digest, artifact_digest, artifact_format, version, status, prepared_at, prepared_by]
+      properties:
+        release_id:
+          $ref: '#/components/schemas/Identifier'
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        workspace_id:
+          $ref: '#/components/schemas/Identifier'
+        api_asset_id:
+          $ref: '#/components/schemas/Identifier'
+        revision_id:
+          $ref: '#/components/schemas/Identifier'
+        review_id:
+          $ref: '#/components/schemas/Identifier'
+        check_run_id:
+          $ref: '#/components/schemas/Identifier'
+        policy_snapshot_id:
+          $ref: '#/components/schemas/Identifier'
+        policy_digest:
+          $ref: '#/components/schemas/ContractDigest'
+        ref_closure_digest:
+          $ref: '#/components/schemas/ContractDigest'
+        artifact_digest:
+          $ref: '#/components/schemas/ContractDigest'
+        artifact_format:
+          type: string
+          enum: [fabric-openapi-source/v1]
+        version:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$'
+        status:
+          type: string
+          enum: [READY]
+        prepared_at:
+          type: string
+          format: date-time
+        prepared_by:
+          $ref: '#/components/schemas/Principal'
+    ContractReleaseList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContractRelease'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
     Health:
       type: object
       required: [status]

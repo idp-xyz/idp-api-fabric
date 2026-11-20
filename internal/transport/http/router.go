@@ -41,6 +41,7 @@ type Config struct {
 	Catalog      APICatalog
 	Registry     ContractRegistry
 	PolicyReview PolicyReview
+	Releases     ContractReleases
 }
 
 // NewHandler returns the root handler of fabric-api.
@@ -58,8 +59,13 @@ func NewHandler(config Config) (http.Handler, error) {
 		return nil, errors.New("the transport needs the use cases of Contract Registry")
 	case config.PolicyReview == nil:
 		return nil, errors.New("the transport needs the use cases of Policy & Review")
+	case config.Releases == nil:
+		return nil, errors.New("the transport needs the use cases of the releases")
 	}
-	return newHandler(config.Logger, config.Verifier, operations{build: config.Build, governance: config.Governance, catalog: config.Catalog, registry: config.Registry, policyReview: config.PolicyReview})
+	return newHandler(config.Logger, config.Verifier, operations{
+		build: config.Build, governance: config.Governance, catalog: config.Catalog, registry: config.Registry,
+		policyReview: config.PolicyReview, releases: config.Releases,
+	})
 }
 
 // newHandler routes the operations of the contract to server, behind the
@@ -111,6 +117,7 @@ type operations struct {
 	catalog      APICatalog
 	registry     ContractRegistry
 	policyReview PolicyReview
+	releases     ContractReleases
 }
 
 func (operations) GetHealthz(context.Context, GetHealthzRequestObject) (GetHealthzResponseObject, error) {

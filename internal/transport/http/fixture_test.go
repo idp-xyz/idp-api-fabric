@@ -309,6 +309,7 @@ func newService(t *testing.T) *service {
 	handler, err := NewHandler(Config{
 		Logger: slog.New(slog.NewTextHandler(s.log, nil)), Build: testBuild, Verifier: tokens{}, Governance: s.governance,
 		Catalog: unusedCatalog{}, Registry: unusedRegistry{}, PolicyReview: unusedPolicyReview{},
+		Releases: unusedReleases{},
 	})
 	if err != nil {
 		t.Fatalf("build the handler: %v", err)
@@ -319,6 +320,8 @@ func newService(t *testing.T) *service {
 
 // The Product Governance transport fixtures never call the Catalog.
 type unusedCatalog struct{ APICatalog }
+
+type unusedReleases struct{ ContractReleases }
 
 // call is one request. Token is the bearer token; Header adds to it.
 type call struct {

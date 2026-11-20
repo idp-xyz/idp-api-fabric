@@ -89,6 +89,7 @@ func newRegistryService(t *testing.T, fake ContractRegistry) *service {
 	handler, err := NewHandler(Config{
 		Logger: slog.New(slog.NewTextHandler(s.log, nil)), Build: testBuild, Verifier: tokens{}, Governance: s.governance,
 		Catalog: unusedCatalog{}, Registry: fake, PolicyReview: unusedPolicyReview{},
+		Releases: unusedReleases{},
 	})
 	if err != nil {
 		t.Fatalf("build the handler: %v", err)

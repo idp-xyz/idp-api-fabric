@@ -263,13 +263,15 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 		return nil, err
 	}
 	revisionScope := revisionScopes{catalog: apiCatalog, governance: productGovernance}
+	revisions := registrydb.NewRevisions(database.Framework)
+	registryEvents := registryoutbox.NewEvents(outbox, identifiers)
 	contractRegistry, err := registry.New(registry.Dependencies{
 		Transactions: transactions,
 		Scopes:       revisionScope,
 		Capture:      registryopenapi.Capture,
-		Revisions:    registrydb.NewRevisions(database.Framework),
+		Revisions:    revisions,
 		Audit:        audit.recordRevision,
-		Events:       registryoutbox.NewEvents(outbox, identifiers),
+		Events:       registryEvents,
 		Clock:        clock,
 		Identifiers:  identifiers,
 	})
@@ -308,9 +310,19 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 	if err != nil {
 		return nil, err
 	}
+	releaseScope := releaseAuthority{revisionScopes: revisionScope, reviews: contractReviews}
+	contractReleases, err := registry.NewReleases(registry.ReleaseDependencies{
+		Transactions: transactions, Scopes: releaseScope, Revisions: revisions,
+		Releases: registrydb.NewReleases(database.Framework), Audit: audit.recordRevision,
+		Events: registryEvents, Clock: clock, Identifiers: identifiers,
+	})
+	if err != nil {
+		return nil, err
+	}
 	return httptransport.NewHandler(httptransport.Config{
 		Logger: logger, Build: buildinfo.Current(), Verifier: verifier, Governance: productGovernance, Catalog: apiCatalog, Registry: contractRegistry,
 		PolicyReview: policyReview{Checks: contractChecks, Reviews: contractReviews},
+		Releases:     contractReleases,
 	})
 }
 

@@ -173,6 +173,36 @@ func (e CompatibilityClassification) Valid() bool {
 	}
 }
 
+// Defines values for ContractReleaseArtifactFormat.
+const (
+	ContractReleaseArtifactFormatFabricOpenapiSourceV1 ContractReleaseArtifactFormat = "fabric-openapi-source/v1"
+)
+
+// Valid indicates whether the value is a known member of the ContractReleaseArtifactFormat enum.
+func (e ContractReleaseArtifactFormat) Valid() bool {
+	switch e {
+	case ContractReleaseArtifactFormatFabricOpenapiSourceV1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ContractReleaseStatus.
+const (
+	ContractReleaseStatusREADY ContractReleaseStatus = "READY"
+)
+
+// Valid indicates whether the value is a known member of the ContractReleaseStatus enum.
+func (e ContractReleaseStatus) Valid() bool {
+	switch e {
+	case ContractReleaseStatusREADY:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ContractRevisionSourceKind.
 const (
 	ContractRevisionSourceKindGIT    ContractRevisionSourceKind = "GIT"
@@ -683,6 +713,57 @@ type ContractRecordedFile struct {
 	Path   ContractSourcePath `json:"path"`
 }
 
+// ContractRelease defines model for ContractRelease.
+type ContractRelease struct {
+	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	APIAssetID     Identifier                    `json:"api_asset_id"`
+	ArtifactDigest ContractDigest                `json:"artifact_digest"`
+	ArtifactFormat ContractReleaseArtifactFormat `json:"artifact_format"`
+
+	// CheckRunID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	CheckRunID   Identifier     `json:"check_run_id"`
+	PolicyDigest ContractDigest `json:"policy_digest"`
+
+	// PolicySnapshotID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	PolicySnapshotID Identifier `json:"policy_snapshot_id"`
+	PreparedAt       time.Time  `json:"prepared_at"`
+
+	// PreparedBy A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
+	PreparedBy Principal `json:"prepared_by"`
+
+	// ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ProductID        Identifier     `json:"product_id"`
+	RefClosureDigest ContractDigest `json:"ref_closure_digest"`
+
+	// ReleaseID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ReleaseID Identifier `json:"release_id"`
+
+	// ReviewID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ReviewID Identifier `json:"review_id"`
+
+	// RevisionID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	RevisionID Identifier            `json:"revision_id"`
+	Status     ContractReleaseStatus `json:"status"`
+	Version    string                `json:"version"`
+
+	// WorkspaceID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	WorkspaceID Identifier `json:"workspace_id"`
+}
+
+// ContractReleaseArtifactFormat defines model for ContractRelease.ArtifactFormat.
+type ContractReleaseArtifactFormat string
+
+// ContractReleaseStatus defines model for ContractRelease.Status.
+type ContractReleaseStatus string
+
+// ContractReleaseList defines model for ContractReleaseList.
+type ContractReleaseList struct {
+	Items []ContractRelease `json:"items"`
+
+	// NextPageToken The page_token of the page that follows this one, to be sent back as it is. A page carries it for as long as items follow: the last page of a list has none, also when it is full.
+	NextPageToken *NextPageToken `json:"next_page_token,omitempty"`
+}
+
 // ContractRevision defines model for ContractRevision.
 type ContractRevision struct {
 	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
@@ -979,6 +1060,16 @@ type ProductRoleGrant struct {
 // Reference A reference into another system, compared for equality and never interpreted: 1 to 255 characters, without control characters.
 type Reference = string
 
+// ReleasePreparation defines model for ReleasePreparation.
+type ReleasePreparation struct {
+	// ReviewID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ReviewID Identifier `json:"review_id"`
+
+	// RevisionID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	RevisionID Identifier `json:"revision_id"`
+	Version    string     `json:"version"`
+}
+
 // Review A request for a decision on one revision, with its conclusion once it has one. Neither changes once it is recorded.
 type Review struct {
 	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
@@ -1174,6 +1265,9 @@ type CheckAssetID = Identifier
 // CheckRevisionID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 type CheckRevisionID = Identifier
 
+// ContractReleaseID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+type ContractReleaseID = Identifier
+
 // IfMatch A version as an entity tag (RFC 9110): its number, in double quotes. The caller sends it back as it was given.
 type IfMatch = EntityTag
 
@@ -1223,6 +1317,15 @@ type ListAssetsParams struct {
 
 	// Q A literal substring of the asset key, display name or domain key, ignoring case
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
+}
+
+// ListContractReleasesParams defines parameters for ListContractReleases.
+type ListContractReleasesParams struct {
+	// PageSize How many items the page holds at most. A list is read to its end by asking for the page that follows, never by asking for a larger one.
+	PageSize *PageSize `form:"page_size,omitempty" json:"page_size,omitempty"`
+
+	// PageToken Where the page starts: the next_page_token of the page before, as it was given. Without it the list starts at its beginning. The token is opaque. It names a position in one list and grants nothing: what the caller may read is decided again with every page, from what it holds then. One that is not a token of this list is refused (400 PAGE_TOKEN_INVALID).
+	PageToken *PageToken `form:"page_token,omitempty" json:"page_token,omitempty"`
 }
 
 // ListRevisionsParams defines parameters for ListRevisions.
@@ -1317,6 +1420,9 @@ type RegisterProductJSONRequestBody = ProductRegistration
 // RegisterAssetJSONRequestBody defines body for RegisterAsset for application/json ContentType.
 type RegisterAssetJSONRequestBody = AssetRegistration
 
+// PrepareContractReleaseJSONRequestBody defines body for PrepareContractRelease for application/json ContentType.
+type PrepareContractReleaseJSONRequestBody = ReleasePreparation
+
 // ImportRevisionJSONRequestBody defines body for ImportRevision for application/json ContentType.
 type ImportRevisionJSONRequestBody = ContractSourceUpload
 
@@ -1370,6 +1476,15 @@ type ServerInterface interface {
 	// GetAsset Read one API asset within the caller's scope
 	// (GET /v1/products/{product_id}/assets/{api_asset_id})
 	GetAsset(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier)
+	// ListContractReleases List the immutable releases of the API asset
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/releases)
+	ListContractReleases(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, params ListContractReleasesParams)
+	// PrepareContractRelease Prepare an immutable release from an approved revision
+	// (POST /v1/products/{product_id}/assets/{api_asset_id}/releases)
+	PrepareContractRelease(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID)
+	// GetContractRelease Read the metadata of a release of the API asset
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id})
+	GetContractRelease(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, releaseID ContractReleaseID)
 	// ListRevisions List draft revision metadata for an API asset
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions)
 	ListRevisions(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier, params ListRevisionsParams)
@@ -1733,6 +1848,149 @@ func (siw *ServerInterfaceWrapper) GetAsset(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAsset(w, r, productID, apiAssetID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListContractReleases operation middleware
+func (siw *ServerInterfaceWrapper) ListContractReleases(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID CheckAssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListContractReleasesParams
+
+	// ------------- Optional query parameter "page_size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_size", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_size", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page_token" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_token", r.URL.Query(), &params.PageToken, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_token"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_token", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListContractReleases(w, r, productID, apiAssetID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PrepareContractRelease operation middleware
+func (siw *ServerInterfaceWrapper) PrepareContractRelease(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID CheckAssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PrepareContractRelease(w, r, productID, apiAssetID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetContractRelease operation middleware
+func (siw *ServerInterfaceWrapper) GetContractRelease(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID CheckAssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "release_id" -------------
+	var releaseID ContractReleaseID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "release_id", r.PathValue("release_id"), &releaseID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "release_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetContractRelease(w, r, productID, apiAssetID, releaseID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3337,6 +3595,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/workspaces/{workspace_id}/memberships", wrapper.GrantMembership)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/products/{product_id}/workspaces/{workspace_id}/memberships/{membership_id}", wrapper.RevokeMembership)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/workspaces/{workspace_id}/memberships/{membership_id}", wrapper.GetMembership)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/releases", wrapper.ListContractReleases)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/releases", wrapper.PrepareContractRelease)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}", wrapper.GetContractRelease)
 
 	return m
 }
@@ -4066,6 +4327,402 @@ type GetAssetdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetAssetdefaultApplicationProblemPlusJSONResponse) VisitGetAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListContractReleasesRequestObject struct {
+	ProductID  ProductID    `json:"product_id"`
+	APIAssetID CheckAssetID `json:"api_asset_id"`
+	Params     ListContractReleasesParams
+}
+
+type ListContractReleasesResponseObject interface {
+	VisitListContractReleasesResponse(w http.ResponseWriter) error
+}
+
+type ListContractReleases200ResponseHeaders struct {
+	CacheControl string
+}
+
+type ListContractReleases200JSONResponse struct {
+	Body    ContractReleaseList
+	Headers ListContractReleases200ResponseHeaders
+}
+
+func (response ListContractReleases200JSONResponse) VisitListContractReleasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListContractReleases400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListContractReleases400ApplicationProblemPlusJSONResponse) VisitListContractReleasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListContractReleases401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ListContractReleases401ApplicationProblemPlusJSONResponse) VisitListContractReleasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListContractReleases403ApplicationProblemPlusJSONResponse Problem
+
+func (response ListContractReleases403ApplicationProblemPlusJSONResponse) VisitListContractReleasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListContractReleases404ApplicationProblemPlusJSONResponse Problem
+
+func (response ListContractReleases404ApplicationProblemPlusJSONResponse) VisitListContractReleasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListContractReleasesdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListContractReleasesdefaultApplicationProblemPlusJSONResponse) VisitListContractReleasesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareContractReleaseRequestObject struct {
+	ProductID  ProductID    `json:"product_id"`
+	APIAssetID CheckAssetID `json:"api_asset_id"`
+	Body       *PrepareContractReleaseJSONRequestBody
+}
+
+type PrepareContractReleaseResponseObject interface {
+	VisitPrepareContractReleaseResponse(w http.ResponseWriter) error
+}
+
+type PrepareContractRelease200ResponseHeaders struct {
+	CacheControl string
+}
+
+type PrepareContractRelease200JSONResponse struct {
+	Body    ContractRelease
+	Headers PrepareContractRelease200ResponseHeaders
+}
+
+func (response PrepareContractRelease200JSONResponse) VisitPrepareContractReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareContractRelease201ResponseHeaders struct {
+	CacheControl string
+	Location     string
+}
+
+type PrepareContractRelease201JSONResponse struct {
+	Body    ContractRelease
+	Headers PrepareContractRelease201ResponseHeaders
+}
+
+func (response PrepareContractRelease201JSONResponse) VisitPrepareContractReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareContractRelease400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response PrepareContractRelease400ApplicationProblemPlusJSONResponse) VisitPrepareContractReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareContractRelease401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response PrepareContractRelease401ApplicationProblemPlusJSONResponse) VisitPrepareContractReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareContractRelease403ApplicationProblemPlusJSONResponse Problem
+
+func (response PrepareContractRelease403ApplicationProblemPlusJSONResponse) VisitPrepareContractReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareContractRelease404ApplicationProblemPlusJSONResponse Problem
+
+func (response PrepareContractRelease404ApplicationProblemPlusJSONResponse) VisitPrepareContractReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareContractRelease409ApplicationProblemPlusJSONResponse Problem
+
+func (response PrepareContractRelease409ApplicationProblemPlusJSONResponse) VisitPrepareContractReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareContractRelease422ApplicationProblemPlusJSONResponse Problem
+
+func (response PrepareContractRelease422ApplicationProblemPlusJSONResponse) VisitPrepareContractReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareContractRelease503ApplicationProblemPlusJSONResponse Problem
+
+func (response PrepareContractRelease503ApplicationProblemPlusJSONResponse) VisitPrepareContractReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareContractReleasedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response PrepareContractReleasedefaultApplicationProblemPlusJSONResponse) VisitPrepareContractReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractReleaseRequestObject struct {
+	ProductID  ProductID         `json:"product_id"`
+	APIAssetID CheckAssetID      `json:"api_asset_id"`
+	ReleaseID  ContractReleaseID `json:"release_id"`
+}
+
+type GetContractReleaseResponseObject interface {
+	VisitGetContractReleaseResponse(w http.ResponseWriter) error
+}
+
+type GetContractRelease200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetContractRelease200JSONResponse struct {
+	Body    ContractRelease
+	Headers GetContractRelease200ResponseHeaders
+}
+
+func (response GetContractRelease200JSONResponse) VisitGetContractReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractRelease400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetContractRelease400ApplicationProblemPlusJSONResponse) VisitGetContractReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractRelease401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetContractRelease401ApplicationProblemPlusJSONResponse) VisitGetContractReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractRelease403ApplicationProblemPlusJSONResponse Problem
+
+func (response GetContractRelease403ApplicationProblemPlusJSONResponse) VisitGetContractReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractRelease404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetContractRelease404ApplicationProblemPlusJSONResponse) VisitGetContractReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractReleasedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetContractReleasedefaultApplicationProblemPlusJSONResponse) VisitGetContractReleaseResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -8255,6 +8912,15 @@ type StrictServerInterface interface {
 	// GetAsset Read one API asset within the caller's scope
 	// (GET /v1/products/{product_id}/assets/{api_asset_id})
 	GetAsset(ctx context.Context, request GetAssetRequestObject) (GetAssetResponseObject, error)
+	// ListContractReleases List the immutable releases of the API asset
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/releases)
+	ListContractReleases(ctx context.Context, request ListContractReleasesRequestObject) (ListContractReleasesResponseObject, error)
+	// PrepareContractRelease Prepare an immutable release from an approved revision
+	// (POST /v1/products/{product_id}/assets/{api_asset_id}/releases)
+	PrepareContractRelease(ctx context.Context, request PrepareContractReleaseRequestObject) (PrepareContractReleaseResponseObject, error)
+	// GetContractRelease Read the metadata of a release of the API asset
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id})
+	GetContractRelease(ctx context.Context, request GetContractReleaseRequestObject) (GetContractReleaseResponseObject, error)
 	// ListRevisions List draft revision metadata for an API asset
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions)
 	ListRevisions(ctx context.Context, request ListRevisionsRequestObject) (ListRevisionsResponseObject, error)
@@ -8576,6 +9242,96 @@ func (sh *strictHandler) GetAsset(w http.ResponseWriter, r *http.Request, produc
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAssetResponseObject); ok {
 		if err := validResponse.VisitGetAssetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListContractReleases operation middleware
+func (sh *strictHandler) ListContractReleases(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, params ListContractReleasesParams) {
+	var request ListContractReleasesRequestObject
+
+	request.ProductID = productID
+	request.APIAssetID = apiAssetID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListContractReleases(ctx, request.(ListContractReleasesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListContractReleases")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListContractReleasesResponseObject); ok {
+		if err := validResponse.VisitListContractReleasesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PrepareContractRelease operation middleware
+func (sh *strictHandler) PrepareContractRelease(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID) {
+	var request PrepareContractReleaseRequestObject
+
+	request.ProductID = productID
+	request.APIAssetID = apiAssetID
+
+	var body PrepareContractReleaseJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PrepareContractRelease(ctx, request.(PrepareContractReleaseRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PrepareContractRelease")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PrepareContractReleaseResponseObject); ok {
+		if err := validResponse.VisitPrepareContractReleaseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetContractRelease operation middleware
+func (sh *strictHandler) GetContractRelease(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, releaseID ContractReleaseID) {
+	var request GetContractReleaseRequestObject
+
+	request.ProductID = productID
+	request.APIAssetID = apiAssetID
+	request.ReleaseID = releaseID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetContractRelease(ctx, request.(GetContractReleaseRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetContractRelease")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetContractReleaseResponseObject); ok {
+		if err := validResponse.VisitGetContractReleaseResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

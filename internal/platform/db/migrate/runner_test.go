@@ -47,8 +47,9 @@ func history(t *testing.T, conn *pgx.Conn) []historyRow {
 	return recorded
 }
 
-// planRows is the history a complete run of the plan leaves.
-func planRows(t *testing.T) []historyRow {
+// planRows is the history a complete run leaves after the prior steps, if
+// any. An upgrade records missing steps after the ones already applied.
+func planRows(t *testing.T, prior ...migrate.Step) []historyRow {
 	t.Helper()
 
 	plan, err := migrate.Plan()
@@ -56,8 +57,15 @@ func planRows(t *testing.T) []historyRow {
 		t.Fatalf("build the plan: %v", err)
 	}
 	rows := make([]historyRow, 0, len(plan))
-	for _, step := range plan {
+	recorded := make(map[string]bool, len(prior))
+	for _, step := range prior {
 		rows = append(rows, historyRow{step.ID, string(step.Origin), step.Checksum, step.FrameworkVersion, step.Schema})
+		recorded[step.ID] = true
+	}
+	for _, step := range plan {
+		if !recorded[step.ID] {
+			rows = append(rows, historyRow{step.ID, string(step.Origin), step.Checksum, step.FrameworkVersion, step.Schema})
+		}
 	}
 	return rows
 }
@@ -153,6 +161,50 @@ func TestRunBringsADatabaseOfAnOlderBuildUpToDate(t *testing.T) {
 		t.Fatalf("after the grants: %v", err)
 	}
 	opened.Close()
+}
+
+func TestRunUpgradesTheReviewBuildForPublication(t *testing.T) {
+	database := pgtest.FreshDatabase(t)
+	conn := pgtest.Connect(t, database.Migrator)
+	plan, err := migrate.Plan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicationSteps := []string{"contractregistry/004_immutable_release", "productgovernance/008_publication_roles"}
+	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool { return slices.Contains(publicationSteps, step.ID) })
+	if len(plan)-len(before) != len(publicationSteps) {
+		t.Fatal("the plan is missing a publication migration")
+	}
+	if err := migrate.Apply(t.Context(), conn, quiet, before); err != nil {
+		t.Fatalf("migrate as 0.19.0: %v", err)
+	}
+	grantOnWhatIsThere(t, conn, database.ApplicationRole)
+	refused := func(want error, table string) {
+		t.Helper()
+		opened, err := db.Open(t.Context(), database.Application)
+		if err == nil {
+			opened.Close()
+		}
+		if !errors.Is(err, want) || !strings.Contains(err.Error(), table) {
+			t.Fatalf("open: got %v, want %v naming %s", err, want, table)
+		}
+	}
+	refused(db.ErrNotMigrated, "contractregistry.release_artifact")
+	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
+		t.Fatalf("apply publication migrations: %v", err)
+	}
+	refused(db.ErrNotGranted, "contractregistry.contract_release")
+	if err := migrate.Grant(t.Context(), conn, database.ApplicationRole); err != nil {
+		t.Fatalf("grant publication privileges: %v", err)
+	}
+	opened, err := db.Open(t.Context(), database.Application)
+	if err != nil {
+		t.Fatalf("open the upgraded database: %v", err)
+	}
+	opened.Close()
+	if got, want := history(t, conn), planRows(t, before...); !slices.Equal(got, want) {
+		t.Errorf("unexpected migration history after upgrading from 0.19.0: %v", got)
+	}
 }
 
 // roleAssignmentRevocation is the step that made a role assignment a record
@@ -270,8 +322,8 @@ func TestRunGivesTheRoleAssignmentsOfTheBuildBeforeTheirIdentifiers(t *testing.T
 	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
 		t.Fatalf("migrate as this build: %v", err)
 	}
-	if got, want := history(t, conn), planRows(t); !slices.Equal(got, want) {
-		t.Errorf("the history records\n %+v\nwant every step of the plan, in order\n %+v", got, want)
+	if got, want := history(t, conn), planRows(t, before...); !slices.Equal(got, want) {
+		t.Errorf("the history records\n %+v\nwant the prior steps followed by the missing steps\n %+v", got, want)
 	}
 
 	// That build is still running while this one is rolled out, and names
@@ -415,8 +467,8 @@ func TestRunLeavesTheProductsOfTheBuildBeforeTheBrandAsTheyWereRegistered(t *tes
 	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
 		t.Fatalf("migrate as this build: %v", err)
 	}
-	if got, want := history(t, conn), planRows(t); !slices.Equal(got, want) {
-		t.Errorf("the history records\n %+v\nwant every step of the plan, in order\n %+v", got, want)
+	if got, want := history(t, conn), planRows(t, before...); !slices.Equal(got, want) {
+		t.Errorf("the history records\n %+v\nwant the prior steps followed by the missing steps\n %+v", got, want)
 	}
 
 	// That build is still running while this one is rolled out, and
@@ -498,10 +550,10 @@ func TestRunLeavesTheSnapshotsOfTheBuildBeforeGitOriginsAsTheUploadsTheyAre(t *t
 	if err != nil {
 		t.Fatalf("build the plan: %v", err)
 	}
-	// The plan of the build before: without that step, and without what
-	// Contract Registry may add after it.
+	// Keep the current tables to exercise the history guard for Git origins.
+	// The release table's foreign key only uses the original revision columns.
 	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool {
-		return step.Schema == "contractregistry" && step.ID >= gitOrigin
+		return step.ID == gitOrigin || step.ID == reviewState
 	})
 	if len(before) == len(plan) {
 		t.Fatalf("the plan does not carry %s; this test would pass vacuously", gitOrigin)
@@ -548,29 +600,10 @@ func TestRunLeavesTheSnapshotsOfTheBuildBeforeGitOriginsAsTheUploadsTheyAre(t *t
 	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
 		t.Fatalf("migrate as this build: %v", err)
 	}
-	// The step and what Contract Registry added after it are recorded
-	// last, behind the steps of the contexts the plan lists after Contract
-	// Registry: the history is in the order of what happened, and a later
-	// run finds nothing left to apply.
-	applied, planned := history(t, conn), planRows(t)
-	var late []string
-	for _, step := range plan {
-		if step.Schema == "contractregistry" && step.ID >= gitOrigin {
-			late = append(late, step.ID)
-		}
-	}
-	var last []string
-	for _, row := range applied[max(0, len(applied)-len(late)):] {
-		last = append(last, row.ID)
-	}
-	if !slices.Equal(last, late) {
-		t.Errorf("the history records\n %+v\nwant %v applied last, in that order", applied, late)
-	}
-	byID := func(a, b historyRow) int { return strings.Compare(a.ID, b.ID) }
-	slices.SortFunc(applied, byID)
-	slices.SortFunc(planned, byID)
+	// The old steps are followed by the missing steps in plan order.
+	applied, planned := history(t, conn), planRows(t, before...)
 	if !slices.Equal(applied, planned) {
-		t.Errorf("the history records\n %+v\nwant every step of the plan, each once\n %+v", applied, planned)
+		t.Errorf("the history records\n %+v\nwant the prior steps followed by the missing steps\n %+v", applied, planned)
 	}
 	if err := migrate.Run(t.Context(), conn, quiet); err != nil {
 		t.Fatalf("migrate as this build a second time: %v", err)

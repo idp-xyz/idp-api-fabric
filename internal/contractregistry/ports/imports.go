@@ -36,6 +36,7 @@ type Transactor interface {
 type AuditEntry struct {
 	Query      ScopeQuery
 	RevisionID string
+	ReleaseID  string
 	Action     string
 	Rule       string
 	Allowed    bool
