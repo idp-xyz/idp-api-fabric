@@ -119,6 +119,13 @@ type ReviewRequest struct {
 	Note        string
 	RequestedBy Principal
 	RequestedAt time.Time
+	// Supplementary says that the revision was approved already when the
+	// decision was asked for: the request asks for another approval of the
+	// same content, on a check of today and for the scope it names (F03
+	// §8.1). Such a review moves nothing. The revision stays approved while
+	// it is open and however it ends, and what was approved before holds
+	// or lapses on its own terms.
+	Supplementary bool
 }
 
 // RequestReview asks for a decision on the revision a check is of.

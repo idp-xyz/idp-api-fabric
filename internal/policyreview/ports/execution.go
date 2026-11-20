@@ -34,6 +34,11 @@ type Revisions interface {
 	// has then. The registry decides which moves there are and refuses the
 	// others; of several moves that arrive together it makes one.
 	Move(ctx context.Context, revision domain.RevisionRef, to string) (statusVersion int64, err error)
+	// Hold keeps the revision at the status the registry has of it until
+	// the transaction it is called in ends, and returns that status and
+	// its version. Nothing moves the revision meanwhile, and of several
+	// holds that arrive together one is given at a time.
+	Hold(ctx context.Context, revision domain.RevisionRef) (status string, statusVersion int64, err error)
 }
 
 type Comparator interface {

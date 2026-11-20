@@ -15,8 +15,13 @@ import (
 type Reviews interface {
 	// Request stores a request. statusVersion is the version the status of
 	// the revision took when the request put it in review: a revision is in
-	// review under one request at a time, and storage holds it to that.
+	// review under one request at a time, and storage holds it to that. For
+	// a supplementary request, which moves nothing, it is the version the
+	// status of the approved revision has, and storage takes any number of
+	// requests at it.
 	Request(ctx context.Context, request domain.ReviewRequest, statusVersion int64) error
+	// Open reports whether a review of the revision has no conclusion yet.
+	Open(ctx context.Context, revision domain.RevisionRef) (bool, error)
 	// Conclude stores the conclusion of a review. A review has one.
 	Conclude(context.Context, domain.Conclusion) error
 	// Find returns the review of the revision with the identifier, and none

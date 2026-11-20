@@ -1358,6 +1358,9 @@ type Review struct {
 
 	// Status Where a review stands: IN_REVIEW until it is concluded, then the way it ended.
 	Status ReviewStatus `json:"status"`
+
+	// Supplementary Whether the revision was APPROVED already when the review was asked for. Such a review does not move the revision.
+	Supplementary bool `json:"supplementary"`
 }
 
 // ReviewConclusion How a review ended, who ended it and when. An approval says until when it holds and which rules it waives.

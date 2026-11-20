@@ -10,9 +10,13 @@ import (
 )
 
 var (
-	ErrReviewNotFound      = errors.New("no such review of the revision")
-	ErrInvalidReviewPage   = errors.New("the review page is invalid")
-	ErrReviewNotAudited    = errors.New("a review refusal could not be audited")
+	ErrReviewNotFound    = errors.New("no such review of the revision")
+	ErrInvalidReviewPage = errors.New("the review page is invalid")
+	ErrReviewNotAudited  = errors.New("a review refusal could not be audited")
+	// ErrReviewInProgress reports a request for another review of an
+	// approved revision while a review of it is open: a revision is under
+	// one review at a time.
+	ErrReviewInProgress    = errors.New("a review of the revision is open")
 	errReviewWithoutStatus = errors.New("the registry moved a revision to no version of its status")
 )
 
@@ -84,8 +88,15 @@ type RequestReview struct {
 // asks, in a product that takes new work, for a revision that is a draft or
 // was withdrawn; the revision is in review from then on.
 //
-// The request, the move of the revision, the audit record and the event are
-// written together or not at all.
+// A revision that is approved already is reviewed again the same way: for a
+// scope its approval did not name, or once that approval holds no longer.
+// That review is supplementary. It moves nothing: the revision stays
+// approved, and what was approved before is what it was. A revision is under
+// one review at a time, so the request is refused while another one is open
+// (ErrReviewInProgress).
+//
+// The request, the move of the revision if there is one, the audit record
+// and the event are written together or not at all.
 func (r *Reviews) RequestReview(ctx context.Context, target ports.Target, command RequestReview) (domain.Review, error) {
 	revision, digest, err := r.deps.Revisions.Revision(ctx, target)
 	if err != nil {
@@ -119,8 +130,23 @@ func (r *Reviews) RequestReview(ctx context.Context, target ports.Target, comman
 		if err != nil {
 			return err
 		}
-		version, err := r.deps.Revisions.Move(tx, revision, domain.RevisionInReview)
+		// The hold makes this request the only one that decides about
+		// the revision until it is recorded: of several that arrive
+		// together the second finds what the first one left.
+		status, version, err := r.deps.Revisions.Hold(tx, revision)
 		if err != nil {
+			return err
+		}
+		if status == domain.RevisionApproved {
+			open, err := r.deps.Reviews.Open(tx, revision)
+			if err != nil {
+				return err
+			}
+			if open {
+				return ErrReviewInProgress
+			}
+			request.Supplementary = true
+		} else if version, err = r.deps.Revisions.Move(tx, revision, domain.RevisionInReview); err != nil {
 			return err
 		}
 		if version < 2 {
@@ -148,7 +174,8 @@ func (r *Reviews) RequestReview(ctx context.Context, target ports.Target, comman
 
 // WithdrawReview takes a request back. Whoever asked for the review does,
 // while still an author of the workspace and while the review is open; the
-// revision is withdrawn from then on and can be submitted again.
+// revision is withdrawn from then on and can be submitted again. A
+// supplementary review that is taken back leaves the revision approved.
 func (r *Reviews) WithdrawReview(ctx context.Context, target ports.Target, id, reason string) (domain.Review, error) {
 	revision, _, err := r.deps.Revisions.Revision(ctx, target)
 	if err != nil {
@@ -179,7 +206,7 @@ func (r *Reviews) WithdrawReview(ctx context.Context, target ports.Target, id, r
 		// The move locks the revision, so the review is read behind it as
 		// it stands: of two conclusions that arrive together the second
 		// finds the first.
-		if _, err := r.deps.Revisions.Move(tx, revision, domain.RevisionWithdrawn); err != nil {
+		if err := r.leave(tx, revision, asked.Request, domain.RevisionWithdrawn); err != nil {
 			return err
 		}
 		open, found, err := r.deps.Reviews.Find(tx, revision, id)
@@ -216,6 +243,10 @@ func (r *Reviews) WithdrawReview(ctx context.Context, target ports.Target, id, r
 // reviewed: who recorded the revision, who ran the check and who asked for
 // the review decide nothing about it (F05 §6.2). The revision is approved or
 // rejected from then on.
+//
+// A supplementary review leaves the revision approved either way. Its
+// approval is another approval of the same content, for the scope and the
+// time it names; its rejection takes back nothing that was approved before.
 //
 // The conclusion with its waivers, the move of the revision, the audit
 // record and the event are written together or not at all.
@@ -269,7 +300,7 @@ func (r *Reviews) DecideReview(ctx context.Context, target ports.Target, id stri
 		// The move locks the revision, so the review is read behind it as
 		// it stands: of two conclusions that arrive together the second
 		// finds the first.
-		if _, err := r.deps.Revisions.Move(tx, revision, to); err != nil {
+		if err := r.leave(tx, revision, asked.Request, to); err != nil {
 			return err
 		}
 		open, found, err := r.deps.Reviews.Find(tx, revision, id)
@@ -298,6 +329,28 @@ func (r *Reviews) DecideReview(ctx context.Context, target ports.Target, id stri
 		return domain.Review{}, r.refused(ctx, target, action, err)
 	}
 	return review, nil
+}
+
+// leave takes the revision out of the review that is being concluded, in
+// the transaction of the conclusion. The registry moves it to the status
+// the conclusion gives it. A supplementary review gives it none: the
+// revision was approved before the review and is approved after it, however
+// the review ends, so it is held as it is instead. Either way the revision
+// is locked from here on, and the review is read behind that lock.
+func (r *Reviews) leave(tx context.Context, revision domain.RevisionRef, request domain.ReviewRequest, to string) error {
+	if !request.Supplementary {
+		_, err := r.deps.Revisions.Move(tx, revision, to)
+		return err
+	}
+	status, _, err := r.deps.Revisions.Hold(tx, revision)
+	if err != nil {
+		return err
+	}
+	if status != domain.RevisionApproved {
+		// Nothing leaves approved, so this is no review the model recorded.
+		return fmt.Errorf("review %s: %w", request.ID, domain.ErrReviewDamaged)
+	}
+	return nil
 }
 
 // refused puts a refusal for who the caller is on record, outside the
