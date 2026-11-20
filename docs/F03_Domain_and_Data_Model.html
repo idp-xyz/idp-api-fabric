@@ -41,7 +41,7 @@
 @media(max-width:780px){.doc table{min-width:700px}.architecture-figure{overflow-wrap:anywhere}.fig-grid.cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.fig-grid.cols-3{grid-template-columns:1fr}.doc .architecture-figure{padding:12px 9px}.doc .fig-mini{font-size:10px}}
 @media print{.doc .architecture-figure{break-inside:avoid}.doc table{min-width:0;font-size:7.5pt}}
-</style></head><body><a class="skip-link" href="#main-content">跳到文档正文</a><button id="sideBackdrop" class="side-backdrop" aria-label="关闭章节目录" aria-hidden="true" tabindex="-1"></button><div class="layout"><aside class="side" id="sidebar"><a href="../index.html" style="text-decoration:none"><div class="logo">IDP API Fabric<small>ENGINEERING BASELINE</small></div></a><div class="side-kicker">文档体系</div><div class="navlist"><a href="F01_Product_Requirements.html" class="">F01 · Product Requirements</a><a href="F02_System_Architecture.html" class="">F02 · System Architecture</a><a href="F03_Domain_and_Data_Model.html" class="active">F03 · Domain & Data Model</a><a href="F04_API_Contract_Governance.html" class="">F04 · Contract Governance</a><a href="F05_Security_and_Multitenancy.html" class="">F05 · Security & Multitenancy</a><div class="pending">F06 · Dual Portal Experience <span class="mini">待编写</span></div><div class="pending">F07 · Engineering & Quality <span class="mini">待编写</span></div><a href="F08_Delivery_and_Acceptance.html" class="">F08 · Delivery & Acceptance</a></div><hr><div class="side-kicker">F03 · 目录</div><input id="navsearch" type="search" placeholder="筛选本文章节…" aria-label="筛选目录章节"><nav class="navlist" id="toc"><a href="#section-0" class="" style="">0. 执行摘要与设计结论</a><a href="#section-1" class="" style="">1. 约束、适用性及精确边界</a><a href="#section-1-1" class="sub" style="padding-left:24px">1.1 上位约束继承</a><a href="#section-1-2" class="sub" style="padding-left:24px">1.2 明确“不属于 Fabric”的事实</a><a href="#section-1-3" class="sub" style="padding-left:24px">1.3 时间、身份、租户与不可变性的共同语义</a><a href="#section-2" class="" style="">2. 统一语言及领域概念辞典</a><a href="#section-3" class="" style="">3. Context Map、事实权威与上下文协作</a><a href="#section-3-1" class="sub" style="padding-left:24px">3.1 上下文边界和公开语言</a><a href="#section-3-2" class="sub" style="padding-left:24px">3.2 依赖类型及事务边界</a><a href="#section-3-3" class="sub" style="padding-left:24px">3.3 核心查询投影的权威来源</a><a href="#section-4" class="" style="">4. 核心聚合模型与不变量</a><a href="#section-4-1" class="sub" style="padding-left:24px">4.1 不变量不应被数据库约束替代</a><a href="#section-4-2" class="sub" style="padding-left:24px">4.2 发布 Slot 的必要精化（待 ADR-0004 批准时确认）</a><a href="#section-5" class="" style="">5. 逻辑数据模型与关系基数</a><a href="#section-5-1" class="sub" style="padding-left:24px">5.1 核心逻辑 ERD（不是已执行数据库 DDL）</a><a href="#section-5-2" class="sub" style="padding-left:24px">5.2 主数据关系及完整性规则</a><a href="#section-5-3" class="sub" style="padding-left:24px">5.3 字段设计原则与物理落地边界</a><a href="#section-5-4" class="sub" style="padding-left:24px">5.4 数据字典的伴随机器资产</a><a href="#section-5-5" class="sub" style="padding-left:24px">5.5 Product Governance 已实现的物理模型（PR #6 / #7，2026-11-17 同步）</a><a href="#section-5-6" class="sub" style="padding-left:24px">5.6 已实现的受众配置和产品品牌（PR #10 / #11）</a><a href="#section-5-7" class="sub" style="padding-left:24px">5.7 已实现的 API 目录和契约修订</a><a href="#section-5-8" class="sub" style="padding-left:24px">5.8 已实现的契约检查</a><a href="#section-6" class="" style="">6. 数据权威、制品摘要与可追溯发布链</a><a href="#section-7" class="" style="">7. 多维访问范围与关系模型</a><a href="#section-7-1" class="sub" style="padding-left:24px">7.1 授权关系及拒绝优先决策</a><a href="#section-7-2" class="sub" style="padding-left:24px">7.2 跨产品负面样例</a><a href="#section-8" class="" style="">8. 四类状态机及事务性状态边界</a><a href="#section-8-1" class="sub" style="padding-left:24px">8.1 Revision 状态转换（基于内容不可变）</a><a href="#section-8-2" class="sub" style="padding-left:24px">8.2 Release 状态转换</a><a href="#section-8-3" class="sub" style="padding-left:24px">8.3 Publication 状态、指针与撤销</a><a href="#section-8-4" class="sub" style="padding-left:24px">8.4 API Asset 生命周期</a><a href="#section-9" class="" style="">9. 命令、查询、事件与数据流映射</a><a href="#section-10" class="" style="">10. 统一贯通案例：CargoPai 契约发布</a><a href="#section-10-1" class="sub" style="padding-left:24px">10.1 角色与样本边界</a><a href="#section-10-2" class="sub" style="padding-left:24px">10.2 正常路径，明确哪些环节不在同一事务</a><a href="#section-10-3" class="sub" style="padding-left:24px">10.3 发布结果的三级可观察语义</a><a href="#section-11" class="" style="">11. 竞态、异常、失败恢复和证明义务</a><a href="#section-11-1" class="sub" style="padding-left:24px">11.1 并发 CAS 与幂等边界</a><a href="#section-11-2" class="sub" style="padding-left:24px">11.2 失败模式矩阵</a><a href="#section-11-3" class="sub" style="padding-left:24px">11.3 紧急撤销的安全优先序</a><a href="#section-12" class="" style="">12. Outbox、Job、事件、查询一致性</a><a href="#section-12-1" class="sub" style="padding-left:24px">12.1 可靠消息边界</a><a href="#section-12-2" class="sub" style="padding-left:24px">12.2 设计事件目录及所有者</a><a href="#section-12-3" class="sub" style="padding-left:24px">12.3 Outbox 与业务事务是否同库</a><a href="#section-13" class="" style="">13. 数据完整性、删除、历史、保留与重建</a><a href="#section-13-1" class="sub" style="padding-left:24px">13.1 归档和一致性恢复检查点</a><a href="#section-14" class="" style="">14. F01/F02 需求追溯及关联证明</a><a href="#section-14-1" class="sub" style="padding-left:24px">14.1 可执行追溯资产</a><a href="#section-14-2" class="sub" style="padding-left:24px">14.2 F03 设计验证场景（Definition of Verifiability）</a><a href="#section-14-3" class="sub" style="padding-left:24px">14.3 与上位六道门禁的关系</a><a href="#section-15" class="" style="">15. 双门户最小读模型和协作输入（仅领域视角）</a><a href="#section-16" class="" style="">16. 设计差异、未决问题与 ADR 接续</a><a href="#section-17" class="" style="">17. F04–F08 责任边界与顺序交接</a><a href="#section-18" class="" style="">18. 参考来源与采用边界</a><a href="#section-19" class="" style="">19. F03 交付完成定义与证据状态</a></nav><div class="side-foot">V1.0 · 领域设计待具名评审<br>逻辑模型与已实现切片分开记录；正式验收场景仍为 NOT_RUN。</div></aside><div class="main"><header class="topbar"><div><button class="menu" id="menu" aria-label="展开目录" aria-controls="sidebar" aria-expanded="false">☰ 目录</button><span class="crumb"><strong>IDP API Fabric</strong>　/　设计基线　/　F03</span></div><div class="top-actions"><a class="desktop-only" href="../index.html">总目录</a><a href="F03_Domain_and_Data_Model.md">Markdown 源文件</a><button onclick="window.print()">打印 / PDF</button></div></header><main id="main-content" class="sheet" tabindex="-1"><header class="hero"><div class="eyebrow">F03 · Domain & Data Model</div><h1>IDP API Fabric<br>领域模型与数据设计</h1><p>DDD 限界上下文 · 逻辑 ERD · 聚合不变量 · 契约发布状态机 · 权限与故障恢复</p><div class="hero-meta"><span>V1.0 · 设计待评审</span><span>2026.11.09</span><span>正式工程目录</span><span>已实现切片见 §5.5 · 正式验收待执行</span></div></header><div class="metrics"><div class="metric"><b>10</b><span>专业领域与流程图</span></div><div class="metric"><b>13</b><span>聚合与事务不变量</span></div><div class="metric"><b>38</b><span>逻辑模型实体条目</span></div><div class="metric"><b>18</b><span>领域设计验证场景</span></div></div><article class="doc">
+</style></head><body><a class="skip-link" href="#main-content">跳到文档正文</a><button id="sideBackdrop" class="side-backdrop" aria-label="关闭章节目录" aria-hidden="true" tabindex="-1"></button><div class="layout"><aside class="side" id="sidebar"><a href="../index.html" style="text-decoration:none"><div class="logo">IDP API Fabric<small>ENGINEERING BASELINE</small></div></a><div class="side-kicker">文档体系</div><div class="navlist"><a href="F01_Product_Requirements.html" class="">F01 · Product Requirements</a><a href="F02_System_Architecture.html" class="">F02 · System Architecture</a><a href="F03_Domain_and_Data_Model.html" class="active">F03 · Domain & Data Model</a><a href="F04_API_Contract_Governance.html" class="">F04 · Contract Governance</a><a href="F05_Security_and_Multitenancy.html" class="">F05 · Security & Multitenancy</a><div class="pending">F06 · Dual Portal Experience <span class="mini">待编写</span></div><div class="pending">F07 · Engineering & Quality <span class="mini">待编写</span></div><a href="F08_Delivery_and_Acceptance.html" class="">F08 · Delivery & Acceptance</a></div><hr><div class="side-kicker">F03 · 目录</div><input id="navsearch" type="search" placeholder="筛选本文章节…" aria-label="筛选目录章节"><nav class="navlist" id="toc"><a href="#section-0" class="" style="">0. 执行摘要与设计结论</a><a href="#section-1" class="" style="">1. 约束、适用性及精确边界</a><a href="#section-1-1" class="sub" style="padding-left:24px">1.1 上位约束继承</a><a href="#section-1-2" class="sub" style="padding-left:24px">1.2 明确“不属于 Fabric”的事实</a><a href="#section-1-3" class="sub" style="padding-left:24px">1.3 时间、身份、租户与不可变性的共同语义</a><a href="#section-2" class="" style="">2. 统一语言及领域概念辞典</a><a href="#section-3" class="" style="">3. Context Map、事实权威与上下文协作</a><a href="#section-3-1" class="sub" style="padding-left:24px">3.1 上下文边界和公开语言</a><a href="#section-3-2" class="sub" style="padding-left:24px">3.2 依赖类型及事务边界</a><a href="#section-3-3" class="sub" style="padding-left:24px">3.3 核心查询投影的权威来源</a><a href="#section-4" class="" style="">4. 核心聚合模型与不变量</a><a href="#section-4-1" class="sub" style="padding-left:24px">4.1 不变量不应被数据库约束替代</a><a href="#section-4-2" class="sub" style="padding-left:24px">4.2 发布 Slot 的必要精化（待 ADR-0004 批准时确认）</a><a href="#section-5" class="" style="">5. 逻辑数据模型与关系基数</a><a href="#section-5-1" class="sub" style="padding-left:24px">5.1 核心逻辑 ERD（不是已执行数据库 DDL）</a><a href="#section-5-2" class="sub" style="padding-left:24px">5.2 主数据关系及完整性规则</a><a href="#section-5-3" class="sub" style="padding-left:24px">5.3 字段设计原则与物理落地边界</a><a href="#section-5-4" class="sub" style="padding-left:24px">5.4 数据字典的伴随机器资产</a><a href="#section-5-5" class="sub" style="padding-left:24px">5.5 Product Governance 已实现的物理模型（PR #6 / #7，2026-11-17 同步）</a><a href="#section-5-6" class="sub" style="padding-left:24px">5.6 已实现的受众配置和产品品牌（PR #10 / #11）</a><a href="#section-5-7" class="sub" style="padding-left:24px">5.7 已实现的 API 目录和契约修订</a><a href="#section-5-8" class="sub" style="padding-left:24px">5.8 已实现的契约检查</a><a href="#section-5-9" class="sub" style="padding-left:24px">5.9 已实现的契约评审</a><a href="#section-5-10" class="sub" style="padding-left:24px">5.10 已实现的 Release 与发布</a><a href="#section-6" class="" style="">6. 数据权威、制品摘要与可追溯发布链</a><a href="#section-7" class="" style="">7. 多维访问范围与关系模型</a><a href="#section-7-1" class="sub" style="padding-left:24px">7.1 授权关系及拒绝优先决策</a><a href="#section-7-2" class="sub" style="padding-left:24px">7.2 跨产品负面样例</a><a href="#section-8" class="" style="">8. 四类状态机及事务性状态边界</a><a href="#section-8-1" class="sub" style="padding-left:24px">8.1 Revision 状态转换（基于内容不可变）</a><a href="#section-8-2" class="sub" style="padding-left:24px">8.2 Release 状态转换</a><a href="#section-8-3" class="sub" style="padding-left:24px">8.3 Publication 状态、指针与撤销</a><a href="#section-8-4" class="sub" style="padding-left:24px">8.4 API Asset 生命周期</a><a href="#section-9" class="" style="">9. 命令、查询、事件与数据流映射</a><a href="#section-10" class="" style="">10. 统一贯通案例：CargoPai 契约发布</a><a href="#section-10-1" class="sub" style="padding-left:24px">10.1 角色与样本边界</a><a href="#section-10-2" class="sub" style="padding-left:24px">10.2 正常路径，明确哪些环节不在同一事务</a><a href="#section-10-3" class="sub" style="padding-left:24px">10.3 发布结果的三级可观察语义</a><a href="#section-11" class="" style="">11. 竞态、异常、失败恢复和证明义务</a><a href="#section-11-1" class="sub" style="padding-left:24px">11.1 并发 CAS 与幂等边界</a><a href="#section-11-2" class="sub" style="padding-left:24px">11.2 失败模式矩阵</a><a href="#section-11-3" class="sub" style="padding-left:24px">11.3 紧急撤销的安全优先序</a><a href="#section-12" class="" style="">12. Outbox、Job、事件、查询一致性</a><a href="#section-12-1" class="sub" style="padding-left:24px">12.1 可靠消息边界</a><a href="#section-12-2" class="sub" style="padding-left:24px">12.2 设计事件目录及所有者</a><a href="#section-12-3" class="sub" style="padding-left:24px">12.3 Outbox 与业务事务是否同库</a><a href="#section-13" class="" style="">13. 数据完整性、删除、历史、保留与重建</a><a href="#section-13-1" class="sub" style="padding-left:24px">13.1 归档和一致性恢复检查点</a><a href="#section-14" class="" style="">14. F01/F02 需求追溯及关联证明</a><a href="#section-14-1" class="sub" style="padding-left:24px">14.1 可执行追溯资产</a><a href="#section-14-2" class="sub" style="padding-left:24px">14.2 F03 设计验证场景（Definition of Verifiability）</a><a href="#section-14-3" class="sub" style="padding-left:24px">14.3 与上位六道门禁的关系</a><a href="#section-15" class="" style="">15. 双门户最小读模型和协作输入（仅领域视角）</a><a href="#section-16" class="" style="">16. 设计差异、未决问题与 ADR 接续</a><a href="#section-17" class="" style="">17. F04–F08 责任边界与顺序交接</a><a href="#section-18" class="" style="">18. 参考来源与采用边界</a><a href="#section-19" class="" style="">19. F03 交付完成定义与证据状态</a></nav><div class="side-foot">V1.0 · 领域设计待具名评审<br>逻辑模型与已实现切片分开记录；正式验收场景仍为 NOT_RUN。</div></aside><div class="main"><header class="topbar"><div><button class="menu" id="menu" aria-label="展开目录" aria-controls="sidebar" aria-expanded="false">☰ 目录</button><span class="crumb"><strong>IDP API Fabric</strong>　/　设计基线　/　F03</span></div><div class="top-actions"><a class="desktop-only" href="../index.html">总目录</a><a href="F03_Domain_and_Data_Model.md">Markdown 源文件</a><button onclick="window.print()">打印 / PDF</button></div></header><main id="main-content" class="sheet" tabindex="-1"><header class="hero"><div class="eyebrow">F03 · Domain & Data Model</div><h1>IDP API Fabric<br>领域模型与数据设计</h1><p>DDD 限界上下文 · 逻辑 ERD · 聚合不变量 · 契约发布状态机 · 权限与故障恢复</p><div class="hero-meta"><span>V1.0 · 设计待评审</span><span>2026.11.09</span><span>正式工程目录</span><span>已实现切片见 §5.5 · 正式验收待执行</span></div></header><div class="metrics"><div class="metric"><b>10</b><span>专业领域与流程图</span></div><div class="metric"><b>13</b><span>聚合与事务不变量</span></div><div class="metric"><b>38</b><span>逻辑模型实体条目</span></div><div class="metric"><b>18</b><span>领域设计验证场景</span></div></div><article class="doc">
 <blockquote>
 <p><strong>文档编号</strong>：F03 · Domain &amp; Data Model<br/>
 <strong>项目</strong>：IDP API Fabric (<code>idp-api-fabric</code>)<br/>
@@ -1086,7 +1086,7 @@
 <p>本节记录 PR #12、#14–#17 以及随后的 Git 来源和原文读取（管理 API 0.8.0–0.12.0）的实现事实，不替代 §5.4 逻辑模型的候选状态。权威 DDL 为 <code>migrations/apicatalog/001_api_asset.sql</code>、<code>migrations/contractregistry/001_uploaded_contract_revision.sql</code> 和 <code>002_git_origin.sql</code>。接口见 F04 §11.3，权限见 F05 §6.4。</p>
 <p><strong>API 资产。</strong> <code>apicatalog.api_asset</code> 以 UUID <code>api_asset_id</code> 为主键。<code>product_id</code> 和 <code>workspace_id</code> 是对 Product Governance 的引用，不设跨 schema 外键，登记时在同一事务内向 Product Governance 核对。资产归属的 Workspace 就是它的所有者，登记后不变。<code>asset_key</code> 在一个产品内唯一（跨 Workspace），不同产品可以重复；<code>asset_key</code> 与 <code>domain_key</code> 的格式都是 <code>^[a-z][a-z0-9-]{0,61}[a-z0-9]$</code>，<code>display_name</code> 为 1–120 个字符，<code>api_kind</code> 为 <code>HTTP</code> 或 <code>EVENT</code>。<code>lifecycle</code> 登记时为 <code>EXPERIMENTAL</code>；表约束还允许 <code>STABLE</code>、<code>DEPRECATED</code>、<code>RETIRED</code>，但目前没有改变生命周期的用例。索引 <code>api_asset_product_order (product_id, created_at, api_asset_id)</code> 和 <code>api_asset_workspace_order (product_id, workspace_id, created_at, api_asset_id)</code> 支撑列表。应用角色只有 <code>SELECT</code>、<code>INSERT</code>。</p>
 <p>登记资产时，事务内对调用方在目标 Workspace 的成员关系加共享锁，再写入资产、成功审计和 Outbox 事件 <code>fabric.apicatalog.asset.registered</code>（版本 1），三者一起提交。事件载荷是事件编号、时间、关联编号、产品、Workspace、资产编号和聚合版本，不含 key 和名称。逻辑模型中的 <code>AssetOwnership</code>、<code>AssetLifecycleTransition</code> 尚未实现。</p>
-<p><strong>来源快照和修订。</strong> 三张表都只增不改，应用角色没有 <code>UPDATE</code> 和 <code>DELETE</code>。</p>
+<p><strong>来源快照和修订。</strong> 三张表的内容都只增不改，应用角色没有 <code>DELETE</code>。评审加入之后（§5.9），应用角色对 <code>contract_revision</code> 多了 <code>UPDATE</code>，但表上的触发器只允许改修订的评审状态，其余各列和另外两张表仍然不能改。</p>
 <div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
 <tr>
@@ -1109,7 +1109,7 @@
 <tr>
 <td><code>contractregistry.contract_revision</code></td>
 <td>修订：所属产品、Workspace、资产，<code>revision_sequence</code>，<code>spec_version</code>，<code>status</code></td>
-<td>一个快照只对应一个修订；序号在资产内从 1 递增且唯一；<code>status</code> 目前只有 <code>DRAFT</code></td>
+<td>一个快照只对应一个修订；序号在资产内从 1 递增且唯一；<code>status</code> 登记时为 <code>DRAFT</code>，之后随评审流转（§5.9）</td>
 </tr>
 </tbody>
 </table></div>
@@ -1142,10 +1142,10 @@
 <p>修订、快照、文件、成功审计和 Outbox 事件 <code>fabric.contractregistry.revision.registered</code>（版本 1）在一个事务内提交。事件载荷是事件编号、时间、关联编号、产品、资产、修订编号、序号和两个摘要，不含来源、路径和原文。</p>
 <p><strong>读取原文。</strong> 文件通过修订读取，查询条件同时包含产品、资产、Workspace 和修订编号，不接受单独的快照编号。返回之前，按存储的文件重新计算入口摘要和闭包摘要，并与修订记录的摘要比对；文件被改动、改名、增减，或摘要对不上，都不返回文件。摘要和文件存在同一个数据库里，所以这项核对能发现存储丢失或改动了文件，不能防住同时改写文件和摘要的人。</p>
 <p><strong>升级。</strong> 从 0.7.0 之后升级，执行 <code>fabric-migrate -apply -grant-to &lt;application_role&gt;</code>：应用上述迁移，并授予应用角色这四张表的权限。读取原文需要 <code>source_file</code> 的 <code>SELECT</code>，这项授权没有对应的迁移步骤，缺少时新进程拒绝启动并指出缺少的权限。迁移 002 把已有的快照保留为 <code>UPLOAD</code>。旧进程在迁移后的库上仍能登记上传，但它不认识 Git 来源，按内容查重时也不区分来源；过渡期内，一次与某个 Git 修订内容相同的上传可能得到那个 Git 修订。应在所有进程升级之后再开始带 Git 来源导入。</p>
-<p><strong>尚未实现。</strong> 来源登记（每个资产允许的仓库和引用策略）、CI 服务身份、由 Fabric 读取 Git（FR-021，V1）、按提交查找修订、记录相同内容在后续提交中的出现、修订的状态流转，以及评审和 Release。检查见 §5.8。</p>
+<p><strong>尚未实现。</strong> 来源登记（每个资产允许的仓库和引用策略）、CI 服务身份、由 Fabric 读取 Git（FR-021，V1）、按提交查找修订，以及记录相同内容在后续提交中的出现。检查见 §5.8，修订的状态流转和评审见 §5.9。</p>
 <h3 id="section-5-8">5.8 已实现的契约检查</h3>
 <p>本节记录 PR #22–#33（管理 API 0.13.0–0.16.0）的实现事实，不替代 §5.4 逻辑模型的候选状态。权威 DDL 为 <code>migrations/policyreview/001_check_run.sql</code> 和 <code>002_check_compatibility.sql</code>。接口见 F04 §11.4，权限见 F05 §6.5。</p>
-<p><strong>检查是证据，不是许可。</strong> 一次检查（CheckRun）记下读了什么、按哪份策略、由哪些工具、对每条规则得出什么结论。它写入一次，之后不变；再检查一次是另一条记录。检查的结论不批准修订，也不发布任何东西：评审（ReviewDecision）、豁免和 Release 尚未实现，所以现在没有任何操作会因为检查的结论被拦下。Policy &amp; Review 的表只通过 Contract Registry 和 API Catalog 签发的编号指向修订和资产，不设跨 schema 外键。</p>
+<p>一次检查（CheckRun）记下读了什么、按哪份策略、由哪些工具、对每条规则得出什么结论。它写入一次，之后不变；再检查一次是另一条记录。提交评审和批准都以一次检查为依据（§5.9）：检查不是按现行策略和工具版本做的，或者其中有不可豁免的规则没有通过，提交和批准会被拒绝。Policy &amp; Review 的表只通过 Contract Registry 和 API Catalog 签发的编号指向修订和资产，不设跨 schema 外键。</p>
 <div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
 <tr>
@@ -1186,9 +1186,233 @@
 <p><strong>基线比较。</strong> 指定基线时，检查读取同一资产的另一个修订的原文，由比较器给两者的差异分类。结果包括基线修订和它的输入摘要、比较器和版本、总分类、至多 100 条差异以及是否截断，作为规范化 JSON 存在 <code>compatibility_document</code> 里，是规则 F04-GOV-013 的证据。分类规则见 F04 §11.4。</p>
 <p><strong>读取时的核对。</strong> 读出一次检查时重新核对：策略文档与摘要是否相符，工具清单是否是规范写法，每条规则是否都有结论，结论与规则的级别和发现数是否相符，总状态是否等于各规则结论的汇总，比较文档与规则 F04-GOV-013 的结论是否相符。此外，检查记录的 <code>input_digest</code> 必须等于修订现在的闭包摘要；带基线的，基线修订现在的摘要必须等于当时记录的。任何一项不符，都不返回这次检查。这些核对查的是各行是否自洽、是否仍对应那个修订。数据都在同一个数据库里，能把相关的行一起改写的人不会被发现，所以它不是防篡改证明。</p>
 <p><strong>事务和事件。</strong> 策略快照、检查、各规则的结论、发现、成功审计和 Outbox 事件 <code>fabric.policyreview.check_run.completed</code>（版本 1）在一个事务内提交，任何一步失败都不留下任何一行。事件载荷是事件编号、时间、关联编号、产品、资产、修订、检查编号（聚合编号，聚合版本恒为 1）、输入摘要、策略摘要和总状态，不含规则结论和发现。返回已经记录的检查时不写审计，也不发事件。</p>
-<p><strong>与逻辑模型的对应。</strong> §5.4 的 <code>PolicySnapshot</code> 和 <code>CheckRun</code> 有了物理表，<code>ReviewDecision</code> 和 <code>WaiverRef</code> 尚未实现。§9 的 <code>RequestCheckRun</code> 设想由 Worker 异步执行并写出报告制品；现在检查在请求内同步完成，原文通过 Contract Registry 读取（读出时已核对摘要，见 §5.7），不访问文件系统和网络，没有排队、重试和报告制品。检查也不绑定受众和环境。</p>
+<p><strong>与逻辑模型的对应。</strong> §5.4 的 <code>PolicySnapshot</code> 和 <code>CheckRun</code> 有了物理表；<code>ReviewDecision</code> 和 <code>WaiverRef</code> 的物理表见 §5.9。§9 的 <code>RequestCheckRun</code> 设想由 Worker 异步执行并写出报告制品；现在检查在请求内同步完成，原文通过 Contract Registry 读取（读出时已核对摘要，见 §5.7），不访问文件系统和网络，没有排队、重试和报告制品。检查也不绑定受众和环境。</p>
 <p><strong>升级。</strong> 从 0.12.0 升级，执行 <code>fabric-migrate -apply -grant-to &lt;application_role&gt;</code>：应用上述两个迁移，并授予应用角色 <code>policyreview</code> 的 <code>USAGE</code> 和四张表的 <code>SELECT</code>、<code>INSERT</code>。库没有迁移时，新进程拒绝启动并指出缺少的表；迁移了但没有授权时，拒绝启动并列出缺少的权限。0.12.0 的进程在迁移后的库上照常运行，只是没有检查接口。迁移 002 的唯一约束用到 <code>NULLS NOT DISTINCT</code>，需要 PostgreSQL 15 或更高版本。</p>
-<p><strong>尚未实现。</strong> 评审和豁免（FR-027、FR-028）、产品级策略（FR-026）、其余 10 条规则的工具、导入后自动检查、由 Worker 异步执行、检查与受众和环境的绑定、CI 服务身份读取检查，以及 Release。</p>
+<p><strong>尚未实现。</strong> 产品级策略（FR-026）、其余 10 条规则的工具、导入后自动检查、由 Worker 异步执行、检查与受众和环境的绑定，以及 CI 服务身份读取检查。评审和豁免见 §5.9。</p>
+<h3 id="section-5-9">5.9 已实现的契约评审</h3>
+<p>本节记录管理 API 0.17.0–0.19.0 的实现事实，不替代 §5.4 逻辑模型的候选状态。权威 DDL 为 <code>migrations/productgovernance/007_reviewer_role.sql</code>、<code>migrations/contractregistry/003_revision_review_state.sql</code>、<code>migrations/policyreview/003_review.sql</code> 和 <code>004_review_decision.sql</code>。接口见 F04 §11.5，权限见 F05 §6.6。</p>
+<p><strong>三个部分。</strong> 评审人是 Workspace 的一种成员关系（Product Governance）。修订的评审状态归 Contract Registry，和修订在同一行。评审的申请、结论和豁免归 Policy &amp; Review，只通过编号指向修订和检查，不设跨 schema 外键。一次提交、撤回或决定同时改这两边，在同一个数据库事务里完成。</p>
+<p><strong>评审人角色。</strong> <code>workspace_membership.role</code> 增加 <code>internal_reviewer</code>（迁移 007 放宽表约束 <code>workspace_membership_role_known</code>）。一个主体可以在同一个 Workspace 同时持有作者和评审人两种成员关系，各是一条记录。评审人能读这个 Workspace 的资产的修订、原文、检查和比较，不能导入修订，也不能发起检查。</p>
+<p><strong>修订的评审状态。</strong> 迁移 <code>contractregistry/003</code> 给 <code>contract_revision</code> 增加 <code>status_version</code>（从 1 开始），并把 <code>status</code> 的取值扩大到五种。已有的修订保持 <code>DRAFT</code>、版本 1。状态怎么走由表上的两个触发器决定，对任何写入者都一样，包括表的所有者：</p>
+<div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>触发器</th>
+<th>保证</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>contract_revision_begins_as_draft</code>（插入前）</td>
+<td>修订登记时只能是 <code>DRAFT</code>、版本 1</td>
+</tr>
+<tr>
+<td><code>contract_revision_only_moves</code>（更新前）</td>
+<td>除 <code>status</code> 和 <code>status_version</code> 以外的列都不能改；每次更新版本恰好加 1；只允许下表里的转换</td>
+</tr>
+</tbody>
+</table></div>
+<div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>从 → 到</th>
+<th>由谁触发</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DRAFT</code> → <code>IN_REVIEW</code></td>
+<td>作者提交评审</td>
+</tr>
+<tr>
+<td><code>WITHDRAWN</code> → <code>IN_REVIEW</code></td>
+<td>作者再次提交</td>
+</tr>
+<tr>
+<td><code>IN_REVIEW</code> → <code>WITHDRAWN</code></td>
+<td>申请人撤回</td>
+</tr>
+<tr>
+<td><code>IN_REVIEW</code> → <code>APPROVED</code></td>
+<td>评审人批准</td>
+</tr>
+<tr>
+<td><code>IN_REVIEW</code> → <code>REJECTED</code></td>
+<td>评审人驳回</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>APPROVED</code> 和 <code>REJECTED</code> 是终点，没有离开它们的转换。违反时数据库报完整性错误（SQLSTATE 23000）。应用在改状态前锁住修订行，按读到的版本做条件更新（§4 INV-04 的状态 CAS）；同时到达的几个请求一个一个判断，后到的看到的是已经改过的状态。</p>
+<p>修订的内容不随状态变化：读到的摘要、原文和来源在每个状态下都相同。相同内容再次导入，得到的还是这个修订，带着它现在的状态。</p>
+<p><strong>与 §8.1 的差别。</strong> §8.1 没有 <code>WITHDRAWN</code> → <code>IN_REVIEW</code>。实现加上它，是因为相同内容在一个来源下只登记一次（§5.7）：如果撤回是终点，那份内容就再也不能送审。<code>REJECTED</code> 仍是终点，与 §8.1 一致：被驳回的内容要改过之后作为新修订再提交，原样重交得到的还是被驳回的那个修订。§8.1 里“具名治理员”撤回还没有，只有申请人能撤回。这一处差别待裁决。</p>
+<p><strong>评审的表。</strong> 四张表都只增不改，应用角色只有 <code>SELECT</code> 和 <code>INSERT</code>。</p>
+<div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>表</th>
+<th>内容</th>
+<th>关键约束</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>policyreview.review_request</code></td>
+<td>一次评审申请：所属产品、Workspace、资产和修订，依据的检查 <code>check_run_id</code> 和它读的内容 <code>input_digest</code>，可选的说明，申请时间和申请人，以及 <code>revision_status_version</code></td>
+<td>外键 <code>review_request_check_fkey (revision_id, check_run_id)</code> 保证检查是这个修订的；<code>revision_status_version</code> 至少是 2；唯一约束 <code>review_request_once_key (revision_id, revision_status_version)</code> 见下；说明 1–500 个字符</td>
+</tr>
+<tr>
+<td><code>policyreview.review_scope</code></td>
+<td>申请批准的范围：受众和环境的组合，每个一行</td>
+<td>受众是 <code>public</code>、<code>partner</code>、<code>internal</code> 之一，环境是 <code>sandbox</code>、<code>production</code> 之一；同一申请内不重复</td>
+</tr>
+<tr>
+<td><code>policyreview.review_conclusion</code></td>
+<td>评审怎么结束：<code>outcome</code>、可选的理由、结束时间、结束它的人，批准时还有 <code>valid_until</code></td>
+<td>一个申请至多一个结论（主键是申请编号）；<code>outcome</code> 是 <code>WITHDRAWN</code>、<code>APPROVED</code>、<code>REJECTED</code> 之一；只有批准有 <code>valid_until</code>，且晚于结束时间；驳回必须有理由；理由 1–1000 个字符</td>
+</tr>
+<tr>
+<td><code>policyreview.review_waiver</code></td>
+<td>批准时放行的规则：规则编号、理由、可选的补偿措施、到期时间</td>
+<td>外键指向结论，所以没有结论就没有豁免；同一结论内一条规则只豁免一次；理由和补偿措施各 1–1000 个字符</td>
+</tr>
+</tbody>
+</table></div>
+<p>索引 <code>review_request_history (product_id, api_asset_id, revision_id, requested_at, review_id)</code> 支撑评审历史。为了让外键 <code>review_request_check_fkey</code> 成立，迁移 <code>policyreview/003</code> 给 <code>check_run</code> 加了唯一约束 <code>check_run_of_revision_key (revision_id, check_run_id)</code>。</p>
+<p><strong>一个修订同时只有一个进行中的评审。</strong> <code>revision_status_version</code> 是这次申请把修订改成 <code>IN_REVIEW</code> 时修订得到的状态版本。Contract Registry 每个版本只给一次，所以 <code>review_request_once_key</code> 保证同一次“进入评审”只对应一条申请。撤回后再提交是下一个版本，也就是这个修订的下一条评审记录。</p>
+<p><strong>提交。</strong> 申请以修订的一次检查为依据。检查必须是这个修订的、读的就是修订现在的内容，并且是“现行”的：它的策略摘要等于现在的基线策略，它用的每个工具都是现在的工具版本（§5.8）。不是现行的检查被拒绝，要重新检查。检查里有不可豁免的规则是 <code>FAIL</code> 或 <code>UNKNOWN</code> 时也被拒绝：没有任何决定能批准这样的修订。范围是 1 到 6 个受众和环境的组合，按受众、环境的顺序保存。</p>
+<p><strong>决定。</strong> 评审人批准或驳回一条进行中的申请。批准再次要求检查是现行的；检查里每条可豁免而没通过（<code>FAIL</code> 或 <code>UNKNOWN</code>）的规则都要逐条豁免，写明理由和到期时间，可以写补偿措施。不可豁免的规则不能豁免，通过了的规则也不能豁免。<code>WARN</code> 和 <code>NOT_RUN</code> 的规则不需要豁免：批准绑定在那次检查上，检查如实记着哪些规则没有评估，Release 要不要拦下它们由 Release 决定。批准有到期时间 <code>valid_until</code>，最长 365 天；豁免的到期时间不晚于它。驳回必须写理由，没有到期时间和豁免。</p>
+<p>批准的对象是那次检查读的内容（<code>input_digest</code>）、申请的范围和到期之前的这段时间，不比这更宽（§4 INV-07）。批准之后不能给同一个修订追加范围。</p>
+<p><strong>职责分离。</strong> 决定的人不能是登记这个修订的人、发起那次检查的人，或提交这次申请的人，即使他持有评审人角色。“登记修订的人”是最先提交这份内容的人（来源快照的采集主体）；别人后来再导入相同内容，不改变这一点。比较的是主体（签发方加主体标识）：同一个人用两个账号，这里发现不了。</p>
+<p><strong>读取时的核对。</strong> 读出评审时核对：申请写明了修订、检查和申请人，范围是合法且有序的；结论属于这条申请、不早于申请；批准有晚于结束时间的 <code>valid_until</code>，豁免按规则编号有序、有理由、到期时间在批准的有效期内；驳回有理由；驳回和撤回没有 <code>valid_until</code> 和豁免。申请记录的 <code>input_digest</code> 必须等于修订现在的闭包摘要。任何一项不符，都不返回这条评审。与检查一样，数据同库，这不是防篡改证明。</p>
+<p><strong>事务和事件。</strong> 提交时，申请、范围、修订状态的变化、成功审计和 Outbox 事件一起提交；撤回和决定时，结论、豁免、修订状态的变化、成功审计和事件一起提交。任何一步失败都不留下任何一行，修订的状态也不变。</p>
+<div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>事件（版本 1）</th>
+<th>何时</th>
+<th>载荷</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fabric.policyreview.review.requested</code></td>
+<td>提交评审</td>
+<td>事件编号、时间、关联编号、产品、资产、修订、评审编号（聚合编号，聚合版本 1）、检查编号、输入摘要</td>
+</tr>
+<tr>
+<td><code>fabric.policyreview.review.withdrawn</code></td>
+<td>撤回</td>
+<td>同上，聚合版本 2，<code>outcome</code> 为 <code>WITHDRAWN</code></td>
+</tr>
+<tr>
+<td><code>fabric.policyreview.review.decided</code></td>
+<td>批准或驳回</td>
+<td>同上，聚合版本 2，<code>outcome</code> 为 <code>APPROVED</code> 或 <code>REJECTED</code>；批准时带 <code>valid_until</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>事件不含说明、理由、范围和豁免，这些要通过评审接口读取。修订状态的变化没有单独的事件。§12.2 的 <code>ReviewDecisionRecorded</code> 对应 <code>review.decided</code>；它设想的载荷里有 <code>target_scope</code>，现在没有。</p>
+<p><strong>与逻辑模型的对应。</strong> §5.4 的 <code>ReviewDecision</code> 在物理上分成申请和结论两张表，<code>decision_id</code> 就是 <code>review_id</code>；<code>WaiverRef</code> 是 <code>review_waiver</code>，主键是 <code>(review_id, rule_id)</code>，没有单独的 <code>waiver_ref_id</code>。逻辑模型没有“评审申请”这个实体，也没有“撤回”这种结论。F04 §7.2 要求豁免绑定 <code>(rule_id, scope, subject_digest, owner, reviewer, expires_at, reason, compensating_control)</code>：范围、内容摘要和评审人取自豁免所属的批准，豁免没有单独的 <code>owner</code>。</p>
+<p><strong>升级。</strong> 从 0.16.0 升级，执行 <code>fabric-migrate -apply -grant-to &lt;application_role&gt;</code>：应用上述四个迁移，并授予应用角色 <code>contract_revision</code> 的 <code>UPDATE</code> 以及四张评审表的 <code>SELECT</code>、<code>INSERT</code>。库没有迁移时，新进程拒绝启动并指出缺少的表；迁移了但没有授权时，拒绝启动并列出缺少的权限。旧进程在迁移后的库上照常登记修订，登记的仍是 <code>DRAFT</code>、版本 1。但旧进程不认识新的取值，用真实进程走查的结果是：</p>
+<div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>旧进程</th>
+<th>遇到</th>
+<th>表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0.16.0</td>
+<td>Workspace 里有评审人</td>
+<td>列出这个 Workspace 的成员、读取评审人的那条成员关系，返回 500：它不发送自己的契约没有声明的角色。其他操作照常，作者照常导入和读取</td>
+</tr>
+<tr>
+<td>0.16.0</td>
+<td>评审人来读修订</td>
+<td>403：它只认作者</td>
+</tr>
+<tr>
+<td>0.16.0</td>
+<td>修订不是 <code>DRAFT</code></td>
+<td>照常返回 200，<code>status</code> 是它的契约没有声明的值；相同内容再导入，返回原修订和它现在的状态</td>
+</tr>
+<tr>
+<td>0.18.0</td>
+<td>评审已经批准或驳回</td>
+<td>读这条评审、列出这个修订的评审，返回 500：它把不认识的结论当作损坏的记录。进行中和已撤回的评审照常读，也照常撤回</td>
+</tr>
+</tbody>
+</table></div>
+<p>所以应在所有进程升级之后，再授予评审人角色、提交评审和作出决定。</p>
+<p>指派评审人、具名治理员撤回、追加审批范围、批准到期后的复审和产品级策略仍待实现。0.21.0 起，准备 Release 和发布时会重新核对批准：策略、评审人的授权、批准和豁免的有效期，见 §5.10。</p>
+<h3 id="section-5-10">5.10 已实现的 Release 与发布</h3>
+<p>本节记录管理 API 0.20.0–0.22.0 的实现事实，不替代 §5.4 逻辑模型的候选状态。权威 DDL 为 <code>migrations/productgovernance/008_publication_roles.sql</code>、<code>migrations/contractregistry/004_immutable_release.sql</code> 和 <code>migrations/publication/001_targets_and_slots.sql</code>。接口见 F04 §11.6，权限见 F05 §6.7。</p>
+<p><strong>角色。</strong> 迁移 008 让成员关系可以取 <code>internal_publisher</code>（Workspace 的发布人），让产品角色可以取 <code>security_admin</code> 和 <code>security_reviewer</code>。三种角色都由产品负责人授予；平台管理员仍然只能任命负责人。</p>
+<p><strong>Release。</strong> Release 是一个已批准的修订连同它的证据，记录一次，之后不变。两张表都只增不改，应用角色只有 <code>SELECT</code> 和 <code>INSERT</code>。</p>
+<div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>表</th>
+<th>内容</th>
+<th>关键约束</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>contractregistry.release_artifact</code></td>
+<td>制品：<code>artifact_digest</code> 和 <code>payload</code></td>
+<td>表约束要求摘要等于内容的 SHA-256；内容 1–65536 字节</td>
+</tr>
+<tr>
+<td><code>contractregistry.contract_release</code></td>
+<td>Release：所属产品、Workspace、资产和修订，评审、检查、策略快照及其摘要，输入摘要，制品摘要，版本号，准备时间和准备人</td>
+<td><code>(product_id, api_asset_id, release_version)</code> 唯一；外键指向制品和修订，修订表为此加了唯一约束 <code>contract_revision_release_scope_key</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>制品是一份 JSON，格式名 <code>fabric-openapi-source/v1</code>：入口路径、规范版本、闭包摘要，以及按路径排序的每个文件的路径、SHA-256 和 Base64 内容。它从登记的原文生成，生成前按 §5.7 的方式核对摘要。字节相同的制品只存一份，可以被多个 Release 引用。登记时允许的最大源文件（16 个文件、共 40 KiB、路径各 200 个字符）生成的制品不超过 65536 字节的上限。版本号在一个资产内唯一：同一版本号、同一修订和评审再次提交，返回已有的 Release；换了修订或评审则拒绝。记录下来的 Release 都是 <code>READY</code>，§8.2 的其余状态尚未实现。索引 <code>contract_release_history (product_id, api_asset_id, prepared_at, release_id)</code> 支撑 Release 历史。</p>
+<p><strong>使用批准时的重新核对。</strong> 准备 Release、在槽位上激活或恢复、读取已发布的制品，每次都重新核对批准：评审确实批准了这个修订和这份内容；批准和它依赖的豁免都没有过期；检查仍是按现行策略和工具做的；批准人当初据以批准的评审人成员关系仍然有效，撤销后重新授予的不算；发布人没有参与这个修订（不是导入人、检查的发起人、评审的提交人或批准人）。发布到目标时还要求目标的受众和环境在批准的范围内；用另一个修订的 Release 替换槽位上最近生效的 Release 时，批准所依据的检查必须是以那个修订为基线做的。阻断级的规则如果没有工具评估，只有属于“在检查之外把关”的那几类才放行。这对应 INV-07。</p>
+<p><strong>发布。</strong> 四张表：</p>
+<div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>表</th>
+<th>内容</th>
+<th>关键约束</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>publication.target</code></td>
+<td>发布目标：产品、受众配置、门户标识，登记时的受众和环境，<code>block_generation</code></td>
+<td><code>(product_id, audience_config_id, portal_key)</code> 唯一；更新只能把 <code>block_generation</code> 加 1（触发器）</td>
+</tr>
+<tr>
+<td><code>publication.slot</code></td>
+<td>槽位，即目标 × 资产：<code>active_release_id</code> 和 <code>generation</code></td>
+<td><code>(target_id, api_asset_id)</code> 唯一；代次为 0 时没有生效的 Release；更新只能把代次加 1 并换指针（触发器）</td>
+</tr>
+<tr>
+<td><code>publication.operation</code></td>
+<td>槽位上的每一次操作：代次、动作、之前和之后的 Release、理由、操作人、时间和幂等键的摘要</td>
+<td><code>(slot_id, generation)</code> 和 <code>(slot_id, key_digest)</code> 唯一；<code>WITHDRAW</code> 没有 Release，另两种必有；<code>WITHDRAW</code> 和 <code>RESTORE</code> 必有理由</td>
+</tr>
+<tr>
+<td><code>publication.access_block</code></td>
+<td>访问阻断：目标，可选的资产和 Release，代次、理由、建立人和时间，以及解除的代次、理由、解除人和时间</td>
+<td>同一范围同时只有一个未解除的阻断（部分唯一索引）；只能解除一次，解除人不能是建立人（触发器）</td>
+</tr>
+</tbody>
+</table></div>
+<p>应用角色对 <code>operation</code> 只有 <code>SELECT</code> 和 <code>INSERT</code>，对另外三张表多一项 <code>UPDATE</code>，由触发器限定为上面说的那一步。槽位在第一次激活时建立，代次从 0 开始，每次操作加 1（§4.2 的 Slot = Target × APIAsset）。</p>
+<p><strong>CAS 和幂等。</strong> 改变槽位的请求带上它依据的代次和一个幂等键。事务内先对目标加共享锁、对槽位加排他锁；代次不是当前的就拒绝。同一槽位上同一个键再次到达时，调用人、代次、动作、Release 和理由都相同就返回当时的操作，有一样不同就拒绝。<code>RESTORE</code> 只能回到这个槽位上生效过的 Release。槽位、操作记录、审计和 Outbox 事件同事务提交。</p>
+<p><strong>阻断。</strong> 阻断可以覆盖整个目标、目标上的一个资产，或其中一个 Release。它独立于槽位的指针：建立阻断不改变槽位，但被覆盖的制品读不到，也不能激活或恢复。解除之前，被覆盖的槽位必须已经撤销，所以解除阻断本身不会让任何内容重新可见；恢复是另一次带代次的操作，会重新核对批准。建立和解除各使目标的 <code>block_generation</code> 加 1。</p>
+<p><strong>读取已发布的制品。</strong> 只通过槽位当前的指针读取。每次读取都在事务内重新核对：调用人的成员关系、受众配置仍然有效且与目标登记时一致、指针、阻断和批准；任何一项不满足都不返回制品。读出的字节与制品摘要再核对一次。目前只有 <code>internal</code> 受众的目标可以激活和读取；对外门户的授权和边缘分发尚未接入，所以槽位的交付状态和阻断的边缘状态都如实报告为 <code>UNKNOWN</code>。</p>
+<p><strong>事件。</strong> <code>fabric.contractregistry.release.prepared</code>，以及 <code>fabric.publication.target.created</code>、<code>slot.activated</code>、<code>slot.withdrawn</code>、<code>slot.restored</code>、<code>access_block.created</code>、<code>access_block.cleared</code>，都是版本 1。载荷是事件编号、时间、关联编号、产品、聚合编号和版本，加上相关的目标、资产、Release 或修订的编号和制品摘要，不含理由和制品内容。</p>
+<p><strong>升级。</strong> 从 0.19.0 升级，执行 <code>fabric-migrate -apply -grant-to &lt;application_role&gt;</code>：应用上述三个迁移，并授予应用角色新表的权限。库没有迁移时，新进程拒绝启动并指出缺少的表；迁移了但没有授权时，拒绝启动并列出缺少的权限。0.19.0 的进程在迁移后的库上能继续读写原有的内容，但它不认识新角色：一个 Workspace 有了发布人，它列这个 Workspace 的成员会返回 500；产品有了安全角色，它列产品角色会返回 500。所以应在所有进程升级之后再授予新角色。</p>
+<p><strong>尚未实现。</strong> 批准失效（到期、批准人身份被撤销、策略或检查工具更新）之后重新评审已批准的修订：目前只能改动内容后重新走一遍，后果见 F05 §6.7；<code>internal</code> 以外受众的发布、外部授权和边缘分发及其传播证明；Release 的其余状态和撤销；对象存储（制品目前存在 PostgreSQL 里）；发布目标的修改和停用；紧急撤销的分级（F05 §9.1）；Outbox 的投递。</p>
 <h2 id="section-6">6. 数据权威、制品摘要与可追溯发布链</h2>
 <figure class="architecture-figure"><div class="fig-label">FIGURE 05 · 单一事实权威与来源追踪 / Import → Release → Portal</div><div class="fig-grid cols-5"><div class="fig-box"><b>SourceSnapshot</b><small>Git Commit/Upload · 原文 digest</small></div><div class="fig-box"><b>Revision</b><small>Immutable content · ref closure</small></div><div class="fig-box"><b>Check + Decision</b><small>Policy digest · scope · review evidence</small></div><div class="fig-box"><b>Release</b><small>READY · immutable artifact manifest</small></div><div class="fig-box fig-primary"><b>PublicationSlot</b><small>CAS pointer · target audience/env</small></div></div><div class="fig-arrow">↓ 主库目标版本权威 → Outbox/Worker → PortalProjection；读时再次按当前策略判定</div><div class="fig-grid cols-3"><div class="fig-box tone-green"><b>Git / Upload</b><small>来源事实</small></div><div class="fig-box tone-green"><b>Registry / Object Store</b><small>正式内容/摘要事实</small></div><div class="fig-box tone-green"><b>Publication DB</b><small>当前生效和阻断事实</small></div></div><figcaption>不允许把门户索引、CDN 或 `latest` 当成权威；完整 digest 链可核验来源、引用闭包、构建工具及最终制品。</figcaption></figure>
 <div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
@@ -1306,6 +1530,7 @@
 </tbody>
 </table></div>
 <p>注意：批准的最终权威是 <code>ReviewDecision</code>，Revision 上的 <code>APPROVED</code> 是关联状态，不足以单独授权任意发布；同 Revision 若需扩展外部受众，应补充目标范围审批。</p>
+<p>已实现的转换见 §5.9：比上表多一条 <code>WITHDRAWN → IN_REVIEW</code>（撤回后再次提交），撤回只有申请人能做，已批准修订的范围追加尚未实现。</p>
 <h3 id="section-8-2">8.2 Release 状态转换</h3>
 <div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>

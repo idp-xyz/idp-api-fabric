@@ -24,6 +24,9 @@ type Scopes interface {
 	// Author locks the authorizing membership for an import. Reads check
 	// current membership without acquiring a row lock.
 	Author(ctx context.Context, caller domain.Principal, asset domain.AssetRef, importing bool) (author, productActive bool, err error)
+	// Reader reports whether the caller may read the revisions of the
+	// asset: a current author or reviewer of its workspace.
+	Reader(ctx context.Context, caller domain.Principal, asset domain.AssetRef) (bool, error)
 }
 
 type Transactor interface {
@@ -33,6 +36,7 @@ type Transactor interface {
 type AuditEntry struct {
 	Query      ScopeQuery
 	RevisionID string
+	ReleaseID  string
 	Action     string
 	Rule       string
 	Allowed    bool

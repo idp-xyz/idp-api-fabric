@@ -25,9 +25,10 @@ func NewRevisions(database *bentopostgres.DB) *Revisions {
 // as the zero GitOrigin.
 const selectRevision = `
 SELECT r.revision_id, r.source_snapshot_id, r.product_id, r.workspace_id,
-       r.api_asset_id, r.revision_sequence, r.status, s.source_kind,
+       r.api_asset_id, r.revision_sequence, r.status, r.status_version, s.source_kind,
        coalesce(s.origin_repository, ''), coalesce(s.origin_commit, ''), coalesce(s.origin_ref, ''),
-       s.entrypoint, r.spec_version, s.source_digest, s.ref_closure_digest, s.captured_at
+       s.entrypoint, r.spec_version, s.source_digest, s.ref_closure_digest, s.captured_at,
+       s.captured_by_issuer, s.captured_by_subject
 FROM contractregistry.contract_revision r
 JOIN contractregistry.source_snapshot s USING (source_snapshot_id)
 WHERE r.product_id = $1 AND r.api_asset_id = $2`
@@ -35,9 +36,10 @@ WHERE r.product_id = $1 AND r.api_asset_id = $2`
 func scanRevision(row pgx.CollectableRow) (domain.Revision, error) {
 	var revision domain.Revision
 	err := row.Scan(&revision.ID, &revision.SourceSnapshotID, &revision.Asset.ProductID, &revision.Asset.WorkspaceID,
-		&revision.Asset.AssetID, &revision.Sequence, &revision.Status, &revision.SourceKind,
+		&revision.Asset.AssetID, &revision.Sequence, &revision.Status, &revision.StatusVersion, &revision.SourceKind,
 		&revision.Origin.Repository, &revision.Origin.Commit, &revision.Origin.Ref,
-		&revision.Entrypoint, &revision.SpecVersion, &revision.SourceDigest, &revision.RefClosureDigest, &revision.CreatedAt)
+		&revision.Entrypoint, &revision.SpecVersion, &revision.SourceDigest, &revision.RefClosureDigest, &revision.CreatedAt,
+		&revision.CreatedBy.Issuer, &revision.CreatedBy.Subject)
 	revision.CreatedAt = revision.CreatedAt.UTC()
 	return revision, err
 }
@@ -141,11 +143,51 @@ INSERT INTO contractregistry.contract_revision (
 	}
 	revision := domain.Revision{
 		ID: draft.ID, SourceSnapshotID: draft.SourceSnapshotID, Asset: asset, Sequence: sequence,
-		Status: domain.RevisionDraft, SourceKind: origin.SourceKind(), Origin: origin,
+		Status: domain.RevisionDraft, StatusVersion: 1, SourceKind: origin.SourceKind(), Origin: origin,
 		Entrypoint: source.Entrypoint, SpecVersion: source.SpecVersion,
 		SourceDigest: source.SourceDigest, RefClosureDigest: source.RefClosureDigest, CreatedAt: captured,
+		CreatedBy: draft.CapturedBy,
 	}
 	return ports.Registration{Revision: revision, Created: true}, nil
+}
+
+// Move changes the status of a revision of the asset inside the transaction
+// it is called in. The row is locked first, so that of several moves that
+// arrive together one is made and the others find the revision where the
+// first one left it. The table decides as well: it lets a status move along
+// the review and nothing else of a revision change.
+func (s *Revisions) Move(ctx context.Context, asset domain.AssetRef, id, to string) (domain.Revision, bool, error) {
+	writer, err := s.database.RequireExecutor(ctx)
+	if err != nil {
+		return domain.Revision{}, false, err
+	}
+	rows, err := writer.Query(ctx, selectRevision+" AND r.workspace_id = $3 AND r.revision_id = $4 FOR UPDATE OF r",
+		asset.ProductID, asset.AssetID, asset.WorkspaceID, id)
+	if err != nil {
+		return domain.Revision{}, false, fmt.Errorf("lock a contract revision: %w", err)
+	}
+	revision, err := pgx.CollectOneRow(rows, scanRevision)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Revision{}, false, nil
+	}
+	if err != nil {
+		return domain.Revision{}, false, fmt.Errorf("lock a contract revision: %w", err)
+	}
+	if err := domain.Move(revision.Status, to); err != nil {
+		return domain.Revision{}, true, err
+	}
+	const move = `
+UPDATE contractregistry.contract_revision SET status = $2, status_version = status_version + 1
+WHERE revision_id = $1 AND status_version = $3`
+	moved, err := writer.Exec(ctx, move, revision.ID, to, revision.StatusVersion)
+	if err != nil {
+		return domain.Revision{}, true, fmt.Errorf("move a contract revision: %w", err)
+	}
+	if moved.RowsAffected() != 1 {
+		return domain.Revision{}, true, fmt.Errorf("move a contract revision: %d rows changed", moved.RowsAffected())
+	}
+	revision.Status, revision.StatusVersion = to, revision.StatusVersion+1
+	return revision, true, nil
 }
 
 // nullable stores what a snapshot does not say as NULL.

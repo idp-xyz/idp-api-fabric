@@ -273,13 +273,13 @@ F02 提出的 `PublicationTarget = Product × Audience × Environment × Portal`
 
 登记资产时，事务内对调用方在目标 Workspace 的成员关系加共享锁，再写入资产、成功审计和 Outbox 事件 `fabric.apicatalog.asset.registered`（版本 1），三者一起提交。事件载荷是事件编号、时间、关联编号、产品、Workspace、资产编号和聚合版本，不含 key 和名称。逻辑模型中的 `AssetOwnership`、`AssetLifecycleTransition` 尚未实现。
 
-**来源快照和修订。** 三张表都只增不改，应用角色没有 `UPDATE` 和 `DELETE`。
+**来源快照和修订。** 三张表的内容都只增不改，应用角色没有 `DELETE`。评审加入之后（§5.9），应用角色对 `contract_revision` 多了 `UPDATE`，但表上的触发器只允许改修订的评审状态，其余各列和另外两张表仍然不能改。
 
 | 表 | 内容 | 关键约束 |
 |---|---|---|
 | `contractregistry.source_snapshot` | 一次导入的证据：`source_kind`（`UPLOAD` 或 `GIT`）、入口路径、入口文件摘要 `source_digest`、闭包摘要 `ref_closure_digest`、闭包清单 `ref_closure_manifest`、采集时间和采集主体，以及 Git 来源的 `origin_repository`、`origin_commit`、`origin_ref` | `GIT` 必有仓库和提交，`UPLOAD` 的三列全为空；仓库、提交、引用各有格式和长度约束 |
 | `contractregistry.source_file` | 快照的文件，按 `(source_snapshot_id, path)` 存原始字节 | 路径 1–200 个字符，内容非空 |
-| `contractregistry.contract_revision` | 修订：所属产品、Workspace、资产，`revision_sequence`，`spec_version`，`status` | 一个快照只对应一个修订；序号在资产内从 1 递增且唯一；`status` 目前只有 `DRAFT` |
+| `contractregistry.contract_revision` | 修订：所属产品、Workspace、资产，`revision_sequence`，`spec_version`，`status` | 一个快照只对应一个修订；序号在资产内从 1 递增且唯一；`status` 登记时为 `DRAFT`，之后随评审流转（§5.9） |
 
 闭包清单是入口路径加上每个文件的路径和 SHA-256，文件按路径的字节顺序排列；`ref_closure_digest` 是清单的 SHA-256。逻辑模型里的 `RefClosureManifest` 在物理上是快照的一列。逻辑模型里的 `ContractSource`（来源登记）尚未实现：现在的“来源”指一个资产的全部上传，或者一个 Git 仓库网址。
 
@@ -301,13 +301,13 @@ Git 来源是提交者的声明：仓库的 https 网址（至多 300 个字符�
 
 **升级。** 从 0.7.0 之后升级，执行 `fabric-migrate -apply -grant-to <application_role>`：应用上述迁移，并授予应用角色这四张表的权限。读取原文需要 `source_file` 的 `SELECT`，这项授权没有对应的迁移步骤，缺少时新进程拒绝启动并指出缺少的权限。迁移 002 把已有的快照保留为 `UPLOAD`。旧进程在迁移后的库上仍能登记上传，但它不认识 Git 来源，按内容查重时也不区分来源；过渡期内，一次与某个 Git 修订内容相同的上传可能得到那个 Git 修订。应在所有进程升级之后再开始带 Git 来源导入。
 
-**尚未实现。** 来源登记（每个资产允许的仓库和引用策略）、CI 服务身份、由 Fabric 读取 Git（FR-021，V1）、按提交查找修订、记录相同内容在后续提交中的出现、修订的状态流转，以及评审和 Release。检查见 §5.8。
+**尚未实现。** 来源登记（每个资产允许的仓库和引用策略）、CI 服务身份、由 Fabric 读取 Git（FR-021，V1）、按提交查找修订，以及记录相同内容在后续提交中的出现。检查见 §5.8，修订的状态流转和评审见 §5.9。
 
 ### 5.8 已实现的契约检查
 
 本节记录 PR #22–#33（管理 API 0.13.0–0.16.0）的实现事实，不替代 §5.4 逻辑模型的候选状态。权威 DDL 为 `migrations/policyreview/001_check_run.sql` 和 `002_check_compatibility.sql`。接口见 F04 §11.4，权限见 F05 §6.5。
 
-**检查是证据，不是许可。** 一次检查（CheckRun）记下读了什么、按哪份策略、由哪些工具、对每条规则得出什么结论。它写入一次，之后不变；再检查一次是另一条记录。检查的结论不批准修订，也不发布任何东西：评审（ReviewDecision）、豁免和 Release 尚未实现，所以现在没有任何操作会因为检查的结论被拦下。Policy & Review 的表只通过 Contract Registry 和 API Catalog 签发的编号指向修订和资产，不设跨 schema 外键。
+一次检查（CheckRun）记下读了什么、按哪份策略、由哪些工具、对每条规则得出什么结论。它写入一次，之后不变；再检查一次是另一条记录。提交评审和批准都以一次检查为依据（§5.9）：检查不是按现行策略和工具版本做的，或者其中有不可豁免的规则没有通过，提交和批准会被拒绝。Policy & Review 的表只通过 Contract Registry 和 API Catalog 签发的编号指向修订和资产，不设跨 schema 外键。
 
 | 表 | 内容 | 关键约束 |
 |---|---|---|
@@ -334,11 +334,128 @@ Git 来源是提交者的声明：仓库的 https 网址（至多 300 个字符�
 
 **事务和事件。** 策略快照、检查、各规则的结论、发现、成功审计和 Outbox 事件 `fabric.policyreview.check_run.completed`（版本 1）在一个事务内提交，任何一步失败都不留下任何一行。事件载荷是事件编号、时间、关联编号、产品、资产、修订、检查编号（聚合编号，聚合版本恒为 1）、输入摘要、策略摘要和总状态，不含规则结论和发现。返回已经记录的检查时不写审计，也不发事件。
 
-**与逻辑模型的对应。** §5.4 的 `PolicySnapshot` 和 `CheckRun` 有了物理表，`ReviewDecision` 和 `WaiverRef` 尚未实现。§9 的 `RequestCheckRun` 设想由 Worker 异步执行并写出报告制品；现在检查在请求内同步完成，原文通过 Contract Registry 读取（读出时已核对摘要，见 §5.7），不访问文件系统和网络，没有排队、重试和报告制品。检查也不绑定受众和环境。
+**与逻辑模型的对应。** §5.4 的 `PolicySnapshot` 和 `CheckRun` 有了物理表；`ReviewDecision` 和 `WaiverRef` 的物理表见 §5.9。§9 的 `RequestCheckRun` 设想由 Worker 异步执行并写出报告制品；现在检查在请求内同步完成，原文通过 Contract Registry 读取（读出时已核对摘要，见 §5.7），不访问文件系统和网络，没有排队、重试和报告制品。检查也不绑定受众和环境。
 
 **升级。** 从 0.12.0 升级，执行 `fabric-migrate -apply -grant-to <application_role>`：应用上述两个迁移，并授予应用角色 `policyreview` 的 `USAGE` 和四张表的 `SELECT`、`INSERT`。库没有迁移时，新进程拒绝启动并指出缺少的表；迁移了但没有授权时，拒绝启动并列出缺少的权限。0.12.0 的进程在迁移后的库上照常运行，只是没有检查接口。迁移 002 的唯一约束用到 `NULLS NOT DISTINCT`，需要 PostgreSQL 15 或更高版本。
 
-**尚未实现。** 评审和豁免（FR-027、FR-028）、产品级策略（FR-026）、其余 10 条规则的工具、导入后自动检查、由 Worker 异步执行、检查与受众和环境的绑定、CI 服务身份读取检查，以及 Release。
+**尚未实现。** 产品级策略（FR-026）、其余 10 条规则的工具、导入后自动检查、由 Worker 异步执行、检查与受众和环境的绑定，以及 CI 服务身份读取检查。评审和豁免见 §5.9。
+
+### 5.9 已实现的契约评审
+
+本节记录管理 API 0.17.0–0.19.0 的实现事实，不替代 §5.4 逻辑模型的候选状态。权威 DDL 为 `migrations/productgovernance/007_reviewer_role.sql`、`migrations/contractregistry/003_revision_review_state.sql`、`migrations/policyreview/003_review.sql` 和 `004_review_decision.sql`。接口见 F04 §11.5，权限见 F05 §6.6。
+
+**三个部分。** 评审人是 Workspace 的一种成员关系（Product Governance）。修订的评审状态归 Contract Registry，和修订在同一行。评审的申请、结论和豁免归 Policy & Review，只通过编号指向修订和检查，不设跨 schema 外键。一次提交、撤回或决定同时改这两边，在同一个数据库事务里完成。
+
+**评审人角色。** `workspace_membership.role` 增加 `internal_reviewer`（迁移 007 放宽表约束 `workspace_membership_role_known`）。一个主体可以在同一个 Workspace 同时持有作者和评审人两种成员关系，各是一条记录。评审人能读这个 Workspace 的资产的修订、原文、检查和比较，不能导入修订，也不能发起检查。
+
+**修订的评审状态。** 迁移 `contractregistry/003` 给 `contract_revision` 增加 `status_version`（从 1 开始），并把 `status` 的取值扩大到五种。已有的修订保持 `DRAFT`、版本 1。状态怎么走由表上的两个触发器决定，对任何写入者都一样，包括表的所有者：
+
+| 触发器 | 保证 |
+|---|---|
+| `contract_revision_begins_as_draft`（插入前） | 修订登记时只能是 `DRAFT`、版本 1 |
+| `contract_revision_only_moves`（更新前） | 除 `status` 和 `status_version` 以外的列都不能改；每次更新版本恰好加 1；只允许下表里的转换 |
+
+| 从 → 到 | 由谁触发 |
+|---|---|
+| `DRAFT` → `IN_REVIEW` | 作者提交评审 |
+| `WITHDRAWN` → `IN_REVIEW` | 作者再次提交 |
+| `IN_REVIEW` → `WITHDRAWN` | 申请人撤回 |
+| `IN_REVIEW` → `APPROVED` | 评审人批准 |
+| `IN_REVIEW` → `REJECTED` | 评审人驳回 |
+
+`APPROVED` 和 `REJECTED` 是终点，没有离开它们的转换。违反时数据库报完整性错误（SQLSTATE 23000）。应用在改状态前锁住修订行，按读到的版本做条件更新（§4 INV-04 的状态 CAS）；同时到达的几个请求一个一个判断，后到的看到的是已经改过的状态。
+
+修订的内容不随状态变化：读到的摘要、原文和来源在每个状态下都相同。相同内容再次导入，得到的还是这个修订，带着它现在的状态。
+
+**与 §8.1 的差别。** §8.1 没有 `WITHDRAWN` → `IN_REVIEW`。实现加上它，是因为相同内容在一个来源下只登记一次（§5.7）：如果撤回是终点，那份内容就再也不能送审。`REJECTED` 仍是终点，与 §8.1 一致：被驳回的内容要改过之后作为新修订再提交，原样重交得到的还是被驳回的那个修订。§8.1 里“具名治理员”撤回还没有，只有申请人能撤回。这一处差别待裁决。
+
+**评审的表。** 四张表都只增不改，应用角色只有 `SELECT` 和 `INSERT`。
+
+| 表 | 内容 | 关键约束 |
+|---|---|---|
+| `policyreview.review_request` | 一次评审申请：所属产品、Workspace、资产和修订，依据的检查 `check_run_id` 和它读的内容 `input_digest`，可选的说明，申请时间和申请人，以及 `revision_status_version` | 外键 `review_request_check_fkey (revision_id, check_run_id)` 保证检查是这个修订的；`revision_status_version` 至少是 2；唯一约束 `review_request_once_key (revision_id, revision_status_version)` 见下；说明 1–500 个字符 |
+| `policyreview.review_scope` | 申请批准的范围：受众和环境的组合，每个一行 | 受众是 `public`、`partner`、`internal` 之一，环境是 `sandbox`、`production` 之一；同一申请内不重复 |
+| `policyreview.review_conclusion` | 评审怎么结束：`outcome`、可选的理由、结束时间、结束它的人，批准时还有 `valid_until` | 一个申请至多一个结论（主键是申请编号）；`outcome` 是 `WITHDRAWN`、`APPROVED`、`REJECTED` 之一；只有批准有 `valid_until`，且晚于结束时间；驳回必须有理由；理由 1–1000 个字符 |
+| `policyreview.review_waiver` | 批准时放行的规则：规则编号、理由、可选的补偿措施、到期时间 | 外键指向结论，所以没有结论就没有豁免；同一结论内一条规则只豁免一次；理由和补偿措施各 1–1000 个字符 |
+
+索引 `review_request_history (product_id, api_asset_id, revision_id, requested_at, review_id)` 支撑评审历史。为了让外键 `review_request_check_fkey` 成立，迁移 `policyreview/003` 给 `check_run` 加了唯一约束 `check_run_of_revision_key (revision_id, check_run_id)`。
+
+**一个修订同时只有一个进行中的评审。** `revision_status_version` 是这次申请把修订改成 `IN_REVIEW` 时修订得到的状态版本。Contract Registry 每个版本只给一次，所以 `review_request_once_key` 保证同一次“进入评审”只对应一条申请。撤回后再提交是下一个版本，也就是这个修订的下一条评审记录。
+
+**提交。** 申请以修订的一次检查为依据。检查必须是这个修订的、读的就是修订现在的内容，并且是“现行”的：它的策略摘要等于现在的基线策略，它用的每个工具都是现在的工具版本（§5.8）。不是现行的检查被拒绝，要重新检查。检查里有不可豁免的规则是 `FAIL` 或 `UNKNOWN` 时也被拒绝：没有任何决定能批准这样的修订。范围是 1 到 6 个受众和环境的组合，按受众、环境的顺序保存。
+
+**决定。** 评审人批准或驳回一条进行中的申请。批准再次要求检查是现行的；检查里每条可豁免而没通过（`FAIL` 或 `UNKNOWN`）的规则都要逐条豁免，写明理由和到期时间，可以写补偿措施。不可豁免的规则不能豁免，通过了的规则也不能豁免。`WARN` 和 `NOT_RUN` 的规则不需要豁免：批准绑定在那次检查上，检查如实记着哪些规则没有评估，Release 要不要拦下它们由 Release 决定。批准有到期时间 `valid_until`，最长 365 天；豁免的到期时间不晚于它。驳回必须写理由，没有到期时间和豁免。
+
+批准的对象是那次检查读的内容（`input_digest`）、申请的范围和到期之前的这段时间，不比这更宽（§4 INV-07）。批准之后不能给同一个修订追加范围。
+
+**职责分离。** 决定的人不能是登记这个修订的人、发起那次检查的人，或提交这次申请的人，即使他持有评审人角色。“登记修订的人”是最先提交这份内容的人（来源快照的采集主体）；别人后来再导入相同内容，不改变这一点。比较的是主体（签发方加主体标识）：同一个人用两个账号，这里发现不了。
+
+**读取时的核对。** 读出评审时核对：申请写明了修订、检查和申请人，范围是合法且有序的；结论属于这条申请、不早于申请；批准有晚于结束时间的 `valid_until`，豁免按规则编号有序、有理由、到期时间在批准的有效期内；驳回有理由；驳回和撤回没有 `valid_until` 和豁免。申请记录的 `input_digest` 必须等于修订现在的闭包摘要。任何一项不符，都不返回这条评审。与检查一样，数据同库，这不是防篡改证明。
+
+**事务和事件。** 提交时，申请、范围、修订状态的变化、成功审计和 Outbox 事件一起提交；撤回和决定时，结论、豁免、修订状态的变化、成功审计和事件一起提交。任何一步失败都不留下任何一行，修订的状态也不变。
+
+| 事件（版本 1） | 何时 | 载荷 |
+|---|---|---|
+| `fabric.policyreview.review.requested` | 提交评审 | 事件编号、时间、关联编号、产品、资产、修订、评审编号（聚合编号，聚合版本 1）、检查编号、输入摘要 |
+| `fabric.policyreview.review.withdrawn` | 撤回 | 同上，聚合版本 2，`outcome` 为 `WITHDRAWN` |
+| `fabric.policyreview.review.decided` | 批准或驳回 | 同上，聚合版本 2，`outcome` 为 `APPROVED` 或 `REJECTED`；批准时带 `valid_until` |
+
+事件不含说明、理由、范围和豁免，这些要通过评审接口读取。修订状态的变化没有单独的事件。§12.2 的 `ReviewDecisionRecorded` 对应 `review.decided`；它设想的载荷里有 `target_scope`，现在没有。
+
+**与逻辑模型的对应。** §5.4 的 `ReviewDecision` 在物理上分成申请和结论两张表，`decision_id` 就是 `review_id`；`WaiverRef` 是 `review_waiver`，主键是 `(review_id, rule_id)`，没有单独的 `waiver_ref_id`。逻辑模型没有“评审申请”这个实体，也没有“撤回”这种结论。F04 §7.2 要求豁免绑定 `(rule_id, scope, subject_digest, owner, reviewer, expires_at, reason, compensating_control)`：范围、内容摘要和评审人取自豁免所属的批准，豁免没有单独的 `owner`。
+
+**升级。** 从 0.16.0 升级，执行 `fabric-migrate -apply -grant-to <application_role>`：应用上述四个迁移，并授予应用角色 `contract_revision` 的 `UPDATE` 以及四张评审表的 `SELECT`、`INSERT`。库没有迁移时，新进程拒绝启动并指出缺少的表；迁移了但没有授权时，拒绝启动并列出缺少的权限。旧进程在迁移后的库上照常登记修订，登记的仍是 `DRAFT`、版本 1。但旧进程不认识新的取值，用真实进程走查的结果是：
+
+| 旧进程 | 遇到 | 表现 |
+|---|---|---|
+| 0.16.0 | Workspace 里有评审人 | 列出这个 Workspace 的成员、读取评审人的那条成员关系，返回 500：它不发送自己的契约没有声明的角色。其他操作照常，作者照常导入和读取 |
+| 0.16.0 | 评审人来读修订 | 403：它只认作者 |
+| 0.16.0 | 修订不是 `DRAFT` | 照常返回 200，`status` 是它的契约没有声明的值；相同内容再导入，返回原修订和它现在的状态 |
+| 0.18.0 | 评审已经批准或驳回 | 读这条评审、列出这个修订的评审，返回 500：它把不认识的结论当作损坏的记录。进行中和已撤回的评审照常读，也照常撤回 |
+
+所以应在所有进程升级之后，再授予评审人角色、提交评审和作出决定。
+
+指派评审人、具名治理员撤回、追加审批范围、批准到期后的复审和产品级策略仍待实现。0.21.0 起，准备 Release 和发布时会重新核对批准：策略、评审人的授权、批准和豁免的有效期，见 §5.10。
+
+### 5.10 已实现的 Release 与发布
+
+本节记录管理 API 0.20.0–0.22.0 的实现事实，不替代 §5.4 逻辑模型的候选状态。权威 DDL 为 `migrations/productgovernance/008_publication_roles.sql`、`migrations/contractregistry/004_immutable_release.sql` 和 `migrations/publication/001_targets_and_slots.sql`。接口见 F04 §11.6，权限见 F05 §6.7。
+
+**角色。** 迁移 008 让成员关系可以取 `internal_publisher`（Workspace 的发布人），让产品角色可以取 `security_admin` 和 `security_reviewer`。三种角色都由产品负责人授予；平台管理员仍然只能任命负责人。
+
+**Release。** Release 是一个已批准的修订连同它的证据，记录一次，之后不变。两张表都只增不改，应用角色只有 `SELECT` 和 `INSERT`。
+
+| 表 | 内容 | 关键约束 |
+|---|---|---|
+| `contractregistry.release_artifact` | 制品：`artifact_digest` 和 `payload` | 表约束要求摘要等于内容的 SHA-256；内容 1–65536 字节 |
+| `contractregistry.contract_release` | Release：所属产品、Workspace、资产和修订，评审、检查、策略快照及其摘要，输入摘要，制品摘要，版本号，准备时间和准备人 | `(product_id, api_asset_id, release_version)` 唯一；外键指向制品和修订，修订表为此加了唯一约束 `contract_revision_release_scope_key` |
+
+制品是一份 JSON，格式名 `fabric-openapi-source/v1`：入口路径、规范版本、闭包摘要，以及按路径排序的每个文件的路径、SHA-256 和 Base64 内容。它从登记的原文生成，生成前按 §5.7 的方式核对摘要。字节相同的制品只存一份，可以被多个 Release 引用。登记时允许的最大源文件（16 个文件、共 40 KiB、路径各 200 个字符）生成的制品不超过 65536 字节的上限。版本号在一个资产内唯一：同一版本号、同一修订和评审再次提交，返回已有的 Release；换了修订或评审则拒绝。记录下来的 Release 都是 `READY`，§8.2 的其余状态尚未实现。索引 `contract_release_history (product_id, api_asset_id, prepared_at, release_id)` 支撑 Release 历史。
+
+**使用批准时的重新核对。** 准备 Release、在槽位上激活或恢复、读取已发布的制品，每次都重新核对批准：评审确实批准了这个修订和这份内容；批准和它依赖的豁免都没有过期；检查仍是按现行策略和工具做的；批准人当初据以批准的评审人成员关系仍然有效，撤销后重新授予的不算；发布人没有参与这个修订（不是导入人、检查的发起人、评审的提交人或批准人）。发布到目标时还要求目标的受众和环境在批准的范围内；用另一个修订的 Release 替换槽位上最近生效的 Release 时，批准所依据的检查必须是以那个修订为基线做的。阻断级的规则如果没有工具评估，只有属于“在检查之外把关”的那几类才放行。这对应 INV-07。
+
+**发布。** 四张表：
+
+| 表 | 内容 | 关键约束 |
+|---|---|---|
+| `publication.target` | 发布目标：产品、受众配置、门户标识，登记时的受众和环境，`block_generation` | `(product_id, audience_config_id, portal_key)` 唯一；更新只能把 `block_generation` 加 1（触发器） |
+| `publication.slot` | 槽位，即目标 × 资产：`active_release_id` 和 `generation` | `(target_id, api_asset_id)` 唯一；代次为 0 时没有生效的 Release；更新只能把代次加 1 并换指针（触发器） |
+| `publication.operation` | 槽位上的每一次操作：代次、动作、之前和之后的 Release、理由、操作人、时间和幂等键的摘要 | `(slot_id, generation)` 和 `(slot_id, key_digest)` 唯一；`WITHDRAW` 没有 Release，另两种必有；`WITHDRAW` 和 `RESTORE` 必有理由 |
+| `publication.access_block` | 访问阻断：目标，可选的资产和 Release，代次、理由、建立人和时间，以及解除的代次、理由、解除人和时间 | 同一范围同时只有一个未解除的阻断（部分唯一索引）；只能解除一次，解除人不能是建立人（触发器） |
+
+应用角色对 `operation` 只有 `SELECT` 和 `INSERT`，对另外三张表多一项 `UPDATE`，由触发器限定为上面说的那一步。槽位在第一次激活时建立，代次从 0 开始，每次操作加 1（§4.2 的 Slot = Target × APIAsset）。
+
+**CAS 和幂等。** 改变槽位的请求带上它依据的代次和一个幂等键。事务内先对目标加共享锁、对槽位加排他锁；代次不是当前的就拒绝。同一槽位上同一个键再次到达时，调用人、代次、动作、Release 和理由都相同就返回当时的操作，有一样不同就拒绝。`RESTORE` 只能回到这个槽位上生效过的 Release。槽位、操作记录、审计和 Outbox 事件同事务提交。
+
+**阻断。** 阻断可以覆盖整个目标、目标上的一个资产，或其中一个 Release。它独立于槽位的指针：建立阻断不改变槽位，但被覆盖的制品读不到，也不能激活或恢复。解除之前，被覆盖的槽位必须已经撤销，所以解除阻断本身不会让任何内容重新可见；恢复是另一次带代次的操作，会重新核对批准。建立和解除各使目标的 `block_generation` 加 1。
+
+**读取已发布的制品。** 只通过槽位当前的指针读取。每次读取都在事务内重新核对：调用人的成员关系、受众配置仍然有效且与目标登记时一致、指针、阻断和批准；任何一项不满足都不返回制品。读出的字节与制品摘要再核对一次。目前只有 `internal` 受众的目标可以激活和读取；对外门户的授权和边缘分发尚未接入，所以槽位的交付状态和阻断的边缘状态都如实报告为 `UNKNOWN`。
+
+**事件。** `fabric.contractregistry.release.prepared`，以及 `fabric.publication.target.created`、`slot.activated`、`slot.withdrawn`、`slot.restored`、`access_block.created`、`access_block.cleared`，都是版本 1。载荷是事件编号、时间、关联编号、产品、聚合编号和版本，加上相关的目标、资产、Release 或修订的编号和制品摘要，不含理由和制品内容。
+
+**升级。** 从 0.19.0 升级，执行 `fabric-migrate -apply -grant-to <application_role>`：应用上述三个迁移，并授予应用角色新表的权限。库没有迁移时，新进程拒绝启动并指出缺少的表；迁移了但没有授权时，拒绝启动并列出缺少的权限。0.19.0 的进程在迁移后的库上能继续读写原有的内容，但它不认识新角色：一个 Workspace 有了发布人，它列这个 Workspace 的成员会返回 500；产品有了安全角色，它列产品角色会返回 500。所以应在所有进程升级之后再授予新角色。
+
+**尚未实现。** 批准失效（到期、批准人身份被撤销、策略或检查工具更新）之后重新评审已批准的修订：目前只能改动内容后重新走一遍，后果见 F05 §6.7；`internal` 以外受众的发布、外部授权和边缘分发及其传播证明；Release 的其余状态和撤销；对象存储（制品目前存在 PostgreSQL 里）；发布目标的修改和停用；紧急撤销的分级（F05 §9.1）；Outbox 的投递。
 
 ## 6. 数据权威、制品摘要与可追溯发布链
 
@@ -388,6 +505,8 @@ Git 来源是提交者的声明：仓库的 https 网址（至多 300 个字符�
 | IN_REVIEW → WITHDRAWN | 原提交人/具名治理员 | 尚未有效批准；没有后续 Release 依赖 | 保留历史，不能就地修改原文 |
 
 注意：批准的最终权威是 `ReviewDecision`，Revision 上的 `APPROVED` 是关联状态，不足以单独授权任意发布；同 Revision 若需扩展外部受众，应补充目标范围审批。
+
+已实现的转换见 §5.9：比上表多一条 `WITHDRAWN → IN_REVIEW`（撤回后再次提交），撤回只有申请人能做，已批准修订的范围追加尚未实现。
 
 ### 8.2 Release 状态转换
 

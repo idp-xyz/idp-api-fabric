@@ -3,6 +3,7 @@ package outbox
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"go.idp.xyz/idp-bento-go/eventing"
@@ -20,6 +21,80 @@ type Events struct {
 
 func NewEvents(writer eventing.OutboxWriter, ids ports.Identifiers) *Events {
 	return &Events{writer: writer, ids: ids}
+}
+
+// The events of a review. A review is asked for once and concluded once, so
+// its request is version 1 of it and its conclusion version 2.
+const (
+	ReviewRequested = "fabric.policyreview.review.requested"
+	ReviewWithdrawn = "fabric.policyreview.review.withdrawn"
+	// ReviewDecided announces an approval or a rejection. Which of the two
+	// it was is the outcome it carries.
+	ReviewDecided = "fabric.policyreview.review.decided"
+)
+
+// reviewEvent is what an event of a review carries: what the review is of
+// and what it rests on. It carries no word anybody wrote: a note and a
+// reason are read from the review, by whoever may read it.
+type reviewEvent struct {
+	EventID          string    `json:"event_id"`
+	SchemaVersion    int       `json:"schema_version"`
+	OccurredAt       time.Time `json:"occurred_at"`
+	CorrelationID    string    `json:"correlation_id"`
+	ProductID        string    `json:"product_id"`
+	AssetID          string    `json:"api_asset_id"`
+	RevisionID       string    `json:"revision_id"`
+	AggregateID      string    `json:"aggregate_id"`
+	AggregateVersion int       `json:"aggregate_version"`
+	CheckRunID       string    `json:"check_run_id"`
+	InputDigest      string    `json:"input_digest"`
+	Outcome          string    `json:"outcome,omitempty"`
+	// ValidUntil is until when an approval holds.
+	ValidUntil *time.Time `json:"valid_until,omitempty"`
+}
+
+func (e *Events) review(ctx context.Context, kind string, version int, request domain.ReviewRequest, outcome string, validUntil *time.Time, at time.Time, correlationID string) error {
+	const schema = 1
+	id := e.ids.NewID()
+	payload, err := json.Marshal(reviewEvent{
+		EventID: id, SchemaVersion: schema, OccurredAt: at, CorrelationID: correlationID,
+		ProductID: request.Revision.ProductID, AssetID: request.Revision.AssetID, RevisionID: request.Revision.RevisionID,
+		AggregateID: request.ID, AggregateVersion: version, CheckRunID: request.CheckRunID, InputDigest: request.InputDigest,
+		Outcome: outcome, ValidUntil: validUntil,
+	})
+	if err != nil {
+		return err
+	}
+	return e.writer.Enqueue(ctx, eventing.Envelope{
+		SpecVersion: eventing.SpecVersion, ID: eventing.EventID(id), Source: "idp-api-fabric/policyreview",
+		Type: eventing.EventType(kind), Version: schema, Scope: request.Revision.ProductID,
+		Subject: "review/" + request.ID, PartitionKey: request.Revision.ProductID,
+		OccurredAt: at, RecordedAt: at, CorrelationID: correlationID,
+		ContentType: eventing.JSONContentType, Payload: payload,
+	})
+}
+
+// Requested announces that a decision was asked for.
+func (e *Events) Requested(ctx context.Context, request domain.ReviewRequest, correlationID string) error {
+	return e.review(ctx, ReviewRequested, 1, request, "", nil, request.RequestedAt, correlationID)
+}
+
+// Concluded announces how a review ended: that it was withdrawn, or that it
+// was decided and how. It carries no reason and no waiver.
+func (e *Events) Concluded(ctx context.Context, review domain.Review, correlationID string) error {
+	conclusion := review.Conclusion
+	if conclusion == nil {
+		return errors.New("a review that is not concluded has no conclusion to announce")
+	}
+	kind := ReviewDecided
+	if conclusion.Outcome == domain.ReviewWithdrawn {
+		kind = ReviewWithdrawn
+	}
+	var validUntil *time.Time
+	if !conclusion.ValidUntil.IsZero() {
+		validUntil = &conclusion.ValidUntil
+	}
+	return e.review(ctx, kind, 2, review.Request, string(conclusion.Outcome), validUntil, conclusion.ConcludedAt, correlationID)
 }
 
 func (e *Events) Completed(ctx context.Context, run domain.CheckRun, correlationID string) error {

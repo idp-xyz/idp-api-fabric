@@ -808,9 +808,8 @@ type GrantProductRole struct {
 	Role string
 }
 
-// GrantProductRole makes a principal hold a role in a product: the role of
-// an owner, the only one a product has (FR-003). An owner of that product
-// may (AC-10), and so may a platform administrator (AC-08): naming the
+// GrantProductRole makes a principal hold a role in a product. An owner can
+// assign product roles (AC-10). A platform administrator can appoint owners (AC-08): naming the
 // owners of a product is part of registering it, and it is the only way to
 // repair a product whose owner was mistyped. Naming an owner gives the
 // administrator nothing inside the product. Nothing keeps it from naming
@@ -843,8 +842,13 @@ func (s *ProductGovernance) GrantProductRole(ctx context.Context, command GrantP
 		// An owner acts as one, whatever else it is: an administrator that
 		// owns the product is recorded under the rule of the owners.
 		rule := ruleMembersOfOwnProduct
-		if !seen.standing.Owns() {
-			if !s.deps.Administrators.Includes(command.Caller) {
+		held, err := s.deps.Roles.LockHeldRoles(ctx, productID, command.Caller)
+		if err != nil {
+			return err
+		}
+		if !(domain.Standing{Roles: held}).Owns() {
+			role := domain.Role(command.Role)
+			if !s.deps.Administrators.Includes(command.Caller) || role == domain.RoleSecurityAdmin || role == domain.RoleSecurityReviewer {
 				refused = s.notOwner(seen.standing, ports.AuditEntry{
 					Actor: command.Caller, Action: ActionProductRoleGrant, Rule: ruleNoRole,
 					ProductID: productID, ResourceType: resourceRoleAssignment, CorrelationID: command.CorrelationID,

@@ -16,6 +16,7 @@ type PolicyReview interface {
 	Get(context.Context, ports.Target, string) (domain.CheckRun, error)
 	List(context.Context, checks.ListChecks) (checks.Page, error)
 	Compare(context.Context, ports.Target, string) (checks.RevisionComparison, error)
+	ContractReviews
 }
 
 func checkTarget(ctx context.Context, product, asset, revision string) (ports.Target, error) {
@@ -160,7 +161,7 @@ func showCheckOverview(run domain.Overview) CheckRunOverview {
 func checkProblem(err error) (Problem, bool) {
 	switch {
 	case errors.Is(err, checks.ErrForbidden):
-		return problem(http.StatusForbidden, CodeForbidden, "The caller is not a current internal author of the workspace."), true
+		return problem(http.StatusForbidden, CodeForbidden, "The caller holds no role in the workspace that allows this."), true
 	case errors.Is(err, checks.ErrCheckRunNotFound):
 		return problem(http.StatusNotFound, "CHECK_RUN_NOT_FOUND", ""), true
 	case errors.Is(err, checks.ErrInvalidPage):
@@ -170,6 +171,6 @@ func checkProblem(err error) (Problem, bool) {
 	case errors.Is(err, checks.ErrProductSuspended):
 		return problem(http.StatusConflict, CodeProductNotActive, "The product is suspended and takes no new work."), true
 	default:
-		return Problem{}, false
+		return reviewProblem(err)
 	}
 }

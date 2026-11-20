@@ -65,6 +65,9 @@ import (
 	governance "go.idp.xyz/idp-api-fabric/internal/productgovernance/application"
 	governancedomain "go.idp.xyz/idp-api-fabric/internal/productgovernance/domain"
 	governanceports "go.idp.xyz/idp-api-fabric/internal/productgovernance/ports"
+	publicationoutbox "go.idp.xyz/idp-api-fabric/internal/publication/adapters/outbox"
+	publicationdb "go.idp.xyz/idp-api-fabric/internal/publication/adapters/postgres"
+	publication "go.idp.xyz/idp-api-fabric/internal/publication/application"
 	httptransport "go.idp.xyz/idp-api-fabric/internal/transport/http"
 )
 
@@ -263,35 +266,75 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 		return nil, err
 	}
 	revisionScope := revisionScopes{catalog: apiCatalog, governance: productGovernance}
+	revisions := registrydb.NewRevisions(database.Framework)
+	registryEvents := registryoutbox.NewEvents(outbox, identifiers)
 	contractRegistry, err := registry.New(registry.Dependencies{
 		Transactions: transactions,
 		Scopes:       revisionScope,
 		Capture:      registryopenapi.Capture,
-		Revisions:    registrydb.NewRevisions(database.Framework),
+		Revisions:    revisions,
 		Audit:        audit.recordRevision,
-		Events:       registryoutbox.NewEvents(outbox, identifiers),
+		Events:       registryEvents,
 		Clock:        clock,
 		Identifiers:  identifiers,
 	})
 	if err != nil {
 		return nil, err
 	}
-	policyReview, err := checks.NewChecks(checks.Dependencies{
+	checkedRevisions := checkRevisions{registry: contractRegistry, scopes: revisionScope}
+	checkRuns := checkdb.NewCheckRuns(database.Framework)
+	checkEvents := checkoutbox.NewEvents(outbox, identifiers)
+	contractChecks, err := checks.NewChecks(checks.Dependencies{
 		Transactions: transactions,
-		Revisions:    checkRevisions{registry: contractRegistry, scopes: revisionScope},
-		Checks:       checkdb.NewCheckRuns(database.Framework),
+		Revisions:    checkedRevisions,
+		Checks:       checkRuns,
 		Evaluator:    checkopenapi.Evaluator{},
 		Comparator:   checkopenapi.Comparator{},
 		Audit:        audit.recordCheck,
-		Events:       checkoutbox.NewEvents(outbox, identifiers),
+		Events:       checkEvents,
 		Clock:        clock,
 		Identifiers:  identifiers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	contractReviews, err := checks.NewReviews(checks.ReviewDependencies{
+		Transactions: transactions,
+		Revisions:    checkedRevisions,
+		Checks:       checkRuns,
+		Reviews:      checkdb.NewReviews(database.Framework),
+		Evaluator:    checkopenapi.Evaluator{},
+		Comparator:   checkopenapi.Comparator{},
+		Audit:        audit.recordCheck,
+		Events:       checkEvents,
+		Clock:        clock,
+		Identifiers:  identifiers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	releaseScope := releaseAuthority{revisionScopes: revisionScope, reviews: contractReviews}
+	contractReleases, err := registry.NewReleases(registry.ReleaseDependencies{
+		Transactions: transactions, Scopes: releaseScope, Revisions: revisions,
+		Releases: registrydb.NewReleases(database.Framework), Audit: audit.recordRevision,
+		Events: registryEvents, Clock: clock, Identifiers: identifiers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	publications, err := publication.New(publication.Dependencies{
+		Transactions: transactions, Store: publicationdb.NewStore(database.Framework),
+		Authority: publicationAuthority{releaseAuthority: releaseScope, releases: contractReleases},
+		Audit:     audit.recordPublication, Enqueue: publicationoutbox.NewEvents(outbox, identifiers).Enqueue,
+		Clock: clock, IDs: identifiers,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return httptransport.NewHandler(httptransport.Config{
-		Logger: logger, Build: buildinfo.Current(), Verifier: verifier, Governance: productGovernance, Catalog: apiCatalog, Registry: contractRegistry, PolicyReview: policyReview,
+		Logger: logger, Build: buildinfo.Current(), Verifier: verifier, Governance: productGovernance, Catalog: apiCatalog, Registry: contractRegistry,
+		PolicyReview: policyReview{Checks: contractChecks, Reviews: contractReviews},
+		Releases:     contractReleases, Publication: publications,
 	})
 }
 

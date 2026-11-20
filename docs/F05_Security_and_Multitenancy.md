@@ -192,35 +192,35 @@
 | `GET …/assets/{id}`（AC-14） | 能看到资产 | 知道产品但看不到该资产（包括平台管理员和其他 Workspace 的成员）404 `API_ASSET_NOT_FOUND`；不知道产品 404 `PRODUCT_NOT_FOUND` | 成功不记；拒绝 DENY-03、`asset.read` |
 | `GET …/assets`（AC-13） | 负责人看到全部；成员只看到自己所在 Workspace 的资产；过滤和文本匹配在授权过滤之后 | 没有产品角色和成员关系的平台管理员 403；不知道产品 404 | 成功不记；拒绝 DENY-03、`asset.search` |
 | `POST …/assets/{id}/revisions`（AC-01） | 能看到资产，并在资产所属的 Workspace 持有有效的 `internal_author` 成员关系；产品为 ACTIVE，资产为 `HTTP` | 看不到资产 404；看得到但不是作者（包括负责人和维护者）403 | 成功 AC-01、`revision.create`；403 记 DENY-03、`revision.create`；404 由目录记 DENY-03、`asset.read` |
-| `GET …/revisions`、`GET …/revisions/{id}`、`GET …/revisions/{id}/source`（AC-02） | 同上的作者关系；产品暂停时仍可读 | 同上；修订不属于该资产或不存在，404 `REVISION_NOT_FOUND` | 成功不记；403 记 DENY-03、`revision.read`；404 `REVISION_NOT_FOUND` 不记 |
+| `GET …/revisions`、`GET …/revisions/{id}`、`GET …/revisions/{id}/source`（AC-02） | 能看到资产，并在资产所属的 Workspace 持有有效的 `internal_author` 或 `internal_reviewer` 成员关系（评审人自 0.17.0 起，见 §6.6）；产品暂停时仍可读 | 同上；修订不属于该资产或不存在，404 `REVISION_NOT_FOUND` | 成功不记；403 记 DENY-03、`revision.read`；404 `REVISION_NOT_FOUND` 不记 |
 
 导入时，作者的成员关系在事务内加共享锁后读取：撤销先提交，则导入被拒绝；导入先提交，则修订留下。登记资产对维护者成员关系的处理相同。修订、原文、成功审计和事件同事务提交；授权拒绝单独留证，审计失败仍然拒绝并记录运维错误。输入不合法（400、422）和状态冲突（409，包括 `GIT_ORIGIN_CONFLICT`）不是授权拒绝，不写审计。
 
-**读取原文的权限就是读取修订的权限。** 原文是尚未评审的草稿，目前只有资产所属 Workspace 的作者能读；产品负责人、维护者和平台管理员不能读修订，也就不能读原文。无权读取的人对原文接口得到的回答，与对修订详情接口得到的回答相同。成功读取不写审计，这一点与其他读取一致。AC-16 `contract.download` 指的是已发布 Release 的制品下载，不是这里的草稿原文。
+**读取原文的权限就是读取修订的权限。** 原文可能是尚未评审的草稿，只有资产所属 Workspace 的作者和评审人能读；产品负责人、维护者和平台管理员不能读修订，也就不能读原文。无权读取的人对原文接口得到的回答，与对修订详情接口得到的回答相同。成功读取不写审计，这一点与其他读取一致。AC-16 `contract.download` 指的是已发布 Release 的制品下载，不是这里的草稿原文。
 
 **Git 来源不带来任何权限。** 带 `git_origin` 的导入与普通上传走同一条规则（AC-01），提交者仍须是该 Workspace 的作者。来源是提交者的声明，Fabric 不向仓库核实，所以它不能当作“内容确实来自某个提交”的安全依据；审计记录的是谁提交了这次导入。设计矩阵里的 AC-26（CI 服务身份提交，要求 `source.allowed`）和 AC-27 尚未实现：现在没有 CI 服务身份，也没有“资产允许哪些仓库”的登记。仓库网址只接受不含凭证的 https 形式，带凭证的请求在进入用例前被拒绝，不进入数据库、审计、事件和日志。
 
-**不可信内容。** 导入的文件按 §10 的处理链只做到了前两步的一部分：限定大小、数量和格式，只在提交的文件之内解析引用，不访问文件系统和网络，拒绝远程引用、越界路径、循环和 YAML 别名。原文读取把文件作为 Base64 放在 JSON 里返回，不以文件自身的媒体类型提供，也不渲染。对内容的规则检查见 §6.5；评审尚未实现。
+**不可信内容。** 导入的文件按 §10 的处理链只做到了前两步的一部分：限定大小、数量和格式，只在提交的文件之内解析引用，不访问文件系统和网络，拒绝远程引用、越界路径、循环和 YAML 别名。原文读取把文件作为 Base64 放在 JSON 里返回，不以文件自身的媒体类型提供，也不渲染。对内容的规则检查见 §6.5，评审见 §6.6。
 
-**原文完整性。** 应用角色对三张表只有 `SELECT` 和 `INSERT`，不能改写或删除已登记的原文。读取时重新计算摘要，可发现存储层丢失或改动了文件；摘要与文件同库，这不是防篡改证明（见 F03 §5.7）。核对失败时不返回文件，响应不透露原因，原因写入运维日志。
+**原文完整性。** 应用角色对来源快照和文件两张表只有 `SELECT` 和 `INSERT`，不能改写或删除已登记的原文。对修订表，评审加入后多了 `UPDATE`，表上的触发器只允许它改评审状态，修订指向哪份原文不能改（F03 §5.9）。读取时重新计算摘要，可发现存储层丢失或改动了文件；摘要与文件同库，这不是防篡改证明（见 F03 §5.7）。核对失败时不返回文件，响应不透露原因，原因写入运维日志。
 
 功能回归见 `cmd/fabric-api/catalog_test.go`、`registry_test.go`、`revisionhistory_test.go`、`gitorigin_test.go` 和 `revisionsource_test.go`，使用真实 PostgreSQL 和本地替代 IdP。SEC-01…36 的正式安全验收状态为 NOT_RUN。
 
 ### 6.5 已实现的契约检查权限
 
-本节对应 PR #22–#33。下表路径以 `/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}` 开头。四个操作都以“能读这个修订”为前提，也就是 §6.4 的 AC-02：调用方能看到资产，并在资产所属的 Workspace 持有有效的 `internal_author` 成员关系。每次请求都从数据库读取当时有效的成员关系；分页令牌和以前拿到的检查编号不带来任何权限。
+本节对应 PR #22–#33。下表路径以 `/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}` 开头。四个操作都以“能读这个修订”为前提，也就是 §6.4 的 AC-02：调用方能看到资产，并在资产所属的 Workspace 持有有效的 `internal_author` 或 `internal_reviewer` 成员关系（评审人自 0.17.0 起）。发起检查还要求是作者。每次请求都从数据库读取当时有效的成员关系；分页令牌和以前拿到的检查编号不带来任何权限。
 
 | 操作 | 允许范围与状态条件 | 拒绝 | 运行时审计 |
 |---|---|---|---|
-| `POST …/check-runs` | 能读修订；产品为 ACTIVE | 看不到资产 404；看得到但不是作者（包括负责人和维护者）403；产品已暂停 409 `PRODUCT_NOT_ACTIVE` | 记录了新的检查：AC-02、`revision.check`，资源类型 `CheckRun`；返回已有的检查不记；拒绝见下 |
+| `POST …/check-runs` | 能读修订，并且是作者；产品为 ACTIVE | 看不到资产 404；看得到但读不了修订（包括负责人和维护者）403；能读但不是作者（评审人）403；产品已暂停 409 `PRODUCT_NOT_ACTIVE` | 记录了新的检查：AC-02、`revision.check`，资源类型 `CheckRun`；返回已有的检查不记；拒绝见下 |
 | `GET …/check-runs`、`GET …/check-runs/{id}` | 能读修订；产品暂停时仍可读 | 同上；检查不属于该修订或不存在，404 `CHECK_RUN_NOT_FOUND` | 成功不记；拒绝见下 |
 | `GET …/compatibility` | 能读候选和基线两个修订，两者属于同一资产，所以是同一条规则；产品暂停时仍可比较 | 同上；基线不属于该资产或不存在，404 `REVISION_NOT_FOUND` | 成功不记；拒绝见下 |
 
-**拒绝留下的审计。** 这四个操作都先向 Contract Registry 读修订，无权的调用方在这一步就被拒绝，留下的审计与读修订被拒相同：403 记 DENY-03、`revision.read`，资源类型 `ContractRevision`；看不到资产的 404 由目录记 DENY-03、`asset.read`。只有一种情况记在 `revision.check` 名下：发起检查的人通过了读取，但写入事务里加锁重读成员关系时，它已经被撤销。这时返回 403，审计为 DENY-03、`revision.check`，资源类型 `CheckRun`，不留下检查。撤销先提交，检查被拒绝；检查先提交，检查留下。输入不合法（400）、找不到（404 `REVISION_NOT_FOUND`、`CHECK_RUN_NOT_FOUND`）和产品暂停（409）不是授权拒绝，不写审计。
+**拒绝留下的审计。** 这四个操作都先向 Contract Registry 读修订，无权的调用方在这一步就被拒绝，留下的审计与读修订被拒相同：403 记 DENY-03、`revision.read`，资源类型 `ContractRevision`；看不到资产的 404 由目录记 DENY-03、`asset.read`。有两种情况记在 `revision.check` 名下：发起检查的人能读修订但不是作者（评审人）；或者他通过了读取，但写入事务里加锁重读成员关系时，作者关系已经被撤销。这时返回 403，审计为 DENY-03、`revision.check`，资源类型 `CheckRun`，不留下检查。撤销先提交，检查被拒绝；检查先提交，检查留下。输入不合法（400）、找不到（404 `REVISION_NOT_FOUND`、`CHECK_RUN_NOT_FOUND`）和产品暂停（409）不是授权拒绝，不写审计。
 
 **矩阵里没有对应的条目。** 设计矩阵没有“内部作者发起检查”和“内部作者读取检查”这两行；AC-27 `ci.check.read` 说的是 CI 服务身份读取检查，尚未实现。实现把成功的检查记在 AC-02 名下，而矩阵里 AC-02 的动作是 `revision.read`，审计里的动作名是 `revision.check`。本次没有新增矩阵条目，矩阵状态仍为 PROPOSED；要不要为检查单列条目，待裁决。
 
-**检查不是许可，也没有职责分离。** 发起检查的人就是修订的作者，检查由程序完成，不是评审。检查的结论不批准任何东西，`FAIL` 也不拦下任何现有的操作；独立评审（F04-GOV-025）在每次检查里都是 `NOT_RUN`。只有作者能读检查，产品负责人、维护者和平台管理员读不到规则结论和发现。
+**检查不是许可。** 发起检查的人是修订所在 Workspace 的作者，检查由程序完成，不是评审。检查的结论本身不批准任何东西；提交评审和批准以一次检查为依据，职责分离由评审操作执行（§6.6）。独立评审这条规则（F04-GOV-025）没有工具，在每次检查里仍是 `NOT_RUN`。作者和评审人能读检查，产品负责人、维护者和平台管理员读不到规则结论和发现。
 
 **发现不成为凭证的第二个存放处。** F04-GOV-004 和 F04-GOV-010 的发现只给出文件、行号和种类，说明里不复述命中的凭证或地址；检查记录、审计、事件和日志里因此不会出现它们。凭证本身仍在修订的原文里，而原文不可变：发现之后应当作废那个凭证，再提交不含它的新修订。这两条规则按已知的形式匹配，`PASS` 不证明内容里没有凭证或内网地址。
 
@@ -229,6 +229,85 @@
 **检查记录的完整性。** 应用角色对四张表只有 `SELECT` 和 `INSERT`，不能改写或删除已记录的检查。读取时核对各行是否自洽、是否仍对应那个修订（F03 §5.8）；不符时不返回检查，响应不透露原因，原因写入运维日志。数据与摘要同库，这不是防篡改证明。
 
 功能回归见 `cmd/fabric-api/checks_test.go`、`checkhistory_test.go`、`compatibility_test.go` 和 `comparison_check_test.go`，使用真实 PostgreSQL 和本地替代 IdP，其中包括作者在检查等待期间被撤销，以及事件写入失败时全部证据回滚。SEC-01…36 的正式安全验收状态为 NOT_RUN。
+
+### 6.6 已实现的契约评审权限
+
+本节对应管理 API 0.17.0–0.19.0。下表路径以 `/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}` 开头。评审人是 Workspace 的成员关系 `internal_reviewer`，由产品负责人授予和撤销，与其他成员关系走同一条规则（AC-10）；一个主体可以在同一个 Workspace 同时是作者和评审人。每次请求都从数据库读取当时有效的成员关系。
+
+| 操作 | 允许范围与状态条件 | 拒绝 | 运行时审计 |
+|---|---|---|---|
+| 读修订、原文、检查和比较（AC-02、AC-53） | 作者或评审人（§6.4、§6.5）；产品暂停时仍可读 | 见 §6.4、§6.5 | 成功不记 |
+| `POST …/reviews`（AC-50） | 能读修订，并且是作者；产品为 ACTIVE；修订是 `DRAFT` 或 `WITHDRAWN` | 看不到资产 404；看得到但读不了修订（包括负责人和维护者）403；能读但不是作者（评审人）403 | 成功 AC-50、`review.request`；不是作者 DENY-03、`review.request` |
+| `POST …/reviews/{id}/withdrawal`（AC-51） | 提交这条申请的人，并且仍是作者；产品暂停时仍可撤回 | 不是作者 403；是作者但不是申请人 403 | 成功 AC-51、`review.withdraw`；两种拒绝都是 DENY-03、`review.withdraw` |
+| `POST …/reviews/{id}/decision`（AC-03） | 持有有效的评审人关系，并且没有参与被评审的东西；产品为 ACTIVE | 不是评审人 403 `FORBIDDEN`；是评审人但参与过 403 `REVIEWER_NOT_INDEPENDENT` | 成功 AC-03，批准记 `review.approve`，驳回记 `review.reject`；不是评审人 DENY-03；参与过 DENY-06；动作都是所请求的那一个 |
+| `GET …/reviews`、`GET …/reviews/{id}`（AC-52） | 能读修订；产品暂停时仍可读 | 同读修订；评审不属于该修订或不存在，404 `REVIEW_NOT_FOUND` | 成功不记 |
+
+审计的资源类型是 `Review`，成功时带评审编号，拒绝时不带。成功的审计与评审记录、修订状态和事件同事务提交；拒绝单独留证，审计失败仍然拒绝并记录运维错误。这些操作都先读修订，所以读不了修订的人（负责人、维护者、看不到资产的人）在那一步被拒绝，留下的审计与读修订被拒相同（DENY-03、`revision.read` 或 `asset.read`），不记在评审的动作名下。输入不合法（400、422）、找不到（404）和状态冲突（409）不是授权拒绝，不写审计。
+
+**职责分离。** 作决定的人不能是下面三个人中的任何一个，批准和驳回都一样：
+
+| 参与方式 | 取自 |
+|---|---|
+| 登记了这个修订 | 最先提交这份内容的人，即来源快照的采集主体（F03 §5.7） |
+| 发起了评审所依据的那次检查 | 检查记录的发起人 |
+| 提交了这条评审申请 | 申请记录的申请人 |
+
+持有评审人角色不改变这一点；同时持有作者角色的评审人，对自己没有参与的评审可以作决定。判断在写入事务里进行：先锁住并重读评审人关系，再判断是否参与过。所以撤销先提交，决定被拒绝；决定先提交，决定留下。没有评审人关系又参与过的人，得到的是 403 `FORBIDDEN`，不会被告知职责分离的结论。
+
+这是 AC-35（不得自批准）和威胁登记册 TH-20（作者评审自己的发布）所要求的控制。设计里的 DENY-06 是 `reviewer_is_author_for_high_risk`，只针对高风险；实现不分风险等级，对每一次评审都执行，并把发起检查和提交申请的人也算在内。
+
+它的边界：比较的是主体（签发方加主体标识），同一个人用两个账号，这里发现不了。没有指派：Workspace 的任何一位评审人都可以对任何一条申请作决定，AC-03 条件里的 `review.assignment` 尚未实现。负责人可以在申请提交之后再授予某人评审人角色，授予本身有审计（AC-10、`member.grant`）。评审人在批准之后被撤销，已有的批准不变（F04 §9 的 `REVIEWER_AUTH_REVOKED` 尚未实现）。
+
+**批准的依据和范围。** 批准绑定那次检查读的内容（`input_digest`）、申请的范围与到期时间。审批、准备 Release 和激活 Slot 时重新核对策略与工具。0.21.0 起，使用批准时还会检查批准人当初的授权是否仍然有效、批准和豁免是否过期，见 §6.7。 [发布接口说明](F04_API_Contract_Governance.md#116-已实现的-release-与发布接口)
+
+**豁免的边界。** 只有登记表里标为可豁免的规则能豁免：基线 23 条里的 4 条质量和兼容性规则。类别是 `SECURITY_MANDATORY` 和 `INTEGRITY_MANDATORY` 的 19 条不能豁免，没有任何角色和接口能绕过，包括平台管理员（FR-028）。这 19 条里有一条没通过，修订就不能提交评审。豁免必须写明理由和到期时间，到期时间不晚于批准的到期时间。豁免只属于它所在的那次批准，不能转给别的修订或别的评审。
+
+`NOT_RUN` 的规则不需要豁免。基线里有 10 条规则没有工具，它们都是不可豁免的安全和完整性规则（发布授权、渲染清理、独立评审、公开泄露扫描等）。所以现在的批准不证明这些规则成立；批准记录指向的检查里写着它们没有评估。它们要在各自的环节执行：职责分离已经由本节的决定操作执行，其余的在 Release 和发布实现时执行。
+
+**文字内容。** 说明、理由和补偿措施是人写的文字，各限一行、有长度上限、不含控制字符。它们只通过评审接口返回，能读修订的人才能读；审计和事件里没有这些文字，事件也不含范围和豁免。Fabric 不渲染它们。
+
+**评审记录的完整性。** 应用角色对四张评审表只有 `SELECT` 和 `INSERT`，不能改写或删除申请、范围、结论和豁免；修订的状态只能沿评审往前走，由表上的触发器保证（F03 §5.9）。读取时核对记录是否自洽、是否仍对应修订现在的内容；不符时不返回，响应不透露原因，原因写入运维日志。数据同库，这不是防篡改证明。
+
+**矩阵。** 本次新增四行设计索引，状态为 PROPOSED：AC-50 `review.request`、AC-51 `review.withdraw`、AC-52 `review.read`、AC-53（评审人的 `revision.read`）。运行时审计使用 AC-50、AC-51、AC-03、DENY-03 和 DENY-06。AC-03 在矩阵里的动作是 `release.approve`，实现记的动作名是 `review.approve` 和 `review.reject`，驳回也记在 AC-03 名下；这一处对应关系待裁决。
+
+功能回归见 `cmd/fabric-api/reviewer_test.go`、`reviews_test.go` 和 `reviewdecision_test.go`，使用真实 PostgreSQL 和本地替代 IdP，其中包括参与过的评审人被拒绝、评审人在决定等待期间被撤销、同时到达的几个决定只有一个成功，以及事件写入失败时结论、豁免和状态变化全部回滚。SEC-10 描述的场景有这些回归覆盖，但 SEC-01…36 的正式安全验收状态仍为 NOT_RUN。
+
+### 6.7 已实现的 Release 与发布权限
+
+本节对应管理 API 0.20.0–0.22.0。下表路径以 `/v1/products/{product_id}` 开头。每次请求都从数据库读取当时有效的角色和成员关系；写操作在事务内对调用人的成员关系或产品角色加共享锁后再判断，撤销先提交则操作被拒绝。运行时审计用的是设计矩阵里已有的 AC-04、AC-05、AC-06、AC-07 和 AC-09，本次没有新增矩阵条目，矩阵状态仍为 PROPOSED。
+
+| 操作 | 允许范围与状态条件 | 拒绝 | 运行时审计 |
+|---|---|---|---|
+| 授予 `internal_publisher`（Workspace 成员关系） | 产品负责人，与其他成员关系相同 | 与其他成员关系相同 | 与其他成员关系相同 |
+| 授予 `security_admin`、`security_reviewer`（产品角色） | 产品负责人。平台管理员只能任命负责人，授予安全角色被拒绝 | 403 | 成功 AC-10、`product_role.grant`；拒绝 DENY-03 |
+| `POST …/assets/{id}/releases` | 资产所属 Workspace 的 `internal_publisher`，且没有参与这个修订；产品为 ACTIVE | 看不到资产 404；不是发布人 403；参与过 403 `PUBLISHER_NOT_INDEPENDENT` | 成功 AC-04、`release.prepare`，资源类型 `ContractRelease`；拒绝 DENY-03 |
+| `GET …/assets/{id}/releases`、`…/releases/{release_id}` | 资产所属 Workspace 的作者、评审人或发布人 | 看不到资产 404；其余 403，包括产品负责人和维护者 | 成功不记；拒绝 DENY-03、`release.read` |
+| `POST …/publication-targets` | 产品负责人；产品为 ACTIVE | 403 | 成功 AC-09、`publication.target.create`；拒绝 DENY-03 |
+| `GET …/publication-targets`、`…/{target_id}` | 知道这个产品的人：负责人、任一 Workspace 的成员、持有产品角色的人、平台管理员 | 404 `PRODUCT_NOT_FOUND` | 成功不记；拒绝 DENY-03、`publication.target.read` |
+| `POST …/publication-targets/{t}/assets/{a}/operations` | 资产所属 Workspace 的 `internal_publisher`。激活和恢复还要求产品为 ACTIVE、没有参与这个修订、批准仍然成立（F03 §5.10）、没有阻断 | 不是发布人 403；参与过 403 `PUBLISHER_NOT_INDEPENDENT` | 成功 AC-04（`publication.activate`、`publication.restore`）、AC-05（`publication.withdraw`），资源类型 `PublicationSlot`；403 和被阻断记 DENY-03 |
+| `GET …/assets/{a}`（槽位）、`…/operations` | 资产所属 Workspace 的作者、评审人或发布人 | 403 | 成功不记；拒绝 DENY-03、`publication.read` 或 `publication.history` |
+| `GET …/assets/{a}/artifact` | 同上，并且制品当前可见 | 不是这些成员 403；制品不可见 404 `PUBLISHED_ARTIFACT_NOT_FOUND` | 成功不记；403 和 404 都记 DENY-03、`publication.download` |
+| `POST …/access-blocks` | 产品的 `security_admin` | 403 | 成功 AC-06、`security.block`，资源类型 `AccessBlock`；拒绝 DENY-03 |
+| `POST …/access-blocks/{id}/clearance` | 产品的 `security_reviewer`，且不是建立这个阻断的人 | 不是安全评审人 403；是建立人 403 `SECURITY_REVIEWER_NOT_INDEPENDENT` | 成功 AC-07、`security.unblock`；前者记 DENY-03，后者记 DENY-06 |
+| `GET …/access-blocks`、`…/{id}` | 产品的 `security_admin` 或 `security_reviewer` | 403 | 成功不记；拒绝 DENY-03、`security.block.read` |
+
+**矩阵对不上的地方。** 准备 Release 记在 AC-04 名下，而矩阵里 AC-04 的动作是 `publication.activate`，没有“准备 Release”这一行。登记发布目标记在 AC-09 名下，矩阵里 AC-09 是 `workspace.manage`。矩阵里读 Release 历史和下载制品的角色是 `internal_reader`（AC-15、AC-16），这个角色没有实现：现在能读的是资产所属 Workspace 的作者、评审人和发布人。这几处待裁决。
+
+**职责分离。** 一个修订从写到发布要经过四种人：作者导入和检查，评审人批准，发布人准备 Release 和发布，三者不能是同一个主体（§6.6 的评审人不能是参与人，本节的发布人不能是作者、检查发起人、评审提交人或批准人）。撤销是例外：有发布人角色就能撤销，参与过这个修订的人也可以，因为把内容拿下来不需要第二个人同意。阻断由安全管理员建立，由另一个安全评审人解除，对应 F04-GOV-025 的精神，但那条规则在检查里仍是 `NOT_RUN`。比较的是主体，同一个人的两个账号发现不了。
+
+**批准不是一次性的许可。** 批准在每次使用时重新核对（F03 §5.10）：批准人的评审人成员关系被撤销后，他批准过的修订不能再准备 Release、不能激活或恢复，已经发布的制品也读不到；重新授予不恢复。批准或豁免过期同样处理。这对应 F04 §9 的 `REVIEWER_AUTH_REVOKED` 和 `WAIVER_EXPIRED`。已经记录的 Release 本身不会因此改变或消失，撤销槽位不需要批准仍然成立。
+
+**策略或检查工具更新后也是如此，而且目前没有恢复的办法。** 重新核对时要求批准所依据的检查仍是按现行策略和现行工具版本做的（`POLICY_STALE`）。检查工具的版本是代码里的常量，只要它判定的结果会变就要升版本。升版本的构建上线后，此前批准的修订都不能准备 Release、不能激活或恢复，已经发布的制品读不到；撤销仍然可以。要恢复就需要一次新的批准，但 `APPROVED` 是终点（F03 §5.9），已批准的修订不能再提交评审（F03 §8.1 设想的对已批准修订的补充审批尚未实现），同样的内容重新导入得到的仍是原来的修订，所以只能改动内容后重新导入、检查、评审、准备 Release 和激活。批准到期和评审人身份被撤销之后的恢复受同样的限制。这比 F02 所说的“启动发布前检查授权与策略版本是否仍有效”和矩阵 AC-16 的条件严：设计只要求新的发布重新核对，没有要求已发布的内容下线。是保持现状、只对新的激活核对，还是允许已批准的修订重新评审，待裁决。
+
+**阻断是拒绝优先。** 阻断不改槽位，只在读取和激活时拒绝；它覆盖的制品对所有人都读不到，包括发布人。发布人不能建立或解除阻断，安全角色不能发布，也读不到制品。解除阻断不会让任何内容重新可见：必须先撤销，解除之后再由发布人恢复，恢复时重新核对批准。阻断只作用于 Fabric 自己的源站读取；已经被别处缓存或取走的内容不在它的控制之内，`edge_status` 因此是 `UNKNOWN`（§9.2）。
+
+**读取不泄露原因。** 制品不可见时一律返回 404 `PUBLISHED_ARTIFACT_NOT_FOUND`，不区分是没有发布、被阻断、产品暂停还是批准已不成立；原因在审计和槽位、阻断各自的读取接口里。例外是目标的受众配置已被移除，这时返回 404 `AUDIENCE_CONFIG_NOT_FOUND`。不知道产品的人得到 404 `PRODUCT_NOT_FOUND`。
+
+**目前只有内部受众。** 只有 `internal` 受众的目标能激活和读取，读的人也限于资产所属 Workspace 的成员。`partner` 和 `public` 的目标可以登记，但不能发布：对外读取需要的身份、授权（Developer Access）和边缘分发都还没有。所以这一版没有任何内容离开内部。
+
+**完整性。** Release 和制品只增不改；制品的表约束保证摘要与内容相符，读出时再核对一次。槽位、目标和阻断可以更新，但触发器把更新限定为“代次加 1”和“解除一次”，对所有写入者生效。数据与摘要同库，这不是防篡改证明。
+
+功能回归见 `cmd/fabric-api/` 下的 `publicationroles_test.go`、`releases_test.go`、`publication_test.go`、`slots_test.go` 和 `accessblocks_test.go`，使用真实 PostgreSQL 和本地替代 IdP，其中包括并发激活只有一个成功、事件写入失败时全部回滚、评审人被撤销后制品不可读，以及上表各项操作谁被允许、谁被拒绝；写操作留下的审计记录和事件也逐项核对。使用批准时的逐项核对见 `internal/policyreview/application/approval_test.go`，表上的约束和触发器见 `internal/contractregistry/adapters/postgres/releases_test.go` 和 `internal/publication/adapters/postgres/schema_test.go`。SEC-01…36 的正式安全验收状态为 NOT_RUN。
 
 ## 7. 授权策略表达与执行边界
 

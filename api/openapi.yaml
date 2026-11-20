@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.16.0
+  version: 0.22.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -13,9 +13,9 @@ info:
     never on its title or detail.
 
 
-    A list is read a page at a time, in an order that is fixed: oldest first,
-    by the instant an item was created or granted, and what is of one instant
-    by its identifier. Neither ever changes, so an item keeps its place for as
+    A list is read a page at a time, in a fixed order. Publication and block
+    history use generations. Other lists are oldest first, by the instant an
+    item was created or granted, then by identifier. An item keeps its place for as
     long as it is listed. A page holds at most 100 items and says where the
     next one starts. It starts behind a position, not at an offset: an offset
     shifts whenever an item before it is added or ends, which repeats or skips
@@ -628,8 +628,8 @@ paths:
       operationId: listRevisions
       summary: List draft revision metadata for an API asset
       description: >-
-        A current internal author of the asset's owning workspace can read
-        its revision history, oldest capture first. The cursor belongs to
+        A current internal author or reviewer of the asset's owning workspace
+        can read its revision history, oldest capture first. The cursor belongs to
         this product and asset and conveys no authorization. Results include
         source and closure digests and omit the original source bytes.
       parameters:
@@ -763,8 +763,8 @@ paths:
       operationId: getRevision
       summary: Read one immutable draft revision's metadata
       description: >-
-        A current internal author of the asset's owning workspace can read
-        a revision that belongs to this asset and product. A revision from
+        A current internal author or reviewer of the asset's owning workspace
+        can read a revision that belongs to this asset and product. A revision from
         a different asset is indistinguishable from one that is missing.
         The files the revision was recorded from are read with
         getRevisionSource.
@@ -811,7 +811,8 @@ paths:
       summary: Read the files a draft revision was recorded from
       description: >-
         Whoever may read a revision may read its source: a current internal
-        author of the asset's owning workspace. To anyone else the answer is
+        author or reviewer of the asset's owning workspace. To anyone else the
+        answer is
         the one getRevision gives, and a revision from a different asset is
         indistinguishable from one that is missing.
         The answer holds the closure that was recorded: the entrypoint and
@@ -872,8 +873,8 @@ paths:
       operationId: listRevisionChecks
       summary: List the recorded checks of one draft revision
       description: >-
-        A current author of the asset's workspace can read the check
-        summaries of the revision. The list is ordered by when the checks
+        A current author or reviewer of the asset's workspace can read the
+        check summaries of the revision. The list is ordered by when the checks
         completed and then their identifiers. Its page token belongs to
         this product, asset and revision. Each summary binds the result to
         its input, policy snapshot and tools.
@@ -910,8 +911,9 @@ paths:
       summary: Execute the policy check of a draft revision
       description: >-
         A current author of the asset's workspace can check a revision in an
-        active product. The check reads its recorded files after verifying the
-        source digests. It uses the built-in policy and versioned tools.
+        active product. A reviewer reads checks and runs none. The check
+        reads its recorded files after verifying the source digests. It uses
+        the built-in policy and versioned tools.
         Each rule reports its own result, including NOT_RUN for rules without
         an evaluator. If a baseline is selected, the compatibility rule uses
         the verified source of that revision of the same asset. The result
@@ -972,8 +974,8 @@ paths:
       operationId: getRevisionCheck
       summary: Read a recorded check with its rule outcomes and findings
       description: >-
-        A current author of the asset's workspace can read a check of the
-        requested revision. A check from another revision is reported as
+        A current author or reviewer of the asset's workspace can read a
+        check of the requested revision. A check from another revision is reported as
         missing. The recorded input digest must match the revision's
         reference closure digest.
       parameters:
@@ -1015,8 +1017,8 @@ paths:
       operationId: compareRevisionCompatibility
       summary: Compare a candidate revision with a chosen baseline
       description: >-
-        A current internal author of the asset's workspace can compare two
-        recorded revisions of that asset. The tool verifies both input
+        A current internal author or reviewer of the asset's workspace can
+        compare two recorded revisions of that asset. The tool verifies both input
         closures and reports observed changes and their classification.
         UNKNOWN denotes uncertainty in the comparison. The response names
         the comparator and its version.
@@ -1049,6 +1051,274 @@ paths:
         '403':
           $ref: '#/components/responses/Problem'
         '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+      - $ref: '#/components/parameters/CheckAssetId'
+      - $ref: '#/components/parameters/CheckRevisionId'
+    get:
+      operationId: listRevisionReviews
+      summary: List the reviews of one revision
+      description: >-
+        A current author or reviewer of the asset's workspace can read the
+        reviews of the revision, in the order they were asked for. The page
+        token belongs to this product, asset and revision. Each review says
+        what was asked, on which check, for which scope, and how it ended
+        if it has ended.
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: One page of reviews
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: requestRevisionReview
+      summary: Submit a revision for review
+      description: >-
+        A current author of the asset's workspace asks for a decision on a
+        revision of an active product. The request names one recorded check
+        of the revision, the evidence the decision is asked on, and the scope
+        the revision is to be approved for: audiences in environments.
+        The check has to be one a decision can rest on now. A check made
+        under another policy or by other tool versions than a check is made
+        with today is refused (409 POLICY_STALE): run the check again. A
+        check in which a rule that nothing waives failed or could not be
+        judged is refused as well (409 REVIEW_BLOCKED): no decision approves
+        such a revision.
+        A revision is submitted as a DRAFT, or again once it was WITHDRAWN,
+        and is IN_REVIEW from then on, under this one request. Any other
+        status is refused (409 REVISION_STATUS_CONFLICT). The request, the
+        status of the revision, the audit record and the event commit
+        together.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewSubmission'
+      responses:
+        '201':
+          description: The review was asked for and the revision is in review
+          headers:
+            Location:
+              required: true
+              schema:
+                type: string
+                format: uri-reference
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+      - $ref: '#/components/parameters/CheckAssetId'
+      - $ref: '#/components/parameters/CheckRevisionId'
+      - $ref: '#/components/parameters/ReviewId'
+    get:
+      operationId: getRevisionReview
+      summary: Read one review of a revision
+      description: >-
+        A current author or reviewer of the asset's workspace can read a
+        review of the requested revision. A review of another revision is
+        reported as missing.
+      responses:
+        '200':
+          description: The review
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/withdrawal:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+      - $ref: '#/components/parameters/CheckAssetId'
+      - $ref: '#/components/parameters/CheckRevisionId'
+      - $ref: '#/components/parameters/ReviewId'
+    post:
+      operationId: withdrawRevisionReview
+      summary: Take a request for review back
+      description: >-
+        Whoever asked for a review takes the request back, while still an
+        author of the asset's workspace and while the review is open. The
+        revision is WITHDRAWN from then on and can be submitted again. A
+        review that has its conclusion is refused (409 REVIEW_CONCLUDED).
+        The conclusion, the status of the revision, the audit record and
+        the event commit together.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewWithdrawal'
+      responses:
+        '200':
+          description: The review was withdrawn
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/decision:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+      - $ref: '#/components/parameters/CheckAssetId'
+      - $ref: '#/components/parameters/CheckRevisionId'
+      - $ref: '#/components/parameters/ReviewId'
+    post:
+      operationId: decideRevisionReview
+      summary: Approve or reject a revision that is in review
+      description: >-
+        A current reviewer of the asset's workspace decides on an open
+        review of a revision of an active product: the revision is APPROVED
+        or REJECTED from then on, and the review is concluded.
+        Whoever decides had no part in what is reviewed. Whoever recorded
+        the revision, ran the check the review rests on or asked for the
+        review is refused (403 REVIEWER_NOT_INDEPENDENT), also when holding
+        the reviewer role.
+        A rejection says why. An approval rests on the check of the review
+        as the request did: a check that is no longer one of the current
+        policy and tool versions is refused (409 POLICY_STALE). Every rule
+        that failed or could not be judged in that check is waived by name,
+        for a reason and until a time; an approval that leaves one out is
+        refused (409 WAIVER_REQUIRED). A rule that nothing waives is never
+        waived (422 WAIVER_FORBIDDEN). A rule that warns and a rule no tool
+        evaluates need no waiver: the approval is bound to the check that
+        says so. The approval holds until valid_until, which is at most a
+        year away, and no waiver outlives it.
+        An approval approves the content the check read, for the scope of
+        the request and until its time, and nothing wider. The conclusion,
+        its waivers, the status of the revision, the audit record and the
+        event commit together.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewDecision'
+      responses:
+        '200':
+          description: The review was decided
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+        '422':
           $ref: '#/components/responses/Problem'
         '503':
           $ref: '#/components/responses/Problem'
@@ -1645,6 +1915,587 @@ paths:
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/releases:
+    get:
+      operationId: listContractReleases
+      summary: List the immutable releases of the API asset
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/CheckAssetId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: A page of releases
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractReleaseList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: prepareContractRelease
+      summary: Prepare an immutable release from an approved revision
+      description: >-
+        A publisher of the asset workspace supplies the revision, review and a
+        version label unique to the asset. The artifact is verified before the
+        release is recorded. Repeating the same preparation returns the release.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/CheckAssetId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReleasePreparation'
+      responses:
+        '200':
+          description: The release was recorded already
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractRelease'
+        '201':
+          description: The release is ready
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+            Location:
+              required: true
+              schema:
+                type: string
+                format: uri-reference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractRelease'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}:
+    get:
+      operationId: getContractRelease
+      summary: Read the metadata of a release of the API asset
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/CheckAssetId'
+        - $ref: '#/components/parameters/ContractReleaseId'
+      responses:
+        '200':
+          description: The release and its evidence references
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractRelease'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets:
+    get:
+      operationId: listPublicationTargets
+      summary: List a product's publication targets
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: A page of targets
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationTargetList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: registerPublicationTarget
+      summary: Register a publication target for a product
+      description: >-
+        The product owner binds a portal key to an active audience configuration.
+        A repeated registration of the same configuration and key is idempotent.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicationTargetRegistration'
+      responses:
+        '200':
+          description: The target was recorded already
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationTarget'
+        '201':
+          description: The target was registered
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+            Location:
+              required: true
+              schema:
+                type: string
+                format: uri-reference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationTarget'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets/{publication_target_id}:
+    get:
+      operationId: getPublicationTarget
+      summary: Read the scope and block generation of a target
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+      responses:
+        '200':
+          description: The target
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationTarget'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}:
+    get:
+      operationId: getPublicationSlot
+      summary: Read the current publication slot and its generation
+      description: >-
+        An asset without a slot starts at generation zero. The slot reports the
+        database pointer, origin blocking, and the separate delivery status.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+        - $ref: '#/components/parameters/CheckAssetId'
+      responses:
+        '200':
+          description: The current slot or its empty state
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationSlot'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}/operations:
+    get:
+      operationId: listPublicationOperations
+      summary: Read a page of slot operations in generation order
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+        - $ref: '#/components/parameters/CheckAssetId'
+        - $ref: '#/components/parameters/AfterGeneration'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: A page of slot operations
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationOperationList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: changePublicationSlot
+      summary: Activate, withdraw or restore a release with compare-and-swap
+      description: >-
+        The publisher names the generation read from the slot. Activation or
+        restoration requires a current approval for this target. A restoration
+        references a release already active on this slot. External audiences
+        need delivery and access adapters. A completed retry returns the
+        original operation.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+        - $ref: '#/components/parameters/CheckAssetId'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: A stable retry key scoped to the slot. Reusing it with changed input is a conflict.
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9._:-]{1,128}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicationChange'
+      responses:
+        '200':
+          description: The committed slot operation
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationOperation'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '412':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}/artifact:
+    get:
+      operationId: getPublishedArtifact
+      summary: Download the current authorized artifact from the internal origin
+      description: >-
+        The octet stream contains the exact release JSON bytes. The origin checks
+        current workspace membership, target configuration, the active pointer,
+        approval and effective access blocks on every read.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+        - $ref: '#/components/parameters/CheckAssetId'
+      responses:
+        '200':
+          description: The verified artifact bytes
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+            X-Artifact-Digest:
+              description: SHA-256 of the response bytes, formatted as sha256 followed by a colon and lowercase hex.
+              required: true
+              schema:
+                $ref: '#/components/schemas/ContractDigest'
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks:
+    get:
+      operationId: listAccessBlocks
+      summary: Read a page of access blocks in block generation order
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+        - $ref: '#/components/parameters/AfterGeneration'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: A page of access blocks
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessBlockList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: blockPublicationAccess
+      summary: Immediately block an origin target, slot or release
+      description: >-
+        A product security administrator supplies a reason. Omitting the asset
+        blocks the target. Naming an asset blocks its slot, or one release when
+        a release ID is given. The slot generation and pointer stay independent.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessBlockRequest'
+      responses:
+        '200':
+          description: An identical block is active already
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessBlock'
+        '201':
+          description: The block is active at the origin
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+            Location:
+              required: true
+              schema:
+                type: string
+                format: uri-reference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessBlock'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks/{access_block_id}:
+    get:
+      operationId: getAccessBlock
+      summary: Read a block and its clearance history
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+        - $ref: '#/components/parameters/AccessBlockId'
+      responses:
+        '200':
+          description: The access block
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessBlock'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks/{access_block_id}/clearance:
+    post:
+      operationId: clearPublicationAccessBlock
+      summary: Clear an access block after its affected releases are withdrawn
+      description: >-
+        A separate product security reviewer supplies a reason. Clearing a
+        block does not restore a slot. Restore uses a new CAS and revalidates
+        approval and artifact integrity.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+        - $ref: '#/components/parameters/AccessBlockId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessBlockClearance'
+      responses:
+        '200':
+          description: The cleared access block
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessBlock'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
 components:
   securitySchemes:
     bearerToken:
@@ -1657,6 +2508,32 @@ components:
         them. A token says who the caller is; what the caller may do is
         decided from the roles the server holds, so no scope is declared.
   parameters:
+    PublicationTargetId:
+      name: publication_target_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Identifier'
+    ContractReleaseId:
+      name: release_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Identifier'
+    AccessBlockId:
+      name: access_block_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Identifier'
+    AfterGeneration:
+      name: after_generation
+      in: query
+      description: The last generation from the previous page, or zero for the first page.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
     CheckAssetId:
       name: api_asset_id
       in: path
@@ -1665,6 +2542,12 @@ components:
         $ref: '#/components/schemas/Identifier'
     CheckRevisionId:
       name: revision_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Identifier'
+    ReviewId:
+      name: review_id
       in: path
       required: true
       schema:
@@ -1775,6 +2658,284 @@ components:
       schema:
         $ref: '#/components/schemas/EntityTag'
   schemas:
+    ReleasePreparation:
+      type: object
+      additionalProperties: false
+      required: [revision_id, review_id, version]
+      properties:
+        revision_id:
+          $ref: '#/components/schemas/Identifier'
+        review_id:
+          $ref: '#/components/schemas/Identifier'
+        version:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$'
+    ContractRelease:
+      type: object
+      additionalProperties: false
+      required: [release_id, product_id, workspace_id, api_asset_id, revision_id, review_id, check_run_id, policy_snapshot_id, policy_digest, ref_closure_digest, artifact_digest, artifact_format, version, status, prepared_at, prepared_by]
+      properties:
+        release_id:
+          $ref: '#/components/schemas/Identifier'
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        workspace_id:
+          $ref: '#/components/schemas/Identifier'
+        api_asset_id:
+          $ref: '#/components/schemas/Identifier'
+        revision_id:
+          $ref: '#/components/schemas/Identifier'
+        review_id:
+          $ref: '#/components/schemas/Identifier'
+        check_run_id:
+          $ref: '#/components/schemas/Identifier'
+        policy_snapshot_id:
+          $ref: '#/components/schemas/Identifier'
+        policy_digest:
+          $ref: '#/components/schemas/ContractDigest'
+        ref_closure_digest:
+          $ref: '#/components/schemas/ContractDigest'
+        artifact_digest:
+          $ref: '#/components/schemas/ContractDigest'
+        artifact_format:
+          type: string
+          enum: [fabric-openapi-source/v1]
+        version:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$'
+        status:
+          type: string
+          enum: [READY]
+        prepared_at:
+          type: string
+          format: date-time
+        prepared_by:
+          $ref: '#/components/schemas/Principal'
+    ContractReleaseList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContractRelease'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
+    PublicationTargetRegistration:
+      type: object
+      additionalProperties: false
+      required: [audience_config_id, portal_key]
+      properties:
+        audience_config_id:
+          $ref: '#/components/schemas/Identifier'
+        portal_key:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
+    PublicationTarget:
+      type: object
+      additionalProperties: false
+      required: [publication_target_id, product_id, audience_config_id, portal_key, audience, environment, block_generation, created_at]
+      properties:
+        publication_target_id:
+          $ref: '#/components/schemas/Identifier'
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        audience_config_id:
+          $ref: '#/components/schemas/Identifier'
+        portal_key:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
+        audience:
+          $ref: '#/components/schemas/Audience'
+        environment:
+          $ref: '#/components/schemas/Environment'
+        block_generation:
+          type: integer
+          format: int64
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+    PublicationTargetList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicationTarget'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
+    PublicationSlot:
+      type: object
+      additionalProperties: false
+      required: [publication_target_id, api_asset_id, generation, visibility, blocked, delivery_status]
+      properties:
+        slot_id:
+          $ref: '#/components/schemas/Identifier'
+        publication_target_id:
+          $ref: '#/components/schemas/Identifier'
+        api_asset_id:
+          $ref: '#/components/schemas/Identifier'
+        generation:
+          type: integer
+          format: int64
+          minimum: 0
+        visibility:
+          type: string
+          enum: [EMPTY, ACTIVE, WITHDRAWN]
+        active_release_id:
+          $ref: '#/components/schemas/Identifier'
+        blocked:
+          type: boolean
+        delivery_status:
+          type: string
+          enum: [UNKNOWN]
+    PublicationChange:
+      type: object
+      additionalProperties: false
+      required: [action, expected_generation]
+      properties:
+        action:
+          $ref: '#/components/schemas/PublicationAction'
+        expected_generation:
+          type: integer
+          format: int64
+          minimum: 0
+        release_id:
+          $ref: '#/components/schemas/Identifier'
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    PublicationOperation:
+      type: object
+      additionalProperties: false
+      required: [operation_id, slot_id, generation, action, performed_by, occurred_at]
+      properties:
+        operation_id:
+          $ref: '#/components/schemas/Identifier'
+        slot_id:
+          $ref: '#/components/schemas/Identifier'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        action:
+          $ref: '#/components/schemas/PublicationAction'
+        previous_release_id:
+          $ref: '#/components/schemas/Identifier'
+        release_id:
+          $ref: '#/components/schemas/Identifier'
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+        performed_by:
+          $ref: '#/components/schemas/Principal'
+        occurred_at:
+          type: string
+          format: date-time
+    PublicationOperationList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicationOperation'
+        next_after_generation:
+          type: integer
+          format: int64
+          minimum: 1
+    AccessBlockRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        api_asset_id:
+          $ref: '#/components/schemas/Identifier'
+        release_id:
+          $ref: '#/components/schemas/Identifier'
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    AccessBlockClearance:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    AccessBlock:
+      type: object
+      additionalProperties: false
+      required: [access_block_id, publication_target_id, product_id, generation, reason, created_by, created_at, status, edge_status]
+      properties:
+        access_block_id:
+          $ref: '#/components/schemas/Identifier'
+        publication_target_id:
+          $ref: '#/components/schemas/Identifier'
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        api_asset_id:
+          $ref: '#/components/schemas/Identifier'
+        release_id:
+          $ref: '#/components/schemas/Identifier'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+        created_by:
+          $ref: '#/components/schemas/Principal'
+        created_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [BLOCK_ACTIVE, CLEARED]
+        edge_status:
+          type: string
+          enum: [UNKNOWN]
+        clear_generation:
+          type: integer
+          format: int64
+          minimum: 1
+        clear_reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+        cleared_by:
+          $ref: '#/components/schemas/Principal'
+        cleared_at:
+          type: string
+          format: date-time
+    AccessBlockList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccessBlock'
+        next_after_generation:
+          type: integer
+          format: int64
+          minimum: 1
+    PublicationAction:
+      type: string
+      enum: [ACTIVATE, WITHDRAW, RESTORE]
     Health:
       type: object
       required: [status]
@@ -1946,11 +3107,11 @@ components:
     ProductRole:
       description: >-
         What a principal is in a product. A product_owner manages the
-        workspaces of the product, their members and who else owns it. The
-        role says nothing about another product and nothing about the
-        platform.
+        workspaces, their members and product roles. A security_admin blocks
+        publication access. A security_reviewer independently clears blocks.
+        These roles are scoped to the product.
       type: string
-      enum: [product_owner]
+      enum: [product_owner, security_admin, security_reviewer]
     ProductRoleGrant:
       type: object
       additionalProperties: false
@@ -2139,6 +3300,192 @@ components:
             $ref: '#/components/schemas/CheckRunOverview'
         next_page_token:
           $ref: '#/components/schemas/NextPageToken'
+    ReviewTarget:
+      description: >-
+        One audience in one environment. The scope of a review is the targets
+        a revision is asked to be approved for.
+      type: object
+      additionalProperties: false
+      required: [audience, environment]
+      properties:
+        audience:
+          $ref: '#/components/schemas/Audience'
+        environment:
+          $ref: '#/components/schemas/Environment'
+    ReviewNote:
+      description: >-
+        What whoever asks for a review says of it: one line of 1 to 500
+        characters, without control characters and without space around it.
+      type: string
+      minLength: 1
+      maxLength: 500
+      pattern: '^[^\p{Cc}]+$'
+    ReviewReason:
+      description: >-
+        Why a review ended the way it did: one line of 1 to 1000 characters,
+        without control characters and without space around it.
+      type: string
+      minLength: 1
+      maxLength: 1000
+      pattern: '^[^\p{Cc}]+$'
+    ReviewSubmission:
+      type: object
+      additionalProperties: false
+      required: [check_run_id, scope]
+      properties:
+        check_run_id:
+          description: A recorded check of the revision, the evidence the decision is asked on
+          $ref: '#/components/schemas/Identifier'
+        scope:
+          description: What the revision is to be approved for, each target once
+          type: array
+          minItems: 1
+          maxItems: 6
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/ReviewTarget'
+        note:
+          $ref: '#/components/schemas/ReviewNote'
+    ReviewWithdrawal:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          $ref: '#/components/schemas/ReviewReason'
+    ReviewStatus:
+      description: >-
+        Where a review stands: IN_REVIEW until it is concluded, then the way
+        it ended.
+      type: string
+      enum: [IN_REVIEW, WITHDRAWN, APPROVED, REJECTED]
+    ReviewRuleId:
+      description: The identifier a rule has in the policy of a check, as in F04-GOV-013
+      type: string
+      maxLength: 60
+      pattern: '^[A-Z][A-Z0-9]*(-[A-Z0-9]+)+$'
+    ReviewWaiver:
+      description: >-
+        One rule that did not pass and that an approval lets stand: why, what
+        makes up for it if anything does, and until when. A waiver is part of
+        the approval it was given with and holds for nothing else.
+      type: object
+      additionalProperties: false
+      required: [rule_id, reason, expires_at]
+      properties:
+        rule_id:
+          $ref: '#/components/schemas/ReviewRuleId'
+        reason:
+          $ref: '#/components/schemas/ReviewReason'
+        compensating_control:
+          description: What makes up for the rule that does not hold
+          $ref: '#/components/schemas/ReviewReason'
+        expires_at:
+          description: Until when the waiver holds, no later than the approval
+          type: string
+          format: date-time
+    ReviewDecision:
+      description: >-
+        What a reviewer decides with. A rejection gives its reason and nothing
+        else. An approval gives the time it holds until and a waiver for
+        every rule that failed or could not be judged; its reason is
+        optional.
+      type: object
+      additionalProperties: false
+      required: [outcome]
+      properties:
+        outcome:
+          type: string
+          enum: [APPROVED, REJECTED]
+        reason:
+          $ref: '#/components/schemas/ReviewReason'
+        valid_until:
+          description: Until when an approval holds, at most a year away
+          type: string
+          format: date-time
+        waivers:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ReviewWaiver'
+    ReviewConclusion:
+      description: >-
+        How a review ended, who ended it and when. An approval says until
+        when it holds and which rules it waives.
+      type: object
+      additionalProperties: false
+      required: [outcome, concluded_by, concluded_at]
+      properties:
+        outcome:
+          type: string
+          enum: [WITHDRAWN, APPROVED, REJECTED]
+        reason:
+          $ref: '#/components/schemas/ReviewReason'
+        concluded_by:
+          $ref: '#/components/schemas/Principal'
+        concluded_at:
+          type: string
+          format: date-time
+        valid_until:
+          description: Until when an approval holds
+          type: string
+          format: date-time
+        waivers:
+          description: The waivers of an approval, by rule
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ReviewWaiver'
+    Review:
+      description: >-
+        A request for a decision on one revision, with its conclusion once it
+        has one. Neither changes once it is recorded.
+      type: object
+      additionalProperties: false
+      required: [review_id, product_id, api_asset_id, revision_id, check_run_id, input_digest, status, scope, requested_by, requested_at]
+      properties:
+        review_id:
+          $ref: '#/components/schemas/Identifier'
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        api_asset_id:
+          $ref: '#/components/schemas/Identifier'
+        revision_id:
+          $ref: '#/components/schemas/Identifier'
+        check_run_id:
+          description: The check the decision is asked on
+          $ref: '#/components/schemas/Identifier'
+        input_digest:
+          description: What that check read, the reference closure digest of the revision
+          $ref: '#/components/schemas/ContractDigest'
+        status:
+          $ref: '#/components/schemas/ReviewStatus'
+        scope:
+          description: The targets the revision is to be approved for, by audience and then environment
+          type: array
+          minItems: 1
+          maxItems: 6
+          items:
+            $ref: '#/components/schemas/ReviewTarget'
+        note:
+          $ref: '#/components/schemas/ReviewNote'
+        requested_by:
+          $ref: '#/components/schemas/Principal'
+        requested_at:
+          type: string
+          format: date-time
+        conclusion:
+          $ref: '#/components/schemas/ReviewConclusion'
+    ReviewList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Review'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
     ContractSourcePath:
       type: string
       minLength: 1
@@ -2290,8 +3637,13 @@ components:
           format: int64
           minimum: 1
         status:
+          description: >-
+            Where the revision stands in its review. It is recorded as a
+            DRAFT, is IN_REVIEW from the moment it is submitted, and leaves
+            the review APPROVED, REJECTED or WITHDRAWN. Its content is the
+            same at every status.
           type: string
-          enum: [DRAFT]
+          enum: [DRAFT, IN_REVIEW, APPROVED, REJECTED, WITHDRAWN]
         source_kind:
           description: GIT for a source submitted with a Git origin, UPLOAD for one without
           type: string
@@ -2542,11 +3894,12 @@ components:
       description: >-
         What a member is in a workspace. A workspace_maintainer creates and
         updates the API assets of the workspace; an internal_author writes and
-        reads its contract revisions. Neither manages the workspace or its
-        members, which is for the owners of the product, and neither says
-        anything about another workspace.
+        reads its contract revisions and runs their checks; an
+        internal_reviewer reads revisions and checks and decides on reviews.
+        An internal_publisher prepares and publishes approved releases.
+        Owners of the product manage the workspace and its members.
       type: string
-      enum: [workspace_maintainer, internal_author]
+      enum: [workspace_maintainer, internal_author, internal_reviewer, internal_publisher]
     MembershipGrant:
       type: object
       additionalProperties: false

@@ -66,6 +66,12 @@ matrix_rows_raw=[
  ('product_owner','ProductAudienceConfig','audience_config.change','internal','role.product_owner & product.same & product.active & row.in_force & cas.match','control-plane','DENY_OR_404'),
  ('product_owner','ProductAudienceConfig','audience_config.remove','internal','role.product_owner & product.same & row.in_force','control-plane','DENY_OR_404'),
  ('product_owner','Product','product.change_brand','internal','role.product_owner & product.same & product.active & cas.match','control-plane','DENY_OR_404'),
+ # Contract review operations in F05 section 6.6. A decision reuses AC-03;
+ # refusals reuse DENY-03 and, for a reviewer who had a part, DENY-06.
+ ('internal_author','Review','review.request','internal','workspace.member & product.same & product.active & action.role & revision.draft_or_withdrawn & check.current & check.unblocked','control-plane','DENY_OR_404'),
+ ('internal_author','Review','review.withdraw','internal','workspace.member & product.same & action.role & review.requester_same & review.open','control-plane','DENY_OR_404'),
+ ('internal_author_or_reviewer','Review','review.read','internal','workspace.member & product.same & action.role & revision.same','control-plane','DENY_OR_404'),
+ ('internal_reviewer','ContractRevision','revision.read','internal','workspace.member & product.same & action.role','control-plane','DENY_OR_404'),
 ]
 m=[]
 for i,(principal,res,action,channel,conditions,pep,fail) in enumerate(matrix_rows_raw,1):

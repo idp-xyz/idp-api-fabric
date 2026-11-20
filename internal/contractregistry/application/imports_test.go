@@ -24,6 +24,9 @@ var shipments = domain.AssetRef{ProductID: "product", WorkspaceID: "workspace", 
 // reached it.
 type registryDouble struct {
 	author, active, http bool
+	// reviewer says that the caller holds the reviewer grant of the
+	// workspace. A reviewer reads revisions and imports none.
+	reviewer bool
 	// recorded and stored are the revision the store holds and the files it
 	// holds for it.
 	recorded *domain.Revision
@@ -47,6 +50,22 @@ func (d *registryDouble) Asset(context.Context, ports.ScopeQuery) (ports.AssetSc
 
 func (d *registryDouble) Author(context.Context, domain.Principal, domain.AssetRef, bool) (bool, bool, error) {
 	return d.author, d.active, nil
+}
+
+func (d *registryDouble) Reader(context.Context, domain.Principal, domain.AssetRef) (bool, error) {
+	return d.author || d.reviewer, nil
+}
+
+// Move makes the move the model allows of the revision the store holds.
+func (d *registryDouble) Move(_ context.Context, asset domain.AssetRef, id, to string) (domain.Revision, bool, error) {
+	if d.recorded == nil || d.recorded.ID != id || d.recorded.Asset != asset {
+		return domain.Revision{}, false, nil
+	}
+	if err := domain.Move(d.recorded.Status, to); err != nil {
+		return domain.Revision{}, true, err
+	}
+	d.recorded.Status, d.recorded.StatusVersion = to, d.recorded.StatusVersion+1
+	return *d.recorded, true, nil
 }
 
 func (d *registryDouble) capture(entrypoint string, files []domain.SourceFile) (domain.SourceSnapshot, error) {

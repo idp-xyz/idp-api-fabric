@@ -48,3 +48,7 @@ AC-46,authenticated,ProductAudienceConfig,audience_config.list,internal,product.
 AC-47,product_owner,ProductAudienceConfig,audience_config.change,internal,role.product_owner & product.same & product.active & row.in_force & cas.match,control-plane,DENY_OR_404,PROPOSED,NOT_RUN
 AC-48,product_owner,ProductAudienceConfig,audience_config.remove,internal,role.product_owner & product.same & row.in_force,control-plane,DENY_OR_404,PROPOSED,NOT_RUN
 AC-49,product_owner,Product,product.change_brand,internal,role.product_owner & product.same & product.active & cas.match,control-plane,DENY_OR_404,PROPOSED,NOT_RUN
+AC-50,internal_author,Review,review.request,internal,workspace.member & product.same & product.active & action.role & revision.draft_or_withdrawn & check.current & check.unblocked,control-plane,DENY_OR_404,PROPOSED,NOT_RUN
+AC-51,internal_author,Review,review.withdraw,internal,workspace.member & product.same & action.role & review.requester_same & review.open,control-plane,DENY_OR_404,PROPOSED,NOT_RUN
+AC-52,internal_author_or_reviewer,Review,review.read,internal,workspace.member & product.same & action.role & revision.same,control-plane,DENY_OR_404,PROPOSED,NOT_RUN
+AC-53,internal_reviewer,ContractRevision,revision.read,internal,workspace.member & product.same & action.role,control-plane,DENY_OR_404,PROPOSED,NOT_RUN

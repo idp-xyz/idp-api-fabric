@@ -18,6 +18,12 @@ import (
 // something else in the same files is another version: a rule it judges
 // differently, a credential form it learns, a bound it changes. A test
 // holds the behaviour to the version.
+//
+// Raising it has a price since releases are published (F05 §6.7). A release
+// is prepared, activated, restored and served only while the check its
+// approval rests on was made by the tools of today. When a build with
+// another version starts, every approval given before stops counting, and
+// what is published under those approvals is served no more.
 const Version = "3"
 
 // Evaluator is the built-in tool of a check.

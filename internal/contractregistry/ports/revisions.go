@@ -40,4 +40,10 @@ type Revisions interface {
 	// domain.RecordedSource to say.
 	Files(context.Context, domain.AssetRef, string) ([]domain.SourceFile, error)
 	List(context.Context, domain.AssetRef, *Position, int) ([]domain.Revision, error)
+	// Move changes the status of a revision of the asset within the
+	// transaction of the caller and returns the revision as it is then. It
+	// reports false for a revision the asset does not have, and fails with
+	// domain.ErrStatusConflict for one that is not at a status the move
+	// starts from.
+	Move(ctx context.Context, asset domain.AssetRef, id, to string) (domain.Revision, bool, error)
 }

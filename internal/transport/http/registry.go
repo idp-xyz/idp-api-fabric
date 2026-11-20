@@ -166,9 +166,11 @@ func registryProblem(err error) (Problem, bool) {
 	case errors.Is(err, errInvalidSourceEncoding):
 		return problem(http.StatusBadRequest, CodeRequestInvalid, "A contract file must contain standard Base64."), true
 	case errors.Is(err, registry.ErrForbidden):
-		return problem(http.StatusForbidden, CodeForbidden, "The caller is not a current internal author of the workspace."), true
+		return problem(http.StatusForbidden, CodeForbidden, "The caller holds no role in the workspace that allows this."), true
 	case errors.Is(err, registry.ErrRevisionNotFound):
 		return problem(http.StatusNotFound, "REVISION_NOT_FOUND", ""), true
+	case errors.Is(err, domain.ErrStatusConflict):
+		return problem(http.StatusConflict, "REVISION_STATUS_CONFLICT", "The revision is not at a status this starts from."), true
 	case errors.Is(err, registry.ErrInvalidPage):
 		return problem(http.StatusBadRequest, CodeRequestInvalid, ""), true
 	case errors.Is(err, registry.ErrProductSuspended):

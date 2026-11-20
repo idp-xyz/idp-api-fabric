@@ -67,7 +67,7 @@ func TestAMembershipIsGrantedInForceAtVersionOne(t *testing.T) {
 func TestAMembershipGrantsOneOfTheRolesOfAWorkspace(t *testing.T) {
 	product, workspace := engineering(t)
 
-	if want := []Role{"workspace_maintainer", "internal_author"}; !slices.Equal(WorkspaceRoles(), want) {
+	if want := []Role{"workspace_maintainer", "internal_author", "internal_reviewer", "internal_publisher"}; !slices.Equal(WorkspaceRoles(), want) {
 		t.Fatalf("the roles of a workspace are %v, want %v", WorkspaceRoles(), want)
 	}
 	for _, role := range WorkspaceRoles() {

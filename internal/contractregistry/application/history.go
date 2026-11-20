@@ -106,8 +106,14 @@ func (r *Registry) readAsset(ctx context.Context, query ports.ScopeQuery) (domai
 	if err != nil {
 		return domain.AssetRef{}, err
 	}
-	if _, err := r.requireAuthor(ctx, query.Caller, scope.Asset, false); err != nil {
-		return domain.AssetRef{}, r.auditRefusal(ctx, query, readAction, err)
+	// Whoever writes the revisions of the workspace reads them, and so does
+	// whoever reviews them.
+	reader, err := r.deps.Scopes.Reader(ctx, query.Caller, scope.Asset)
+	if err != nil {
+		return domain.AssetRef{}, err
+	}
+	if !reader {
+		return domain.AssetRef{}, r.auditRefusal(ctx, query, readAction, ErrForbidden)
 	}
 	return scope.Asset, nil
 }

@@ -77,7 +77,34 @@ func TestTheSourceOfARevisionIsReadForWhoMayReadTheRevision(t *testing.T) {
 		untouched(t, double, 0)
 	})
 
-	t.Run("someone who is no author", func(t *testing.T) {
+	// Whoever reviews the revisions of the workspace reads them and their
+	// files, the history included, and imports none.
+	t.Run("a reviewer who is no author", func(t *testing.T) {
+		double := holding(files)
+		double.author, double.reviewer = false, true
+		registry := newRegistry(t, double)
+		if got, err := registry.GetRevisionSource(context.Background(), query, revisionID); err != nil || len(got.Files) != 2 {
+			t.Errorf("read %d files, want the two of the revision: %v", len(got.Files), err)
+		}
+		if got, err := registry.GetRevision(context.Background(), query, revisionID); err != nil || got != revision {
+			t.Errorf("read %+v, want the revision: %v", got, err)
+		}
+		if _, err := registry.ListRevisions(context.Background(), application.ListRevisions{ScopeQuery: query}); err != nil {
+			t.Errorf("the history: %v, want it read", err)
+		}
+		untouched(t, double, 0)
+		if _, err := registry.ImportRevision(context.Background(), importOf(domain.GitOrigin{})); !errors.Is(err, application.ErrForbidden) {
+			t.Errorf("an import by a reviewer: %v, want %v", err, application.ErrForbidden)
+		}
+		if want := (ports.AuditEntry{Query: query, Action: "revision.create", Rule: "DENY-03"}); len(double.audited) != 1 || double.audited[0] != want {
+			t.Errorf("audited %+v, want %+v", double.audited, want)
+		}
+		if double.captured != 0 || len(double.drafts) != 0 || double.events != 0 {
+			t.Errorf("captured %d, stored %d, announced %d for a reviewer", double.captured, len(double.drafts), double.events)
+		}
+	})
+
+	t.Run("someone who is neither author nor reviewer", func(t *testing.T) {
 		double := holding(files)
 		double.author = false
 		got, err := newRegistry(t, double).GetRevisionSource(context.Background(), query, revisionID)

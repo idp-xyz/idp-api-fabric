@@ -11,12 +11,14 @@ import (
 // other product and nothing about the platform.
 const RoleProductOwner Role = "product_owner"
 
-// ProductRoles returns the roles a role assignment can grant: the roles of a
-// product, of which there is one so far. A role is added with the first rule
-// that needs it. The contract of the API states the same roles, and a test
-// holds the two together.
+const (
+	RoleSecurityAdmin    Role = "security_admin"
+	RoleSecurityReviewer Role = "security_reviewer"
+)
+
+// ProductRoles returns the roles a product assignment can grant.
 func ProductRoles() []Role {
-	return []Role{RoleProductOwner}
+	return []Role{RoleProductOwner, RoleSecurityAdmin, RoleSecurityReviewer}
 }
 
 var (

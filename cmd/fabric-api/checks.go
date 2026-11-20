@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"errors"
+	"strings"
 
 	registryopenapi "go.idp.xyz/idp-api-fabric/internal/contractregistry/adapters/openapi"
 	registry "go.idp.xyz/idp-api-fabric/internal/contractregistry/application"
 	registrydomain "go.idp.xyz/idp-api-fabric/internal/contractregistry/domain"
 	registryports "go.idp.xyz/idp-api-fabric/internal/contractregistry/ports"
+	checks "go.idp.xyz/idp-api-fabric/internal/policyreview/application"
 	checkdomain "go.idp.xyz/idp-api-fabric/internal/policyreview/domain"
 	checkports "go.idp.xyz/idp-api-fabric/internal/policyreview/ports"
 	governancedomain "go.idp.xyz/idp-api-fabric/internal/productgovernance/domain"
@@ -81,10 +83,44 @@ func (r checkRevisions) LockAuthor(ctx context.Context, caller checkdomain.Princ
 	}, true)
 }
 
+func (r checkRevisions) LockReviewer(ctx context.Context, caller checkdomain.Principal, revision checkdomain.RevisionRef) (bool, bool, error) {
+	return r.scopes.governance.RevisionReviewer(ctx, governancedomain.Principal(caller),
+		governancedomain.ProductID(revision.ProductID), governancedomain.WorkspaceID(revision.WorkspaceID))
+}
+
+// Recorder is who recorded the revision, for whoever may read it.
+func (r checkRevisions) Recorder(ctx context.Context, target checkports.Target) (checkdomain.Principal, error) {
+	revision, err := r.registry.GetRevision(ctx, checkScope(target), target.RevisionID)
+	if err != nil {
+		return checkdomain.Principal{}, err
+	}
+	return checkdomain.Principal(revision.CreatedBy), nil
+}
+
+// Move changes the status the registry keeps of the revision, in the
+// transaction of the review that asks for it.
+func (r checkRevisions) Move(ctx context.Context, revision checkdomain.RevisionRef, to string) (int64, error) {
+	moved, err := r.registry.MoveRevision(ctx, registrydomain.AssetRef{
+		ProductID: revision.ProductID, WorkspaceID: revision.WorkspaceID, AssetID: revision.AssetID,
+	}, revision.RevisionID, to)
+	return moved.StatusVersion, err
+}
+
+// policyReview is the use cases of Policy & Review as the transport reaches
+// them: those of a check and those of a review.
+type policyReview struct {
+	*checks.Checks
+	*checks.Reviews
+}
+
 func (a auditTrail) recordCheck(ctx context.Context, entry checkports.AuditEntry) error {
+	resource, id := "CheckRun", entry.CheckRunID
+	if entry.ReviewID != "" || strings.HasPrefix(entry.Action, "review.") {
+		resource, id = "Review", entry.ReviewID
+	}
 	return a.Record(ctx, governanceports.AuditEntry{
 		Actor: governancedomain.Principal(entry.Target.Caller), ProductID: governancedomain.ProductID(entry.Target.ProductID),
-		ResourceType: "CheckRun", ResourceID: entry.CheckRunID, CorrelationID: entry.Target.CorrelationID,
+		ResourceType: resource, ResourceID: id, CorrelationID: entry.Target.CorrelationID,
 		Action: entry.Action, Rule: entry.Rule, Allowed: entry.Allowed,
 	})
 }
