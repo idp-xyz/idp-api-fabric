@@ -24,12 +24,14 @@ const (
 	// (F05 §6, AC-03). It writes no revision and runs no check: whoever
 	// reviews is not whoever wrote (F05 §6.2).
 	RoleInternalReviewer Role = "internal_reviewer"
+	// RoleInternalPublisher prepares and publishes approved releases for the workspace.
+	RoleInternalPublisher Role = "internal_publisher"
 )
 
 // WorkspaceRoles returns the roles a membership can grant. The contract of
 // the API states the same roles, and a test holds the two together.
 func WorkspaceRoles() []Role {
-	return []Role{RoleWorkspaceMaintainer, RoleInternalAuthor, RoleInternalReviewer}
+	return []Role{RoleWorkspaceMaintainer, RoleInternalAuthor, RoleInternalReviewer, RoleInternalPublisher}
 }
 
 // ErrMembershipRevoked reports a change to a membership that was revoked

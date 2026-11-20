@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.19.0
+  version: 0.20.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -2222,11 +2222,11 @@ components:
     ProductRole:
       description: >-
         What a principal is in a product. A product_owner manages the
-        workspaces of the product, their members and who else owns it. The
-        role says nothing about another product and nothing about the
-        platform.
+        workspaces, their members and product roles. A security_admin blocks
+        publication access. A security_reviewer independently clears blocks.
+        These roles are scoped to the product.
       type: string
-      enum: [product_owner]
+      enum: [product_owner, security_admin, security_reviewer]
     ProductRoleGrant:
       type: object
       additionalProperties: false
@@ -3010,12 +3010,11 @@ components:
         What a member is in a workspace. A workspace_maintainer creates and
         updates the API assets of the workspace; an internal_author writes and
         reads its contract revisions and runs their checks; an
-        internal_reviewer reads those revisions and checks, and writes and
-        runs none. None of them manages the workspace or its members, which
-        is for the owners of the product, and none says anything about
-        another workspace.
+        internal_reviewer reads revisions and checks and decides on reviews.
+        An internal_publisher prepares and publishes approved releases.
+        Owners of the product manage the workspace and its members.
       type: string
-      enum: [workspace_maintainer, internal_author, internal_reviewer]
+      enum: [workspace_maintainer, internal_author, internal_reviewer, internal_publisher]
     MembershipGrant:
       type: object
       additionalProperties: false

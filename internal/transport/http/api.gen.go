@@ -286,13 +286,19 @@ func (e ProductStatus) Valid() bool {
 
 // Defines values for ProductRole.
 const (
-	ProductRoleProductOwner ProductRole = "product_owner"
+	ProductRoleProductOwner     ProductRole = "product_owner"
+	ProductRoleSecurityAdmin    ProductRole = "security_admin"
+	ProductRoleSecurityReviewer ProductRole = "security_reviewer"
 )
 
 // Valid indicates whether the value is a known member of the ProductRole enum.
 func (e ProductRole) Valid() bool {
 	switch e {
 	case ProductRoleProductOwner:
+		return true
+	case ProductRoleSecurityAdmin:
+		return true
+	case ProductRoleSecurityReviewer:
 		return true
 	default:
 		return false
@@ -380,6 +386,7 @@ func (e WorkspaceStatus) Valid() bool {
 // Defines values for WorkspaceRole.
 const (
 	WorkspaceRoleInternalAuthor      WorkspaceRole = "internal_author"
+	WorkspaceRoleInternalPublisher   WorkspaceRole = "internal_publisher"
 	WorkspaceRoleInternalReviewer    WorkspaceRole = "internal_reviewer"
 	WorkspaceRoleWorkspaceMaintainer WorkspaceRole = "workspace_maintainer"
 )
@@ -388,6 +395,8 @@ const (
 func (e WorkspaceRole) Valid() bool {
 	switch e {
 	case WorkspaceRoleInternalAuthor:
+		return true
+	case WorkspaceRoleInternalPublisher:
 		return true
 	case WorkspaceRoleInternalReviewer:
 		return true
@@ -824,7 +833,7 @@ type Membership struct {
 	// ProductID The product the workspace belongs to
 	ProductID Identifier `json:"product_id"`
 
-	// Role What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions and runs their checks; an internal_reviewer reads those revisions and checks, and writes and runs none. None of them manages the workspace or its members, which is for the owners of the product, and none says anything about another workspace.
+	// Role What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions and runs their checks; an internal_reviewer reads revisions and checks and decides on reviews. An internal_publisher prepares and publishes approved releases. Owners of the product manage the workspace and its members.
 	Role WorkspaceRole `json:"role"`
 
 	// WorkspaceID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
@@ -836,7 +845,7 @@ type MembershipGrant struct {
 	// Member A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
 	Member Principal `json:"member"`
 
-	// Role What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions and runs their checks; an internal_reviewer reads those revisions and checks, and writes and runs none. None of them manages the workspace or its members, which is for the owners of the product, and none says anything about another workspace.
+	// Role What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions and runs their checks; an internal_reviewer reads revisions and checks and decides on reviews. An internal_publisher prepares and publishes approved releases. Owners of the product manage the workspace and its members.
 	Role WorkspaceRole `json:"role"`
 }
 
@@ -930,7 +939,7 @@ type ProductRegistration struct {
 	ProductKey Key `json:"product_key"`
 }
 
-// ProductRole What a principal is in a product. A product_owner manages the workspaces of the product, their members and who else owns it. The role says nothing about another product and nothing about the platform.
+// ProductRole What a principal is in a product. A product_owner manages the workspaces, their members and product roles. A security_admin blocks publication access. A security_reviewer independently clears blocks. These roles are scoped to the product.
 type ProductRole string
 
 // ProductRoleAssignment A principal that holds a role in one product. It is in force from granted_at until it is revoked; a revoked assignment is not shown.
@@ -943,7 +952,7 @@ type ProductRoleAssignment struct {
 	// ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 	ProductID Identifier `json:"product_id"`
 
-	// Role What a principal is in a product. A product_owner manages the workspaces of the product, their members and who else owns it. The role says nothing about another product and nothing about the platform.
+	// Role What a principal is in a product. A product_owner manages the workspaces, their members and product roles. A security_admin blocks publication access. A security_reviewer independently clears blocks. These roles are scoped to the product.
 	Role ProductRole `json:"role"`
 
 	// RoleAssignmentID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
@@ -963,7 +972,7 @@ type ProductRoleGrant struct {
 	// Principal A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
 	Principal Principal `json:"principal"`
 
-	// Role What a principal is in a product. A product_owner manages the workspaces of the product, their members and who else owns it. The role says nothing about another product and nothing about the platform.
+	// Role What a principal is in a product. A product_owner manages the workspaces, their members and product roles. A security_admin blocks publication access. A security_reviewer independently clears blocks. These roles are scoped to the product.
 	Role ProductRole `json:"role"`
 }
 
@@ -1153,7 +1162,7 @@ type WorkspaceList struct {
 	NextPageToken *NextPageToken `json:"next_page_token,omitempty"`
 }
 
-// WorkspaceRole What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions and runs their checks; an internal_reviewer reads those revisions and checks, and writes and runs none. None of them manages the workspace or its members, which is for the owners of the product, and none says anything about another workspace.
+// WorkspaceRole What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions and runs their checks; an internal_reviewer reads revisions and checks and decides on reviews. An internal_publisher prepares and publishes approved releases. Owners of the product manage the workspace and its members.
 type WorkspaceRole string
 
 // AudienceConfigID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
