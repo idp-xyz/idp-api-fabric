@@ -212,6 +212,7 @@ func shownReview(conclusion map[string]any) map[string]any {
 	shown := map[string]any{
 		"review_id": reviewID, "product_id": productID, "api_asset_id": apiAssetID, "revision_id": revisionID,
 		"check_run_id": checkRunID, "input_digest": "sha256:" + fmt.Sprintf("%064x", 2), "status": "IN_REVIEW",
+		"supplementary": false,
 		"scope": []any{
 			map[string]any{"audience": "internal", "environment": "production"},
 			map[string]any{"audience": "partner", "environment": "sandbox"},
@@ -286,6 +287,18 @@ func TestAReviewIsAskedAndAnsweredAsTheContractStatesIt(t *testing.T) {
 		Body: submission(func(body map[string]any) { delete(body, "note") })})
 	if _, said := members(t, recorder)["note"]; recorder.Code != http.StatusCreated || said || fake.asked[0].Note != "" {
 		t.Errorf("a review without a note: %d %s, asked %+v", recorder.Code, recorder.Body, fake.asked)
+	}
+
+	// A review of a revision that was approved already is asked the same
+	// way and answered as the supplementary review it is.
+	supplementary := askedReview()
+	supplementary.Request.Supplementary = true
+	fake = &contractReviews{review: supplementary}
+	recorder = newReviewService(t, fake).do(t, call{Method: http.MethodPost, Target: reviews, Token: alice.Subject, Body: submission(nil)})
+	shown := shownReview(nil)
+	shown["supplementary"] = true
+	if got := members(t, recorder); recorder.Code != http.StatusCreated || !reflect.DeepEqual(got, shown) || !reflect.DeepEqual(fake.asked[0], want) {
+		t.Errorf("a supplementary review: %d\n %v\nwant 201\n %v", recorder.Code, got, shown)
 	}
 
 	// What the contract does not state is refused before the use case.
@@ -541,8 +554,11 @@ func TestTheContractStatesAReviewAsItIsAnswered(t *testing.T) {
 	if declared == nil {
 		t.Fatal("the contract declares no review")
 	}
+	again := approvedReview()
+	again.Request.Supplementary = true
 	for name, review := range map[string]reviewdomain.Review{
 		"asked": askedReview(), "withdrawn": withdrawnReview(), "approved": approvedReview(), "rejected": rejectedReview(),
+		"approved again": again,
 	} {
 		fake := &contractReviews{review: review}
 		recorder := newReviewService(t, fake).do(t, call{Method: http.MethodGet, Target: reviews + "/" + reviewID, Token: alice.Subject})
@@ -566,6 +582,8 @@ func TestTheContractStatesAReviewAsItIsAnswered(t *testing.T) {
 		"no check":                               without("check_run_id"),
 		"no input digest":                        without("input_digest"),
 		"no status":                              without("status"),
+		"no word on whether it is supplementary": without("supplementary"),
+		"a supplementary that is no yes or no":   func(body map[string]any) { body["supplementary"] = "yes" },
 		"no scope":                               without("scope"),
 		"nobody who asked":                       without("requested_by"),
 		"no time it was asked at":                without("requested_at"),
@@ -633,6 +651,8 @@ func TestWhatAReviewRefusesIsAProblemOfItsOwnCode(t *testing.T) {
 		"rules nothing waives that failed": {fmt.Errorf("%w: F04-GOV-004, F04-GOV-010", reviewdomain.ErrReviewBlocked), http.StatusConflict, "REVIEW_BLOCKED",
 			"In the check, rules that nothing waives failed or could not be judged. No decision approves such a revision."},
 		"a review that is concluded": {reviewdomain.ErrReviewConcluded, http.StatusConflict, "REVIEW_CONCLUDED", "The review was concluded already."},
+		"another review that is open": {checks.ErrReviewInProgress, http.StatusConflict, "REVIEW_IN_PROGRESS",
+			"A review of the revision is open. A revision is under one review at a time."},
 		"a revision at another status": {fmt.Errorf("%w: it is APPROVED", registrydomain.ErrStatusConflict), http.StatusConflict, "REVISION_STATUS_CONFLICT",
 			"The revision is not at a status this starts from."},
 		"a review the model refuses":  {fmt.Errorf("%w: a target is named twice", reviewdomain.ErrInvalidReview), http.StatusUnprocessableEntity, CodeRequestUnprocessable, ""},

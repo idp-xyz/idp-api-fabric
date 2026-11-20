@@ -48,7 +48,12 @@ type reviewEvent struct {
 	AggregateVersion int       `json:"aggregate_version"`
 	CheckRunID       string    `json:"check_run_id"`
 	InputDigest      string    `json:"input_digest"`
-	Outcome          string    `json:"outcome,omitempty"`
+	// Supplementary is said of a review of a revision that was approved
+	// already: whoever reads the event knows that the status of the
+	// revision did not move with it. An event of any other review does not
+	// carry the member, and reads as it did before there were such reviews.
+	Supplementary bool   `json:"supplementary,omitempty"`
+	Outcome       string `json:"outcome,omitempty"`
 	// ValidUntil is until when an approval holds.
 	ValidUntil *time.Time `json:"valid_until,omitempty"`
 }
@@ -60,7 +65,7 @@ func (e *Events) review(ctx context.Context, kind string, version int, request d
 		EventID: id, SchemaVersion: schema, OccurredAt: at, CorrelationID: correlationID,
 		ProductID: request.Revision.ProductID, AssetID: request.Revision.AssetID, RevisionID: request.Revision.RevisionID,
 		AggregateID: request.ID, AggregateVersion: version, CheckRunID: request.CheckRunID, InputDigest: request.InputDigest,
-		Outcome: outcome, ValidUntil: validUntil,
+		Supplementary: request.Supplementary, Outcome: outcome, ValidUntil: validUntil,
 	})
 	if err != nil {
 		return err

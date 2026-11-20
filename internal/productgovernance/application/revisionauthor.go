@@ -7,9 +7,16 @@ import (
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/domain"
 )
 
+// revisionReaders are the roles of a workspace that read its contract
+// revisions. Maintaining the workspace is not one of them, and neither is
+// owning the product.
+var revisionReaders = []domain.Role{domain.RoleInternalAuthor, domain.RoleInternalReviewer, domain.RoleInternalPublisher}
+
 // RevisionReader reports whether actor may read the contract revisions of
-// the workspace now: it holds the author or the reviewer grant there. A
-// reviewer reads what it is to decide on; it writes no revision. A read
+// the workspace now: it holds the author, the reviewer or the publisher
+// grant there. A reviewer reads what it is to decide on, and a publisher
+// what it is to release: the revision, its checks and the reviews that
+// approved it, which a release names. Neither writes a revision. A read
 // takes no lock: the grant is read again with every request.
 func (s *ProductGovernance) RevisionReader(ctx context.Context, actor domain.Principal,
 	productID domain.ProductID, workspaceID domain.WorkspaceID) (bool, error) {
@@ -18,8 +25,7 @@ func (s *ProductGovernance) RevisionReader(ctx context.Context, actor domain.Pri
 		return false, err
 	}
 	return slices.ContainsFunc(memberships, func(membership domain.Membership) bool {
-		return membership.WorkspaceID == workspaceID &&
-			(membership.Role == domain.RoleInternalAuthor || membership.Role == domain.RoleInternalReviewer)
+		return membership.WorkspaceID == workspaceID && slices.Contains(revisionReaders, membership.Role)
 	}), nil
 }
 

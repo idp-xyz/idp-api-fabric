@@ -68,6 +68,13 @@ func (d *registryDouble) Move(_ context.Context, asset domain.AssetRef, id, to s
 	return *d.recorded, true, nil
 }
 
+func (d *registryDouble) Hold(_ context.Context, asset domain.AssetRef, id string) (domain.Revision, bool, error) {
+	if d.recorded == nil || d.recorded.ID != id || d.recorded.Asset != asset {
+		return domain.Revision{}, false, nil
+	}
+	return *d.recorded, true, nil
+}
+
 func (d *registryDouble) capture(entrypoint string, files []domain.SourceFile) (domain.SourceSnapshot, error) {
 	d.captured++
 	return domain.CaptureSource(entrypoint, "3.1.2", files)
