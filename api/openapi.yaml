@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.23.0
+  version: 0.24.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -628,8 +628,8 @@ paths:
       operationId: listRevisions
       summary: List draft revision metadata for an API asset
       description: >-
-        A current internal author or reviewer of the asset's owning workspace
-        can read its revision history, oldest capture first. The cursor belongs to
+        A current internal author, reviewer or publisher of the asset's owning
+        workspace can read its revision history, oldest capture first. The cursor belongs to
         this product and asset and conveys no authorization. Results include
         source and closure digests and omit the original source bytes.
       parameters:
@@ -763,8 +763,8 @@ paths:
       operationId: getRevision
       summary: Read one immutable draft revision's metadata
       description: >-
-        A current internal author or reviewer of the asset's owning workspace
-        can read a revision that belongs to this asset and product. A revision from
+        A current internal author, reviewer or publisher of the asset's owning
+        workspace can read a revision that belongs to this asset and product. A revision from
         a different asset is indistinguishable from one that is missing.
         The files the revision was recorded from are read with
         getRevisionSource.
@@ -811,7 +811,8 @@ paths:
       summary: Read the files a draft revision was recorded from
       description: >-
         Whoever may read a revision may read its source: a current internal
-        author or reviewer of the asset's owning workspace. To anyone else the
+        author, reviewer or publisher of the asset's owning workspace. To
+        anyone else the
         answer is
         the one getRevision gives, and a revision from a different asset is
         indistinguishable from one that is missing.
@@ -873,8 +874,8 @@ paths:
       operationId: listRevisionChecks
       summary: List the recorded checks of one draft revision
       description: >-
-        A current author or reviewer of the asset's workspace can read the
-        check summaries of the revision. The list is ordered by when the checks
+        A current author, reviewer or publisher of the asset's workspace can
+        read the check summaries of the revision. The list is ordered by when the checks
         completed and then their identifiers. Its page token belongs to
         this product, asset and revision. Each summary binds the result to
         its input, policy snapshot and tools.
@@ -974,8 +975,8 @@ paths:
       operationId: getRevisionCheck
       summary: Read a recorded check with its rule outcomes and findings
       description: >-
-        A current author or reviewer of the asset's workspace can read a
-        check of the requested revision. A check from another revision is reported as
+        A current author, reviewer or publisher of the asset's workspace can
+        read a check of the requested revision. A check from another revision is reported as
         missing. The recorded input digest must match the revision's
         reference closure digest.
       parameters:
@@ -1017,8 +1018,8 @@ paths:
       operationId: compareRevisionCompatibility
       summary: Compare a candidate revision with a chosen baseline
       description: >-
-        A current internal author or reviewer of the asset's workspace can
-        compare two recorded revisions of that asset. The tool verifies both input
+        A current internal author, reviewer or publisher of the asset's
+        workspace can compare two recorded revisions of that asset. The tool verifies both input
         closures and reports observed changes and their classification.
         UNKNOWN denotes uncertainty in the comparison. The response names
         the comparator and its version.
@@ -1065,8 +1066,8 @@ paths:
       operationId: listRevisionReviews
       summary: List the reviews of one revision
       description: >-
-        A current author or reviewer of the asset's workspace can read the
-        reviews of the revision, in the order they were asked for. The page
+        A current author, reviewer or publisher of the asset's workspace can
+        read the reviews of the revision, in the order they were asked for. The page
         token belongs to this product, asset and revision. Each review says
         what was asked, on which check, for which scope, and how it ended
         if it has ended.
@@ -1183,8 +1184,9 @@ paths:
       operationId: getRevisionReview
       summary: Read one review of a revision
       description: >-
-        A current author or reviewer of the asset's workspace can read a
-        review of the requested revision. A review of another revision is
+        A current author, reviewer or publisher of the asset's workspace can
+        read a review of the requested revision. A publisher reads here
+        which review approved the revision it is to release. A review of another revision is
         reported as missing.
       responses:
         '200':
