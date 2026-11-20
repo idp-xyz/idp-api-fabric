@@ -39,6 +39,12 @@ PR #10 和 #11 的实现详见 [F03 §5.6](docs/F03_Domain_and_Data_Model.md#56-
 
 实现详见 [F03 §5.10](docs/F03_Domain_and_Data_Model.md#510-已实现的-release-与发布)、[F04 §11.6](docs/F04_API_Contract_Governance.md#116-已实现的-release-与发布接口) 和 [F05 §6.7](docs/F05_Security_and_Multitenancy.md#67-已实现的-release-与发布权限)。授权矩阵没有新增条目。
 
+管理 API 0.23.0–0.25.0 让已批准的修订可以再次评审：复审不改变修订的状态，批准之后修订多一次批准，范围、到期时间和豁免各自独立（0.23.0）；资产所属 Workspace 的发布人能读修订、原文、检查、比较和评审，应答与作者相同，写操作仍然不允许（0.24.0）；读槽位时，如果它指向的 Release 的批准对这个目标已经不成立，应答里的 `approval_problem` 说明原因，取值是激活这个 Release 会得到的错误码（0.25.0）。没有新的操作。
+
+从 0.22.0 升级只需要 `fabric-migrate -apply`，不需要重新授权：应用 `policyreview/005`。库没迁移时新进程拒绝启动并指出这一步没有记录。新旧进程可以混跑，但复审要由新进程来结束：0.22.0 的进程在迁移后的库上读复审时不带 `supplementary`，决定和撤回都返回 409 `REVISION_STATUS_CONFLICT`，数据不受影响，第一次评审和制品照常。
+
+实现详见 [F03 §5.11](docs/F03_Domain_and_Data_Model.md#511-已实现的复审与批准状态的可见性)、[F04 §11.7](docs/F04_API_Contract_Governance.md#117-已实现的复审接口与批准状态) 和 [F05 §6.8](docs/F05_Security_and_Multitenancy.md#68-已实现的复审与批准状态的权限)。授权矩阵没有新增条目。
+
 ## 阅读入口
 
 - [index.html](index.html) — 统一的离线 HTML 文档阅读入口。

@@ -419,7 +419,7 @@ F04-GOV-014 到 020、025 到 027 这 10 条（Release 摘要链、发布授权�
 |---|---|
 | 检查不是按现行策略和现行工具版本做的 | 409 `POLICY_STALE`，重新检查后再提交 |
 | 检查里有不可豁免的规则是 `FAIL` 或 `UNKNOWN` | 409 `REVIEW_BLOCKED`，要改契约，提交新修订 |
-| 修订不是 `DRAFT` 或 `WITHDRAWN` | 409 `REVISION_STATUS_CONFLICT` |
+| 修订是 `IN_REVIEW` 或 `REJECTED`（0.23.0 之前还包括 `APPROVED`；之后已批准的修订可以提交复审，见 §11.7） | 409 `REVISION_STATUS_CONFLICT` |
 | 产品已暂停 | 409 `PRODUCT_NOT_ACTIVE` |
 
 “现行”指检查的 `policy_digest` 等于现在的基线策略，`tool_manifest` 里的每个工具都是现在的版本。带不带基线都可以；带了基线而 F04-GOV-013 没通过时，这条规则可豁免，见“决定”。可豁免的规则没通过不妨碍提交。
@@ -442,7 +442,7 @@ F04-GOV-014 到 020、025 到 027 这 10 条（Release 摘要链、发布授权�
 
 决定的人必须没有参与被评审的东西：登记修订的人、发起那次检查的人和提交申请的人作决定，返回 403 `REVIEWER_NOT_INDEPENDENT`，批准和驳回都一样。产品暂停时不能作决定，返回 409 `PRODUCT_NOT_ACTIVE`。
 
-**状态和并发。** 修订的 `status` 是 `DRAFT`、`IN_REVIEW`、`APPROVED`、`REJECTED`、`WITHDRAWN` 之一（F03 §5.9）。每个写操作在事务里锁住修订再改状态，所以同时到达的几个请求只有一个成功：同时提交，其余得到 409 `REVISION_STATUS_CONFLICT`；同时决定或撤回，其余得到 409 `REVISION_STATUS_CONFLICT` 或 `REVIEW_CONCLUDED`。`APPROVED` 和 `REJECTED` 的修订不能再提交。相同内容再次导入，返回 200 和原来的修订，带着它现在的状态。
+**状态和并发。** 修订的 `status` 是 `DRAFT`、`IN_REVIEW`、`APPROVED`、`REJECTED`、`WITHDRAWN` 之一（F03 §5.9）。每个写操作在事务里锁住修订再改状态，所以同时到达的几个请求只有一个成功：同时提交，其余得到 409 `REVISION_STATUS_CONFLICT`（复审是 409 `REVIEW_IN_PROGRESS`，见 §11.7）；同时决定或撤回，其余得到 409 `REVISION_STATUS_CONFLICT` 或 `REVIEW_CONCLUDED`。`REJECTED` 的修订不能再提交；`APPROVED` 的修订在 0.23.0 之前也不能，之后可以提交复审（§11.7）。相同内容再次导入，返回 200 和原来的修订，带着它现在的状态。
 
 **错误。** 评审不属于该修订或不存在，返回 404 `REVIEW_NOT_FOUND`。请求体不符合契约（缺少必填成员、未声明的成员、取值不在枚举内、时间不是带时区的 RFC 3339、编号不是 UUID）返回 400 `REQUEST_INVALID`，三个写操作都要求有请求体。符合契约但模型不接受的（上面各表之外，还有说明或理由首尾带空白）返回 422 `REQUEST_UNPROCESSABLE`。分页令牌属于另一个修订的列表，返回 400 `PAGE_TOKEN_INVALID`。存储的评审与记录时不符（F03 §5.9）时返回 500 `INTERNAL_ERROR`，响应不说原因，日志在 `correlation_id` 下写明是哪一条评审。
 
@@ -476,7 +476,7 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 
 **改变槽位。** `POST …/operations` 的请求体是 `action`、`expected_generation`，以及按动作需要的 `release_id` 和 `reason`；请求头 `Idempotency-Key` 必填，1–128 个字符的字母、数字和 `.` `_` `:` `-`。`ACTIVATE` 要有 `release_id`；`WITHDRAW` 要有 `reason`，不能有 `release_id`；`RESTORE` 两者都要有，而且只能回到这个槽位上生效过的 Release（否则 409 `RELEASE_NOT_IN_SLOT_HISTORY`）。成功返回 200 和操作记录。代次不是当前的返回 412 `PRECONDITION_FAILED`；同一个键用于另一个请求返回 409 `IDEMPOTENCY_CONFLICT`；要激活的已经在生效返回 409 `RELEASE_ALREADY_ACTIVE`；没有可撤销的返回 409 `NO_ACTIVE_RELEASE`。激活和恢复还会重新核对批准，除上一段的错误码外：目标的受众和环境不在批准的范围内返回 409 `APPROVAL_SCOPE_MISMATCH`；用另一个修订的 Release 替换槽位上最近生效过的那个（中间撤销过也算），而批准依据的检查不是以那个修订为基线，返回 409 `COMPATIBILITY_BASELINE_MISMATCH`，同一个修订的另一个 Release 不需要比较，恢复也不需要；目标不是 `internal` 受众返回 409 `PUBLICATION_TARGET_UNAVAILABLE`，目标的受众配置已被移除返回 404 `AUDIENCE_CONFIG_NOT_FOUND`；被阻断覆盖返回 409 `PUBLICATION_BLOCKED`；产品已暂停返回 409 `PRODUCT_NOT_ACTIVE`。撤销不核对批准，产品暂停时也可以撤销，参与过这个修订的发布人也可以撤销。
 
-**读取槽位和制品。** 槽位的响应有 `generation`、`visibility`（`EMPTY`、`ACTIVE`、`WITHDRAWN`）、可选的 `active_release_id`、`blocked` 和 `delivery_status`（恒为 `UNKNOWN`）。阻断不改变槽位的指针和代次，只让 `blocked` 为真。制品以 `application/octet-stream` 返回，`X-Artifact-Digest` 是响应字节的 SHA-256。没有生效的 Release、被阻断、产品暂停、批准已不成立时，都返回 404 `PUBLISHED_ARTIFACT_NOT_FOUND`，不区分原因；目标的受众配置已被移除时返回 404 `AUDIENCE_CONFIG_NOT_FOUND`。批准已不成立包括批准或豁免过期、批准人的评审人身份被撤销，以及策略或检查工具更新后原检查不再是现行的（F05 §6.7）。
+**读取槽位和制品。** 槽位的响应有 `generation`、`visibility`（`EMPTY`、`ACTIVE`、`WITHDRAWN`）、可选的 `active_release_id`、`blocked` 和 `delivery_status`（恒为 `UNKNOWN`）。阻断不改变槽位的指针和代次，只让 `blocked` 为真。制品以 `application/octet-stream` 返回，`X-Artifact-Digest` 是响应字节的 SHA-256。没有生效的 Release、被阻断、产品暂停、批准已不成立时，都返回 404 `PUBLISHED_ARTIFACT_NOT_FOUND`，不区分原因；目标的受众配置已被移除时返回 404 `AUDIENCE_CONFIG_NOT_FOUND`。批准已不成立包括批准或豁免过期、批准人的评审人身份被撤销，以及策略或检查工具更新后原检查不再是现行的（F05 §6.7）。0.25.0 起，槽位的响应用 `approval_problem` 说明是哪一种，恢复的办法是复审，见 §11.7。
 
 **访问阻断。** `POST …/access-blocks` 的请求体是 `reason` 和可选的 `api_asset_id`、`release_id`（有后者必有前者），分别阻断整个目标、一个资产或一个 Release。新建返回 201；同一范围已有未解除的阻断时，同一个人以同样的理由再次提交返回 200，否则 409 `ACCESS_BLOCK_EXISTS`。资产不属于这个产品返回 404 `API_ASSET_NOT_FOUND`，Release 不属于这个资产返回 404 `RELEASE_NOT_FOUND`。`POST …/clearance` 的请求体是 `reason`：解除人就是建立人返回 403 `SECURITY_REVIEWER_NOT_INDEPENDENT`；阻断覆盖的槽位还有生效的 Release 返回 409 `WITHDRAW_BEFORE_CLEARING`，只看它覆盖的那部分，按 Release 阻断时同一资产换成了别的 Release 就可以解除；已经解除的阻断，解除人以同样的理由再次提交返回 200，否则 409 `ACCESS_BLOCK_CLEARED`。阻断的响应里 `edge_status` 恒为 `UNKNOWN`。
 
@@ -487,6 +487,44 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 **与 §10 和 §11.2 的差别。** §11.2 的设计示例用 `PUT /v1/publication-slots/{slot_id}` 加 `If-Match`；实现是目标和资产下的 `POST …/operations` 加请求体里的 `expected_generation`。幂等键的作用域是槽位，没有保留期限：操作记录不删除，键一直有效。同一个键、同一个请求的重试返回同一条操作记录。
 
 **兼容性。** 0.20.0 给 `ProductRole` 和 `WorkspaceRole` 两个枚举增加了成员，按 §5.1 属于 RISKY：把枚举当作封闭集合的客户端要先升级。0.21.0 和 0.22.0 只增加操作和 schema。
+
+### 11.7 已实现的复审接口与批准状态
+
+本节对应管理 API 0.23.0–0.25.0，当前为 0.25.0：0.23.0 让已批准的修订可以再次评审，0.24.0 让发布人能读修订、检查和评审，0.25.0 让槽位说明批准为什么不成立。三个版本都没有增加操作，仍是 52 个。数据模型见 F03 §5.11，访问规则见 F05 §6.8。 [管理 API 契约](../api/openapi.yaml)
+
+**复审（0.23.0）。** 用的是 §11.5 的五个操作，请求和响应的形状不变。区别在提交：
+
+| 修订的状态 | `POST …/reviews` |
+|---|---|
+| `DRAFT`、`WITHDRAWN` | 与之前相同：201，修订变为 `IN_REVIEW` |
+| `APPROVED` | 201，这是一次复审；修订仍是 `APPROVED` |
+| `APPROVED`，并且这个修订有一条评审还没有结束 | 409 `REVIEW_IN_PROGRESS` |
+| `IN_REVIEW`、`REJECTED` | 409 `REVISION_STATUS_CONFLICT` |
+
+评审的响应多一个必有的成员 `supplementary`：复审为 `true`，其余为 `false`。对检查的要求与 §11.5 相同：必须是这个修订的、现行的检查，否则 409 `POLICY_STALE`；有不可豁免的规则没通过，409 `REVIEW_BLOCKED`。批准失效是因为策略或检查工具更新时，原来那次检查已经不是现行的，要先对修订重新发起检查（§11.4），再拿新的检查提交复审。产品暂停时不能提交。
+
+撤回和决定与 §11.5 相同，包括谁能做、豁免怎么给、各种拒绝的响应。复审无论怎样结束，修订都是 `APPROVED`：批准给修订增加一次批准，有自己的 `scope`、`valid_until` 和 `waivers`；驳回和撤回不改变已有的批准。同时到达的几个提交只有一个成功，其余得到 409 `REVIEW_IN_PROGRESS`；同时到达的几个决定只有一个成功，其余得到 409 `REVIEW_CONCLUDED`。修订的评审历史（`GET …/reviews`）按申请时间列出全部评审，包括各次复审。
+
+**依据复审的批准发布。** `POST …/assets/{id}/releases` 的 `review_id` 可以是这个修订的任何一次批准。依据复审的批准准备的 Release 要用一个新的版本号（版本号在资产内唯一，§11.6）；内容相同，`artifact_digest` 也相同。在槽位上用它替换同一个修订的另一个 Release 时不需要兼容性比较。批准的范围各算各的：一个 Release 只能发布到它所依据的那次批准的范围之内，否则 409 `APPROVAL_SCOPE_MISMATCH`。之前的 Release 记录不变，它依据的批准不成立时仍然不能激活或恢复。
+
+**发布人的读取（0.24.0）。** 资产所属 Workspace 的发布人现在能调用下列操作，得到的响应与作者相同：读修订和修订历史、读修订的原文、读检查和检查历史、比较两个修订、读评审和评审历史。发布人据此找到要准备 Release 的 `revision_id` 和 `review_id`。写操作没有变化：发布人导入、发起检查、提交或撤回评审、作决定，都返回 403 `FORBIDDEN`。
+
+**槽位的批准状态（0.25.0）。** `GET …/publication-targets/{t}/assets/{a}` 的响应多一个可选成员 `approval_problem`。槽位指向一个 Release、而它的批准对这个目标已经不成立时才出现，取值是此刻激活这个 Release 会得到的错误码：
+
+| `approval_problem` | 含义 | 怎么办 |
+|---|---|---|
+| `APPROVAL_EXPIRED` | 批准过了 `valid_until` | 复审 |
+| `WAIVER_EXPIRED` | 批准所依赖的某条豁免到期 | 复审，重新给出豁免，或者改契约 |
+| `REVIEWER_AUTH_REVOKED` | 批准人据以批准的评审人关系已被撤销；重新授予不算 | 由现任评审人复审 |
+| `POLICY_STALE` | 策略或检查工具更新，批准所依据的检查不再是现行的 | 重新检查，再复审 |
+| `APPROVAL_REQUIRED` | 评审记录不是对这个修订的批准 | 复审 |
+| `APPROVAL_SCOPE_MISMATCH` | 批准的范围不包含这个目标的受众和环境 | 为这个范围复审 |
+
+后两种在正常使用中不会出现在已经生效的 Release 上，因为激活时已经核对过，而评审记录和目标的受众、环境都不会改变。`approval_problem` 出现时，`GET …/artifact` 返回 404 `PUBLISHED_ARTIFACT_NOT_FOUND`，那个响应仍然不说原因（§11.6）。`approval_problem` 与 `blocked` 互不相干，可以同时出现。槽位没有生效的 Release 时不出现。
+
+**批准失效后的恢复步骤。** 以检查工具更新为例，之后每个受影响的资产要做四步，内容不用改：作者 `POST …/check-runs`；作者 `POST …/reviews`（复审）；评审人 `POST …/reviews/{id}/decision`；发布人 `POST …/releases` 准备新版本号的 Release，再 `POST …/operations` 激活它。激活之后槽位不再有 `approval_problem`，读到的制品与之前逐字节相同。这是 §7.2 和 §9 所说的“重新检查与复审”。
+
+**兼容性。** 0.23.0 改变了一个已有操作的行为：对 `APPROVED` 的修订 `POST …/reviews`，之前是 409，现在是 201 并产生一条评审。依赖这个 409 的客户端要改。`Review` 新增的 `supplementary` 是响应里的必有成员；0.22.0 的进程在迁移后的库上读复审时不带它，也不能结束复审（决定和撤回返回 409 `REVISION_STATUS_CONFLICT`），见 F03 §5.11。0.24.0 只放宽了读取的授权。0.25.0 给 `PublicationSlot` 增加了一个可选的枚举成员，把响应当作封闭对象的客户端要先升级。
 
 ## 12. API Catalog 元数据、文档产物和发布加工
 
