@@ -24,3 +24,23 @@ func (r *Registry) MoveRevision(ctx context.Context, asset domain.AssetRef, id, 
 	}
 	return revision, nil
 }
+
+// HoldRevision keeps a revision at the status it has until the transaction
+// of the caller ends, and returns it as it is. Nothing moves the revision
+// meanwhile, and a second hold waits for the first: what Policy & Review
+// decides about a revision without moving it, a review of one that is
+// approved already, it decides behind a hold, one request at a time. It
+// fails with ErrRevisionNotFound for a revision the asset does not have.
+//
+// Like MoveRevision it authorizes nothing, and no operation of the API
+// reaches it by itself.
+func (r *Registry) HoldRevision(ctx context.Context, asset domain.AssetRef, id string) (domain.Revision, error) {
+	revision, found, err := r.deps.Revisions.Hold(ctx, asset, id)
+	if err != nil {
+		return domain.Revision{}, err
+	}
+	if !found {
+		return domain.Revision{}, ErrRevisionNotFound
+	}
+	return revision, nil
+}
