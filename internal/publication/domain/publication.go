@@ -45,9 +45,18 @@ type Slot struct {
 	Generation      int64
 }
 
+// SlotView is a slot as it is read: with what stands between the release it
+// points at and whoever asks for the artifact.
 type SlotView struct {
 	Slot
 	Blocked bool
+	// Unapproved is why the approval the active release rests on does not
+	// hold for the target now: the refusal an activation of that release
+	// would meet. It is nil when the approval holds, and for a slot that
+	// points at no release. The artifact of a release whose approval does
+	// not hold is not served, and the read that is refused says nothing of
+	// why; the slot says it, to whoever may read the slot.
+	Unapproved error
 }
 
 func (s Slot) Visibility() string {

@@ -181,6 +181,144 @@ func TestConcurrentMovesOfOneRevisionMakeOne(t *testing.T) {
 	}
 }
 
+// A revision is held as it is: the hold answers the revision and changes
+// nothing of it, under its asset and inside a transaction. Until that
+// transaction ends a move of the revision waits, and so does another hold,
+// so what is decided behind a hold is decided by one caller at a time.
+func TestARevisionIsHeldAsItIsUntilTheTransactionEnds(t *testing.T) {
+	f, database := newStatusFixture(t)
+	revision := f.record()
+	hold := func(asset domain.AssetRef, id string) (held domain.Revision, found bool, err error) {
+		err = f.fabric.WithinTransaction(t.Context(), func(ctx context.Context) error {
+			held, found, err = f.store.Hold(ctx, asset, id)
+			return err
+		})
+		return held, found, err
+	}
+
+	if held, found, err := hold(f.asset, revision.ID); err != nil || !found || held != revision {
+		t.Fatalf("held %+v found %t, want %+v: %v", held, found, revision, err)
+	}
+	if read, _, err := f.store.Find(t.Context(), f.asset, revision.ID); err != nil || read != revision {
+		t.Fatalf("after the hold the revision reads %+v, want %+v: %v", read, revision, err)
+	}
+	elsewhere := map[string]domain.AssetRef{
+		"another asset":     {ProductID: f.asset.ProductID, WorkspaceID: f.asset.WorkspaceID, AssetID: ids.NewUUID()},
+		"another workspace": {ProductID: f.asset.ProductID, WorkspaceID: ids.NewUUID(), AssetID: f.asset.AssetID},
+		"another product":   {ProductID: ids.NewUUID(), WorkspaceID: f.asset.WorkspaceID, AssetID: f.asset.AssetID},
+	}
+	for name, asset := range elsewhere {
+		if _, found, err := hold(asset, revision.ID); found || err != nil {
+			t.Errorf("under %s: found %t, %v; want it not found", name, found, err)
+		}
+	}
+	if _, found, err := hold(f.asset, ids.NewUUID()); found || err != nil {
+		t.Errorf("a revision nobody recorded: found %t, %v; want it not found", found, err)
+	}
+	// A hold lasts as long as the transaction it is made in.
+	if _, _, err := f.store.Hold(t.Context(), f.asset, revision.ID); err == nil {
+		t.Error("a hold outside a transaction was made")
+	}
+
+	// The first hold stays open until the test lets it end. The pool is
+	// closed with the test and waits for that transaction, so a failure
+	// that left it open would wait out the timeout of the package. Finish
+	// it first, and say which of the two did not wait.
+	owner := pgtest.Connect(t, database.Migrator)
+	held, release := make(chan struct{}), make(chan struct{})
+	first := make(chan error, 1)
+	go func() {
+		first <- f.fabric.WithinTransaction(t.Context(), func(ctx context.Context) error {
+			_, _, err := f.store.Hold(ctx, f.asset, revision.ID)
+			close(held)
+			<-release
+			return err
+		})
+	}()
+	<-held
+	ended := false
+	finishHold := func() {
+		t.Helper()
+		if ended {
+			return
+		}
+		ended = true
+		close(release)
+		if err := <-first; err != nil {
+			t.Error(err)
+		}
+	}
+	t.Cleanup(func() {
+		if !ended {
+			close(release)
+		}
+	})
+	type outcome struct {
+		revision domain.Revision
+		err      error
+	}
+	moved, second := make(chan outcome, 1), make(chan outcome, 1)
+	go func() {
+		after, _, err := f.move(f.asset, revision.ID, domain.RevisionInReview)
+		moved <- outcome{after, err}
+	}()
+	go func() {
+		seen, _, err := hold(f.asset, revision.ID)
+		second <- outcome{seen, err}
+	}()
+	// Both reach the row and wait there. One that finishes while the first
+	// transaction is open did not wait for it.
+	deadline := time.Now().Add(15 * time.Second)
+	var blocked int
+	for {
+		select {
+		case got := <-moved:
+			finishHold()
+			t.Fatalf("the move did not wait for the hold: %+v, %v", got.revision, got.err)
+		case got := <-second:
+			finishHold()
+			t.Fatalf("the second hold did not wait for the first: %+v, %v", got.revision, got.err)
+		default:
+		}
+		if err := owner.QueryRow(t.Context(),
+			`SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+		).Scan(&blocked); err != nil {
+			finishHold()
+			t.Fatal(err)
+		}
+		if blocked == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			finishHold()
+			t.Fatalf("%d sessions wait for a lock, want 2", blocked)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	select {
+	case got := <-moved:
+		finishHold()
+		t.Fatalf("the move was made behind the hold: %+v, %v", got.revision, got.err)
+	case got := <-second:
+		finishHold()
+		t.Fatalf("a second hold was given behind the first: %+v, %v", got.revision, got.err)
+	default:
+	}
+	if read, _, err := f.store.Find(t.Context(), f.asset, revision.ID); err != nil || read != revision {
+		finishHold()
+		t.Fatalf("while it is held the revision reads %+v, want %+v: %v", read, revision, err)
+	}
+	finishHold()
+	if got := <-moved; got.err != nil || got.revision.Status != domain.RevisionInReview || got.revision.StatusVersion != 2 {
+		t.Errorf("the move that waited: %+v, %v; want the revision in review at version 2", got.revision, got.err)
+	}
+	// The hold that waited sees the revision as the move left it or as it
+	// was before, whichever of the two went first.
+	if got := <-second; got.err != nil || (got.revision.StatusVersion != 1 && got.revision.StatusVersion != 2) {
+		t.Errorf("the hold that waited: %+v, %v", got.revision, got.err)
+	}
+}
+
 // The table holds every writer to what a revision is, whatever the model
 // let through: it begins as a draft, its status moves one step and one
 // version at a time, nothing else of it changes, and it is never removed.

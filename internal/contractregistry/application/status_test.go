@@ -58,3 +58,39 @@ func TestARevisionIsMovedOnlyWhereItIsAndAlongItsReview(t *testing.T) {
 		t.Errorf("the moves left %d audit records and %d events of their own", len(double.audited), double.events)
 	}
 }
+
+// A revision is held where it is, as it is: the hold answers the revision
+// with the status it has and changes nothing of it. One the asset does not
+// have is not found. Like a move, a hold authorizes nothing and leaves no
+// record of its own.
+func TestARevisionIsHeldAsItIsWhereItIs(t *testing.T) {
+	const revisionID = "c0ffee00-0000-4000-8000-000000000001"
+	approved := domain.Revision{ID: revisionID, Asset: shipments, Sequence: 1, Status: domain.RevisionApproved, StatusVersion: 3}
+	recorded := approved
+	double := &registryDouble{recorded: &recorded}
+	registry := newRegistry(t, double)
+
+	for range 2 {
+		held, err := registry.HoldRevision(context.Background(), shipments, revisionID)
+		if err != nil || held != approved || *double.recorded != approved {
+			t.Fatalf("held %+v, %v and left %+v; want the revision as it was, %+v", held, err, *double.recorded, approved)
+		}
+	}
+	elsewhere := shipments
+	elsewhere.AssetID = "another-asset"
+	for name, hold := range map[string]func() (domain.Revision, error){
+		"a revision nobody recorded": func() (domain.Revision, error) {
+			return registry.HoldRevision(context.Background(), shipments, "c0ffee00-0000-4000-8000-000000000002")
+		},
+		"the revision under another asset": func() (domain.Revision, error) {
+			return registry.HoldRevision(context.Background(), elsewhere, revisionID)
+		},
+	} {
+		if held, err := hold(); !errors.Is(err, application.ErrRevisionNotFound) || held != (domain.Revision{}) {
+			t.Errorf("%s: %+v, %v; want %v and no revision", name, held, err, application.ErrRevisionNotFound)
+		}
+	}
+	if *double.recorded != approved || len(double.audited) != 0 || double.events != 0 {
+		t.Errorf("the holds left the revision %+v, %d audit records and %d events", *double.recorded, len(double.audited), double.events)
+	}
+}

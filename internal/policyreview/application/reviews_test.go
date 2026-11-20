@@ -46,6 +46,8 @@ type world struct {
 	// reviewer says that the caller holds the reviewer grant.
 	reviewer bool
 	moves    []string
+	// holds counts the times the revision was held as it is.
+	holds int
 
 	runs     map[string]domain.CheckRun
 	reviews  map[string]domain.Review
@@ -114,6 +116,12 @@ func (w *world) Move(_ context.Context, _ domain.RevisionRef, to string) (int64,
 	return w.version, nil
 }
 
+// Hold says where the registry has the revision and changes nothing.
+func (w *world) Hold(context.Context, domain.RevisionRef) (string, int64, error) {
+	w.holds++
+	return w.status, w.version, nil
+}
+
 func (w *world) Find(_ context.Context, revision domain.RevisionRef, id string) (domain.CheckRun, bool, error) {
 	run, found := w.runs[id]
 	return run, found && run.Revision == revision, nil
@@ -121,14 +129,26 @@ func (w *world) Find(_ context.Context, revision domain.RevisionRef, id string) 
 
 type reviewStore struct{ *world }
 
+// Request keeps a request as the tables do: one that put the revision in
+// review is the only one at the version the revision took then, and
+// supplementary requests share the version of the approved revision.
 func (s reviewStore) Request(_ context.Context, request domain.ReviewRequest, version int64) error {
-	for _, taken := range s.versions {
-		if taken == version {
+	for id, taken := range s.versions {
+		if taken == version && !request.Supplementary && !s.reviews[id].Request.Supplementary {
 			return errors.New("the revision is in review under another request at this version")
 		}
 	}
 	s.reviews[request.ID], s.versions[request.ID] = domain.Review{Request: request}, version
 	return nil
+}
+
+func (s reviewStore) Open(_ context.Context, revision domain.RevisionRef) (bool, error) {
+	for _, review := range s.reviews {
+		if review.Request.Revision == revision && review.Conclusion == nil {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s reviewStore) Conclude(_ context.Context, conclusion domain.Conclusion) error {
@@ -299,7 +319,7 @@ func TestAnAuthorAsksForAReviewOfADraftOnACurrentCheck(t *testing.T) {
 			arrange: func(t *testing.T, w *world) { w.check(t, "check", rulesTool, leaked) }, want: domain.ErrReviewBlocked},
 		"a scope that is none":            {command: application.RequestReview{CheckRunID: "check"}, want: domain.ErrInvalidReview},
 		"a revision that is in review":    {arrange: func(_ *testing.T, w *world) { w.status, w.version = "IN_REVIEW", 2 }, want: errStatus},
-		"a revision that is approved":     {arrange: func(_ *testing.T, w *world) { w.status, w.version = "APPROVED", 3 }, want: errStatus},
+		"a revision that is rejected":     {arrange: func(_ *testing.T, w *world) { w.status, w.version = "REJECTED", 3 }, want: errStatus},
 		"an event that cannot be written": {arrange: func(_ *testing.T, w *world) { w.announce = errOutbox }, want: errOutbox},
 	}
 	for name, c := range refused {
