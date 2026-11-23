@@ -208,9 +208,11 @@ func (r *Releases) refused(ctx context.Context, query ports.ScopeQuery, action s
 	return cause
 }
 
-// FindRelease and ReleaseMaterial are trusted queries for Publication. Its
-// use case checks caller, target, current pointer and grants before serving
-// any release material.
+// FindRelease and ReleaseMaterial are trusted queries: they ask nothing of the
+// caller. Publication uses them for what a slot serves, and its use case
+// checks caller, target, current pointer and grants before serving any
+// release material. GetReleaseArtifact uses them too, to download a release by
+// its identifier, and checks only that the caller may read the release.
 func (r *Releases) FindRelease(ctx context.Context, asset domain.AssetRef, id string) (domain.Release, error) {
 	release, found, err := r.deps.Releases.Find(ctx, asset, id)
 	if err != nil {

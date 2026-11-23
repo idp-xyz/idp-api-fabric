@@ -13,6 +13,8 @@ type ContractReleases interface {
 	Prepare(context.Context, registry.PrepareRelease) (registry.Preparation, error)
 	GetRelease(context.Context, ports.ScopeQuery, string) (domain.Release, error)
 	ListReleases(context.Context, ports.ScopeQuery, *ports.Position, int) (registry.ReleasePage, error)
+	GetReleaseArtifact(context.Context, ports.ScopeQuery, string) (registry.ReleaseDownload, error)
+	GetReleaseProvenance(context.Context, ports.ScopeQuery, string) (domain.ReleaseProvenance, error)
 }
 
 func (o operations) PrepareContractRelease(ctx context.Context, request PrepareContractReleaseRequestObject) (PrepareContractReleaseResponseObject, error) {

@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.26.0
+  version: 0.27.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -2032,6 +2032,10 @@ paths:
     get:
       operationId: getContractRelease
       summary: Read the metadata of a release of the API asset
+      description: >-
+        Where the release came from is read with getContractReleaseProvenance,
+        and its artifact is downloaded by the identifier of the release with
+        getContractReleaseArtifact.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/CheckAssetId'
@@ -2049,6 +2053,106 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ContractRelease'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}/artifact:
+    get:
+      operationId: getContractReleaseArtifact
+      summary: Download the artifact of a release of the API asset by the identifier of the release
+      description: >-
+        The octet stream contains the exact bytes the release was prepared
+        with, and their SHA-256 digest is the X-Artifact-Digest of the answer:
+        the artifact_digest the release records. The release is named by its
+        identifier under its asset, so it is downloaded whatever a
+        publication slot points at, and whatever was released after it.
+        Whoever may read the release may download it: an author, a reviewer
+        or a publisher of the workspace of the asset, also while the product
+        is suspended. The download does not look at an access block on a
+        publication target and does not verify the approval of the release
+        again: those belong to the read of an artifact through the slot of a
+        target.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/CheckAssetId'
+        - $ref: '#/components/parameters/ContractReleaseId'
+      responses:
+        '200':
+          description: The verified artifact bytes
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+            X-Artifact-Digest:
+              description: SHA-256 of the response bytes, formatted as sha256 followed by a colon and lowercase hex.
+              required: true
+              schema:
+                $ref: '#/components/schemas/ContractDigest'
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}/provenance:
+    get:
+      operationId: getContractReleaseProvenance
+      summary: Read where a release came from
+      description: >-
+        The release, its revision with where the source of the revision came
+        from, the check the approval rests on and the approval itself, read at
+        once. It says what the release was prepared on: the review and the
+        check named when it was prepared, whatever has been recorded of the
+        revision since. The revision may be reviewed again and approved anew,
+        and a release prepared before keeps the approval and the check it was
+        prepared on. It does not say whether the approval holds now: that is
+        for the slot to say, in approval_problem, which getPublicationSlot
+        gives and so does each item of listPublicationSlots and
+        listAssetPublications. Whoever may read the release may read this, in
+        the same way.
+
+        A Git origin is what the submitter of the revision declared when it
+        was imported. Fabric does not read the repository, so the commit is
+        evidence of what was said and not proof of what the commit holds.
+        When the same files are imported again from a later commit, the
+        revision recorded first is the one that is answered, so the commit
+        stays the first one that was recorded. The entrypoint is the path of
+        the file inside the bundle of files that was submitted.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/CheckAssetId'
+        - $ref: '#/components/parameters/ContractReleaseId'
+      responses:
+        '200':
+          description: What the release was prepared on
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractReleaseProvenance'
         '400':
           $ref: '#/components/responses/Problem'
         '401':
@@ -2285,10 +2389,11 @@ paths:
         database pointer, origin blocking, and the separate delivery status.
         It also says whether the approval the active release rests on still
         holds for this target. The artifact of a release whose approval does
-        not hold is not served, and getPublishedArtifact answers 404 without
-        a reason; approval_problem names the reason here, to whoever may read
-        the slot. A revision whose approval does not hold is approved again
-        with a supplementary review, and released and activated under it.
+        not hold is not served through the slot, and getPublishedArtifact
+        answers 404 without a reason; approval_problem names the reason here,
+        to whoever may read the slot. A revision whose approval does not hold
+        is approved again with a supplementary review, and released and
+        activated under it.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -2413,7 +2518,9 @@ paths:
       description: >-
         The octet stream contains the exact release JSON bytes. The origin checks
         current workspace membership, target configuration, the active pointer,
-        approval and effective access blocks on every read.
+        approval and effective access blocks on every read. Whoever may read the
+        release downloads the same bytes by its identifier with
+        getContractReleaseArtifact, which looks at no target, block or approval.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -2486,6 +2593,10 @@ paths:
         A product security administrator supplies a reason. Omitting the asset
         blocks the target. Naming an asset blocks its slot, or one release when
         a release ID is given. The slot generation and pointer stay independent.
+        A block covers what is read through the target: its slots and their
+        artifacts. Whoever may read the release, an author, a reviewer or a
+        publisher of the workspace of its asset, still downloads its artifact
+        by the identifier of the release, with getContractReleaseArtifact.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -2845,6 +2956,130 @@ components:
             $ref: '#/components/schemas/ContractRelease'
         next_page_token:
           $ref: '#/components/schemas/NextPageToken'
+    ContractReleaseProvenance:
+      description: >-
+        What a release was prepared on: the release, its revision, the check
+        and the approval it rests on. All of it was recorded before the
+        release was, and none of it changes with what is recorded after.
+      type: object
+      additionalProperties: false
+      required: [release, revision, check, approval]
+      properties:
+        release:
+          $ref: '#/components/schemas/ContractRelease'
+        revision:
+          $ref: '#/components/schemas/ReleaseProvenanceRevision'
+        check:
+          $ref: '#/components/schemas/ReleaseProvenanceCheck'
+        approval:
+          $ref: '#/components/schemas/ReleaseProvenanceApproval'
+    ReleaseProvenanceRevision:
+      description: >-
+        The revision a release was prepared from: what it holds and where
+        its source came from. Where the revision stands in its review is not
+        part of it.
+      type: object
+      additionalProperties: false
+      required: [revision_id, revision_sequence, source_kind, entrypoint, source_digest, ref_closure_digest]
+      properties:
+        revision_id:
+          $ref: '#/components/schemas/Identifier'
+        revision_sequence:
+          type: integer
+          format: int64
+          minimum: 1
+        source_kind:
+          description: GIT for a source submitted with a Git origin, UPLOAD for one without
+          type: string
+          enum: [UPLOAD, GIT]
+        git_origin:
+          description: >-
+            The origin the source was submitted with. It is present exactly
+            when source_kind is GIT.
+          $ref: '#/components/schemas/GitOrigin'
+        entrypoint:
+          description: The path of the entrypoint in the bundle of files that was submitted
+          $ref: '#/components/schemas/ContractSourcePath'
+        source_digest:
+          $ref: '#/components/schemas/ContractDigest'
+        ref_closure_digest:
+          $ref: '#/components/schemas/ContractDigest'
+    ReleaseProvenanceCheck:
+      description: >-
+        The check the approval of a release rests on: which check it was, the
+        policy it was held to, the tools that evaluated it and what it
+        concluded.
+      type: object
+      additionalProperties: false
+      required: [check_run_id, policy_set_id, policy_digest, tool_manifest, status, summary, completed_at]
+      properties:
+        check_run_id:
+          $ref: '#/components/schemas/Identifier'
+        policy_set_id:
+          type: string
+        policy_digest:
+          $ref: '#/components/schemas/ContractDigest'
+        tool_manifest:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CheckRunTool'
+        status:
+          $ref: '#/components/schemas/CheckRunStatus'
+        summary:
+          $ref: '#/components/schemas/CheckRunSummary'
+        completed_at:
+          type: string
+          format: date-time
+    ReleaseProvenanceApproval:
+      description: >-
+        The approval a release was prepared under: which review it was, who
+        approved, when, for what and until when, and the rules it let stand.
+        It says nothing of whether the approval holds now.
+      type: object
+      additionalProperties: false
+      required: [review_id, supplementary, scope, concluded_by, concluded_at, valid_until, waivers]
+      properties:
+        review_id:
+          $ref: '#/components/schemas/Identifier'
+        supplementary:
+          description: Whether the revision was approved already when this review was asked for
+          type: boolean
+        scope:
+          description: The targets the revision was approved for, by audience and then environment
+          type: array
+          minItems: 1
+          maxItems: 6
+          items:
+            $ref: '#/components/schemas/ReviewTarget'
+        concluded_by:
+          $ref: '#/components/schemas/Principal'
+        concluded_at:
+          type: string
+          format: date-time
+        valid_until:
+          description: Until when the approval held, as it was given
+          type: string
+          format: date-time
+        waivers:
+          description: >-
+            The rules the approval let stand although they did not pass, by
+            rule. Why is for the review to say.
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ReleaseProvenanceWaiver'
+    ReleaseProvenanceWaiver:
+      type: object
+      additionalProperties: false
+      required: [rule_id, expires_at]
+      properties:
+        rule_id:
+          $ref: '#/components/schemas/ReviewRuleId'
+        expires_at:
+          description: Until when the waiver held, as it was given
+          type: string
+          format: date-time
     PublicationTargetRegistration:
       type: object
       additionalProperties: false

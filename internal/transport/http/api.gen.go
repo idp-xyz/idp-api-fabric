@@ -456,6 +456,24 @@ func (e PublicationSlotVisibility) Valid() bool {
 	}
 }
 
+// Defines values for ReleaseProvenanceRevisionSourceKind.
+const (
+	ReleaseProvenanceRevisionSourceKindGIT    ReleaseProvenanceRevisionSourceKind = "GIT"
+	ReleaseProvenanceRevisionSourceKindUPLOAD ReleaseProvenanceRevisionSourceKind = "UPLOAD"
+)
+
+// Valid indicates whether the value is a known member of the ReleaseProvenanceRevisionSourceKind enum.
+func (e ReleaseProvenanceRevisionSourceKind) Valid() bool {
+	switch e {
+	case ReleaseProvenanceRevisionSourceKindGIT:
+		return true
+	case ReleaseProvenanceRevisionSourceKindUPLOAD:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ReviewConclusionOutcome.
 const (
 	ReviewConclusionOutcomeAPPROVED  ReviewConclusionOutcome = "APPROVED"
@@ -944,6 +962,19 @@ type ContractReleaseList struct {
 	NextPageToken *NextPageToken `json:"next_page_token,omitempty"`
 }
 
+// ContractReleaseProvenance What a release was prepared on: the release, its revision, the check and the approval it rests on. All of it was recorded before the release was, and none of it changes with what is recorded after.
+type ContractReleaseProvenance struct {
+	// Approval The approval a release was prepared under: which review it was, who approved, when, for what and until when, and the rules it let stand. It says nothing of whether the approval holds now.
+	Approval ReleaseProvenanceApproval `json:"approval"`
+
+	// Check The check the approval of a release rests on: which check it was, the policy it was held to, the tools that evaluated it and what it concluded.
+	Check   ReleaseProvenanceCheck `json:"check"`
+	Release ContractRelease        `json:"release"`
+
+	// Revision The revision a release was prepared from: what it holds and where its source came from. Where the revision stands in its review is not part of it.
+	Revision ReleaseProvenanceRevision `json:"revision"`
+}
+
 // ContractRevision defines model for ContractRevision.
 type ContractRevision struct {
 	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
@@ -1365,6 +1396,71 @@ type ReleasePreparation struct {
 	// RevisionID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 	RevisionID Identifier `json:"revision_id"`
 	Version    string     `json:"version"`
+}
+
+// ReleaseProvenanceApproval The approval a release was prepared under: which review it was, who approved, when, for what and until when, and the rules it let stand. It says nothing of whether the approval holds now.
+type ReleaseProvenanceApproval struct {
+	ConcludedAt time.Time `json:"concluded_at"`
+
+	// ConcludedBy A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
+	ConcludedBy Principal `json:"concluded_by"`
+
+	// ReviewID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ReviewID Identifier `json:"review_id"`
+
+	// Scope The targets the revision was approved for, by audience and then environment
+	Scope []ReviewTarget `json:"scope"`
+
+	// Supplementary Whether the revision was approved already when this review was asked for
+	Supplementary bool `json:"supplementary"`
+
+	// ValidUntil Until when the approval held, as it was given
+	ValidUntil time.Time `json:"valid_until"`
+
+	// Waivers The rules the approval let stand although they did not pass, by rule. Why is for the review to say.
+	Waivers []ReleaseProvenanceWaiver `json:"waivers"`
+}
+
+// ReleaseProvenanceCheck The check the approval of a release rests on: which check it was, the policy it was held to, the tools that evaluated it and what it concluded.
+type ReleaseProvenanceCheck struct {
+	// CheckRunID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	CheckRunID   Identifier      `json:"check_run_id"`
+	CompletedAt  time.Time       `json:"completed_at"`
+	PolicyDigest ContractDigest  `json:"policy_digest"`
+	PolicySetID  string          `json:"policy_set_id"`
+	Status       CheckRunStatus  `json:"status"`
+	Summary      CheckRunSummary `json:"summary"`
+	ToolManifest []CheckRunTool  `json:"tool_manifest"`
+}
+
+// ReleaseProvenanceRevision The revision a release was prepared from: what it holds and where its source came from. Where the revision stands in its review is not part of it.
+type ReleaseProvenanceRevision struct {
+	// Entrypoint The path of the entrypoint in the bundle of files that was submitted
+	Entrypoint ContractSourcePath `json:"entrypoint"`
+
+	// GitOrigin The origin the source was submitted with. It is present exactly when source_kind is GIT.
+	GitOrigin        *GitOrigin     `json:"git_origin,omitempty"`
+	RefClosureDigest ContractDigest `json:"ref_closure_digest"`
+
+	// RevisionID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	RevisionID       Identifier     `json:"revision_id"`
+	RevisionSequence int64          `json:"revision_sequence"`
+	SourceDigest     ContractDigest `json:"source_digest"`
+
+	// SourceKind GIT for a source submitted with a Git origin, UPLOAD for one without
+	SourceKind ReleaseProvenanceRevisionSourceKind `json:"source_kind"`
+}
+
+// ReleaseProvenanceRevisionSourceKind GIT for a source submitted with a Git origin, UPLOAD for one without
+type ReleaseProvenanceRevisionSourceKind string
+
+// ReleaseProvenanceWaiver defines model for ReleaseProvenanceWaiver.
+type ReleaseProvenanceWaiver struct {
+	// ExpiresAt Until when the waiver held, as it was given
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// RuleID The identifier a rule has in the policy of a check, as in F04-GOV-013
+	RuleID ReviewRuleID `json:"rule_id"`
 }
 
 // Review A request for a decision on one revision, with its conclusion once it has one. Neither changes once it is recorded.
@@ -1860,6 +1956,12 @@ type ServerInterface interface {
 	// GetContractRelease Read the metadata of a release of the API asset
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id})
 	GetContractRelease(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, releaseID ContractReleaseID)
+	// GetContractReleaseArtifact Download the artifact of a release of the API asset by the identifier of the release
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}/artifact)
+	GetContractReleaseArtifact(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, releaseID ContractReleaseID)
+	// GetContractReleaseProvenance Read where a release came from
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}/provenance)
+	GetContractReleaseProvenance(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, releaseID ContractReleaseID)
 	// ListRevisions List draft revision metadata for an API asset
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions)
 	ListRevisions(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier, params ListRevisionsParams)
@@ -2466,6 +2568,94 @@ func (siw *ServerInterfaceWrapper) GetContractRelease(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetContractRelease(w, r, productID, apiAssetID, releaseID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetContractReleaseArtifact operation middleware
+func (siw *ServerInterfaceWrapper) GetContractReleaseArtifact(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID CheckAssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "release_id" -------------
+	var releaseID ContractReleaseID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "release_id", r.PathValue("release_id"), &releaseID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "release_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetContractReleaseArtifact(w, r, productID, apiAssetID, releaseID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetContractReleaseProvenance operation middleware
+func (siw *ServerInterfaceWrapper) GetContractReleaseProvenance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "api_asset_id" -------------
+	var apiAssetID CheckAssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "release_id" -------------
+	var releaseID ContractReleaseID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "release_id", r.PathValue("release_id"), &releaseID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "release_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetContractReleaseProvenance(w, r, productID, apiAssetID, releaseID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4673,6 +4863,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/releases", wrapper.ListContractReleases)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/releases", wrapper.PrepareContractRelease)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}", wrapper.GetContractRelease)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}/artifact", wrapper.GetContractReleaseArtifact)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}/provenance", wrapper.GetContractReleaseProvenance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/publication-targets", wrapper.ListPublicationTargets)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/publication-targets", wrapper.RegisterPublicationTarget)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/publication-targets/{publication_target_id}", wrapper.GetPublicationTarget)
@@ -5921,6 +6113,232 @@ type GetContractReleasedefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetContractReleasedefaultApplicationProblemPlusJSONResponse) VisitGetContractReleaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractReleaseArtifactRequestObject struct {
+	ProductID  ProductID         `json:"product_id"`
+	APIAssetID CheckAssetID      `json:"api_asset_id"`
+	ReleaseID  ContractReleaseID `json:"release_id"`
+}
+
+type GetContractReleaseArtifactResponseObject interface {
+	VisitGetContractReleaseArtifactResponse(w http.ResponseWriter) error
+}
+
+type GetContractReleaseArtifact200ResponseHeaders struct {
+	CacheControl    string
+	XArtifactDigest ContractDigest
+}
+
+type GetContractReleaseArtifact200ApplicationOctetStreamResponse struct {
+	Body          io.Reader
+	Headers       GetContractReleaseArtifact200ResponseHeaders
+	ContentLength int64
+}
+
+func (response GetContractReleaseArtifact200ApplicationOctetStreamResponse) VisitGetContractReleaseArtifactResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("X-Artifact-Digest", fmt.Sprint(response.Headers.XArtifactDigest))
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetContractReleaseArtifact400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetContractReleaseArtifact400ApplicationProblemPlusJSONResponse) VisitGetContractReleaseArtifactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractReleaseArtifact401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetContractReleaseArtifact401ApplicationProblemPlusJSONResponse) VisitGetContractReleaseArtifactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractReleaseArtifact403ApplicationProblemPlusJSONResponse Problem
+
+func (response GetContractReleaseArtifact403ApplicationProblemPlusJSONResponse) VisitGetContractReleaseArtifactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractReleaseArtifact404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetContractReleaseArtifact404ApplicationProblemPlusJSONResponse) VisitGetContractReleaseArtifactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractReleaseArtifactdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetContractReleaseArtifactdefaultApplicationProblemPlusJSONResponse) VisitGetContractReleaseArtifactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractReleaseProvenanceRequestObject struct {
+	ProductID  ProductID         `json:"product_id"`
+	APIAssetID CheckAssetID      `json:"api_asset_id"`
+	ReleaseID  ContractReleaseID `json:"release_id"`
+}
+
+type GetContractReleaseProvenanceResponseObject interface {
+	VisitGetContractReleaseProvenanceResponse(w http.ResponseWriter) error
+}
+
+type GetContractReleaseProvenance200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetContractReleaseProvenance200JSONResponse struct {
+	Body    ContractReleaseProvenance
+	Headers GetContractReleaseProvenance200ResponseHeaders
+}
+
+func (response GetContractReleaseProvenance200JSONResponse) VisitGetContractReleaseProvenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractReleaseProvenance400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetContractReleaseProvenance400ApplicationProblemPlusJSONResponse) VisitGetContractReleaseProvenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractReleaseProvenance401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetContractReleaseProvenance401ApplicationProblemPlusJSONResponse) VisitGetContractReleaseProvenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractReleaseProvenance403ApplicationProblemPlusJSONResponse Problem
+
+func (response GetContractReleaseProvenance403ApplicationProblemPlusJSONResponse) VisitGetContractReleaseProvenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractReleaseProvenance404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetContractReleaseProvenance404ApplicationProblemPlusJSONResponse) VisitGetContractReleaseProvenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContractReleaseProvenancedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetContractReleaseProvenancedefaultApplicationProblemPlusJSONResponse) VisitGetContractReleaseProvenanceResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -11665,6 +12083,12 @@ type StrictServerInterface interface {
 	// GetContractRelease Read the metadata of a release of the API asset
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id})
 	GetContractRelease(ctx context.Context, request GetContractReleaseRequestObject) (GetContractReleaseResponseObject, error)
+	// GetContractReleaseArtifact Download the artifact of a release of the API asset by the identifier of the release
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}/artifact)
+	GetContractReleaseArtifact(ctx context.Context, request GetContractReleaseArtifactRequestObject) (GetContractReleaseArtifactResponseObject, error)
+	// GetContractReleaseProvenance Read where a release came from
+	// (GET /v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}/provenance)
+	GetContractReleaseProvenance(ctx context.Context, request GetContractReleaseProvenanceRequestObject) (GetContractReleaseProvenanceResponseObject, error)
 	// ListRevisions List draft revision metadata for an API asset
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions)
 	ListRevisions(ctx context.Context, request ListRevisionsRequestObject) (ListRevisionsResponseObject, error)
@@ -12140,6 +12564,62 @@ func (sh *strictHandler) GetContractRelease(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetContractReleaseResponseObject); ok {
 		if err := validResponse.VisitGetContractReleaseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetContractReleaseArtifact operation middleware
+func (sh *strictHandler) GetContractReleaseArtifact(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, releaseID ContractReleaseID) {
+	var request GetContractReleaseArtifactRequestObject
+
+	request.ProductID = productID
+	request.APIAssetID = apiAssetID
+	request.ReleaseID = releaseID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetContractReleaseArtifact(ctx, request.(GetContractReleaseArtifactRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetContractReleaseArtifact")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetContractReleaseArtifactResponseObject); ok {
+		if err := validResponse.VisitGetContractReleaseArtifactResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetContractReleaseProvenance operation middleware
+func (sh *strictHandler) GetContractReleaseProvenance(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, releaseID ContractReleaseID) {
+	var request GetContractReleaseProvenanceRequestObject
+
+	request.ProductID = productID
+	request.APIAssetID = apiAssetID
+	request.ReleaseID = releaseID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetContractReleaseProvenance(ctx, request.(GetContractReleaseProvenanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetContractReleaseProvenance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetContractReleaseProvenanceResponseObject); ok {
+		if err := validResponse.VisitGetContractReleaseProvenanceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
