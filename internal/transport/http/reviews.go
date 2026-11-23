@@ -144,7 +144,8 @@ func showReview(review domain.Review) Review {
 	body := Review{
 		ReviewID: request.ID, ProductID: request.Revision.ProductID, APIAssetID: request.Revision.AssetID,
 		RevisionID: request.Revision.RevisionID, CheckRunID: request.CheckRunID, InputDigest: request.InputDigest,
-		Status: ReviewStatus(review.Status()), Scope: make([]ReviewTarget, 0, len(request.Scope)),
+		Status: ReviewStatus(review.Status()), Supplementary: request.Supplementary,
+		Scope:       make([]ReviewTarget, 0, len(request.Scope)),
 		RequestedBy: Principal{Issuer: request.RequestedBy.Issuer, Subject: request.RequestedBy.Subject},
 		RequestedAt: request.RequestedAt,
 	}
@@ -206,6 +207,9 @@ func reviewProblem(err error) (Problem, bool) {
 			"In the check, rules that nothing waives failed or could not be judged. No decision approves such a revision."), true
 	case errors.Is(err, domain.ErrReviewConcluded):
 		return problem(http.StatusConflict, "REVIEW_CONCLUDED", "The review was concluded already."), true
+	case errors.Is(err, checks.ErrReviewInProgress):
+		return problem(http.StatusConflict, "REVIEW_IN_PROGRESS",
+			"A review of the revision is open. A revision is under one review at a time."), true
 	case errors.Is(err, domain.ErrInvalidReview):
 		return problem(http.StatusUnprocessableEntity, CodeRequestUnprocessable, ""), true
 	default:

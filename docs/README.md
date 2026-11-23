@@ -28,13 +28,13 @@
 - [F01 规范采用讨论输入](../governance/policies/F01_Project_Manifest_DRAFT.json)：不是已批准的 Project Manifest。
 - [F02 架构追溯](../tests/acceptance/F02_architecture_trace.csv)：71 项 FR + 18 项 NFR 的设计章节与 ADR 关联。
 - [F02 架构验证场景](../tests/acceptance/F02_architecture_scenarios.csv)：12 个场景均为 `NOT_RUN`。
-- [F03 逻辑实体字典](F03_Logical_Model.csv) 从 F03 §5.4 生成，共 38 条。负责人、受众配置和品牌的物理模型见 F03 §5.5–5.6，API 目录和契约修订的物理模型见 F03 §5.7，契约检查的物理模型见 F03 §5.8，契约评审的物理模型见 F03 §5.9，Release 与发布的物理模型见 F03 §5.10。
+- [F03 逻辑实体字典](F03_Logical_Model.csv) 从 F03 §5.4 生成，共 38 条。负责人、受众配置和品牌的物理模型见 F03 §5.5–5.6，API 目录和契约修订的物理模型见 F03 §5.7，契约检查的物理模型见 F03 §5.8，契约评审的物理模型见 F03 §5.9，Release 与发布的物理模型见 F03 §5.10，复审与批准状态的可见性见 F03 §5.11。
 - [F03 需求—模型追溯](../tests/acceptance/F03_domain_trace.csv)：71 FR + 18 NFR，区分领域负责、支撑与后续范围。
 - [F03 领域验证场景](../tests/acceptance/F03_domain_scenarios.csv)：18 个 DM-01–18 场景，均为 `NOT_RUN`。
 - [F04 候选治理规则](../governance/policies/F04_Rules_Registry.json)：28 条规则，部分有本地示范子集，完整产品验证未执行。其中阶段为 MVP 的 23 条是已实现的契约检查的基线，13 条有内置工具评估，见 F04 §11.4；评审时哪些规则可以豁免、哪些不能，见 F04 §11.5。
 - [F04 治理追溯](../tests/acceptance/F04_contract_trace.csv)：覆盖 71 FR + 18 NFR。
 - [F04 治理验证计划](../tests/acceptance/F04_governance_scenarios.csv)：24 项场景，全部 `NOT_RUN`。
-- [F05 候选权限矩阵](../governance/policies/F05_Access_Matrix.csv) 收录 53 项操作级授权设计。已实现的负责人、列表、受众配置与品牌规则见 F05 §6.1、§6.3，API 目录和契约修订的规则见 F05 §6.4（沿用矩阵已有条目），契约检查的规则见 F05 §6.5（矩阵没有对应条目，待裁决），契约评审的规则见 F05 §6.6（新增 AC-50…53，批准和驳回沿用 AC-03），Release 与发布的规则见 F05 §6.7（沿用 AC-04…07 和 AC-09，有几处对不上，待裁决）。
+- [F05 候选权限矩阵](../governance/policies/F05_Access_Matrix.csv) 收录 53 项操作级授权设计。已实现的负责人、列表、受众配置与品牌规则见 F05 §6.1、§6.3，API 目录和契约修订的规则见 F05 §6.4（沿用矩阵已有条目），契约检查的规则见 F05 §6.5（矩阵没有对应条目，待裁决），契约评审的规则见 F05 §6.6（新增 AC-50…53，批准和驳回沿用 AC-03），Release 与发布的规则见 F05 §6.7（沿用 AC-04…07 和 AC-09，有几处对不上，待裁决），复审与批准状态的权限见 F05 §6.8（沿用 AC-50、AC-51、AC-03 和 DENY-03、DENY-06；矩阵没有新增，发布人读取在矩阵里没有对应的行，待裁决）。
 - [F05 STRIDE 登记册](../governance/policies/F05_Threat_Register.csv)：29 项威胁；Risk Owner 待确认。
 - [F05 策略结构草案](../governance/policies/F05_Authorization_Policy_DRAFT.json)：可解析的设计样例，不是真实 PDP。
 - [F05 需求—安全追溯](../tests/acceptance/F05_security_trace.csv)：89 项需求承接。

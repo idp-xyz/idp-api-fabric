@@ -97,7 +97,7 @@ func TestARevisionIsSubmittedForReviewWithdrawnAndSubmittedAgain(t *testing.T) {
 	want := map[string]any{
 		"review_id": first, "product_id": s.product, "api_asset_id": imported.id("api_asset_id"),
 		"revision_id": imported.id("revision_id"), "check_run_id": check, "input_digest": imported.body["ref_closure_digest"],
-		"status": "IN_REVIEW", "note": "ready for partners",
+		"status": "IN_REVIEW", "supplementary": false, "note": "ready for partners",
 		"scope": []any{
 			map[string]any{"audience": "partner", "environment": "production"},
 			map[string]any{"audience": "partner", "environment": "sandbox"},

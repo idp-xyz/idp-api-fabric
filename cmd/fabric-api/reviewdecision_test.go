@@ -126,9 +126,10 @@ func TestAReviewerApprovesOrRejectsARevisionAndWaivesWhatDidNotPass(t *testing.T
 		{http.MethodPost, clean.review + "/decision", deciding("REJECTED", "on second thought", time.Time{}), http.StatusConflict, "REVIEW_CONCLUDED"},
 		{http.MethodPost, clean.review + "/decision", deciding("APPROVED", "", until), http.StatusConflict, "REVIEW_CONCLUDED"},
 	})
-	s.expect("an approved revision is not withdrawn or submitted again", "author", []exchange{
+	// What an approved revision is submitted for again is another review of
+	// it, which supplementaryreview_test.go follows.
+	s.expect("the review of an approved revision is not withdrawn", "author", []exchange{
 		{http.MethodPost, clean.review + "/withdrawal", `{}`, http.StatusConflict, "REVIEW_CONCLUDED"},
-		{http.MethodPost, clean.revision + "/reviews", asking(clean.check, partnerSandbox), http.StatusConflict, "REVISION_STATUS_CONFLICT"},
 	})
 	if again := s.call(http.MethodPost, s.revisions, "coauthor", uploadRevision("openapi.yaml", revisionSource)); again.status != http.StatusOK ||
 		again.id("revision_id") != clean.imported.id("revision_id") || again.body["status"] != "APPROVED" {

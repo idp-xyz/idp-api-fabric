@@ -28,7 +28,7 @@ func NewReviews(database *bentopostgres.DB) *Reviews {
 // in the order the model keeps it in.
 const selectReview = `
 SELECT q.review_id, q.product_id, q.workspace_id, q.api_asset_id, q.revision_id, q.check_run_id, q.input_digest,
-       coalesce(q.note, ''), q.requested_at, q.requested_by_issuer, q.requested_by_subject,
+       coalesce(q.note, ''), q.requested_at, q.requested_by_issuer, q.requested_by_subject, q.supplementary,
        ARRAY(SELECT s.audience || '/' || s.environment FROM policyreview.review_scope s
              WHERE s.review_id = q.review_id ORDER BY s.audience COLLATE "C", s.environment COLLATE "C"),
        c.outcome, coalesce(c.reason, ''), c.concluded_at, c.concluded_by_issuer, c.concluded_by_subject, c.valid_until,
@@ -55,7 +55,7 @@ func scanReview(row pgx.CollectableRow) (domain.Review, error) {
 	request := &review.Request
 	if err := row.Scan(&request.ID, &request.Revision.ProductID, &request.Revision.WorkspaceID, &request.Revision.AssetID,
 		&request.Revision.RevisionID, &request.CheckRunID, &request.InputDigest, &request.Note, &request.RequestedAt,
-		&request.RequestedBy.Issuer, &request.RequestedBy.Subject, &scope,
+		&request.RequestedBy.Issuer, &request.RequestedBy.Subject, &request.Supplementary, &scope,
 		&outcome, &reason, &concludedAt, &issuer, &subject, &validUntil, &rules, &reasons, &controls, &expiries); err != nil {
 		return domain.Review{}, err
 	}
@@ -98,12 +98,12 @@ func (s *Reviews) Request(ctx context.Context, request domain.ReviewRequest, sta
 	const insertRequest = `
 INSERT INTO policyreview.review_request (
     review_id, product_id, workspace_id, api_asset_id, revision_id, revision_status_version, check_run_id,
-    input_digest, note, requested_at, requested_by_issuer, requested_by_subject
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`
+    input_digest, note, requested_at, requested_by_issuer, requested_by_subject, supplementary
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`
 	revision := request.Revision
 	if _, err := writer.Exec(ctx, insertRequest, request.ID, revision.ProductID, revision.WorkspaceID, revision.AssetID,
 		revision.RevisionID, statusVersion, request.CheckRunID, request.InputDigest, optional(request.Note),
-		request.RequestedAt, request.RequestedBy.Issuer, request.RequestedBy.Subject); err != nil {
+		request.RequestedAt, request.RequestedBy.Issuer, request.RequestedBy.Subject, request.Supplementary); err != nil {
 		return fmt.Errorf("store a review request: %w", err)
 	}
 	var audiences, environments []string
@@ -155,6 +155,26 @@ SELECT $1::uuid, * FROM unnest($2::text[], $3::text[], $4::text[], $5::timestamp
 		return fmt.Errorf("store the waivers of a review: %w", err)
 	}
 	return nil
+}
+
+// Open reports whether a request of the revision has no conclusion. It says
+// what the transaction it is called in sees: who decides on the answer
+// holds the revision first, so that no other request is recorded meanwhile.
+func (s *Reviews) Open(ctx context.Context, revision domain.RevisionRef) (bool, error) {
+	reader, err := s.database.ReadExecutor(ctx)
+	if err != nil {
+		return false, err
+	}
+	const open = `
+SELECT EXISTS (
+    SELECT 1 FROM policyreview.review_request q
+    WHERE q.product_id = $1 AND q.api_asset_id = $2 AND q.workspace_id = $3 AND q.revision_id = $4
+      AND NOT EXISTS (SELECT 1 FROM policyreview.review_conclusion c WHERE c.review_id = q.review_id))`
+	var found bool
+	if err := reader.QueryRow(ctx, open, revision.ProductID, revision.AssetID, revision.WorkspaceID, revision.RevisionID).Scan(&found); err != nil {
+		return false, fmt.Errorf("look for an open review: %w", err)
+	}
+	return found, nil
 }
 
 func (s *Reviews) Find(ctx context.Context, revision domain.RevisionRef, id string) (domain.Review, bool, error) {

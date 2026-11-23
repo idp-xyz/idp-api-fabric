@@ -3,6 +3,7 @@ package http
 import (
 	"bytes"
 	"context"
+	"fmt"
 
 	governanceports "go.idp.xyz/idp-api-fabric/internal/productgovernance/ports"
 	publication "go.idp.xyz/idp-api-fabric/internal/publication/application"
@@ -111,7 +112,28 @@ func (o operations) GetPublicationSlot(ctx context.Context, request GetPublicati
 		ActiveReleaseID: optionalString(slot.ActiveReleaseID), Generation: slot.Generation,
 		Visibility: PublicationSlotVisibility(slot.Visibility()), Blocked: slot.Blocked, DeliveryStatus: "UNKNOWN",
 	}
+	if slot.Unapproved != nil {
+		code, err := approvalProblem(slot.Unapproved)
+		if err != nil {
+			return nil, err
+		}
+		body.ApprovalProblem = &code
+	}
 	return GetPublicationSlot200JSONResponse{Body: body, Headers: GetPublicationSlot200ResponseHeaders{CacheControl: noStore}}, nil
+}
+
+// approvalProblem names why an approval does not hold in the words an
+// activation is refused with: the code of the problem that refusal is
+// answered as. So a slot and an activation say the same of the same cause.
+// A cause the contract has no word for on a slot is a failure of the
+// service and not an answer: it is not handed on as the refusal it would be
+// elsewhere.
+func approvalProblem(unapproved error) (PublicationSlotApprovalProblem, error) {
+	found, known := problemOf(unapproved)
+	if code := PublicationSlotApprovalProblem(found.ErrorCode); known && code.Valid() {
+		return code, nil
+	}
+	return "", fmt.Errorf("the slot cannot say why the approval of its release does not hold: %v", unapproved)
 }
 
 func (o operations) ChangePublicationSlot(ctx context.Context, request ChangePublicationSlotRequestObject) (ChangePublicationSlotResponseObject, error) {

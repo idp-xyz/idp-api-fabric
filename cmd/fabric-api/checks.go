@@ -106,6 +106,15 @@ func (r checkRevisions) Move(ctx context.Context, revision checkdomain.RevisionR
 	return moved.StatusVersion, err
 }
 
+// Hold keeps the revision at the status the registry has of it until the
+// transaction of the review ends, and says what that status is.
+func (r checkRevisions) Hold(ctx context.Context, revision checkdomain.RevisionRef) (string, int64, error) {
+	held, err := r.registry.HoldRevision(ctx, registrydomain.AssetRef{
+		ProductID: revision.ProductID, WorkspaceID: revision.WorkspaceID, AssetID: revision.AssetID,
+	}, revision.RevisionID)
+	return held.Status, held.StatusVersion, err
+}
+
 // policyReview is the use cases of Policy & Review as the transport reaches
 // them: those of a check and those of a review.
 type policyReview struct {

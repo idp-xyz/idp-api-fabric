@@ -157,6 +157,37 @@ INSERT INTO contractregistry.contract_revision (
 // first one left it. The table decides as well: it lets a status move along
 // the review and nothing else of a revision change.
 func (s *Revisions) Move(ctx context.Context, asset domain.AssetRef, id, to string) (domain.Revision, bool, error) {
+	revision, found, err := s.Hold(ctx, asset, id)
+	if err != nil || !found {
+		return domain.Revision{}, false, err
+	}
+	if err := domain.Move(revision.Status, to); err != nil {
+		return domain.Revision{}, true, err
+	}
+	writer, err := s.database.RequireExecutor(ctx)
+	if err != nil {
+		return domain.Revision{}, false, err
+	}
+	const move = `
+UPDATE contractregistry.contract_revision SET status = $2, status_version = status_version + 1
+WHERE revision_id = $1 AND status_version = $3`
+	moved, err := writer.Exec(ctx, move, revision.ID, to, revision.StatusVersion)
+	if err != nil {
+		return domain.Revision{}, true, fmt.Errorf("move a contract revision: %w", err)
+	}
+	if moved.RowsAffected() != 1 {
+		return domain.Revision{}, true, fmt.Errorf("move a contract revision: %d rows changed", moved.RowsAffected())
+	}
+	revision.Status, revision.StatusVersion = to, revision.StatusVersion+1
+	return revision, true, nil
+}
+
+// Hold locks the row of a revision of the asset inside the transaction it
+// is called in and returns the revision as it is. Until that transaction
+// ends, whatever else asks for the row this way waits: a move, or another
+// hold. What is decided behind a hold is decided on the status the revision
+// has, and one caller at a time.
+func (s *Revisions) Hold(ctx context.Context, asset domain.AssetRef, id string) (domain.Revision, bool, error) {
 	writer, err := s.database.RequireExecutor(ctx)
 	if err != nil {
 		return domain.Revision{}, false, err
@@ -173,20 +204,6 @@ func (s *Revisions) Move(ctx context.Context, asset domain.AssetRef, id, to stri
 	if err != nil {
 		return domain.Revision{}, false, fmt.Errorf("lock a contract revision: %w", err)
 	}
-	if err := domain.Move(revision.Status, to); err != nil {
-		return domain.Revision{}, true, err
-	}
-	const move = `
-UPDATE contractregistry.contract_revision SET status = $2, status_version = status_version + 1
-WHERE revision_id = $1 AND status_version = $3`
-	moved, err := writer.Exec(ctx, move, revision.ID, to, revision.StatusVersion)
-	if err != nil {
-		return domain.Revision{}, true, fmt.Errorf("move a contract revision: %w", err)
-	}
-	if moved.RowsAffected() != 1 {
-		return domain.Revision{}, true, fmt.Errorf("move a contract revision: %d rows changed", moved.RowsAffected())
-	}
-	revision.Status, revision.StatusVersion = to, revision.StatusVersion+1
 	return revision, true, nil
 }
 
