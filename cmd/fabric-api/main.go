@@ -331,10 +331,17 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 	if err != nil {
 		return nil, err
 	}
+	auditReading, err := operations.NewReadAudit(operations.ReadAuditDependencies{
+		Transactor: database, Scopes: auditScopes{governance: productGovernance},
+		Reader: operationsdb.NewAuditReader(database.Framework), Refusals: recordAudit,
+	})
+	if err != nil {
+		return nil, err
+	}
 	return httptransport.NewHandler(httptransport.Config{
 		Logger: logger, Build: buildinfo.Current(), Verifier: verifier, Governance: productGovernance, Catalog: apiCatalog, Registry: contractRegistry,
 		PolicyReview: policyReview{Checks: contractChecks, Reviews: contractReviews},
-		Releases:     contractReleases, Publication: publications,
+		Releases:     contractReleases, Publication: publications, Audit: auditReading,
 	})
 }
 

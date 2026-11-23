@@ -16,9 +16,15 @@ const (
 	RoleSecurityReviewer Role = "security_reviewer"
 )
 
+// RoleInternalAuditor reads the audit records of one product (F05 §6, AC-29)
+// and nothing else: no contract, no revision, no publication. An owner does
+// not read them by being one; it makes itself an auditor, and that grant is
+// on record.
+const RoleInternalAuditor Role = "internal_auditor"
+
 // ProductRoles returns the roles a product assignment can grant.
 func ProductRoles() []Role {
-	return []Role{RoleProductOwner, RoleSecurityAdmin, RoleSecurityReviewer}
+	return []Role{RoleProductOwner, RoleSecurityAdmin, RoleSecurityReviewer, RoleInternalAuditor}
 }
 
 var (

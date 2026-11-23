@@ -36,9 +36,11 @@ func ApplicationPrivileges() []TablePrivileges {
 		// A process reads the history when it starts, to refuse a database
 		// that was not migrated for its build.
 		{SchemaHistory, "applied_migration", []string{"SELECT"}},
-		// The audit trail is append-only for a process: it cannot read back,
-		// change or remove what it recorded (FR-062).
-		{"platformoperations", "audit_record", []string{"INSERT"}},
+		// The audit trail is append-only for a process: it records, and reads
+		// back for the auditors of a product (AC-29), and cannot change or
+		// remove what it recorded (FR-062). No UPDATE, no DELETE: those are
+		// the privileges that would make it a record that can be rewritten.
+		{"platformoperations", "audit_record", []string{"SELECT", "INSERT"}},
 		{"apicatalog", "api_asset", []string{"SELECT", "INSERT"}},
 		// A product is registered and read, and its brand is changed.
 		// Changing the brand is an UPDATE, and a trigger of the table

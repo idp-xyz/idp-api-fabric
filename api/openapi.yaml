@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.27.0
+  version: 0.28.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -14,7 +14,8 @@ info:
 
 
     A list is read a page at a time, in a fixed order. Publication and block
-    history use generations. Other lists are oldest first, by the instant an
+    history use generations. The audit records of a product are newest first,
+    by the instant they were recorded, then by identifier. Other lists are oldest first, by the instant an
     item was created or granted, then by identifier. An item keeps its place for as
     long as it is listed. A page holds at most 100 items and says where the
     next one starts. It starts behind a position, not at an offset: an offset
@@ -327,11 +328,15 @@ paths:
       summary: Make a principal hold a role in a product
       description: >-
         Makes the principal hold the role in the product, from now until the
-        assignment is revoked. A product has one role, product_owner. An
-        owner of the product may, and so may a platform administrator: naming
-        the owners of a product is part of registering it, and it is how a
-        product whose owner was mistyped is repaired. Naming an owner gives
-        the administrator no view of what is inside the product. Nothing
+        assignment is revoked. A product has four roles: product_owner,
+        security_admin, security_reviewer and internal_auditor. An owner of
+        the product may grant any of them, itself included: an owner that
+        makes itself an auditor reads the audit records of the product then,
+        and the grant is on record. A platform administrator may name owners
+        and no other role (403 FORBIDDEN for the three that are left):
+        naming the owners of a product is part of registering it, and it is
+        how a product whose owner was mistyped is repaired. Naming an owner
+        gives the administrator no view of what is inside the product. Nothing
         keeps it from naming itself, here as at registration: it is then an
         owner like any other, and the grant is on record. Whoever else may
         know the product exists, as a member of one of its workspaces does,
@@ -469,6 +474,136 @@ paths:
         '404':
           $ref: '#/components/responses/Problem'
         '409':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/audit-records:
+    get:
+      operationId: listAuditRecords
+      summary: List the audit records of a product
+      description: >-
+        Returns the audit records of the product to an auditor of it: a
+        principal that holds the role internal_auditor in the product now.
+        Nobody else reads them. An owner of the product does not by being one,
+        nor does a platform administrator, nor whoever holds another role in
+        the product: an owner that is to read them makes itself an auditor
+        (grantProductRole), and that grant is on record. Whoever may know the
+        product exists and is no auditor of it is refused (403 FORBIDDEN); to
+        anyone else there is no such product (404 PRODUCT_NOT_FOUND), the same
+        as for a product that is missing. What the caller holds is decided
+        again with every page: a role that was revoked reads no page after
+        it, whatever page token the caller holds. An auditor reads the records
+        from the beginning, those recorded before it became one included.
+        The role gives no other view of the product: no contract, no revision,
+        no release and no publication.
+
+
+        Only the records of this product are listed. A record that belongs to
+        no product, such as the refusal of a request to register one, is not
+        read here. A record says when it was recorded, who acted, what was
+        attempted, how it ended, which rule decided it, and the kind and the
+        identifier of the resource it names, if it left one behind; and the
+        identifier of the request, which is the trace_id of its problem and
+        ties it to its log lines and its events. The actor is the principal
+        as it was recorded: the issuer and the subject, not masked. A record
+        holds no token and no request body.
+
+
+        The records are newest first, by the instant they were recorded and
+        then by identifier. What is recorded while the list is read is newer
+        than any position a page handed out and comes before it: it repeats
+        no record that was read and takes nothing from the records that were
+        not. Each filter keeps the records that match it exactly, and the
+        filters narrow the list together; recorded_since is included and
+        recorded_before is not. They are applied before paging: keep them the
+        same when following a page token. A recorded_since that is not
+        earlier than recorded_before is refused (422 REQUEST_UNPROCESSABLE).
+        An instant is best sent in UTC, ending in Z. A numeric offset is read
+        as well, but its + has to be percent-encoded (%2B08:00): left as it
+        is, it is a space in a query and the request is refused (400
+        REQUEST_INVALID). The trail keeps the microsecond: a finer instant is
+        cut to it.
+
+
+        A read that is answered leaves no audit record, as no read does. One
+        that is refused does (audit.search, under DENY-03), unless there is no
+        such product.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+        - in: query
+          name: recorded_since
+          description: Only the records recorded at this instant or after it
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: recorded_before
+          description: Only the records recorded before this instant
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: action
+          schema:
+            $ref: '#/components/schemas/AuditAction'
+        - in: query
+          name: outcome
+          schema:
+            $ref: '#/components/schemas/AuditOutcome'
+        - in: query
+          name: actor_issuer
+          description: >-
+            Only the records of principals under this issuer. It is asked for
+            alone, or with actor_subject.
+          schema:
+            $ref: '#/components/schemas/Reference'
+        - in: query
+          name: actor_subject
+          description: >-
+            Only the records of this subject, under any issuer unless
+            actor_issuer says which
+          schema:
+            $ref: '#/components/schemas/Reference'
+        - in: query
+          name: resource_type
+          schema:
+            $ref: '#/components/schemas/AuditResourceType'
+        - in: query
+          name: resource_id
+          schema:
+            $ref: '#/components/schemas/Identifier'
+        - in: query
+          name: correlation_id
+          description: Only the records of the request that has this identifier
+          schema:
+            $ref: '#/components/schemas/Reference'
+      responses:
+        '200':
+          description: A page of the audit records of the product
+          headers:
+            Cache-Control:
+              description: An audit record is private to the auditors of its product
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditRecordList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '422':
           $ref: '#/components/responses/Problem'
         '503':
           $ref: '#/components/responses/Problem'
@@ -3490,9 +3625,10 @@ components:
         What a principal is in a product. A product_owner manages the
         workspaces, their members and product roles. A security_admin blocks
         publication access. A security_reviewer independently clears blocks.
-        These roles are scoped to the product.
+        An internal_auditor reads the audit records of the product and nothing
+        else. These roles are scoped to the product.
       type: string
-      enum: [product_owner, security_admin, security_reviewer]
+      enum: [product_owner, security_admin, security_reviewer, internal_auditor]
     ProductRoleGrant:
       type: object
       additionalProperties: false
@@ -3520,6 +3656,64 @@ components:
         granted_at:
           type: string
           format: date-time
+    AuditOutcome:
+      description: >-
+        How an attempt to act ended. SUCCEEDED is an action that was allowed
+        and took effect. DENIED is one that was refused: nothing changed.
+      type: string
+      enum: [SUCCEEDED, DENIED]
+    AuditAction:
+      description: >-
+        The smallest unit of what was attempted, such as product_role.grant:
+        words of lower case letters, digits and underscores, joined by dots.
+      type: string
+      maxLength: 64
+      pattern: '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'
+    AuditResourceType:
+      description: What was attempted on, such as RoleAssignment.
+      type: string
+      maxLength: 64
+      pattern: '^[A-Za-z][A-Za-z0-9]*$'
+    AuditRecord:
+      description: >-
+        The minimal fact of one attempt to act: who acted, what was attempted
+        on which resource, when, how it ended and under which rule. It is as
+        the trail holds it, and the trail holds references only: no token, no
+        request body and no name of a private object.
+      type: object
+      additionalProperties: false
+      required: [audit_id, recorded_at, actor, action, outcome, rule_id, product_id, resource_type, correlation_id]
+      properties:
+        audit_id:
+          $ref: '#/components/schemas/Identifier'
+        recorded_at:
+          type: string
+          format: date-time
+        actor:
+          $ref: '#/components/schemas/Principal'
+        action:
+          $ref: '#/components/schemas/AuditAction'
+        outcome:
+          $ref: '#/components/schemas/AuditOutcome'
+        rule_id:
+          description: >-
+            The rule that allowed or refused the action, by its stable
+            identifier in the access matrix, such as AC-10 or DENY-03.
+          $ref: '#/components/schemas/Reference'
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        resource_type:
+          $ref: '#/components/schemas/AuditResourceType'
+        resource_id:
+          description: >-
+            The resource the action was on. A refusal that left none behind
+            names none, and the member is absent.
+          $ref: '#/components/schemas/Identifier'
+        correlation_id:
+          description: >-
+            Ties the record to the request, its log lines and its events: the
+            trace_id of the problem that answered it.
+          $ref: '#/components/schemas/Reference'
     CheckRunStatus:
       type: string
       enum: [PASS, WARN, FAIL, UNKNOWN]
@@ -4377,6 +4571,20 @@ components:
           maxItems: 100
           items:
             $ref: '#/components/schemas/ProductRoleAssignment'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
+    AuditRecordList:
+      description: >-
+        One page of the audit records of a product, newest first.
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/AuditRecord'
         next_page_token:
           $ref: '#/components/schemas/NextPageToken'
     AudienceConfigList:

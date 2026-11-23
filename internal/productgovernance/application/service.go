@@ -848,7 +848,8 @@ func (s *ProductGovernance) GrantProductRole(ctx context.Context, command GrantP
 		}
 		if !(domain.Standing{Roles: held}).Owns() {
 			role := domain.Role(command.Role)
-			if !s.deps.Administrators.Includes(command.Caller) || role == domain.RoleSecurityAdmin || role == domain.RoleSecurityReviewer {
+			if !s.deps.Administrators.Includes(command.Caller) || role == domain.RoleSecurityAdmin || role == domain.RoleSecurityReviewer ||
+				role == domain.RoleInternalAuditor {
 				refused = s.notOwner(seen.standing, ports.AuditEntry{
 					Actor: command.Caller, Action: ActionProductRoleGrant, Rule: ruleNoRole,
 					ProductID: productID, ResourceType: resourceRoleAssignment, CorrelationID: command.CorrelationID,

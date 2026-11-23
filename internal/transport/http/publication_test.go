@@ -54,7 +54,7 @@ func newPublicationService(t *testing.T, fake *publications) *service {
 	handler, err := NewHandler(Config{
 		Logger: slog.New(slog.NewTextHandler(s.log, nil)), Build: testBuild, Verifier: tokens{}, Governance: s.governance,
 		Catalog: unusedCatalog{}, Registry: unusedRegistry{}, PolicyReview: unusedPolicyReview{},
-		Releases: unusedReleases{}, Publication: fake,
+		Releases: unusedReleases{}, Publication: fake, Audit: unusedAudit{},
 	})
 	if err != nil {
 		t.Fatalf("build the handler: %v", err)

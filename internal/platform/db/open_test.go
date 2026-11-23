@@ -220,6 +220,9 @@ func TestOpenRefusesARoleThatWasGrantedLessThanAProcessNeeds(t *testing.T) {
 		// It stored the files of a source and never read one back.
 		"the privilege to read the files of a source was never granted": {
 			`REVOKE SELECT ON contractregistry.source_file FROM `, "missing SELECT on contractregistry.source_file"},
+		// It recorded what was attempted and never read the audit trail back.
+		"the privilege to read the audit trail was never granted": {
+			`REVOKE SELECT ON platformoperations.audit_record FROM `, "missing SELECT on platformoperations.audit_record"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

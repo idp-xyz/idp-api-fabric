@@ -54,7 +54,7 @@ func TestARoleAssignmentIsGrantedInForceAtVersionOne(t *testing.T) {
 func TestARoleAssignmentGrantsOneOfTheRolesOfAProduct(t *testing.T) {
 	product := registered(t)
 
-	if want := []Role{"product_owner", "security_admin", "security_reviewer"}; !slices.Equal(ProductRoles(), want) {
+	if want := []Role{"product_owner", "security_admin", "security_reviewer", "internal_auditor"}; !slices.Equal(ProductRoles(), want) {
 		t.Fatalf("the roles of a product are %v, want %v", ProductRoles(), want)
 	}
 	for _, role := range ProductRoles() {
