@@ -56,10 +56,19 @@ type Selection struct {
 	Limit      int
 }
 
+// AssetPlace is an asset and the Workspace that owns it.
+type AssetPlace struct {
+	ID          domain.AssetID
+	WorkspaceID domain.WorkspaceID
+}
+
 type Assets interface {
 	Add(context.Context, domain.Asset) error
 	Find(context.Context, domain.ProductID, domain.AssetID) (domain.Asset, bool, error)
 	List(context.Context, domain.ProductID, Selection) ([]domain.Asset, error)
+	// InWorkspaces places the assets of the product that the Workspaces own.
+	// No Workspace owns no asset.
+	InWorkspaces(context.Context, domain.ProductID, []domain.WorkspaceID) ([]AssetPlace, error)
 }
 
 type AuditEntry struct {

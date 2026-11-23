@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.25.0
+  version: 0.26.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -2178,6 +2178,104 @@ paths:
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets/{publication_target_id}/assets:
+    get:
+      operationId: listPublicationSlots
+      summary: List the slots of a publication target that the caller may read
+      description: >-
+        Lists the slots of the target that have taken an operation, oldest
+        first by the instant their first operation was accepted, then by
+        slot_id. A slot keeps its place whatever is done to it later. Only
+        what was published is listed: an asset that was never published to
+        the target has no slot, which getPublicationSlot reads as empty, and
+        a withdrawn slot is listed. A caller sees the slots of the assets of
+        the workspaces where it is an author, a reviewer or a publisher now,
+        the same rule as getPublicationSlot. The other slots are left out
+        before the page is cut, so every page but the last is full. A caller
+        who knows the product and reads none of its workspaces receives 403,
+        and one who cannot know the product receives 404 PRODUCT_NOT_FOUND.
+        A caller who reads a workspace without a slot on the target receives
+        an empty list. A target the product does not have is answered with
+        404 PUBLICATION_TARGET_NOT_FOUND to whoever may read. Each item is
+        the slot exactly as getPublicationSlot reads it, with blocked and
+        approval_problem. approval_problem is worked out when the slot is
+        read and is not stored, so the list cannot be filtered by it.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: One page of the slots the caller may read
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationSlotList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/publications:
+    get:
+      operationId: listAssetPublications
+      summary: List where an API asset is published
+      description: >-
+        Lists the slots of the asset on the publication targets of its
+        product that have taken an operation, oldest first by the instant
+        their first operation was accepted, then by slot_id. Only what was
+        published is listed: a target the asset was never published to has no
+        slot of it and is not listed, and a withdrawn slot is. Whoever may
+        read the slots of the asset (getPublicationSlot) may read this list:
+        an author, a reviewer or a publisher of the workspace that owns it.
+        Anyone who cannot know the product receives 404 PRODUCT_NOT_FOUND. A
+        missing, cross-product or withheld asset returns API_ASSET_NOT_FOUND
+        when the caller can know the product exists. A caller who may know
+        the asset but holds none of those roles in its workspace receives
+        403. An asset that is published nowhere has an empty list. Each item
+        is the slot exactly as getPublicationSlot reads it, with blocked and
+        approval_problem. approval_problem is worked out when the slot is
+        read and is not stored, so the list cannot be filtered by it.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/CheckAssetId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: One page of the slots of the asset
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationSlotList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}:
     get:
       operationId: getPublicationSlot
@@ -2826,6 +2924,21 @@ components:
         delivery_status:
           type: string
           enum: [UNKNOWN]
+    PublicationSlotList:
+      description: >-
+        One page of slots, oldest first by their first operation, each as
+        getPublicationSlot reads it.
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PublicationSlot'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
     PublicationChange:
       type: object
       additionalProperties: false
