@@ -552,3 +552,74 @@ func TestTheContractStatesTheAuditRecordsAsTheyAreAnswered(t *testing.T) {
 		})
 	}
 }
+
+// The operation declares every way the audit records are answered, and no
+// other: a page, a request the contract refuses, a caller who is not told who
+// it is, one who may not read, a product that is not there, a range that ends
+// before it begins, and a failure of the service. Every status is declared by
+// name: the default answers any status the contract does not name with the
+// same problem, so a status that is left out of the contract changes nothing
+// in what a client is told, apart from what the generated code knows of it.
+// A page is private to the auditors of its product and says so on every
+// answer: no cache keeps it, whichever header a change would let through.
+func TestTheContractDeclaresHowTheAuditRecordsAreAnswered(t *testing.T) {
+	contract, err := loadContract()
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := contract.Paths.Find("/v1/products/{product_id}/audit-records").Get
+	if operation == nil || operation.OperationID != "listAuditRecords" {
+		t.Fatalf("the contract has no listAuditRecords at the audit records of a product: %+v", operation)
+	}
+
+	const problem, unauthenticated = "#/components/responses/Problem", "#/components/responses/Unauthenticated"
+	answers := operation.Responses.Map()
+	statuses := map[string]string{
+		"400": problem, "401": unauthenticated, "403": problem, "404": problem, "422": problem, "503": problem, "default": problem,
+	}
+	for status, want := range statuses {
+		got := "nothing"
+		if declared := answers[status]; declared != nil {
+			got = declared.Ref
+		}
+		if got != want {
+			t.Errorf("the contract declares for %s of the audit records %s, want %s", status, got, want)
+		}
+	}
+	want := append(slices.Sorted(maps.Keys(statuses)), "200")
+	slices.Sort(want)
+	if got := slices.Sorted(maps.Keys(answers)); !slices.Equal(got, want) {
+		t.Errorf("the contract declares the statuses %v for the audit records, want %v", got, want)
+	}
+
+	// A page: the list of audit records, as JSON, and never cached.
+	page := answers["200"]
+	if page == nil || page.Value == nil {
+		t.Fatal("the contract declares no page of audit records")
+	}
+	if media := page.Value.Content.Get("application/json"); len(page.Value.Content) != 1 || media == nil || media.Schema == nil ||
+		media.Schema.Ref != "#/components/schemas/AuditRecordList" {
+		t.Errorf("the contract declares a page of audit records as %v, want an AuditRecordList as JSON and nothing else",
+			slices.Sorted(maps.Keys(page.Value.Content)))
+	}
+	header := page.Value.Headers["Cache-Control"]
+	if header == nil || header.Value == nil || header.Value.Schema == nil || header.Value.Schema.Value == nil {
+		t.Fatal("the contract declares no Cache-Control on a page of audit records")
+	}
+	if !header.Value.Required {
+		t.Errorf("the contract does not require Cache-Control on a page of audit records")
+	}
+	// Only no-store, whether the contract says it as a constant or as the one
+	// member of an enumeration. The validator that checks the answers of the
+	// tests does not look at a constant, so what the contract declares is
+	// read here and not asked of it.
+	schema := header.Value.Schema.Value
+	if onlyNoStore := schema.Const == "no-store" && len(schema.Enum) == 0 ||
+		schema.Const == nil && len(schema.Enum) == 1 && schema.Enum[0] == "no-store"; !onlyNoStore || !schema.Type.Is("string") {
+		t.Errorf("the contract takes Cache-Control as %v (const %v, enum %v) on a page of audit records, want no-store and no other value",
+			schema.Type, schema.Const, schema.Enum)
+	}
+	if len(page.Value.Headers) != 1 {
+		t.Errorf("the contract declares the headers %v on a page of audit records, want Cache-Control alone", slices.Sorted(maps.Keys(page.Value.Headers)))
+	}
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -14,6 +15,9 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"go.idp.xyz/idp-api-fabric/internal/platform/db/pgtest"
+	operationsdomain "go.idp.xyz/idp-api-fabric/internal/platformoperations/domain"
+	operationsports "go.idp.xyz/idp-api-fabric/internal/platformoperations/ports"
+	governance "go.idp.xyz/idp-api-fabric/internal/productgovernance/application"
 )
 
 // These tests run the reading of the audit trail as fabric-api assembles it:
@@ -837,6 +841,40 @@ func TestAuditRecordsHoldNoTokenAndNoRequestBody(t *testing.T) {
 			if id, _ := item[member].(string); !auditIdentifier.MatchString(id) {
 				t.Errorf("the record shows %s %q, want an identifier the server made: %v", member, id, item)
 			}
+		}
+	}
+}
+
+// An identifier that names no product is no product to know: the scope of an
+// auditor over it is empty, and asking for it is no failure of the service.
+// The use case refuses such an identifier before it asks, so no request gets
+// here with one; this is where the answer of Product Governance to it, that
+// there is no such product, is told apart from a failure, were the use case
+// ever to ask. A request that names no principal is a failure all the same,
+// whichever the product: it is not read as there being no product.
+func TestAnIdentifierThatNamesNoProductIsNoFailureOfTheScopeOfAnAuditor(t *testing.T) {
+	// Nothing is read for an identifier that names no product, so the scopes
+	// need no store.
+	scopes := auditScopes{governance: &governance.ProductGovernance{}}
+	caller := operationsdomain.Actor{Issuer: "https://issuer.example", Subject: "alice"}
+	const absent = "3e1c6a9d-74f2-4b0a-98c3-b2e5f4a6c7d8"
+
+	for name, product := range map[string]string{
+		"words":                       "not-an-identifier",
+		"nothing":                     "",
+		"an identifier in upper case": strings.ToUpper(absent),
+		"an identifier cut short":     absent[:len(absent)-1],
+		"an identifier with a suffix": absent + "0",
+	} {
+		got, err := scopes.AuditScope(t.Context(), caller, product)
+		if err != nil || got != (operationsports.AuditScope{}) {
+			t.Errorf("%s: the scope is %+v with the failure %v, want the empty scope and no failure", name, got, err)
+		}
+	}
+
+	for _, product := range []string{"not-an-identifier", absent} {
+		if _, err := scopes.AuditScope(t.Context(), operationsdomain.Actor{}, product); !errors.Is(err, governance.ErrForbidden) {
+			t.Errorf("a request with no principal, for %q: the failure is %v, want a refusal", product, err)
 		}
 	}
 }
