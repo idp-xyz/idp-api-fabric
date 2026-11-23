@@ -452,7 +452,7 @@ F04-GOV-014 到 020、025 到 027 这 10 条（Release 摘要链、发布授权�
 
 ### 11.6 已实现的 Release 与发布接口
 
-本节对应管理 API 0.20.0–0.22.0，当前为 0.22.0：0.20.0 加入发布人和两种安全角色，0.21.0 加入 Release，0.22.0 加入发布目标、槽位和访问阻断。数据模型见 F03 §5.10，访问规则见 F05 §6.7。以下路径均以 `/v1/products/{product_id}` 开头。 [管理 API 契约](../api/openapi.yaml)
+本节对应管理 API 0.20.0–0.22.0：0.20.0 加入发布人和两种安全角色，0.21.0 加入 Release，0.22.0 加入发布目标、槽位和访问阻断。数据模型见 F03 §5.10，访问规则见 F05 §6.7。以下路径均以 `/v1/products/{product_id}` 开头。 [管理 API 契约](../api/openapi.yaml)
 
 | 路径 | 行为 |
 |---|---|
@@ -490,7 +490,7 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 
 ### 11.7 已实现的复审接口与批准状态
 
-本节对应管理 API 0.23.0–0.25.0，当前为 0.25.0：0.23.0 让已批准的修订可以再次评审，0.24.0 让发布人能读修订、检查和评审，0.25.0 让槽位说明批准为什么不成立。三个版本都没有增加操作，仍是 52 个。数据模型见 F03 §5.11，访问规则见 F05 §6.8。 [管理 API 契约](../api/openapi.yaml)
+本节对应管理 API 0.23.0–0.25.0：0.23.0 让已批准的修订可以再次评审，0.24.0 让发布人能读修订、检查和评审，0.25.0 让槽位说明批准为什么不成立。三个版本都没有增加操作，仍是 52 个。数据模型见 F03 §5.11，访问规则见 F05 §6.8。 [管理 API 契约](../api/openapi.yaml)
 
 **复审（0.23.0）。** 用的是 §11.5 的五个操作，请求和响应的形状不变。区别在提交：
 
@@ -525,6 +525,69 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 **批准失效后的恢复步骤。** 以检查工具更新为例，之后每个受影响的资产要做四步，内容不用改：作者 `POST …/check-runs`；作者 `POST …/reviews`（复审）；评审人 `POST …/reviews/{id}/decision`；发布人 `POST …/releases` 准备新版本号的 Release，再 `POST …/operations` 激活它。激活之后槽位不再有 `approval_problem`，读到的制品与之前逐字节相同。这是 §7.2 和 §9 所说的“重新检查与复审”。
 
 **兼容性。** 0.23.0 改变了一个已有操作的行为：对 `APPROVED` 的修订 `POST …/reviews`，之前是 409，现在是 201 并产生一条评审。依赖这个 409 的客户端要改。`Review` 新增的 `supplementary` 是响应里的必有成员；0.22.0 的进程在迁移后的库上读复审时不带它，也不能结束复审（决定和撤回返回 409 `REVISION_STATUS_CONFLICT`），见 F03 §5.11。0.24.0 只放宽了读取的授权。0.25.0 给 `PublicationSlot` 增加了一个可选的枚举成员，把响应当作封闭对象的客户端要先升级。
+
+### 11.8 已实现的查询接口
+
+本节对应管理 API 0.26.0–0.28.0，当前为 0.28.0：0.26.0 加入两个槽位列表，0.27.0 加入按编号下载 Release 和读出它的来源，0.28.0 加入审计员和审计记录的读取。三个版本一共增加 5 个操作，现在是 57 个。数据模型见 F03 §5.12，访问规则见 F05 §6.9。 [管理 API 契约](../api/openapi.yaml)
+
+| 方法 | 路径 | operationId | 从哪个版本起 |
+|---|---|---|---|
+| `GET` | `/v1/products/{product_id}/publication-targets/{publication_target_id}/assets` | `listPublicationSlots` | 0.26.0 |
+| `GET` | `/v1/products/{product_id}/assets/{api_asset_id}/publications` | `listAssetPublications` | 0.26.0 |
+| `GET` | `/v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}/artifact` | `getContractReleaseArtifact` | 0.27.0 |
+| `GET` | `/v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}/provenance` | `getContractReleaseProvenance` | 0.27.0 |
+| `GET` | `/v1/products/{product_id}/audit-records` | `listAuditRecords` | 0.28.0 |
+
+五个应答都带 `Cache-Control: no-store`。
+
+**槽位列表（0.26.0）。** 应答是 `PublicationSlotList`：`items` 和下一页的 `next_page_token`。每一项就是 `getPublicationSlot` 读到的 `PublicationSlot`，含 `blocked` 和可选的 `approval_problem`（§11.7）：同一个槽位在这三处读到的完全一样。只列做过操作的槽位，撤回的也列，所以 `visibility` 只有 `ACTIVE` 和 `WITHDRAWN`；没有发布过的资产没有槽位，读单个槽位是空槽位（`EMPTY`），列表里没有它。目标的列表只含调用人读的 Workspace 里的资产的槽位，资产的列表含这个资产在本产品各个目标上的槽位。谁能读与读单个槽位相同：资产所属 Workspace 的作者、评审人和发布人。能读但没有可见的槽位，得到 200 和空的 `items`，不是错误。`approval_problem` 是读的时候算的，不存库，所以不能按它筛选。一页里的每个槽位各做一次与读单个槽位相同的核对，耗时随页里的槽位数增加，本机的量级见 F03 §5.12。
+
+**分页和顺序。** 三个列表都采用 §3.1.1 的约定：`page_size` 为 1–100，默认 50，`page_token` 原样使用上一页的 `next_page_token`；除最后一页，每一页都是满的，最后一页没有令牌，刚好装满的也没有；不返回总数。顺序是固定的：
+
+| 列表 | 顺序 |
+|---|---|
+| 两个槽位列表 | 旧的在前：槽位第一次被接受的操作的时间，同一时刻按 `slot_id`。一个槽位的位置从它出现起不变，撤销、恢复、换 Release 都不换位置 |
+| 审计记录 | 新的在前：`recorded_at` 倒序，同一时刻 `audit_id` 倒序。翻页期间新写入的记录排在已发出的位置之前，不会让读过的重复，也不会让没读到的漏掉 |
+
+令牌只记位置和它属于哪个列表（一个目标上的槽位、一个资产的槽位、一个产品的审计记录），不记调用人，也不带来任何权限：每页重新判权，权限撤销以后旧令牌读不到下一页，得到的是没有这个权限的人的答案（403 或 404）。别的列表的令牌是 400 `PAGE_TOKEN_INVALID`。令牌也不记审计记录的筛选条件：翻页时要保持筛选条件不变，换了条件不会报错，只是从那个位置起按新条件读。
+
+**审计记录（0.28.0）。** 只有本产品的审计员能读（F05 §6.9）。每一项有 `audit_id`、`recorded_at`、`actor`（`Principal`：issuer 和 subject，如实给出，不打码）、`action`、`outcome`（`SUCCEEDED` 或 `DENIED`）、`rule_id`、`product_id`、`resource_type`、`resource_id` 和 `correlation_id`；记录没有留下资源时，没有 `resource_id` 这个成员。`correlation_id` 就是那次请求的错误应答里的 `trace_id`，它把记录和日志、事件连起来。只出本产品的记录；不属于任何产品的记录（例如无权的人登记产品被拒绝）在这里读不到。审计员能读被任命之前的记录。筛选条件都是精确匹配，互相叠加，在分页之前应用：
+
+| 参数 | 含义 |
+|---|---|
+| `recorded_since` | 在这个时刻或之后记录的（含） |
+| `recorded_before` | 在这个时刻之前记录的（不含） |
+| `action` | 动作，例如 `product_role.grant`：小写字母、数字和下划线组成的词，用点连接，至多 64 个字符 |
+| `outcome` | `SUCCEEDED` 或 `DENIED` |
+| `actor_issuer`、`actor_subject` | 行动人的 issuer 和 subject。可以只给 `actor_issuer`，也可以只给 `actor_subject`（匹配任何 issuer 下的这个 subject） |
+| `resource_type` | 资源类型，例如 `RoleAssignment`：字母和数字，至多 64 个字符 |
+| `resource_id` | 资源编号，规范形式的 UUID |
+| `correlation_id` | 一次请求的编号 |
+
+时刻是 RFC 3339，建议用 `Z` 结尾；带偏移的 `+` 在查询里要写成 `%2B`，否则它是一个空格，请求被拒绝（400 `REQUEST_INVALID`）。时刻按微秒记，更细的截到微秒。`recorded_since` 不早于 `recorded_before` 是 422 `REQUEST_UNPROCESSABLE`：这一条只有模型能判断，所以只对审计员给出，不是审计员的人得到的是 403 或 404。其余条件的格式（上表里的长度、字符和 UUID 形式）契约已经声明，不符合的是 400 `REQUEST_INVALID`；契约没有声明的参数同样是 400（§3.1.1）。一页读多少行：不带筛选的一页读的行数和它返回的相当；按动作、结果、行动人和资源筛选没有索引，满足条件的记录很少时，一页要读很多行（F03 §5.12）。
+
+**下载（0.27.0）。** `GET …/releases/{release_id}/artifact` 按 Release 的编号下载它的制品：`application/octet-stream`，字节就是这个 Release 准备时用的字节（§11.6 说的 `fabric-openapi-source/v1` JSON）。`X-Artifact-Digest` 是响应字节的 SHA-256，也就是 Release 的 `artifact_digest`，格式是 `sha256:` 加小写十六进制，客户端可以自己再算一遍。读取之前，服务端核对制品字节的摘要和修订的闭包摘要，与读槽位的制品时一样。与 `getPublishedArtifact` 不同，它不看槽位指向谁：同一个资产的任何 Release 都可以下载，包括已经被别的 Release 替换的和撤回的。谁能读这个 Release 谁就能下载：资产所属 Workspace 的作者、评审人和发布人，产品暂停时也可以。**它不看发布目标上的访问阻断，也不重新核对批准，这与设计正文不一致，待裁决，见 F05 §6.9。** 路径里的 `release_id` 必须是 Release 的编号：摘要和版本号不是编号，是 400 `REQUEST_INVALID`。
+
+**来源（0.27.0）。** `GET …/releases/{release_id}/provenance` 一次给出一个 Release 准备时依据的事实，成员是：
+
+- `release`：就是 `getContractRelease` 读到的 `ContractRelease`；
+- `revision`：`revision_id` 和 `revision_sequence`，`source_kind`（`UPLOAD` 或 `GIT`），`git_origin`（只有 `GIT` 有），入口路径 `entrypoint`，`source_digest` 和 `ref_closure_digest`；
+- `check`：依据的那次检查：`check_run_id`，`policy_set_id` 和 `policy_digest`，`tool_manifest`，`status`，`summary`（各状态的规则数和发现总数），`completed_at`；
+- `approval`：依据的那次评审：`review_id`，`supplementary`（是不是复审），`scope`（批准的受众和环境），`concluded_by` 和 `concluded_at`（谁在什么时候批准），`valid_until`，`waivers`（豁免的规则和各自的到期时间；理由和补偿措施的文字不在这里，要读评审）。
+
+各部分和读修订、读检查、读评审得到的同名成员逐一相同。来源说的是准备这个 Release 时依据的事实，不说批准现在成不成立：修订后来被复审、有了更新的检查，旧 Release 的来源不变；批准现在是否成立看槽位的 `approval_problem`（§11.7），来源里没有这样的成员。Git 来源是导入修订时提交人声明的，Fabric 不回仓库核对：`git_origin` 说明的是“谁说这些文件来自哪个提交”，不证明文件和那个提交一致；同一仓库的相同内容后来从别的提交再导入，得到的仍是最先登记的修订，`git_origin` 仍是最早那次的提交。上传的修订没有 `git_origin`。没有指定基线的检查，`check.summary` 里的 `not_run` 是 11：基线里有 10 条规则没有工具，再加上兼容性那一条（F04-GOV-013 只在检查指定了基线时评估），见 §11.4；指定了基线的是 10。读出的评审、检查和修订与 Release 所记的对不上，是存储的故障，答 500 `INTERNAL_ERROR`，不说哪里不对，原因在日志里（F03 §5.12）。
+
+**失败。**
+
+| 操作 | 状态码和错误码 |
+|---|---|
+| 两个槽位列表 | 400 `REQUEST_INVALID`（参数）和 `PAGE_TOKEN_INVALID`（不是这个列表的令牌）；401；403 `FORBIDDEN`（知道产品，但读不了任何槽位）；404 `PRODUCT_NOT_FOUND`；目标的列表还有 404 `PUBLICATION_TARGET_NOT_FOUND`，资产的列表还有 404 `API_ASSET_NOT_FOUND` |
+| 下载和来源 | 400 `REQUEST_INVALID`（`release_id` 不是编号）；401；403 `FORBIDDEN`；404 `PRODUCT_NOT_FOUND`、`API_ASSET_NOT_FOUND` 和 `RELEASE_NOT_FOUND`；500 `INTERNAL_ERROR`（存储与 Release 所记的对不上） |
+| 审计记录 | 400 `REQUEST_INVALID` 和 `PAGE_TOKEN_INVALID`；401；403 `FORBIDDEN`（知道产品，但不是审计员）；404 `PRODUCT_NOT_FOUND`；422 `REQUEST_UNPROCESSABLE`（时间范围颠倒，只对审计员） |
+
+401 是 `CREDENTIALS_MISSING` 或 `TOKEN_INVALID`。404 的用法和读单个槽位、读 Release 一样：不认识产品的人得到 `PRODUCT_NOT_FOUND`；看不到资产的人（包括平台管理员和别的 Workspace 的读者）得到 `API_ASSET_NOT_FOUND`；别的资产和别的产品的 Release 编号，对读这个资产的人，与不存在的编号答案相同，都是 `RELEASE_NOT_FOUND`；别的产品的目标和资产，也与不存在的答案相同。
+
+**兼容性。** 0.26.0 只增加两个操作和一个 schema（`PublicationSlotList`），0.27.0 增加两个操作和五个 schema（`ContractReleaseProvenance`、`ReleaseProvenanceRevision`、`ReleaseProvenanceCheck`、`ReleaseProvenanceApproval`、`ReleaseProvenanceWaiver`）。0.28.0 增加一个操作和五个 schema（`AuditRecord`、`AuditRecordList`、`AuditAction`、`AuditOutcome`、`AuditResourceType`），并给 `ProductRole` 增加了成员 `internal_auditor`：它出现在授予角色的请求里，也出现在列出、读取和授予角色的响应里。按 §5.1，响应的枚举增加成员属于 RISKY：把枚举当作封闭集合的客户端要先升级。几处已有操作的描述补了文字，行为没有变：`grantProductRole` 的描述原来写“A product has one role, product_owner”，现在写明四个角色和谁能授予；`getContractRelease`、`getPublishedArtifact`、`getPublicationSlot` 和 `blockPublicationAccess` 说明了按编号下载与槽位、阻断的关系（阻断和批准管经槽位读，按编号下载不看它们）；`info.description` 里“其他列表旧的在前”补上了审计记录新的在前。没有新的错误码。
 
 ## 12. API Catalog 元数据、文档产物和发布加工
 
