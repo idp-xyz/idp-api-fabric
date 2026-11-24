@@ -26,7 +26,11 @@ func NewReviews(database *bentopostgres.DB) *Reviews {
 // A review is read under the product, the asset, the workspace and the
 // revision it belongs to, never by its identifier alone. Its scope is read
 // in the order the model keeps it in.
-const selectReview = `
+//
+// reviewColumns are the columns of a review and where they come from, for
+// every statement that reads reviews: what narrows them is the statement's
+// own, so that a review is the same review wherever it is read.
+const reviewColumns = `
 SELECT q.review_id, q.product_id, q.workspace_id, q.api_asset_id, q.revision_id, q.check_run_id, q.input_digest,
        coalesce(q.note, ''), q.requested_at, q.requested_by_issuer, q.requested_by_subject, q.supplementary,
        ARRAY(SELECT s.audience || '/' || s.environment FROM policyreview.review_scope s
@@ -38,7 +42,10 @@ SELECT q.review_id, q.product_id, q.workspace_id, q.api_asset_id, q.revision_id,
              WHERE w.review_id = q.review_id ORDER BY w.rule_id COLLATE "C"),
        ARRAY(SELECT w.expires_at FROM policyreview.review_waiver w WHERE w.review_id = q.review_id ORDER BY w.rule_id COLLATE "C")
 FROM policyreview.review_request q
-LEFT JOIN policyreview.review_conclusion c USING (review_id)
+LEFT JOIN policyreview.review_conclusion c USING (review_id)`
+
+// selectReview reads the reviews of one revision.
+const selectReview = reviewColumns + `
 WHERE q.product_id = $1 AND q.api_asset_id = $2 AND q.workspace_id = $3 AND q.revision_id = $4`
 
 func scanReview(row pgx.CollectableRow) (domain.Review, error) {

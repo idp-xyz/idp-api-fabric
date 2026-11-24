@@ -116,10 +116,12 @@ func (r checkRevisions) Hold(ctx context.Context, revision checkdomain.RevisionR
 }
 
 // policyReview is the use cases of Policy & Review as the transport reaches
-// them: those of a check and those of a review.
+// them: those of a check, those of a review and the queue of the reviews of a
+// workspace.
 type policyReview struct {
 	*checks.Checks
 	*checks.Reviews
+	*checks.ReviewQueue
 }
 
 func (a auditTrail) recordCheck(ctx context.Context, entry checkports.AuditEntry) error {

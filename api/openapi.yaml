@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.29.0
+  version: 0.30.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -1570,6 +1570,108 @@ paths:
         '415':
           $ref: '#/components/responses/Problem'
         '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/workspaces/{workspace_id}/reviews:
+    get:
+      operationId: listWorkspaceReviews
+      summary: List the reviews of a workspace
+      description: >-
+        Lists the reviews of every revision of every asset the workspace
+        owns, oldest first by the instant they were asked for and then by
+        review_id: the queue a reviewer reads to find what waits for a
+        decision (status IN_REVIEW) and an author reads to find what became
+        of what it asked. A review keeps its place for as long as it is
+        listed. What is asked for while the list is read comes after every
+        position a page handed out: it repeats no review that was read and
+        takes none from those that were not.
+
+        A current author, reviewer or publisher of the workspace reads every
+        review of it, as getRevisionReview reads each one alone, and each
+        item is the review that operation answers. The two differ in one
+        check only: getRevisionReview verifies that the review still rests
+        on the content its revision has now (input_digest), which needs the
+        revision, and this list does not. A review whose recorded rows are
+        not what was recorded fails the page (500 INTERNAL_ERROR) without
+        saying why.
+
+        Whoever may not read is answered as far as it may know. A caller
+        that may not know the product receives 404 PRODUCT_NOT_FOUND, the
+        same as for a product that is missing. One that knows the product
+        and is neither an owner of it nor a member of the workspace
+        receives 404 WORKSPACE_NOT_FOUND, the same as for a workspace the
+        product has not, and for a workspace of another product. An owner or
+        a member that holds none of the three grants, such as an owner and a
+        maintainer, receives 403 FORBIDDEN; an owner that asks for a
+        workspace the product has not receives 404 WORKSPACE_NOT_FOUND. A
+        caller that reads a workspace in which no review was asked for
+        receives an empty list. What the caller holds is decided again with
+        every page: a grant that was revoked reads no page after it,
+        whatever page token the caller holds.
+
+        status keeps the list to the reviews that stand at it. IN_REVIEW is
+        a review that has no conclusion yet, a supplementary review of an
+        APPROVED revision included, which leaves that revision APPROVED; the
+        others are the way a review ended. requested_by_issuer and
+        requested_by_subject keep it to the reviews a principal asked for:
+        the issuer alone, the subject alone under any issuer, or both. Each
+        filter keeps the reviews that match it exactly, and the filters
+        narrow the list together. They are applied before paging, so every
+        page but the last is full: keep them the same when following a page
+        token, which names a position and not a filter.
+
+        A read that is answered leaves no audit record, as no read does. One
+        that is refused does (review.read, under DENY-03), unless the
+        product is missing or an owner asked for a workspace the product
+        has not.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+        - in: query
+          name: status
+          description: Only the reviews that stand at this status
+          schema:
+            $ref: '#/components/schemas/ReviewStatus'
+        - in: query
+          name: requested_by_issuer
+          description: >-
+            Only the reviews asked for by principals under this issuer. It is
+            asked for alone, or with requested_by_subject.
+          schema:
+            $ref: '#/components/schemas/Reference'
+        - in: query
+          name: requested_by_subject
+          description: >-
+            Only the reviews this subject asked for, under any issuer unless
+            requested_by_issuer says which
+          schema:
+            $ref: '#/components/schemas/Reference'
+      responses:
+        '200':
+          description: One page of the reviews of the workspace
+          headers:
+            Cache-Control:
+              description: A review is private to whoever reads the reviews of its workspace
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
           $ref: '#/components/responses/Problem'
         '503':
           $ref: '#/components/responses/Problem'

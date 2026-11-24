@@ -313,6 +313,10 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 	if err != nil {
 		return nil, err
 	}
+	reviewQueue, err := newReviewQueue(database, productGovernance, audit)
+	if err != nil {
+		return nil, err
+	}
 	releaseScope := releaseAuthority{revisionScopes: revisionScope, reviews: contractReviews}
 	contractReleases, err := registry.NewReleases(registry.ReleaseDependencies{
 		Transactions: transactions, Scopes: releaseScope, Revisions: revisions,
@@ -340,7 +344,7 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 	}
 	return httptransport.NewHandler(httptransport.Config{
 		Logger: logger, Build: buildinfo.Current(), Verifier: verifier, Governance: productGovernance, Catalog: apiCatalog, Registry: contractRegistry,
-		PolicyReview: policyReview{Checks: contractChecks, Reviews: contractReviews},
+		PolicyReview: policyReview{Checks: contractChecks, Reviews: contractReviews, ReviewQueue: reviewQueue},
 		Releases:     contractReleases, Publication: publications, Audit: auditReading,
 	})
 }
