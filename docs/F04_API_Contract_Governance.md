@@ -319,9 +319,9 @@ V1 按 `Experimental → Stable → Deprecated → Retired` 表达资产生命�
 
 | 操作 | 请求与响应 |
 |---|---|
-| `GET …/assets` | 列出调用方可见的资产，按 `(created_at, api_asset_id)` 正序，采用 §3.1.1 的分页约定。可用 `workspace_id`、`api_kind`、`domain_key` 过滤，`q` 是对资产 key、名称和领域 key 的不区分大小写的子串匹配，至多 120 个字符。过滤只作用在可见的资产上；翻页时保持过滤条件不变 |
+| `GET …/assets` | 列出调用方可见的资产，按 `(created_at, api_asset_id)` 正序，采用 §3.1.1 的分页约定。可用 `workspace_id`、`api_kind`、`domain_key` 过滤，`q` 是对资产 key、名称和领域 key 的不区分大小写的子串匹配，至多 120 个字符。过滤只作用在可见的资产上；翻页时保持过滤条件不变。0.31.0 起每一项带概况 `overview`，另有 `check_status` 和 `release_pending` 两个筛选，见 §11.9 |
 | `POST …/assets` | 提交 `workspace_id`、`asset_key`、`display_name`、`domain_key`、`api_kind`（`HTTP` 或 `EVENT`）。成功返回 201 和 `Location`，`lifecycle` 为 `EXPERIMENTAL`。同一产品内 key 重复返回 409 `API_ASSET_KEY_TAKEN` |
-| `GET …/assets/{api_asset_id}` | 返回资产详情 |
+| `GET …/assets/{api_asset_id}` | 返回资产详情；0.31.0 起读得了修订的人另得到概况 `overview`，见 §11.9 |
 | `POST …/assets/{api_asset_id}/revisions` | 提交 `entrypoint`、`files`（每项为 `path` 和 `content_base64`），以及可选的 `git_origin`（`repository`、`commit`、可选 `ref`）。登记了新闭包返回 201 和 `Location`；同一来源下已登记的闭包返回 200 和原修订 |
 | `GET …/assets/{api_asset_id}/revisions` | 修订历史，按采集时间从早到晚，采用 §3.1.1 的分页约定。只有元数据，不含原文 |
 | `GET …/assets/{api_asset_id}/revisions/{revision_id}` | 修订的元数据：序号、状态、`source_kind`、`git_origin`、入口路径、`spec_version`、`source_digest`、`ref_closure_digest` 和创建时间 |
@@ -528,7 +528,7 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 
 ### 11.8 已实现的查询接口
 
-本节对应管理 API 0.26.0–0.28.0，当前为 0.28.0：0.26.0 加入两个槽位列表，0.27.0 加入按编号下载 Release 和读出它的来源，0.28.0 加入审计员和审计记录的读取。三个版本一共增加 5 个操作，现在是 57 个。数据模型见 F03 §5.12，访问规则见 F05 §6.9。 [管理 API 契约](../api/openapi.yaml)
+本节对应管理 API 0.26.0–0.28.0：0.26.0 加入两个槽位列表，0.27.0 加入按编号下载 Release 和读出它的来源，0.28.0 加入审计员和审计记录的读取。三个版本一共增加 5 个操作，到 0.28.0 是 57 个。数据模型见 F03 §5.12，访问规则见 F05 §6.9。 [管理 API 契约](../api/openapi.yaml)
 
 | 方法 | 路径 | operationId | 从哪个版本起 |
 |---|---|---|---|
@@ -588,6 +588,87 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 401 是 `CREDENTIALS_MISSING` 或 `TOKEN_INVALID`。404 的用法和读单个槽位、读 Release 一样：不认识产品的人得到 `PRODUCT_NOT_FOUND`；看不到资产的人（包括平台管理员和别的 Workspace 的读者）得到 `API_ASSET_NOT_FOUND`；别的资产和别的产品的 Release 编号，对读这个资产的人，与不存在的编号答案相同，都是 `RELEASE_NOT_FOUND`；别的产品的目标和资产，也与不存在的答案相同。
 
 **兼容性。** 0.26.0 只增加两个操作和一个 schema（`PublicationSlotList`），0.27.0 增加两个操作和五个 schema（`ContractReleaseProvenance`、`ReleaseProvenanceRevision`、`ReleaseProvenanceCheck`、`ReleaseProvenanceApproval`、`ReleaseProvenanceWaiver`）。0.28.0 增加一个操作和五个 schema（`AuditRecord`、`AuditRecordList`、`AuditAction`、`AuditOutcome`、`AuditResourceType`），并给 `ProductRole` 增加了成员 `internal_auditor`：它出现在授予角色的请求里，也出现在列出、读取和授予角色的响应里。按 §5.1，响应的枚举增加成员属于 RISKY：把枚举当作封闭集合的客户端要先升级。几处已有操作的描述补了文字，行为没有变：`grantProductRole` 的描述原来写“A product has one role, product_owner”，现在写明四个角色和谁能授予；`getContractRelease`、`getPublishedArtifact`、`getPublicationSlot` 和 `blockPublicationAccess` 说明了按编号下载与槽位、阻断的关系（阻断和批准管经槽位读，按编号下载不看它们）；`info.description` 里“其他列表旧的在前”补上了审计记录新的在前。没有新的错误码。
+
+### 11.9 已实现的工作台查询接口
+
+本节对应管理 API 0.29.0–0.31.0，当前为 0.31.0：0.29.0 加入两个“我是谁”，0.30.0 加入一个 Workspace 里的评审队列，0.31.0 给资产的读取加上概况，并给资产列表加两个筛选。三个版本一共增加 3 个操作，现在是 60 个。数据模型见 F03 §5.13，访问规则见 F05 §6.10。 [管理 API 契约](../api/openapi.yaml)
+
+| 方法 | 路径 | operationId | 从哪个版本起 |
+|---|---|---|---|
+| `GET` | `/v1/caller` | `getCaller` | 0.29.0 |
+| `GET` | `/v1/products/{product_id}/caller` | `getCallerInProduct` | 0.29.0 |
+| `GET` | `/v1/products/{product_id}/workspaces/{workspace_id}/reviews` | `listWorkspaceReviews` | 0.30.0 |
+
+已有的两个操作在 0.31.0 有变化，操作本身没有增减：
+
+| 操作 | 变化 |
+|---|---|
+| `listAssets` | 多两个可选参数 `check_status` 和 `release_pending`；每一项多一个可选成员 `overview` |
+| `getAsset` | 应答多一个可选成员 `overview` |
+
+三个新操作的应答都带 `Cache-Control: no-store`，没有 `ETag`。
+
+**“我是谁”（0.29.0）。** `getCaller` 答 `Caller`：`principal`（`Principal`：`issuer` 和 `subject`）和 `platform_administrator`（布尔，是否由部署配置指定为平台管理员）。它不带任何参数；带了查询参数或请求体是 400 `REQUEST_INVALID`，所以没有办法问别人：身份只来自令牌，请求头里写什么都不参与。先认证后检查参数，没有令牌的请求得到的是 401。任何已认证的人都能调，不读库，从不写审计。令牌里只有签发方和主体会往下传，所以没有姓名。`getCallerInProduct` 答 `CallerInProduct`：`product_id`；`roles`，调用人现在持有的产品角色（`ProductRole`，每个一次，可以为空）；`workspaces`，调用人是成员的 Workspace，每一项是 `workspace_id` 和它在那里的角色（`WorkspaceRole`，每个一次，至少一个）。`workspaces` 不是一页列表，没有 `next_page_token`：每个有成员关系的 Workspace 一项，一次给全。它只说持有什么，不说“能做哪些操作”：是不是负责人看 `roles` 里有没有 `product_owner`；负责人不是成员也读得到全部 Workspace，所以 `workspaces` 是“我持有成员关系的”，不是“我读得到的”。每次请求读当时有效的角色和成员关系，不缓存：撤销提交之后的下一次请求就没有，用的还是原来的令牌；产品暂停时照常答。谁能读与 `getProduct` 相同：平台管理员，和在这个产品里现在持有任一产品角色或 Workspace 成员关系的人；什么都不持有的平台管理员得到 200 和两个空数组。其他人，包括曾经持有、已被撤销的人和别的产品的负责人，得到 404 `PRODUCT_NOT_FOUND`，与不存在的产品逐成员相同（`trace_id` 除外）。
+
+**评审队列（0.30.0）。** `GET …/workspaces/{workspace_id}/reviews` 列出一个 Workspace 里每个资产的每个修订的评审，先提交的在前，一页一页读。应答是已有的 `ReviewList`，每一项就是 `getRevisionReview` 读到的 `Review`，由同一个函数输出：没有新的 schema，也不带 `workspace_id` 和资产名，页面要显示资产名得再读资产。没有评审是 200 和空的 `items`；不给总数。参数：
+
+| 参数 | 含义 |
+|---|---|
+| `status` | `IN_REVIEW`、`WITHDRAWN`、`APPROVED` 或 `REJECTED`。`IN_REVIEW` 是还没有结论的评审，开着的复审也是，这时修订仍是 `APPROVED`；其余是评审结束的方式 |
+| `requested_by_issuer`、`requested_by_subject` | 提交评审申请的人的签发方和主体，写法与审计记录的 `actor_issuer`、`actor_subject` 相同，都是 1 到 255 个字符的引用。可以只给 `requested_by_issuer`，也可以只给 `requested_by_subject`（匹配任何签发方下的这个主体） |
+| `page_size`、`page_token` | 同 §3.1.1 |
+
+筛选条件都是精确匹配，互相叠加，在分页之前应用，所以除最后一页，每页都是满的；没有符合的是空列表，不是错误。谁能读：这个 Workspace 里现在持有 `internal_author`、`internal_reviewer` 或 `internal_publisher` 的人，读到的是整个 Workspace 的全部评审（别人提交的、已撤回的、已驳回的都在），名单与读单个评审相同；产品暂停时照常读。列表与单读只有一处不同：单读核对评审依据的内容仍是修订现在的内容（`input_digest` 等于修订现在的摘要，需要读修订），列表不做这一项核对。某条评审的记录对不上模型记下的样子，整页答 500 `INTERNAL_ERROR`，不说原因，原因写进日志。列表项不带“这条该不该我批”：评审人批的时候才知道自己批不了（403 `REVIEWER_NOT_INDEPENDENT`，§11.5）。
+
+**资产的概况（0.31.0）。** `listAssets` 和 `getAsset` 应答里的每个资产多一个可选成员 `overview`（`AssetOverview`）；`registerAsset` 的 201 不带它。它必有 `release_pending`，其余三个成员可选，每个都是对应读取里同名成员的同义、同值：
+
+| 成员 | 内容 | 与谁同义 |
+|---|---|---|
+| `latest_revision` | `revision_id`、`revision_sequence`、`status`、`created_at`：`revision_sequence` 最大的修订 | `getRevision` 的 `ContractRevision` |
+| `latest_check` | `check_run_id`、`status`、`completed_at`：**最新修订**最近完成的一次检查；没有检查就没有这个成员 | `listRevisionChecks` 的 `CheckRunOverview` |
+| `latest_release` | `release_id`、`revision_id`、`version`、`prepared_at`：这个资产最后准备的 Release，**不管它从哪个修订来**；没有 Release 就没有这个成员 | `listContractReleases` 的 `ContractRelease` |
+| `release_pending` | 布尔：最新修订是 `APPROVED`，而且还没有从它准备出 Release | — |
+
+没有修订的资产，`overview` 是 `{"release_pending": false}`。复审不改变修订的状态，所以复审开着或结束，概况都不变。谁看得到 `overview`：现在在资产所属 Workspace 持有 `internal_author`、`internal_reviewer` 或 `internal_publisher` 的人，也就是读那个 Workspace 的修订的人。产品负责人和 Workspace 维护者读得到资产，读不到概况：应答里没有 `overview` 这个成员，不是空对象；兼任某个 Workspace 作者的负责人，只在那个 Workspace 的资产上看到。概况每次读的时候现算，不存，所以它说的就是读修订、检查和 Release 此刻说的。`listAssets` 多两个筛选，和已有的 `workspace_id`、`api_kind`、`domain_key`、`q` 叠加，都在分页之前应用；顺序和令牌不变，仍是 `(created_at, api_asset_id)` 升序：
+
+| 参数 | 含义 |
+|---|---|
+| `check_status` | `PASS`、`WARN`、`FAIL` 或 `UNKNOWN`（`CheckRunStatus`）：最新修订最近一次检查的结论。没有检查的资产不符合任何一个 |
+| `release_pending` | 只收 `true`：留下 `release_pending` 为真的资产。没有“不是”的筛选 |
+
+两个筛选只在调用人读得了修订的 Workspace 里找：别的 Workspace 的资产不被问概况，也不会被留下。带筛选的一页要找到够数的资产，可能一批一批地读，符合的越少越慢（F03 §5.13 有量级）；除最后一页，每页仍是满的，令牌记的是页里最后一个资产的位置，翻页时筛选要保持不变。验证器按 Go 的 `strconv.ParseBool` 读布尔参数，`release_pending=1`、`t`、`T`、`TRUE`、`True` 也被当作 `true`，契约里的 `const: true` 拦不住它们；`false`、其他词、没有值和写两次都是 400。
+
+“检查失败”和“可发布”的确切含义：
+
+- 检查失败，就是 `check_status=FAIL`：最新修订最近一次检查的结论是 `FAIL`。较早的修订的检查不算，最新修订还没有检查也不算；评审时豁免了失败的规则并批准的修订，检查仍是 `FAIL`，这样的修订同时是 `release_pending`。基线里有 10 条规则没有工具，一次检查的总状态目前只会是 `FAIL` 或 `UNKNOWN`（§11.4），所以 `check_status=PASS` 和 `WARN` 今天没有结果，接口仍收这四个取值。
+- 可发布，就是 `release_pending=true`：最新修订已批准、还没有从它准备出 Release。它只看状态，不重新核对批准：批准过期、豁免到期、评审人失权、策略或工具变了，它都不管，这些在准备 Release 时才核对（§11.6），所以“可发布”不保证现在一定能准备出 Release。
+
+概况里没有“当前发布”（资产现在在哪些目标上生效）：要看用 `listAssetPublications`，撤销风险用 `listPublicationSlots`（§11.8）。
+
+**分页和顺序。** 队列采用 §3.1.1 的约定：`page_size` 为 1–100，默认 50，`page_token` 原样使用上一页的 `next_page_token`；除最后一页，每一页都是满的，最后一页没有令牌，刚好装满的也没有；不返回总数。`listAssets` 的分页和顺序没有变。
+
+| 列表 | 顺序 |
+|---|---|
+| 评审队列 | 先提交的在前：提交评审的时刻升序，同一时刻 `review_id` 升序。两个值写入后不变，所以一条评审的位置不变；翻页期间新提交的评审排在已发出的位置之后，不会让读过的重复，也不会让没读到的漏掉 |
+| 资产列表 | 与 §11.3 相同：`(created_at, api_asset_id)` 升序，带不带新筛选都一样 |
+
+令牌只记位置和它属于哪个列表（一个产品的一个 Workspace 的队列），不记调用人，也不带来任何权限：每页重新判权，权限撤销以后旧令牌读不到下一页，得到的是没有这个权限的人的答案（403 或 404）。别的 Workspace、别的产品和别的列表的令牌是 400 `PAGE_TOKEN_INVALID`。令牌也不记筛选条件：翻页时要保持筛选条件不变（队列的 `status`、`requested_by_issuer`、`requested_by_subject`，资产列表的 `check_status`、`release_pending` 和已有的几个），换了条件不会报错，只是从那个位置起按新条件读。
+
+**工作台的待办怎么拼。** F06 的 IN-01 要首页显示待审核、检查失败、可发布和撤销风险。没有单独的汇总接口，由页面拼：待审核是 `listWorkspaceReviews` 加 `status=IN_REVIEW`；检查失败是 `listAssets` 加 `check_status=FAIL`；可发布是 `listAssets` 加 `release_pending=true`；撤销风险是 `listPublicationSlots` 和 `listAssetPublications`（每项带 `approval_problem` 和 `blocked`，不能按它们筛选）。页面先用 `getCallerInProduct` 看自己在这个产品里是什么身份，再决定调哪些：没有读评审或读修订的身份的人，调队列和带筛选的列表每次都被拒绝，也每次都留下一条审计记录（F05 §6.10）。要“我的产品和每个产品里我的身份”，得先 `listProducts` 再对每个产品问一次 `getCallerInProduct`，没有一次给全的接口。
+
+**失败。**
+
+| 操作 | 状态码和错误码 |
+|---|---|
+| `getCaller` | 400 `REQUEST_INVALID`（带了查询参数或请求体）；401。没有 403 和 404：没有人被拒绝 |
+| `getCallerInProduct` | 400 `REQUEST_INVALID`（`product_id` 不是标识，或带了别的参数、请求体）；401；404 `PRODUCT_NOT_FOUND`。没有 403 |
+| `listWorkspaceReviews` | 400 `REQUEST_INVALID`（参数）和 `PAGE_TOKEN_INVALID`（不是这个队列的令牌）；401；403 `FORBIDDEN`（是负责人或这个 Workspace 的成员，但没有作者、评审人、发布人的身份）；404 `PRODUCT_NOT_FOUND` 和 `WORKSPACE_NOT_FOUND`；500 `INTERNAL_ERROR`（某条评审的记录对不上） |
+| `listAssets` 带新筛选 | 400 `REQUEST_INVALID`（`check_status` 不是四个取值，`release_pending` 不是 `true`、写了两次或没有值）；401；403 `FORBIDDEN`（能列资产，但在哪个 Workspace 都读不了修订）；404 `PRODUCT_NOT_FOUND`；500 `INTERNAL_ERROR`（检查的记录对不上） |
+| `getAsset` | 与 §11.3 相同；读得了概况的人遇到检查的记录对不上，得到 500，而不是没有概况 |
+
+401 是 `CREDENTIALS_MISSING` 或 `TOKEN_INVALID`。队列的 404 分两种：不认识产品的人和不存在的产品，是 `PRODUCT_NOT_FOUND`；认识产品、却既不是负责人也不是这个 Workspace 成员的人（别的 Workspace 的成员、平台管理员、只有产品角色的人），是 `WORKSPACE_NOT_FOUND`，与不存在的 Workspace 和别的产品的 Workspace 相同；负责人问产品没有的 Workspace，也是 `WORKSPACE_NOT_FOUND`。队列里没有读评审的身份的人得到的是 403，不是空列表，空列表会说这个 Workspace 没有评审。`listAssets` 带新筛选的 403：本来就不能列资产的人（陌生人、平台管理员、审计员、安全角色）的答案与不带筛选时相同；能列资产却在哪个 Workspace 都读不了修订的人（负责人、维护者）带任一筛选得 403，不答空页，因为空页会说出筛选留下了什么。
+
+**兼容性。** 0.29.0 增加两个操作和三个 schema（`Caller`、`CallerInProduct`、`CallerInWorkspace`）；0.30.0 增加一个操作，没有新的 schema；0.31.0 增加四个 schema（`AssetOverview`、`OverviewRevision`、`OverviewCheck`、`OverviewRelease`），给 `APIAsset` 增加可选成员 `overview`，给 `listAssets` 增加两个可选参数。七个新 schema 都是封闭的（`additionalProperties: false`）：以后加成员，例如显示名，是新增成员，按契约严格校验应答的客户端要先升级。`APIAsset` 本来就不封闭，多一个可选成员不影响读它的客户端；按 §5.1，新增可选响应字段是 COMPATIBLE / RISKY，严格解码、按签名或缓存消费应答的客户端要先确认。没有新的错误码，没有改已有操作对读不了修订的人的行为。滚动升级时，旧进程对三个新路径答 404 `ROUTE_NOT_FOUND`，对带 `check_status` 或 `release_pending` 的 `listAssets` 答 400 `REQUEST_INVALID`（未声明的参数），资产的应答里没有 `overview`；要用新接口和新筛选的页面，等所有进程都升级以后再上（F03 §5.13、F05 §6.10）。
 
 ## 12. API Catalog 元数据、文档产物和发布加工
 
