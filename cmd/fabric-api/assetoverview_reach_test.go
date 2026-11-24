@@ -25,10 +25,8 @@ func (w *slotsWorld) otherProduct() (product, workspace string) {
 }
 
 // The overview of an asset is shown to whoever reads the revisions of the
-// workspace that owns it now, which is whoever holds the author, the
-// reviewer or the publisher grant there, and to no one else: not the owner of
-// the product, not the maintainer of the workspace, not the auditor, not the
-// ones who hold a role of the platform or none. The same caller is shown the
+// workspace that owns it now: owners of the product, and authors, reviewers
+// and publishers of the workspace. The same caller is shown the
 // overview of the assets of the workspaces where it reads and the asset
 // without one of those where it does not, in the list and alone.
 //
@@ -68,7 +66,7 @@ func TestTheOverviewIsShownToWhoReadsTheRevisionsOfTheWorkspaceAndToNoOneElse(t 
 		// Reads the revisions of engineering and maintains operations.
 		{"mixed", both, engOnly},
 		{"maintainer", both, nil},
-		{"owner", both, nil},
+		{"owner", both, both},
 	} {
 		listed, next := w.page(w.assets(), c.subject)
 		if got := told(listed, "api_asset_id"); !slices.Equal(got, c.sees) || next != "" {
@@ -207,10 +205,10 @@ func TestWhatHappensToAnAssetInAWorkspaceTheCallerReadsNoOverviewOfChangesNoPage
 	}
 	read := func() map[string][]pageRead {
 		all := map[string][]pageRead{}
-		for _, subject := range []string{"eng-reader", "mixed", "maintainer", "owner"} {
+		for _, subject := range []string{"eng-reader", "mixed", "maintainer"} {
 			for _, filter := range filters {
 				for _, size := range []int{1, 2, 3, 100} {
-					if (subject == "maintainer" || subject == "owner") && filter != "" {
+					if subject == "maintainer" && filter != "" {
 						continue
 					}
 					all[fmt.Sprintf("%s reads %q in pages of %d", subject, filter, size)] = w.pagesRead(filter, subject, size)

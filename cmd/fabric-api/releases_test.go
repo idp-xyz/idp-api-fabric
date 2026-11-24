@@ -102,9 +102,9 @@ func TestAPublisherPreparesAnImmutableReleaseOfAnApprovedRevision(t *testing.T) 
 		{http.MethodGet, releases + "/00000000-0000-4000-8000-000000000000", "", http.StatusNotFound, "RELEASE_NOT_FOUND"},
 		{http.MethodGet, releases + "/latest", "", http.StatusBadRequest, "REQUEST_INVALID"},
 	})
-	s.expect("owning the product does not read a release", "owner", []exchange{
-		{http.MethodGet, releases + "/" + id, "", http.StatusForbidden, "FORBIDDEN"},
-		{http.MethodGet, releases, "", http.StatusForbidden, "FORBIDDEN"},
+	s.expect("owning the product authorizes reading its releases", "owner", []exchange{
+		{http.MethodGet, releases + "/" + id, "", http.StatusOK, ""},
+		{http.MethodGet, releases, "", http.StatusOK, ""},
 	})
 
 	// The artifact is the files as they were recorded, under its digest.

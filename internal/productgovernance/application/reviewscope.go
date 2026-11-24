@@ -29,10 +29,8 @@ type ReviewScope struct {
 	// WorkspaceFound is whether the product has such a workspace. A workspace
 	// of another product is not one of this.
 	WorkspaceFound bool
-	// Reads is whether the caller holds the author, the reviewer or the
-	// publisher grant in the workspace now: the grants that read its
-	// revisions, and the reviews of them, as RevisionReader says of one
-	// workspace. Maintaining the workspace, and owning the product, are not.
+	// Reads is whether the caller owns the product or holds the author,
+	// reviewer or publisher grant in the workspace now.
 	Reads bool
 }
 
@@ -65,8 +63,9 @@ func (s *ProductGovernance) ReadReviewScope(ctx context.Context, caller domain.P
 		Known:          s.knows(seen.standing, caller),
 		Sees:           seen.standing.Owns() || seen.standing.MemberOf(workspaceID),
 		WorkspaceFound: seen.workspaceFound,
-		Reads: slices.ContainsFunc(seen.standing.Memberships, func(membership domain.Membership) bool {
-			return membership.WorkspaceID == workspaceID && slices.Contains(revisionReaders, membership.Role)
-		}),
+		Reads: seen.workspaceFound && (seen.standing.Owns() ||
+			slices.ContainsFunc(seen.standing.Memberships, func(membership domain.Membership) bool {
+				return membership.WorkspaceID == workspaceID && slices.Contains(revisionReaders, membership.Role)
+			})),
 	}, nil
 }

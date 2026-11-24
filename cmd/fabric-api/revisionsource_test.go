@@ -100,8 +100,8 @@ func TestTheSourceOfARevisionIsReadBackByWhoMayReadTheRevision(t *testing.T) {
 	if digest := recordedAs(bundleEntrypoint)["digest"]; got.body["source_digest"] != digest {
 		t.Errorf("the digest of the source is %v, the digest of the entrypoint %v", got.body["source_digest"], digest)
 	}
-	if again := s.call(http.MethodGet, source, "author", ""); !reflect.DeepEqual(again.body, got.body) {
-		t.Errorf("the source read again is %v, want what it was", again.body)
+	if owner := s.call(http.MethodGet, source, "owner", ""); owner.status != http.StatusOK || !reflect.DeepEqual(owner.body, got.body) {
+		t.Errorf("the source read by the owner is %d %v, want what the author read", owner.status, owner.body)
 	}
 
 	single := s.call(http.MethodGet, path+"/"+uploaded.id("revision_id")+"/source", "author", "")
@@ -127,8 +127,8 @@ func TestTheSourceOfARevisionIsReadBackByWhoMayReadTheRevision(t *testing.T) {
 
 	// Whoever may not read the revision is told the same about its source.
 	withheld := map[string]int{
-		"owner": http.StatusForbidden, "maintainer": http.StatusForbidden,
-		"elsewhere": http.StatusNotFound, "stranger": http.StatusNotFound, "": http.StatusUnauthorized,
+		"maintainer": http.StatusForbidden,
+		"elsewhere":  http.StatusNotFound, "stranger": http.StatusNotFound, "": http.StatusUnauthorized,
 	}
 	refusals := func() int {
 		return occurrences(s.recorded(func(row audited) bool { return row.Action == "revision.read" && row.Outcome != "SUCCEEDED" }))

@@ -24,6 +24,13 @@ func (s *ProductGovernance) ReleaseMembership(ctx context.Context, actor domain.
 			reader = true
 		}
 	}
+	if !reader {
+		roles, err := s.deps.Roles.LockHeldRoles(ctx, product, actor)
+		if err != nil {
+			return false, false, false, err
+		}
+		reader = slices.Contains(roles, domain.RoleProductOwner)
+	}
 	current, found, err := s.deps.Products.Find(ctx, product)
 	return reader, publisher, found && current.Status == domain.ProductActive, err
 }

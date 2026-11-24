@@ -73,12 +73,12 @@ func TestAReviewerReadsTheRevisionsAndChecksOfItsWorkspaceAndWritesNone(t *testi
 
 	// The grant counts where it was made. A reviewer of another workspace
 	// does not see the asset; one who sees it for another reason and
-	// reviews elsewhere reads no revision of it, as a maintainer and the
-	// owner read none.
+	// holds a grant elsewhere cannot read its revisions. Owners of the
+	// current product can read them without a membership.
 	for _, read := range reads {
 		for caller, want := range map[string]int{
 			"elsewhere": http.StatusNotFound, "between": http.StatusForbidden,
-			"maintainer": http.StatusForbidden, "owner": http.StatusForbidden,
+			"maintainer": http.StatusForbidden, "owner": http.StatusOK,
 		} {
 			if got := s.call(http.MethodGet, read, caller, ""); got.status != want {
 				t.Errorf("GET %s as %s: %d %v, want %d", read, caller, got.status, got.body, want)

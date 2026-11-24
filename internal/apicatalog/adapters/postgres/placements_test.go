@@ -56,7 +56,7 @@ func (r registrar) register(product domain.ProductID, workspace domain.Workspace
 func (r registrar) placed(product domain.ProductID, workspaces ...domain.WorkspaceID) []ports.AssetPlace {
 	r.t.Helper()
 
-	places, err := r.assets.InWorkspaces(r.t.Context(), product, workspaces)
+	places, err := r.assets.Places(r.t.Context(), product, workspaces, false)
 	if err != nil {
 		r.t.Fatalf("place the assets of %v: %v", workspaces, err)
 	}

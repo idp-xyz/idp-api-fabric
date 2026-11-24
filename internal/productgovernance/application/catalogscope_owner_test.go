@@ -7,15 +7,8 @@ import (
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/domain"
 )
 
-// Owning a product is no grant that reads the contract revisions of a
-// workspace, and it does not become one for the workspaces the owner is also a
-// member of: an owner reads the contract revisions of the workspaces where it
-// holds the author, the reviewer or the publisher grant, as any member does,
-// and of no other. One that maintains a workspace reads nothing there, one that
-// maintains a workspace and writes in another reads the other only, and an owner
-// that is a member of none reads none. In every case the workspaces it reads in
-// are among those it is a member of.
-func TestAnOwnerOfTheProductThatIsAlsoAMemberReadsContractRevisionsOnlyWhereItsGrantsSay(t *testing.T) {
+// The owner grant and membership-based reader scope are separate facts.
+func TestTheCatalogScopeKeepsOwnershipSeparateFromWorkspaceMembership(t *testing.T) {
 	s := newTeam(t)
 	maintaining := domain.Principal{Issuer: trustedIssuer, Subject: "owner-maintainer"}
 	mixed := domain.Principal{Issuer: trustedIssuer, Subject: "owner-mixed"}

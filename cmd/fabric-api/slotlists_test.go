@@ -391,9 +391,7 @@ func TestWhoReadsNoSlotsIsListedNone(t *testing.T) {
 		assetStatus int
 		assetCode   string
 	}{
-		// Owning the product, or maintaining the workspaces of it, is no
-		// reading of a slot, here as in the read of one.
-		{"owner", http.StatusForbidden, "FORBIDDEN", http.StatusForbidden, "FORBIDDEN"},
+		// Maintaining a workspace does not grant slot reads.
 		{"maintainer", http.StatusForbidden, "FORBIDDEN", http.StatusForbidden, "FORBIDDEN"},
 		// An administrator of the platform knows the product and reads none
 		// of its assets: of one asset it is told what the read of the slot
@@ -412,6 +410,10 @@ func TestWhoReadsNoSlotsIsListedNone(t *testing.T) {
 	// publications of its assets. A list that is answered leaves no record
 	// and no event.
 	records, events := w.count("platformoperations.audit_record"), w.count("bento.outbox")
+	if got := told(listed(w.whole(listing, "owner", 100)), "api_asset_id"); !slices.Equal(got, []string{engineering.identifier(), operations.identifier()}) {
+		t.Errorf("the owner lists %v, want the slots of both workspaces", got)
+	}
+	w.require(w.call(http.MethodGet, publications(operations), "owner", ""), http.StatusOK, "")
 	for _, c := range []struct {
 		subject string
 		own     *releaseFixture
@@ -450,7 +452,7 @@ func TestWhoReadsNoSlotsIsListedNone(t *testing.T) {
 	// Whether a target is there is told to whoever reads, and to no one else.
 	missing := "/v1/products/" + w.product + "/publication-targets/" + ids.NewUUID() + "/assets"
 	refused("eng-reader", missing, http.StatusNotFound, "PUBLICATION_TARGET_NOT_FOUND")
-	refused("owner", missing, http.StatusForbidden, "FORBIDDEN")
+	refused("owner", missing, http.StatusNotFound, "PUBLICATION_TARGET_NOT_FOUND")
 	refused("stranger", missing, http.StatusNotFound, "PRODUCT_NOT_FOUND")
 	// A product that is not there is not there for anyone, an administrator
 	// included.

@@ -41,10 +41,11 @@ type storage struct {
 type question struct {
 	product    domain.ProductID
 	workspaces []domain.WorkspaceID
+	all        bool
 }
 
-func (s *storage) InWorkspaces(_ context.Context, product domain.ProductID, workspaces []domain.WorkspaceID) ([]ports.AssetPlace, error) {
-	s.asked = append(s.asked, question{product, slices.Clone(workspaces)})
+func (s *storage) Places(_ context.Context, product domain.ProductID, workspaces []domain.WorkspaceID, all bool) ([]ports.AssetPlace, error) {
+	s.asked = append(s.asked, question{product, slices.Clone(workspaces), all})
 	return s.placed, s.failure
 }
 
@@ -76,16 +77,16 @@ func TestTheAssetsOfWorkspacesAreWhatTheStorageSaysOfTheProductAndTheWorkspacesN
 	store := &storage{placed: placed}
 	workspaces := []domain.WorkspaceID{engineering, operations}
 
-	got, err := catalogOver(t, store).AssetsInWorkspaces(t.Context(), someProduct, workspaces)
+	got, err := catalogOver(t, store).AssetPlaces(t.Context(), someProduct, workspaces, false)
 	if err != nil || !reflect.DeepEqual(got, placed) {
 		t.Errorf("the assets are %+v (%v), want %+v", got, err, placed)
 	}
-	if want := []question{{someProduct, workspaces}}; !reflect.DeepEqual(store.asked, want) {
+	if want := []question{{someProduct, workspaces, false}}; !reflect.DeepEqual(store.asked, want) {
 		t.Errorf("the storage was asked %+v, want %+v", store.asked, want)
 	}
 
 	broken := errors.New("the storage is gone")
-	if got, err := catalogOver(t, &storage{failure: broken}).AssetsInWorkspaces(t.Context(), someProduct, workspaces); !errors.Is(err, broken) || len(got) != 0 {
+	if got, err := catalogOver(t, &storage{failure: broken}).AssetPlaces(t.Context(), someProduct, workspaces, false); !errors.Is(err, broken) || len(got) != 0 {
 		t.Errorf("a storage that fails: %+v (%v), want no assets and %v", got, err, broken)
 	}
 }
@@ -113,7 +114,7 @@ func TestAnIdentifierThatIsNoneIsRefusedBeforeTheStorageIsAsked(t *testing.T) {
 		"a Workspace that is the first of the Workspaces": {someProduct, []domain.WorkspaceID{"not-an-identifier", operations}, domain.ErrInvalid},
 	} {
 		store := &storage{placed: []ports.AssetPlace{{ID: "a0000000-0000-4000-8000-000000000001", WorkspaceID: engineering}}}
-		got, err := catalogOver(t, store).AssetsInWorkspaces(t.Context(), c.product, c.workspaces)
+		got, err := catalogOver(t, store).AssetPlaces(t.Context(), c.product, c.workspaces, false)
 		if !errors.Is(err, c.want) || len(got) != 0 {
 			t.Errorf("%s: %+v (%v), want no assets and %v", name, got, err, c.want)
 		}

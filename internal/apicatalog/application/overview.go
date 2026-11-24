@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"go.idp.xyz/idp-api-fabric/internal/apicatalog/domain"
@@ -77,7 +76,7 @@ func (c *Catalog) viewsOf(ctx context.Context, product domain.ProductID, scope p
 	var places []ports.AssetPlace
 	for i, asset := range assets {
 		views[i].Asset = asset
-		if reads[i] = slices.Contains(scope.Readers, asset.WorkspaceID); reads[i] {
+		if reads[i] = scope.CanReadOverview(asset.WorkspaceID); reads[i] {
 			places = append(places, ports.AssetPlace{ID: asset.ID, WorkspaceID: asset.WorkspaceID})
 		}
 	}
@@ -139,7 +138,7 @@ func batchOf(size, round int) int {
 // asked as well as a loop that asks from the same place again: an honest
 // Catalog answers the second with the assets it has answered already.
 func (c *Catalog) listKept(ctx context.Context, query ListAssets, size int, scope ports.ProductScope, filter ports.OverviewFilter) (Page, error) {
-	if len(scope.Readers) == 0 {
+	if !scope.Owner && len(scope.Readers) == 0 {
 		return Page{}, c.refuse(ctx, query.Request, actionSearch, "", ErrForbidden)
 	}
 	var kept []AssetView
@@ -147,7 +146,7 @@ func (c *Catalog) listKept(ctx context.Context, query ListAssets, size int, scop
 	for round := 0; len(kept) <= size; round++ {
 		limit := batchOf(size, round)
 		assets, err := c.deps.Assets.List(ctx, query.ProductID, ports.Selection{
-			Workspaces: scope.Readers, Workspace: query.WorkspaceID,
+			All: scope.Owner, Workspaces: scope.Readers, Workspace: query.WorkspaceID,
 			Kind: query.Kind, DomainKey: query.DomainKey, Query: query.Query, After: after, Limit: limit,
 		})
 		if err != nil {

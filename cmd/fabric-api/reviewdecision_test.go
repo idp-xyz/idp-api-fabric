@@ -333,9 +333,7 @@ func TestADecisionIsMadeByAReviewerWhoHadNoPartInWhatIsReviewed(t *testing.T) {
 	// The refusals for who the caller is are on record as refusals of what
 	// was asked, each under the rule that refused: who holds no reviewer
 	// grant under DENY-03, and a reviewer who had a part in what is reviewed
-	// under DENY-06. The owner and the maintainer were refused the reading
-	// a decision begins with, and whoever does not see the asset was told
-	// there is none.
+	// under DENY-06. The owner can read the evidence but has no reviewer grant.
 	refusals := map[[3]string]int{}
 	for row, count := range s.recorded(func(row audited) bool {
 		return (row.Action == "review.approve" || row.Action == "review.reject") && row.Outcome != "SUCCEEDED"
@@ -348,6 +346,7 @@ func TestADecisionIsMadeByAReviewerWhoHadNoPartInWhatIsReviewed(t *testing.T) {
 	wantRefusals := map[[3]string]int{
 		{"both", "review.approve", "DENY-06"}: 3, {"both", "review.reject", "DENY-06"}: 3, {"both", "review.approve", "DENY-03"}: 1,
 		{"author", "review.approve", "DENY-03"}: 1, {"coauthor", "review.reject", "DENY-03"}: 1,
+		{"owner", "review.approve", "DENY-03"}: 1,
 	}
 	made := occurrences(s.recorded(func(row audited) bool {
 		return (row.Action == "review.approve" || row.Action == "review.reject") && row.Outcome == "SUCCEEDED" && row.Rule == "AC-03"
