@@ -25,6 +25,7 @@ type (
 	unusedEvents       struct{ ports.Events }
 	unusedClock        struct{ ports.Clock }
 	unusedIdentifiers  struct{ ports.Identifiers }
+	unusedOverviews    struct{ ports.Overviews }
 )
 
 // storage stands in for the assets the Catalog keeps: it answers what the
@@ -56,7 +57,7 @@ func catalogOver(t *testing.T, assets ports.Assets) *Catalog {
 			t.Error("the placing of assets was put on record")
 			return nil
 		},
-		Events: unusedEvents{}, Clock: unusedClock{}, Identifiers: unusedIdentifiers{},
+		Events: unusedEvents{}, Clock: unusedClock{}, Identifiers: unusedIdentifiers{}, Overviews: unusedOverviews{},
 	})
 	if err != nil {
 		t.Fatalf("wire the use cases: %v", err)

@@ -32,8 +32,13 @@ func catalogScopeOf(scope governance.CatalogScope) catalogports.ProductScope {
 	for _, workspace := range scope.Workspaces {
 		workspaces = append(workspaces, catalogdomain.WorkspaceID(workspace))
 	}
+	readers := make([]catalogdomain.WorkspaceID, 0, len(scope.ContractReaders))
+	for _, workspace := range scope.ContractReaders {
+		readers = append(readers, catalogdomain.WorkspaceID(workspace))
+	}
 	return catalogports.ProductScope{
 		Exists: scope.Found, Active: scope.Active, Known: scope.Known, Owner: scope.Owner, Workspaces: workspaces,
+		Readers: readers,
 	}
 }
 

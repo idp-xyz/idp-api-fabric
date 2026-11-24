@@ -348,6 +348,33 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for OverviewRevisionStatus.
+const (
+	OverviewRevisionStatusAPPROVED  OverviewRevisionStatus = "APPROVED"
+	OverviewRevisionStatusDRAFT     OverviewRevisionStatus = "DRAFT"
+	OverviewRevisionStatusINREVIEW  OverviewRevisionStatus = "IN_REVIEW"
+	OverviewRevisionStatusREJECTED  OverviewRevisionStatus = "REJECTED"
+	OverviewRevisionStatusWITHDRAWN OverviewRevisionStatus = "WITHDRAWN"
+)
+
+// Valid indicates whether the value is a known member of the OverviewRevisionStatus enum.
+func (e OverviewRevisionStatus) Valid() bool {
+	switch e {
+	case OverviewRevisionStatusAPPROVED:
+		return true
+	case OverviewRevisionStatusDRAFT:
+		return true
+	case OverviewRevisionStatusINREVIEW:
+		return true
+	case OverviewRevisionStatusREJECTED:
+		return true
+	case OverviewRevisionStatusWITHDRAWN:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProductStatus.
 const (
 	ProductStatusACTIVE    ProductStatus = "ACTIVE"
@@ -597,6 +624,21 @@ func (e WorkspaceRole) Valid() bool {
 	}
 }
 
+// Defines values for ListAssetsParamsReleasePending.
+const (
+	ListAssetsParamsReleasePendingTrue ListAssetsParamsReleasePending = true
+)
+
+// Valid indicates whether the value is a known member of the ListAssetsParamsReleasePending enum.
+func (e ListAssetsParamsReleasePending) Valid() bool {
+	switch e {
+	case ListAssetsParamsReleasePendingTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // APIAsset defines model for APIAsset.
 type APIAsset struct {
 	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
@@ -613,6 +655,9 @@ type APIAsset struct {
 	// DomainKey The name people and configuration use for an object, unique in its scope: 2 to 63 lower case letters, digits and hyphens, starting with a letter and not ending with a hyphen. It is not the identity of the object.
 	DomainKey Key               `json:"domain_key"`
 	Lifecycle APIAssetLifecycle `json:"lifecycle"`
+
+	// Overview Where the asset stands. It is there when the caller holds the internal_author, internal_reviewer or internal_publisher role in the owning workspace now, the grants that read its revisions, and is not there for a caller that reads the asset without one, whatever the asset has. Only the reads of an asset carry it: registering one answers without.
+	Overview *AssetOverview `json:"overview,omitempty"`
 
 	// ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 	ProductID Identifier `json:"product_id"`
@@ -692,6 +737,21 @@ type AssetList struct {
 
 	// NextPageToken The page_token of the page that follows this one, to be sent back as it is. A page carries it for as long as items follow: the last page of a list has none, also when it is full.
 	NextPageToken *NextPageToken `json:"next_page_token,omitempty"`
+}
+
+// AssetOverview Where an asset stands on its way from a revision to a release, read from what Contract Registry and Policy & Review record at the time it is asked for. Each member is what the read of the same thing gives under the same name: latest_revision is the revision with the greatest revision_sequence, as getRevision gives it; latest_check is the check of that revision that was concluded last, as listRevisionChecks lists it; latest_release is the release that was prepared last, as listContractReleases lists it. An asset that has no revision has only release_pending.
+type AssetOverview struct {
+	// LatestCheck Absent while the latest revision has no check
+	LatestCheck *OverviewCheck `json:"latest_check,omitempty"`
+
+	// LatestRelease Absent while the asset has no release
+	LatestRelease *OverviewRelease `json:"latest_release,omitempty"`
+
+	// LatestRevision The latest revision of an asset, as getRevision gives it
+	LatestRevision *OverviewRevision `json:"latest_revision,omitempty"`
+
+	// ReleasePending True when the latest revision is APPROVED and no release was prepared from it. It does not say that the approval still holds: it may have run out, a waiver of it may have, its reviewer may have lost the grant, or the policy and the tools may have moved on. prepareContractRelease asks that when a release is prepared.
+	ReleasePending bool `json:"release_pending"`
 }
 
 // AssetRegistration defines model for AssetRegistration.
@@ -1259,6 +1319,39 @@ type OrganizationRef struct {
 	Organization Reference `json:"organization"`
 }
 
+// OverviewCheck The check of the latest revision that was concluded last, as listRevisionChecks lists it
+type OverviewCheck struct {
+	// CheckRunID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	CheckRunID  Identifier     `json:"check_run_id"`
+	CompletedAt time.Time      `json:"completed_at"`
+	Status      CheckRunStatus `json:"status"`
+}
+
+// OverviewRelease The release of an asset that was prepared last, as listContractReleases lists it, whichever revision it was prepared from
+type OverviewRelease struct {
+	PreparedAt time.Time `json:"prepared_at"`
+
+	// ReleaseID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ReleaseID Identifier `json:"release_id"`
+
+	// RevisionID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	RevisionID Identifier `json:"revision_id"`
+	Version    string     `json:"version"`
+}
+
+// OverviewRevision The latest revision of an asset, as getRevision gives it
+type OverviewRevision struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// RevisionID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	RevisionID       Identifier             `json:"revision_id"`
+	RevisionSequence int64                  `json:"revision_sequence"`
+	Status           OverviewRevisionStatus `json:"status"`
+}
+
+// OverviewRevisionStatus defines model for OverviewRevision.Status.
+type OverviewRevisionStatus string
+
 // Principal A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
 type Principal struct {
 	// Issuer A reference into another system, compared for equality and never interpreted: 1 to 255 characters, without control characters.
@@ -1820,7 +1913,16 @@ type ListAssetsParams struct {
 
 	// Q A literal substring of the asset key, display name or domain key, ignoring case
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// CheckStatus Only the assets whose latest revision has a latest check that concluded this. A revision that was approved with a waiver of the rule that failed is still one whose check failed.
+	CheckStatus *CheckRunStatus `form:"check_status,omitempty" json:"check_status,omitempty"`
+
+	// ReleasePending Only the assets whose latest revision is APPROVED and that have no release prepared from it. There is no filter for the others.
+	ReleasePending *ListAssetsParamsReleasePending `form:"release_pending,omitempty" json:"release_pending,omitempty"`
 }
+
+// ListAssetsParamsReleasePending defines parameters for ListAssets.
+type ListAssetsParamsReleasePending bool
 
 // ListAssetPublicationsParams defines parameters for ListAssetPublications.
 type ListAssetPublicationsParams struct {
@@ -2464,6 +2566,32 @@ func (siw *ServerInterfaceWrapper) ListAssets(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "check_status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "check_status", r.URL.Query(), &params.CheckStatus, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "check_status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "check_status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "release_pending" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "release_pending", r.URL.Query(), &params.ReleasePending, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "release_pending"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "release_pending", Err: err})
 		}
 		return
 	}

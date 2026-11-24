@@ -19,6 +19,12 @@ type ProductScope struct {
 	Known      bool
 	Owner      bool
 	Workspaces []domain.WorkspaceID
+	// Readers are the Workspaces where the caller holds a grant that reads
+	// the contract revisions of the Workspace: the author, the reviewer or the
+	// publisher grant. They are among the Workspaces it is a member of, and
+	// owning the product adds none: the caller who reads the assets of a
+	// Workspace reads where they stand only if it is one of these.
+	Readers []domain.WorkspaceID
 }
 
 func (s ProductScope) CanRead(workspace domain.WorkspaceID) bool {
