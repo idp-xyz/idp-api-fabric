@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestPortalForwardsTheCallerOnlyToReviewOperations(t *testing.T) {
+func TestPortalForwardsSameOriginReviewOperationsWithCaller(t *testing.T) {
 	var forwarded atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		forwarded.Add(1)
@@ -65,6 +65,53 @@ func TestPortalForwardsTheCallerOnlyToReviewOperations(t *testing.T) {
 	}
 }
 
+func TestPortalForwardsPublicationChangesWithTheRetryKey(t *testing.T) {
+	const slot = "/v1/products/p/publication-targets/t/assets/a"
+	const change = "{\"action\":\"WITHDRAW\",\"expected_generation\":2,\"reason\":\"incorrect contract\"}"
+	var forwarded atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwarded.Add(1)
+		if r.Method != http.MethodPost || r.URL.Path != slot+"/operations" ||
+			r.Header.Get("Idempotency-Key") != "publication-retry" || r.Header.Get("Authorization") != "Bearer example-access-token" {
+			t.Errorf("misrouted publication operation %s %s or wrong request headers", r.Method, r.URL)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil || string(body) != change {
+			t.Errorf("upstream received %q (%v), want the withdrawal request", body, err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, "{}")
+	}))
+	defer upstream.Close()
+	handler, err := newPortal(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range []struct {
+		path, site string
+		want       int
+	}{
+		{slot + "/operations", "same-origin", http.StatusOK},
+		{slot + "/operations", "cross-site", http.StatusForbidden},
+		{"/v1/products/p/publication-targets/t/access-blocks", "same-origin", http.StatusNotFound},
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api"+c.path, strings.NewReader(change))
+		req.Header.Set("Authorization", "Bearer example-access-token")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Idempotency-Key", "publication-retry")
+		req.Header.Set("Sec-Fetch-Site", c.site)
+		got := httptest.NewRecorder()
+		handler.ServeHTTP(got, req)
+		if got.Code != c.want || got.Header().Get("Cache-Control") != "no-store" {
+			t.Errorf("POST %s (%s) returned %d, want %d and no-store", c.path, c.site, got.Code, c.want)
+		}
+	}
+	if got := forwarded.Load(); got != 1 {
+		t.Errorf("upstream received %d requests, want the one same-origin publication operation", got)
+	}
+}
+
 func TestPortalServesTheWorkbenchAndRefusesAnHTMLAPIResponse(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
@@ -75,7 +122,7 @@ func TestPortalServesTheWorkbenchAndRefusesAnHTMLAPIResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/", "/app.css", "/app.js"} {
+	for _, path := range []string{"/", "/app.css", "/app.js", "/workbench.js", "/publication.js"} {
 		got := httptest.NewRecorder()
 		handler.ServeHTTP(got, httptest.NewRequest(http.MethodGet, path, nil))
 		if got.Code != http.StatusOK || got.Body.Len() == 0 || got.Header().Get("Content-Security-Policy") == "" {

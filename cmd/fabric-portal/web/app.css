@@ -98,3 +98,13 @@ dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 27rem) {
   .scope, .form-grid { grid-template-columns: 1fr; }
 }
+
+.publication { border-top: 1px solid var(--line); margin: 1rem 0 0; }
+.publication summary { padding-inline: 0; }
+.publication-scope {
+  display: flex; flex-wrap: wrap; gap: .65rem; align-items: end;
+  margin: .75rem 0;
+}
+.publication-scope .field { flex: 1 1 14rem; min-width: 0; }
+.publication-scope button { flex: 0 0 auto; }
+.publication-error { color: var(--danger); }
