@@ -253,6 +253,14 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 		return nil, err
 	}
 
+	revisionHeads, err := registry.NewHeads(registrydb.NewHeads(database.Framework))
+	if err != nil {
+		return nil, err
+	}
+	lastChecks, err := checks.NewLatest(checkdb.NewCheckRuns(database.Framework))
+	if err != nil {
+		return nil, err
+	}
 	apiCatalog, err := catalog.New(catalog.Dependencies{
 		Transactions: transactions,
 		Scopes:       catalogScopes{governance: productGovernance},
@@ -261,6 +269,7 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 		Events:       catalogoutbox.NewEvents(outbox, identifiers),
 		Clock:        clock,
 		Identifiers:  identifiers,
+		Overviews:    assetOverviews{heads: revisionHeads, latest: lastChecks},
 	})
 	if err != nil {
 		return nil, err

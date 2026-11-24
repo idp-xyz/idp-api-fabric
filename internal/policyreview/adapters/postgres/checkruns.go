@@ -309,32 +309,38 @@ LIMIT $7`
 	if err != nil {
 		return nil, fmt.Errorf("list check runs: %w", err)
 	}
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Overview, error) {
-		var overview domain.Overview
-		var manifest, compatibility []byte
-		var baselineID string
-		summary := &overview.Summary
-		if err := row.Scan(&overview.ID, &overview.PolicySnapshotID, &overview.Revision.ProductID, &overview.Revision.WorkspaceID,
-			&overview.Revision.AssetID, &overview.Revision.RevisionID, &overview.InputDigest, &manifest, &overview.Status,
-			&overview.StartedAt, &overview.CompletedAt, &overview.RequestedBy.Issuer, &overview.RequestedBy.Subject,
-			&overview.PolicySetID, &overview.PolicyDigest,
-			&summary.Pass, &summary.Warn, &summary.Fail, &summary.Unknown, &summary.NotRun, &summary.Findings,
-			&baselineID, &compatibility); err != nil {
-			return domain.Overview{}, err
-		}
-		overview.StartedAt, overview.CompletedAt = overview.StartedAt.UTC(), overview.CompletedAt.UTC()
-		tools, err := domain.RecordedTools(string(manifest))
-		if err != nil {
-			return domain.Overview{}, fmt.Errorf("the tools of check run %s: %w", overview.ID, err)
-		}
-		overview.Tools = tools
-		if overview.Compatibility, err = readCompatibility(baselineID, compatibility); err != nil {
-			return domain.Overview{}, fmt.Errorf("the comparison of check run %s: %w", overview.ID, err)
-		}
-		recorded, err := domain.RecordedOverview(overview)
-		if err != nil {
-			return domain.Overview{}, fmt.Errorf("check run %s: %w", overview.ID, err)
-		}
-		return recorded, nil
-	})
+	return pgx.CollectRows(rows, overviewOf)
+}
+
+// overviewOf reads one row of the statements that show a check run as a
+// history does, and holds it to what the model recorded: a row that is not
+// one is an error and not a check. Every read of an overview goes through
+// it, whichever statement it comes from.
+func overviewOf(row pgx.CollectableRow) (domain.Overview, error) {
+	var overview domain.Overview
+	var manifest, compatibility []byte
+	var baselineID string
+	summary := &overview.Summary
+	if err := row.Scan(&overview.ID, &overview.PolicySnapshotID, &overview.Revision.ProductID, &overview.Revision.WorkspaceID,
+		&overview.Revision.AssetID, &overview.Revision.RevisionID, &overview.InputDigest, &manifest, &overview.Status,
+		&overview.StartedAt, &overview.CompletedAt, &overview.RequestedBy.Issuer, &overview.RequestedBy.Subject,
+		&overview.PolicySetID, &overview.PolicyDigest,
+		&summary.Pass, &summary.Warn, &summary.Fail, &summary.Unknown, &summary.NotRun, &summary.Findings,
+		&baselineID, &compatibility); err != nil {
+		return domain.Overview{}, err
+	}
+	overview.StartedAt, overview.CompletedAt = overview.StartedAt.UTC(), overview.CompletedAt.UTC()
+	tools, err := domain.RecordedTools(string(manifest))
+	if err != nil {
+		return domain.Overview{}, fmt.Errorf("the tools of check run %s: %w", overview.ID, err)
+	}
+	overview.Tools = tools
+	if overview.Compatibility, err = readCompatibility(baselineID, compatibility); err != nil {
+		return domain.Overview{}, fmt.Errorf("the comparison of check run %s: %w", overview.ID, err)
+	}
+	recorded, err := domain.RecordedOverview(overview)
+	if err != nil {
+		return domain.Overview{}, fmt.Errorf("check run %s: %w", overview.ID, err)
+	}
+	return recorded, nil
 }

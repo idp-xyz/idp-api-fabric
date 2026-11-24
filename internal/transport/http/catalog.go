@@ -13,7 +13,7 @@ import (
 
 type APICatalog interface {
 	RegisterAsset(context.Context, catalog.RegisterAsset) (domain.Asset, error)
-	GetAsset(context.Context, catalog.GetAsset) (domain.Asset, error)
+	ReadAsset(context.Context, catalog.GetAsset) (catalog.AssetView, error)
 	ListAssets(context.Context, catalog.ListAssets) (catalog.Page, error)
 }
 
@@ -51,11 +51,11 @@ func (o operations) GetAsset(ctx context.Context, request GetAssetRequestObject)
 	if err != nil {
 		return nil, err
 	}
-	asset, err := o.catalog.GetAsset(ctx, catalog.GetAsset{Request: base, AssetID: domain.AssetID(request.APIAssetID)})
+	view, err := o.catalog.ReadAsset(ctx, catalog.GetAsset{Request: base, AssetID: domain.AssetID(request.APIAssetID)})
 	if err != nil {
 		return nil, err
 	}
-	body, err := assetOf(asset)
+	body, err := assetViewOf(view)
 	if err != nil {
 		return nil, err
 	}
@@ -79,12 +79,13 @@ func (o operations) ListAssets(ctx context.Context, request ListAssetsRequestObj
 	page, err := o.catalog.ListAssets(ctx, catalog.ListAssets{
 		Request: base, WorkspaceID: domain.WorkspaceID(valueOf(params.WorkspaceID)),
 		Kind: domain.Kind(valueOf(params.APIKind)), DomainKey: valueOf(params.DomainKey), Query: valueOf(params.Q),
+		CheckStatus: domain.CheckStatus(valueOf(params.CheckStatus)), ReleasePending: params.ReleasePending != nil && bool(*params.ReleasePending),
 		PageSize: size, After: after,
 	})
 	if err != nil {
 		return nil, err
 	}
-	items, err := listed(page.Items, assetOf)
+	items, err := listed(page.Items, assetViewOf)
 	if err != nil {
 		return nil, err
 	}

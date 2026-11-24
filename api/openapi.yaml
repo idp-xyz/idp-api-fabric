@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.30.0
+  version: 0.31.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -717,6 +717,28 @@ paths:
         relationship receives 403. Anyone who cannot know the product exists
         receives 404. Filters and text matching apply only to visible assets
         before paging. Keep the filters the same when following a page token.
+
+
+        An asset carries an overview, where it stands on its way from a
+        revision to a release, when the caller holds the internal_author,
+        internal_reviewer or internal_publisher role in the workspace that
+        owns it now: the grants that read its revisions, checks and releases.
+        Owning the product or maintaining the workspace is not one of them,
+        and an asset the caller reads without one carries no overview,
+        whatever the asset has.
+
+
+        check_status and release_pending keep the assets whose overview says
+        so. They narrow the list together with the other filters and, like
+        them, before paging: a page is full unless it is the last, and the
+        position a page token holds is that of the last asset of the page. An
+        asset whose overview the caller does not read is not kept by either:
+        they look in the workspaces where the caller holds one of those roles
+        and in no other. A caller that holds none of them in any workspace of
+        the product is refused (403), as it is for any list it may not read,
+        and not answered with an empty page, which would say what the
+        filter keeps. A filter keeps few assets, and finding them can take
+        longer than a page that is not filtered.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PageSize'
@@ -741,6 +763,22 @@ paths:
             minLength: 1
             maxLength: 120
             pattern: '^[^\p{Cc}]+$'
+        - in: query
+          name: check_status
+          description: >-
+            Only the assets whose latest revision has a latest check that
+            concluded this. A revision that was approved with a waiver of
+            the rule that failed is still one whose check failed.
+          schema:
+            $ref: '#/components/schemas/CheckRunStatus'
+        - in: query
+          name: release_pending
+          description: >-
+            Only the assets whose latest revision is APPROVED and that have no
+            release prepared from it. There is no filter for the others.
+          schema:
+            type: boolean
+            const: true
       responses:
         '200':
           description: One page of authorized assets
@@ -827,6 +865,12 @@ paths:
         an asset. A missing, cross-product or withheld asset returns the same
         API_ASSET_NOT_FOUND response when the caller can know the product
         exists. Otherwise the response is PRODUCT_NOT_FOUND.
+
+
+        The asset carries its overview under the rule listAssets states: when
+        the caller holds the internal_author, internal_reviewer or
+        internal_publisher role in the workspace that owns it now, and not
+        otherwise.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - in: path
@@ -4607,6 +4651,95 @@ components:
           type: string
           enum: [EXPERIMENTAL, STABLE, DEPRECATED, RETIRED]
         created_at:
+          type: string
+          format: date-time
+        overview:
+          description: >-
+            Where the asset stands. It is there when the caller holds the
+            internal_author, internal_reviewer or internal_publisher role in
+            the owning workspace now, the grants that read its revisions, and
+            is not there for a caller that reads the asset without one,
+            whatever the asset has. Only the reads of an asset carry it:
+            registering one answers without.
+          $ref: '#/components/schemas/AssetOverview'
+    AssetOverview:
+      description: >-
+        Where an asset stands on its way from a revision to a release, read
+        from what Contract Registry and Policy & Review record at the time it
+        is asked for. Each member is what the read of the same thing gives
+        under the same name: latest_revision is the revision with the
+        greatest revision_sequence, as getRevision gives it; latest_check is
+        the check of that revision that was concluded last, as
+        listRevisionChecks lists it; latest_release is the release that was
+        prepared last, as listContractReleases lists it. An asset that has no
+        revision has only release_pending.
+      type: object
+      additionalProperties: false
+      required: [release_pending]
+      properties:
+        latest_revision:
+          $ref: '#/components/schemas/OverviewRevision'
+        latest_check:
+          description: Absent while the latest revision has no check
+          $ref: '#/components/schemas/OverviewCheck'
+        latest_release:
+          description: Absent while the asset has no release
+          $ref: '#/components/schemas/OverviewRelease'
+        release_pending:
+          description: >-
+            True when the latest revision is APPROVED and no release was
+            prepared from it. It does not say that the approval still holds:
+            it may have run out, a waiver of it may have, its reviewer may
+            have lost the grant, or the policy and the tools may have moved on.
+            prepareContractRelease asks that when a release is prepared.
+          type: boolean
+    OverviewRevision:
+      description: The latest revision of an asset, as getRevision gives it
+      type: object
+      additionalProperties: false
+      required: [revision_id, revision_sequence, status, created_at]
+      properties:
+        revision_id:
+          $ref: '#/components/schemas/Identifier'
+        revision_sequence:
+          type: integer
+          format: int64
+          minimum: 1
+        status:
+          type: string
+          enum: [DRAFT, IN_REVIEW, APPROVED, REJECTED, WITHDRAWN]
+        created_at:
+          type: string
+          format: date-time
+    OverviewCheck:
+      description: The check of the latest revision that was concluded last, as listRevisionChecks lists it
+      type: object
+      additionalProperties: false
+      required: [check_run_id, status, completed_at]
+      properties:
+        check_run_id:
+          $ref: '#/components/schemas/Identifier'
+        status:
+          $ref: '#/components/schemas/CheckRunStatus'
+        completed_at:
+          type: string
+          format: date-time
+    OverviewRelease:
+      description: >-
+        The release of an asset that was prepared last, as listContractReleases
+        lists it, whichever revision it was prepared from
+      type: object
+      additionalProperties: false
+      required: [release_id, revision_id, version, prepared_at]
+      properties:
+        release_id:
+          $ref: '#/components/schemas/Identifier'
+        revision_id:
+          $ref: '#/components/schemas/Identifier'
+        version:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$'
+        prepared_at:
           type: string
           format: date-time
     AssetList:

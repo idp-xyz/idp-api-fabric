@@ -39,14 +39,15 @@ type Dependencies struct {
 	Events       ports.Events
 	Clock        ports.Clock
 	Identifiers  ports.Identifiers
+	Overviews    ports.Overviews
 }
 
 type Catalog struct{ deps Dependencies }
 
 func New(deps Dependencies) (*Catalog, error) {
 	if deps.Transactions == nil || deps.Scopes == nil || deps.Assets == nil || deps.Audit == nil ||
-		deps.Events == nil || deps.Clock == nil || deps.Identifiers == nil {
-		return nil, errors.New("API Catalog requires transactions, product scope, asset storage, audit, events, a clock and identifiers")
+		deps.Events == nil || deps.Clock == nil || deps.Identifiers == nil || deps.Overviews == nil {
+		return nil, errors.New("API Catalog requires transactions, product scope, asset storage, audit, events, a clock, identifiers and overviews")
 	}
 	return &Catalog{deps: deps}, nil
 }
@@ -125,18 +126,25 @@ type GetAsset struct {
 }
 
 func (c *Catalog) GetAsset(ctx context.Context, query GetAsset) (domain.Asset, error) {
+	_, asset, err := c.visibleAsset(ctx, query)
+	return asset, err
+}
+
+// visibleAsset is the asset the caller may read, and what the caller may read
+// of the product.
+func (c *Catalog) visibleAsset(ctx context.Context, query GetAsset) (ports.ProductScope, domain.Asset, error) {
 	scope, err := c.readScope(ctx, query.Request, actionRead)
 	if err != nil {
-		return domain.Asset{}, err
+		return ports.ProductScope{}, domain.Asset{}, err
 	}
 	asset, err := c.AssetInProduct(ctx, query.ProductID, query.AssetID)
 	if err != nil {
-		return domain.Asset{}, err
+		return ports.ProductScope{}, domain.Asset{}, err
 	}
 	if !scope.CanRead(asset.WorkspaceID) {
-		return domain.Asset{}, c.refuse(ctx, query.Request, actionRead, string(asset.ID), ErrAssetNotFound)
+		return ports.ProductScope{}, domain.Asset{}, c.refuse(ctx, query.Request, actionRead, string(asset.ID), ErrAssetNotFound)
 	}
-	return asset, nil
+	return scope, asset, nil
 }
 
 // AssetInProduct verifies the scope of an asset for a use case that already
@@ -164,10 +172,14 @@ type ListAssets struct {
 	Query       string
 	PageSize    int
 	After       *ports.Position
+	// CheckStatus and ReleasePending keep the assets whose overview says so,
+	// among those whose overview the caller reads (see ports.OverviewFilter).
+	CheckStatus    domain.CheckStatus
+	ReleasePending bool
 }
 
 type Page struct {
-	Items []domain.Asset
+	Items []AssetView
 	Next  *ports.Position
 }
 
@@ -181,6 +193,7 @@ func (c *Catalog) ListAssets(ctx context.Context, query ListAssets) (Page, error
 		query.WorkspaceID != "" && !domain.ValidIdentifier(query.WorkspaceID) ||
 		query.Kind != "" && !query.Kind.Valid() ||
 		query.DomainKey != "" && !domain.ValidKey(query.DomainKey) ||
+		query.CheckStatus != "" && !query.CheckStatus.Valid() ||
 		!utf8.ValidString(query.Query) || utf8.RuneCountInString(query.Query) > 120 ||
 		strings.ContainsFunc(query.Query, unicode.IsControl) {
 		return Page{}, domain.ErrInvalid
@@ -192,6 +205,9 @@ func (c *Catalog) ListAssets(ctx context.Context, query ListAssets) (Page, error
 	if !scope.Owner && len(scope.Workspaces) == 0 {
 		return Page{}, c.refuse(ctx, query.Request, actionSearch, "", ErrForbidden)
 	}
+	if filter := (ports.OverviewFilter{CheckStatus: query.CheckStatus, ReleasePending: query.ReleasePending}); filter.Any() {
+		return c.listKept(ctx, query, size, scope, filter)
+	}
 	items, err := c.deps.Assets.List(ctx, query.ProductID, ports.Selection{
 		All: scope.Owner, Workspaces: scope.Workspaces, Workspace: query.WorkspaceID,
 		Kind: query.Kind, DomainKey: query.DomainKey, Query: query.Query, After: query.After, Limit: size + 1,
@@ -199,11 +215,15 @@ func (c *Catalog) ListAssets(ctx context.Context, query ListAssets) (Page, error
 	if err != nil {
 		return Page{}, err
 	}
-	page := Page{Items: items}
+	var page Page
+	assets := items
 	if len(items) > size {
 		last := items[size-1]
-		page.Items = items[:size]
+		assets = items[:size]
 		page.Next = &ports.Position{At: last.CreatedAt, ID: last.ID}
+	}
+	if page.Items, err = c.viewsOf(ctx, query.ProductID, scope, assets); err != nil {
+		return Page{}, err
 	}
 	return page, nil
 }
