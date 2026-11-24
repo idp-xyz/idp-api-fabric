@@ -35,6 +35,8 @@ type ProductGovernance interface {
 	ListMemberships(ctx context.Context, query application.ListMemberships) (application.Page[domain.Membership], error)
 	ListProductRoles(ctx context.Context, query application.ListProductRoles) (application.Page[domain.RoleAssignment], error)
 	ListAudienceConfigs(ctx context.Context, query application.ListAudienceConfigs) (application.Page[domain.AudienceConfig], error)
+	GetCaller(ctx context.Context, query application.GetCaller) (application.CallerIdentity, error)
+	GetCallerInProduct(ctx context.Context, query application.GetCallerInProduct) (application.CallerStanding, error)
 }
 
 // noStore is the cache directive of everything private: a product and what

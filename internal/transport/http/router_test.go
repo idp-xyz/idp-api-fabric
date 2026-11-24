@@ -175,6 +175,8 @@ var protected = []call{
 	{Method: http.MethodGet, Target: memberships},
 	{Method: http.MethodGet, Target: roleAssignments},
 	{Method: http.MethodGet, Target: audienceConfigs},
+	{Method: http.MethodGet, Target: "/v1/caller"},
+	{Method: http.MethodGet, Target: "/v1/products/" + productID + "/caller"},
 }
 
 func TestAProtectedOperationNeedsAVerifiedCaller(t *testing.T) {
