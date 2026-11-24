@@ -3,11 +3,13 @@ package http
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"maps"
 	"net/http"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -519,6 +521,38 @@ func TestAListTheUseCaseRefusesIsRefusedAndShowsNoAsset(t *testing.T) {
 	wantProblem(t, response, http.StatusForbidden, CodeForbidden, "The caller may not perform this action.")
 	if len(fake.listed) != 1 {
 		t.Errorf("the use case was asked %d times, want once", len(fake.listed))
+	}
+}
+
+// A Catalog whose answers to the rounds of a filtered list were out of the
+// order of the list, or from another place than the rounds had read to, is a
+// fault of the service and says nothing of itself to the caller: the answer is
+// the internal error of any fault, with no member that tells the cause, and the
+// log has the cause, with the identifier of the request. The failure is no
+// refusal, so it is not a 403, and the use case is asked the once.
+func TestAFilteredListThatTheCatalogAnsweredOutOfOrderIsAnInternalErrorThatSaysNothing(t *testing.T) {
+	cause := fmt.Errorf("%w: the asset marker-of-the-cause, created at 2026-11-11T09:00:00Z, does not come after another", catalog.ErrAssetsOutOfOrder)
+	for name, target := range map[string]string{
+		"a release pending":       assetsOfProduct + "?release_pending=true",
+		"a status":                assetsOfProduct + "?check_status=FAIL",
+		"both, from a page token": assetsOfProduct + "?release_pending=true&check_status=UNKNOWN&page_size=3&page_token=" + encodePageToken(listOfAssets, governanceports.Position{At: createdAt, ID: secondAssetID}),
+	} {
+		fake := &assetCatalog{err: cause}
+		s := newAssetService(t, fake)
+		response := s.do(t, call{Method: http.MethodGet, Target: target, Token: alice.Subject})
+
+		traceID := wantProblem(t, response, http.StatusInternalServerError, CodeInternalError, "")
+		for _, told := range []string{"marker-of-the-cause", "order", "place", "Catalog"} {
+			if strings.Contains(response.Body.String(), told) {
+				t.Errorf("%s: the answer says %q of the cause: %s", name, told, response.Body)
+			}
+		}
+		if !strings.Contains(s.log.String(), "marker-of-the-cause") || !strings.Contains(s.log.String(), "correlation_id="+traceID) {
+			t.Errorf("%s: the cause must be logged with the identifier of the request, got %q", name, s.log.String())
+		}
+		if len(fake.listed) != 1 {
+			t.Errorf("%s: the use case was asked %d times, want once", name, len(fake.listed))
+		}
 	}
 }
 

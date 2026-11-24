@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -54,15 +55,53 @@ func (s *scopes) Product(context.Context, domain.ProductID, domain.Principal) (p
 	return s.scope, nil
 }
 
+// askedAtMost is how many times a fake of this file answers before it stops
+// the test that asks it. A test asks a fake a few times, and a list that is
+// read page by page a few hundred; a loop that does not stop asks without end,
+// and a fake keeps what it was asked, so that a loop that was broken once used
+// all the memory of the machine and restarted it. Ten thousand questions are
+// a few hundred megabytes at the most, and the test fails where it is asked
+// the next.
+const askedAtMost = 10000
+
+// reporter is what a fake needs of a test to stop it: a *testing.T is one.
+type reporter interface {
+	Helper()
+	Fatalf(format string, args ...any)
+}
+
+// counted counts the questions a fake is asked, and stops the test at the one
+// after askedAtMost: the test fails there, and goes no further.
+type counted struct {
+	test      reporter
+	questions int
+}
+
+func (c *counted) count(of string) {
+	c.questions++
+	if c.questions <= askedAtMost {
+		return
+	}
+	if c.test == nil {
+		panic(fmt.Sprintf("%s was asked more than %d times", of, askedAtMost))
+	}
+	c.test.Helper()
+	c.test.Fatalf("%s was asked more than %d times: a loop does not stop, and the test is stopped here", of, askedAtMost)
+}
+
 // assetStore stands in for the assets the Catalog keeps: it answers as the
 // statement of the real one does, from the assets it was given, which are
 // those of one product, and keeps what it was asked.
 type assetStore struct {
 	ports.Assets
+	counted
 	assets  []domain.Asset
 	asked   []ports.Selection
 	finds   int
 	failure error
+	// answering, if there is one, is what the Catalog answers to a list instead
+	// of what its assets say: a Catalog that does not do what the real one does.
+	answering func(ports.Selection) []domain.Asset
 }
 
 func (s *assetStore) Find(_ context.Context, product domain.ProductID, id domain.AssetID) (domain.Asset, bool, error) {
@@ -76,11 +115,15 @@ func (s *assetStore) Find(_ context.Context, product domain.ProductID, id domain
 }
 
 func (s *assetStore) List(_ context.Context, product domain.ProductID, selection ports.Selection) ([]domain.Asset, error) {
+	s.count("the Catalog")
 	asked := selection
 	asked.Workspaces = slices.Clone(selection.Workspaces)
 	s.asked = append(s.asked, asked)
 	if s.failure != nil {
 		return nil, s.failure
+	}
+	if s.answering != nil {
+		return slices.Clone(s.answering(selection)), nil
 	}
 	var found []domain.Asset
 	for _, asset := range s.assets {
@@ -113,6 +156,7 @@ func (s *assetStore) List(_ context.Context, product domain.ProductID, selection
 // asked.
 type overviewsOf struct {
 	ports.Overviews
+	counted
 	of func(domain.AssetID) (domain.Overview, bool) // false for an asset without a revision
 	// silent leaves an asset without a revision out of what it says, instead
 	// of saying that it has the empty overview.
@@ -128,6 +172,7 @@ type asking struct {
 }
 
 func (o *overviewsOf) Of(_ context.Context, product domain.ProductID, places []ports.AssetPlace, filter ports.OverviewFilter) (map[domain.AssetID]domain.Overview, error) {
+	o.count("the overviews")
 	o.asked = append(o.asked, asking{product, slices.Clone(places), filter})
 	if o.failure != nil {
 		return nil, o.failure
@@ -177,7 +222,10 @@ type world struct {
 func newWorld(t *testing.T, scope ports.ProductScope, assets []domain.Asset, of func(domain.AssetID) (domain.Overview, bool)) *world {
 	t.Helper()
 
-	w := &world{t: t, scopes: &scopes{scope: scope}, assets: &assetStore{assets: assets}, overviews: &overviewsOf{of: of}}
+	w := &world{
+		t: t, scopes: &scopes{scope: scope}, assets: &assetStore{assets: assets, counted: counted{test: t}},
+		overviews: &overviewsOf{of: of, counted: counted{test: t}},
+	}
 	scope.Exists, scope.Known = true, true
 	w.scopes.scope = scope
 	catalog, err := New(Dependencies{
@@ -693,6 +741,227 @@ func TestTheOverviewOfOneAssetIsReadForWhoReadsItsRevisionsAndForNoOneElse(t *te
 		asset.ID != assetNumber(1) || len(w.overviews.asked) != 0 {
 		t.Errorf("GetAsset: %+v (%v), %d questions of the overviews, want the asset and none", asset, err, len(w.overviews.asked))
 	}
+}
+
+// A Catalog that does not read forward ends the list with a failure at the
+// first round that shows it, and not at a later one, and not with rounds that
+// never end: nothing is asked about what it answered out of its place, and the
+// failure is no refusal, so that no page is given and nothing is put on
+// record. These are what a loop that asks from the same place again is
+// answered by a Catalog that does what it is asked, and what a Catalog that
+// ignores the place it is asked to read from answers a loop that is right.
+func TestAFilteredListFailsAtTheFirstRoundThatDoesNotReadForward(t *testing.T) {
+	scope := ports.ProductScope{Workspaces: []domain.WorkspaceID{engineering}, Readers: []domain.WorkspaceID{engineering}}
+	assets := assetsOf(40, inWorkspace(engineering))
+	const size = 5
+
+	for name, answering := range map[string]func(ports.Selection) []domain.Asset{
+		"the same assets every time": func(ports.Selection) []domain.Asset { return assets[:size+1] },
+		"the assets from the start of the list, as many as it was asked for": func(selection ports.Selection) []domain.Asset {
+			return assets[:selection.Limit]
+		},
+		"the last assets of the list, as many as it was asked for": func(selection ports.Selection) []domain.Asset {
+			return assets[len(assets)-selection.Limit:]
+		},
+	} {
+		w := newWorld(t, scope, assets, never)
+		w.assets.answering = answering
+		page, err := w.list(ListAssets{ReleasePending: true, PageSize: size})
+		if !errors.Is(err, ErrAssetsOutOfOrder) || len(page.Items) != 0 || page.Next != nil {
+			t.Errorf("%s: %+v (%v), want no page and %v", name, page, err, ErrAssetsOutOfOrder)
+		}
+		// The first round is answered as it was asked. The second is the one
+		// that does not read forward, and nothing is asked about its answer.
+		if len(w.assets.asked) != 2 || len(w.overviews.asked) != 1 {
+			t.Errorf("%s: the Catalog was asked %d times and the overviews %d, want two and one", name, len(w.assets.asked), len(w.overviews.asked))
+		}
+		if len(w.audited) != 0 {
+			t.Errorf("%s: %+v is on record, want nothing: a Catalog that fails is no refusal", name, w.audited)
+		}
+	}
+}
+
+// The first round has to read from where the token says, and a Catalog that
+// answers from before it, or from it, fails the list with nothing asked about
+// the answer. What follows the token is read, also an asset of the instant of
+// the token that has a greater identifier.
+func TestAFilteredListFailsWhenTheFirstRoundDoesNotStartAfterTheToken(t *testing.T) {
+	scope := ports.ProductScope{Workspaces: []domain.WorkspaceID{engineering}, Readers: []domain.WorkspaceID{engineering}}
+	assets := assetsOf(20, inWorkspace(engineering))
+	token := ports.Position{At: assets[9].CreatedAt, ID: assets[9].ID}
+	atTheInstant := func(n int) domain.Asset {
+		asset := assets[9]
+		asset.ID = assetNumber(n)
+		return asset
+	}
+
+	for name, answer := range map[string][]domain.Asset{
+		"the asset of the token itself":                         assets[9:12],
+		"the asset before it":                                   assets[8:11],
+		"the start of the list":                                 assets[:6],
+		"an asset of the same instant with a lesser identifier": {atTheInstant(8), assets[10]},
+	} {
+		w := newWorld(t, scope, assets, never)
+		w.assets.answering = func(ports.Selection) []domain.Asset { return answer }
+		if _, err := w.list(ListAssets{ReleasePending: true, PageSize: 5, After: &token}); !errors.Is(err, ErrAssetsOutOfOrder) ||
+			len(w.assets.asked) != 1 || len(w.overviews.asked) != 0 {
+			t.Errorf("%s: %v, the Catalog asked %d times and the overviews %d, want %v, once and never", name, err,
+				len(w.assets.asked), len(w.overviews.asked), ErrAssetsOutOfOrder)
+		}
+	}
+	for name, answer := range map[string][]domain.Asset{
+		"the asset after it": assets[10:13],
+		"an asset of the same instant with a greater identifier": {atTheInstant(12), assets[10]},
+	} {
+		w := newWorld(t, scope, assets, never)
+		w.assets.answering = func(ports.Selection) []domain.Asset { return answer }
+		if _, err := w.list(ListAssets{ReleasePending: true, PageSize: 5, After: &token}); err != nil ||
+			len(w.assets.asked) != 1 || len(w.overviews.asked) != 1 || len(w.askedAbout()) != len(answer) {
+			t.Errorf("%s: %v, the Catalog asked %d times and the overviews %d about %d assets, want no failure, once and about all %d",
+				name, err, len(w.assets.asked), len(w.overviews.asked), len(w.askedAbout()), len(answer))
+		}
+	}
+}
+
+// What a round is answered with is in the order of the list, one asset after
+// the other, strictly: the instant the assets were created at and then their
+// identifiers. A Catalog that answers in another order, or twice with an asset,
+// fails the list with nothing asked about the answer; assets of one instant
+// are in order by their identifiers.
+func TestAFilteredListFailsWhenTheCatalogAnswersOutOfTheOrderOfTheList(t *testing.T) {
+	scope := ports.ProductScope{Workspaces: []domain.WorkspaceID{engineering}, Readers: []domain.WorkspaceID{engineering}}
+	assets := assetsOf(10, inWorkspace(engineering))
+	atOneInstant := func(numbers ...int) []domain.Asset {
+		var made []domain.Asset
+		for _, n := range numbers {
+			asset := assets[0]
+			asset.ID = assetNumber(n)
+			made = append(made, asset)
+		}
+		return made
+	}
+
+	for name, answer := range map[string][]domain.Asset{
+		"the newer asset first":                      {assets[1], assets[0]},
+		"an asset twice in a row":                    {assets[0], assets[0]},
+		"an asset that falls back in the middle":     {assets[0], assets[3], assets[2], assets[4]},
+		"an asset again after others":                {assets[0], assets[1], assets[0]},
+		"one instant, the identifiers the other way": atOneInstant(2, 1),
+		"one instant, an identifier twice":           atOneInstant(1, 1),
+		"one instant, an identifier that falls back": atOneInstant(1, 3, 2),
+	} {
+		w := newWorld(t, scope, assets, never)
+		w.assets.answering = func(ports.Selection) []domain.Asset { return answer }
+		page, err := w.list(ListAssets{ReleasePending: true, PageSize: 5})
+		if !errors.Is(err, ErrAssetsOutOfOrder) || len(page.Items) != 0 || len(w.assets.asked) != 1 || len(w.overviews.asked) != 0 || len(w.audited) != 0 {
+			t.Errorf("%s: %+v (%v), the Catalog asked %d times, the overviews %d, %d on record; want %v, once, never and nothing",
+				name, page, err, len(w.assets.asked), len(w.overviews.asked), len(w.audited), ErrAssetsOutOfOrder)
+		}
+	}
+
+	w := newWorld(t, scope, assets, never)
+	answer := atOneInstant(1, 2, 3)
+	w.assets.answering = func(ports.Selection) []domain.Asset { return answer }
+	if _, err := w.list(ListAssets{ReleasePending: true, PageSize: 5}); err != nil || len(w.askedAbout()) != 3 {
+		t.Errorf("assets of one instant in the order of their identifiers: %v, %d asked about, want no failure and all three", err, len(w.askedAbout()))
+	}
+}
+
+// follows says where an answer reads to, and refuses it if it is not behind the
+// place that was read to, or its assets are not one after the other.
+func TestAnAnswerFollowsThePlaceItIsGivenAndReadsToItsLastAsset(t *testing.T) {
+	assets := assetsOf(5, inWorkspace(engineering))
+	place := func(asset domain.Asset) *ports.Position { return &ports.Position{At: asset.CreatedAt, ID: asset.ID} }
+	atTheInstantOf := func(asset domain.Asset, n int) domain.Asset {
+		asset.ID = assetNumber(n)
+		return asset
+	}
+
+	for name, c := range map[string]struct {
+		read   *ports.Position
+		answer []domain.Asset
+		to     *ports.Position // where it reads to; nil and a failure is what is wanted when fails
+		fails  bool
+	}{
+		"no assets from the start":                          {nil, nil, nil, false},
+		"one asset from the start":                          {nil, assets[:1], place(assets[0]), false},
+		"assets from the start":                             {nil, assets[:3], place(assets[2]), false},
+		"assets after a place":                              {place(assets[1]), assets[2:4], place(assets[3]), false},
+		"no assets after a place leave it where it was":     {place(assets[1]), nil, place(assets[1]), false},
+		"an asset of the instant with a greater identifier": {place(assets[1]), []domain.Asset{atTheInstantOf(assets[1], 9)}, place(atTheInstantOf(assets[1], 9)), false},
+		"the asset of the place":                            {place(assets[1]), assets[1:3], nil, true},
+		"an asset before the place":                         {place(assets[2]), assets[1:3], nil, true},
+		"an asset of the instant with a lesser identifier":  {place(assets[1]), []domain.Asset{atTheInstantOf(assets[1], 1)}, nil, true},
+		"an answer that falls back":                         {nil, []domain.Asset{assets[2], assets[1]}, nil, true},
+		"an asset twice":                                    {nil, []domain.Asset{assets[1], assets[1]}, nil, true},
+	} {
+		to, err := follows(c.read, c.answer)
+		switch {
+		case c.fails && (!errors.Is(err, ErrAssetsOutOfOrder) || to != nil):
+			t.Errorf("%s: %+v (%v), want no place and %v", name, to, err, ErrAssetsOutOfOrder)
+		case !c.fails && (err != nil || !reflect.DeepEqual(to, c.to)):
+			t.Errorf("%s: %+v (%v), want %+v and no failure", name, to, err, c.to)
+		}
+	}
+
+	// What is logged of the failure is which asset does not come after which, and
+	// the instants they were created at.
+	_, err := follows(place(assets[2]), assets[1:2])
+	for _, want := range []string{string(assets[1].ID), string(assets[2].ID), assets[1].CreatedAt.UTC().Format(time.RFC3339Nano)} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("the failure %v does not say %s", err, want)
+		}
+	}
+}
+
+// A fake that is asked without end stops the test at the limit, and no further:
+// the test fails where the fake is asked the question after the limit, with the
+// fake named, and it is not answered. It is what keeps a loop that does not
+// stop from using the memory of the machine.
+func TestAFakeThatIsAskedWithoutEndStopsTheTestAtTheLimit(t *testing.T) {
+	scope := ports.ProductScope{Workspaces: []domain.WorkspaceID{engineering}, Readers: []domain.WorkspaceID{engineering}}
+	for name, ask := range map[string]func(*world){
+		"the Catalog": func(w *world) {
+			_, _ = w.assets.List(t.Context(), someProduct, ports.Selection{All: true, Limit: 1})
+		},
+		"the overviews": func(w *world) {
+			_, _ = w.overviews.Of(t.Context(), someProduct, nil, ports.OverviewFilter{})
+		},
+	} {
+		w := newWorld(t, scope, assetsOf(3, inWorkspace(engineering)), pending)
+		stopped := &stoppedTest{}
+		w.assets.test, w.overviews.test = stopped, stopped
+		answered := 0
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil && recovered != stopTheTest {
+					panic(recovered)
+				}
+			}()
+			for answered < 2*askedAtMost {
+				ask(w)
+				answered++
+			}
+		}()
+		if answered != askedAtMost || len(stopped.told) != 1 || !strings.Contains(stopped.told[0], name) {
+			t.Errorf("%s: answered %d times and told the test %q, want %d answers and one stop that names it", name, answered, stopped.told, askedAtMost)
+		}
+	}
+}
+
+// stopTheTest is what a stoppedTest panics with, as a test that is stopped
+// ends the goroutine that runs it.
+var stopTheTest = new(int)
+
+// stoppedTest stands in for a test that a fake stops: it keeps what it was
+// told and ends what asked.
+type stoppedTest struct{ told []string }
+
+func (s *stoppedTest) Helper() {}
+
+func (s *stoppedTest) Fatalf(format string, args ...any) {
+	s.told = append(s.told, fmt.Sprintf(format, args...))
+	panic(stopTheTest)
 }
 
 func TestTheCatalogIsWiredWithOverviews(t *testing.T) {

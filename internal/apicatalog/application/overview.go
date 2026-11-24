@@ -2,7 +2,10 @@ package application
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
+	"time"
 
 	"go.idp.xyz/idp-api-fabric/internal/apicatalog/domain"
 	"go.idp.xyz/idp-api-fabric/internal/apicatalog/ports"
@@ -14,6 +17,31 @@ import (
 // one question to another context; it is also the most a round that finds
 // none of what it was asked for wastes.
 const maxBatch = 1000
+
+// ErrAssetsOutOfOrder reports an answer to a round of a filtered list that
+// does not come after the place the rounds had read to, or whose assets do not
+// come one after the other in the order of the list. It is a failure of the
+// Catalog, or of the code that asks it, and nothing that the caller sent or
+// may be told.
+var ErrAssetsOutOfOrder = errors.New("the answer to a round of a list does not come after the place read to, or is out of the order of the list")
+
+// follows checks the assets a round of a filtered list was answered with: the
+// first comes after the place the rounds have read to so far (none, in the
+// first round of a list that starts at its start), and each comes after the one
+// before it, in the order of the list, which is the instant the assets were
+// created at and then their identifiers. It returns the place the answer reads
+// to, that of its last asset, or the place it was given if it holds none.
+func follows(read *ports.Position, assets []domain.Asset) (*ports.Position, error) {
+	for _, asset := range assets {
+		place := ports.Position{At: asset.CreatedAt, ID: asset.ID}
+		if read != nil && !(place.At.After(read.At) || place.At.Equal(read.At) && place.ID > read.ID) {
+			return nil, fmt.Errorf("%w: the asset %s, created at %s, does not come after %s, created at %s", ErrAssetsOutOfOrder,
+				place.ID, place.At.UTC().Format(time.RFC3339Nano), read.ID, read.At.UTC().Format(time.RFC3339Nano))
+		}
+		read = &place
+	}
+	return read, nil
+}
 
 // AssetView is an asset and, if the caller reads the revisions of the
 // Workspace that owns it, where the asset stands. For a caller that does not,
@@ -98,12 +126,24 @@ func batchOf(size, round int) int {
 // behind it is only looked for to know that more follow, and the token of the
 // page that follows is the position of the last asset of this one. A page is
 // full unless it is the last.
+//
+// What ends the rounds is the place they read to, and not a count of them. Each
+// answer is checked (follows) before anything is asked about it, to come after
+// the place the rounds have read to and in the order of the list, and the next
+// round is asked to read from the last asset of the answer. So every round
+// that is answered reads to a place after the one before, and a Catalog holds a
+// finite number of assets: the rounds end with a page, with a round that reads
+// fewer assets than it asked for, or with ErrAssetsOutOfOrder. The check is on
+// where the answers have read to, and not on the place the round asked from
+// (after), so that it stops a Catalog that does not read from the place it is
+// asked as well as a loop that asks from the same place again: an honest
+// Catalog answers the second with the assets it has answered already.
 func (c *Catalog) listKept(ctx context.Context, query ListAssets, size int, scope ports.ProductScope, filter ports.OverviewFilter) (Page, error) {
 	if len(scope.Readers) == 0 {
 		return Page{}, c.refuse(ctx, query.Request, actionSearch, "", ErrForbidden)
 	}
 	var kept []AssetView
-	after := query.After
+	after, read := query.After, query.After
 	for round := 0; len(kept) <= size; round++ {
 		limit := batchOf(size, round)
 		assets, err := c.deps.Assets.List(ctx, query.ProductID, ports.Selection{
@@ -111,6 +151,9 @@ func (c *Catalog) listKept(ctx context.Context, query ListAssets, size int, scop
 			Kind: query.Kind, DomainKey: query.DomainKey, Query: query.Query, After: after, Limit: limit,
 		})
 		if err != nil {
+			return Page{}, err
+		}
+		if read, err = follows(read, assets); err != nil {
 			return Page{}, err
 		}
 		if len(assets) > 0 {
