@@ -3,6 +3,7 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -196,18 +197,55 @@ func TestTheStoreWritesOnlyInsideATransaction(t *testing.T) {
 }
 
 // The audit trail is append-only for a Fabric process (FR-062): the role it
-// connects with can add a record and can neither read, change nor remove one.
-func TestTheApplicationRoleCanAppendAndNothingElse(t *testing.T) {
+// connects with can add a record and read it back, for the auditors of a
+// product (AC-29), and can neither change nor remove one. It holds no
+// privilege that would, on the table or on a column of it, and no way round
+// one: a row is locked for an update only by whoever may update it.
+func TestTheApplicationRoleCanAppendAndReadAndNothingElse(t *testing.T) {
 	f := newFixture(t)
 	if err := f.recorder.Record(t.Context(), registration("kept")); err != nil {
 		t.Fatalf("record: %v", err)
 	}
 
+	rows, err := f.app.Query(t.Context(), `
+		SELECT privilege FROM unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) AS privilege
+		WHERE has_table_privilege(current_user, 'platformoperations.audit_record', privilege)`)
+	if err != nil {
+		t.Fatalf("read the privileges of the role: %v", err)
+	}
+	held, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatalf("read the privileges of the role: %v", err)
+	}
+	if want := []string{"SELECT", "INSERT"}; !slices.Equal(held, want) {
+		t.Errorf("the role holds %v on the audit trail, want %v", held, want)
+	}
+	for _, privilege := range []string{"UPDATE", "REFERENCES"} {
+		var onAColumn bool
+		if err := f.app.QueryRow(t.Context(),
+			`SELECT has_any_column_privilege(current_user, 'platformoperations.audit_record', $1)`, privilege).Scan(&onAColumn); err != nil {
+			t.Fatalf("read the privileges of the role: %v", err)
+		}
+		if onAColumn {
+			t.Errorf("the role holds %s on a column of the audit trail", privilege)
+		}
+	}
+
+	var read int
+	if err := f.app.QueryRow(t.Context(), `SELECT count(*) FROM platformoperations.audit_record`).Scan(&read); err != nil || read != 1 {
+		t.Errorf("the role reads %d records (%v), want the one it recorded", read, err)
+	}
+
 	refused := []string{
-		`SELECT count(*) FROM platformoperations.audit_record`,
 		`UPDATE platformoperations.audit_record SET outcome = 'DENIED'`,
+		`UPDATE platformoperations.audit_record SET outcome = 'DENIED' WHERE false`,
 		`DELETE FROM platformoperations.audit_record`,
+		`DELETE FROM platformoperations.audit_record WHERE false`,
 		`TRUNCATE platformoperations.audit_record`,
+		`SELECT audit_id FROM platformoperations.audit_record FOR UPDATE`,
+		`SELECT audit_id FROM platformoperations.audit_record FOR SHARE`,
+		`INSERT INTO platformoperations.audit_record SELECT * FROM platformoperations.audit_record
+		 ON CONFLICT (audit_id) DO UPDATE SET outcome = 'DENIED'`,
 		`ALTER TABLE platformoperations.audit_record DROP COLUMN rule_id`,
 		`DROP TABLE platformoperations.audit_record`,
 		`CREATE TABLE platformoperations.intruder (id integer)`,

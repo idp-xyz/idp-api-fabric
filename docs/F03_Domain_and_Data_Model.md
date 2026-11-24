@@ -235,7 +235,7 @@ F02 提出的 `PublicationTarget = Product × Audience × Environment × Portal`
 
 本节记录已合入 main 的实现事实，不替代其余逻辑模型的候选状态或正式评审。权威 DDL 为 `migrations/productgovernance/003_role_assignment_revocation.sql`、`004_list_order.sql`。
 
-- `product_role_assignment` 的主键为 UUID `role_assignment_id`。主体始终是 `principal_issuer` 和 `principal_subject` 的组合；`role` 当前仅允许 `product_owner`。`role_assignment_version` 授予为 1、撤销为 2；授予/撤销人和时间保留，撤销三列必须同时为空或同时有值。有效记录的部分唯一索引允许撤销后以新 ID 再次授予。
+- `product_role_assignment` 的主键为 UUID `role_assignment_id`。主体始终是 `principal_issuer` 和 `principal_subject` 的组合；`role` 起初仅允许 `product_owner`，0.20.0 起还有 `security_admin` 和 `security_reviewer`（§5.10），0.28.0 起还有 `internal_auditor`（§5.12）。`role_assignment_version` 授予为 1、撤销为 2；授予/撤销人和时间保留，撤销三列必须同时为空或同时有值。有效记录的部分唯一索引允许撤销后以新 ID 再次授予。
 - 表触发器只允许一次撤销，拒绝改主体、角色、产品及复活历史行。应用角色有 INSERT、SELECT、UPDATE，没有 DELETE；“至少一位负责人”由撤销用例在事务内锁住该 Product 的全部有效分配后计数保证，不是表触发器的保证。等待锁期间新增的负责人可能不被计入，保守返回 `LAST_OWNER` 后可重试。
 - 登记时的首批负责人随 `product.registered` 产生，不各发授予事件；其后的授予和撤销发 `fabric.productgovernance.product_role.changed`。载荷只有分配编号、角色、是否有效及事件版本，不含主体身份；仅消费此事件时可能先看到首批负责人的版本 2 撤销，不能假定已经收到版本 1。
 - 每次请求从当时有效的分配/成员关系重新授权。撤销立即影响下一次请求，不要求更换 JWT。旧版本若不识别撤销列仍会授予权限，第一次撤销前必须完成旧进程下线；回滚不能恢复这种旧授权逻辑。
@@ -447,9 +447,9 @@ Git 来源是提交者的声明：仓库的 https 网址（至多 300 个字符�
 
 **CAS 和幂等。** 改变槽位的请求带上它依据的代次和一个幂等键。事务内先对目标加共享锁、对槽位加排他锁；代次不是当前的就拒绝。同一槽位上同一个键再次到达时，调用人、代次、动作、Release 和理由都相同就返回当时的操作，有一样不同就拒绝。`RESTORE` 只能回到这个槽位上生效过的 Release。槽位、操作记录、审计和 Outbox 事件同事务提交。
 
-**阻断。** 阻断可以覆盖整个目标、目标上的一个资产，或其中一个 Release。它独立于槽位的指针：建立阻断不改变槽位，但被覆盖的制品读不到，也不能激活或恢复。解除之前，被覆盖的槽位必须已经撤销，所以解除阻断本身不会让任何内容重新可见；恢复是另一次带代次的操作，会重新核对批准。建立和解除各使目标的 `block_generation` 加 1。
+**阻断。** 阻断可以覆盖整个目标、目标上的一个资产，或其中一个 Release。它独立于槽位的指针：建立阻断不改变槽位，但被覆盖的制品经槽位读不到（0.27.0 起，按编号下载 Release 不看阻断，见 §5.12），也不能激活或恢复。解除之前，被覆盖的槽位必须已经撤销，所以解除阻断本身不会让任何内容重新可见；恢复是另一次带代次的操作，会重新核对批准。建立和解除各使目标的 `block_generation` 加 1。
 
-**读取已发布的制品。** 只通过槽位当前的指针读取。每次读取都在事务内重新核对：调用人的成员关系、受众配置仍然有效且与目标登记时一致、指针、阻断和批准；任何一项不满足都不返回制品。读出的字节与制品摘要再核对一次。目前只有 `internal` 受众的目标可以激活和读取；对外门户的授权和边缘分发尚未接入，所以槽位的交付状态和阻断的边缘状态都如实报告为 `UNKNOWN`。
+**读取已发布的制品。** 只通过槽位当前的指针读取（0.27.0 起，Release 的制品另可按编号下载，那条路径不做下面的核对，见 §5.12）。每次读取都在事务内重新核对：调用人的成员关系、受众配置仍然有效且与目标登记时一致、指针、阻断和批准；任何一项不满足都不返回制品。读出的字节与制品摘要再核对一次。目前只有 `internal` 受众的目标可以激活和读取；对外门户的授权和边缘分发尚未接入，所以槽位的交付状态和阻断的边缘状态都如实报告为 `UNKNOWN`。
 
 **事件。** `fabric.contractregistry.release.prepared`，以及 `fabric.publication.target.created`、`slot.activated`、`slot.withdrawn`、`slot.restored`、`access_block.created`、`access_block.cleared`，都是版本 1。载荷是事件编号、时间、关联编号、产品、聚合编号和版本，加上相关的目标、资产、Release 或修订的编号和制品摘要，不含理由和制品内容。
 
@@ -499,7 +499,64 @@ Git 来源是提交者的声明：仓库的 https 网址（至多 300 个字符�
 
 **升级。** 从 0.22.0 升级，执行 `fabric-migrate -apply`，应用迁移 `policyreview/005`；不需要重新授权。库没有迁移时，新进程拒绝启动并指出这一步没有记录。新旧进程可以混跑：0.22.0 的进程在迁移后的库上照常提交、撤回和决定第一次评审，照常读取和提供制品；它读复审时不带 `supplementary`；它不能结束复审，决定和撤回都返回 409 `REVISION_STATUS_CONFLICT`，数据不受影响。所以复审要由新进程来结束。
 
-**尚未实现。** 具名治理员撤回、指派评审人和产品级策略（同 §5.9）；让旧 Release 沿用新批准；列出某个产品下批准已失效的槽位，以及在批准将要到期时提醒；复审“同时只有一个”的表级约束。
+**尚未实现。** 具名治理员撤回、指派评审人和产品级策略（同 §5.9）；让旧 Release 沿用新批准；列出某个产品下批准已失效的槽位（0.26.0 起可以列出一个目标上的槽位，每项带 `approval_problem`，但不能按它筛选，也没有按产品列出，见 §5.12），以及在批准将要到期时提醒；复审“同时只有一个”的表级约束。
+
+### 5.12 已实现的查询与追溯
+
+本节记录管理 API 0.26.0–0.28.0 的实现事实，不替代 §5.4 逻辑模型的候选状态。这三个版本补的是读：列出发布过的槽位（0.26.0），按编号下载 Release 并读出它的来源（0.27.0），审计员按产品读审计记录（0.28.0）。权威 DDL 为 `migrations/productgovernance/009_auditor_role.sql` 和 `migrations/platformoperations/002_audit_read_order.sql`；0.26.0 和 0.27.0 没有迁移。接口见 F04 §11.8，权限见 F05 §6.9。
+
+**槽位列表（0.26.0）。** 两个列表读的是 §5.10 的 `publication.slot`，没有新表、新列、新索引，也没有改应用角色的权限。列表项就是读单个槽位得到的那一项，含 `blocked` 和 `approval_problem`：读一个槽位和列出槽位走同一个函数（应用层 `Publication.view`，传输层 `showSlot`），所以同一个槽位在哪里读都一样。`blocked` 和 `approval_problem` 不存库，是读的时候按 §5.10 的核对算的，所以一页里的每个槽位各做一次这样的核对，耗时随页里的槽位数增加。
+
+- 列哪些。只列做过操作的槽位（`generation > 0`），撤回的也列。没有发布过的资产没有槽位：读单个槽位时当作空槽位，列表里没有它。所以列表项的 `visibility` 只有 `ACTIVE` 和 `WITHDRAWN`。
+- 顺序。槽位表没有创建时间，也没有 Workspace。列表按槽位的第一次操作（代次 1）的时间 `publication.operation.occurred_at` 排，早的在前，同一时刻按 `slot_id`。槽位和它的第一次操作在同一个事务里建立，`operation` 只增不改，`slot_id` 不变，所以一个槽位的位置从它出现起不再变：撤销、恢复、换 Release 都不换位置。翻页的位置就是上一页最后一个槽位的这两个值，语句把它当作一行来比较；没有位置时从头开始，所以一条语句读第一页，也读其余各页。存储多取一行，只用来知道后面还有没有槽位，最后一页即使装满也没有令牌。
+- 可读的资产。槽位表没有 Workspace，所以目标上的槽位要先知道调用人能读哪些资产。Product Governance 给出调用人现在持有作者、评审人或发布人成员关系的 Workspace，API Catalog 给出这些 Workspace 在这个产品里的资产（新的受信查询 `AssetsInWorkspaces`，用迁移 `apicatalog/001` 已有的索引 `api_asset_workspace_order`，不给调用人任何目录读权限）。槽位的查询把这些资产的编号作为条件，写在位置和 `LIMIT` 之前，所以每一页除最后一页都是满的。一个资产也没有的集合是“什么都不列”，不是“全部”。这个集合每页取一次，开销随调用人能读的资产数增加，不只随页的大小。
+- 一个资产的槽位。`listAssetPublications` 不需要这个集合：判权和读单个槽位用同一个函数。槽位表上没有以资产开头的索引，直接按资产找要读遍每个产品的每个槽位；所以先取这个产品的发布目标（只有少数几个），再逐个用唯一索引 `(target_id, api_asset_id)` 找槽位。
+- 代价。一个目标上 100 个槽位、每个都指向生效的 Release，`page_size=100` 的一页整条链路（传输层、判权、PostgreSQL）约 0.31 秒，`page_size=50` 约 0.16 秒，读单个槽位约 6 到 7 毫秒；Release 平均 404 字节和 51072 字节，结果相同。这是本机的数字，量的时候别的测试也在跑，只说明量级，不是 SLO。重现用默认不跑的 `TestAPageOfSlotsWithReleasesIsReadInTheTimeItTakes`（环境变量 `IDP_FABRIC_SLOT_LIST_LOAD=1`）。
+
+**Release 的来源（0.27.0）。** 来源没有新的数据，是把准备 Release 时依据的记录一次读出来。Release 准备时记下了它依据的修订、评审、检查和策略快照的编号与摘要（§5.10）；来源按这些编号去读只增不改的记录：修订和它的来源快照（`contract_revision`、`source_snapshot`，§5.7），评审申请、结论、范围和豁免（`review_request`、`review_conclusion`、`review_scope`、`review_waiver`，§5.9），检查、它的策略快照和每条规则的结论与发现（`check_run`、`policy_snapshot`、`check_rule_outcome`、`check_finding`，§5.8），来源只给各状态的条数和发现总数。Contract Registry 经新的端口 `ReleaseScopes.Evidence` 要评审和检查，Policy & Review 经新的受信读取 `Reviews.ReleaseEvidence` 回答，两个上下文不读对方的表。
+
+- 为什么复审以后不变。这些记录写入后不变，Release 记的又是编号，所以修订后来又被复审、又有了更新的检查，旧 Release 读出的仍是它准备时依据的那次评审和那次检查；复审的批准是另一条评审记录（§5.11），依据它准备的是另一个 Release。来源也不回答批准现在成不成立：不比时钟，不比评审人现在的授权，不比现行的策略和工具，这些由槽位的 `approval_problem` 说（§5.11）。豁免只带规则和到期时间，理由和补偿措施的文字不在来源里。
+- 对不上按存储故障处理。读出的记录要和 Release 记的对得上：评审是一次批准，它依据的检查就是 Release 记的那次，两者读的闭包摘要等于 Release 的输入摘要，检查用的策略快照和摘要等于 Release 记的，修订的闭包摘要也等于 Release 的输入摘要。对不上不是调用人的错，是存储出了问题：答 500 `INTERNAL_ERROR`，不说哪里不对，原因写进日志，在 `correlation_id` 下。
+- Git 来源。它是提交人导入时声明的，Fabric 不回仓库核对（§5.7）；同一仓库的相同内容后来从别的提交再导入，得到的仍是最先登记的修订，来源里记的仍是最早那次的提交。上传来的修订没有 `git_origin`。
+- 下载读什么。按编号下载读的是制品，和读已发布的制品用同一个读取函数 `ReleaseMaterial`：修订仍是 `APPROVED`，修订的闭包摘要等于 Release 的输入摘要，制品字节的 SHA-256 等于 Release 的制品摘要。它不读评审和检查，所以评审或检查的记录坏了不影响下载，制品字节坏了也不影响来源。它也不读发布目标，所以不看阻断，不核对批准，产品暂停也不挡；这与设计正文不一致，见 F05 §6.9。
+
+**审计记录（0.28.0）。** 读的是 `platformoperations.audit_record`（迁移 `platformoperations/001`，表没有改）。一行是一次行动尝试的最小事实：`audit_id`、`recorded_at`、行动人（`actor_issuer`、`actor_subject`）、`action`、`outcome`（`SUCCEEDED` 或 `DENIED`）、`rule_id`、`product_id`、`resource_type`、`resource_id` 和 `correlation_id`。`product_id` 为空表示平台范围，例如无权的人登记产品被拒绝；`resource_id` 为空表示这次尝试没有留下资源。表里只存引用：没有令牌，没有请求体，没有私有对象的名字。
+
+| 变化 | 说明 |
+|---|---|
+| 索引 `audit_record_list_order (product_id, recorded_at, audit_id)` | 迁移 `platformoperations/002`。列表按 `(recorded_at, audit_id)` 倒序，索引反向读 |
+| 索引 `audit_record_by_correlation (product_id, correlation_id)` | 迁移 `platformoperations/002`。按请求的编号找它的几条记录，不用读完这个产品的审计 |
+| 应用角色在表上的权限从 `INSERT` 变为 `SELECT`、`INSERT` | 不在 SQL 迁移里：在 `internal/platform/db/migrate/grants.go` 的 `ApplicationPrivileges()` 里声明，由 `fabric-migrate -apply -grant-to <application_role>` 授予，进程启动时核对 |
+
+- 顺序和翻页。新的在前：`recorded_at` 倒序，同一时刻 `audit_id` 倒序。这两列都不变，所以一条记录的位置不变。翻页的位置是上一页最后一条的这两个值，按一行比较；没有位置时从“时间的尽头”开始。新写入的记录比任何已发出的位置都新，排在它们之前：不会让读过的重复，也不会让没读到的漏掉。每页多取一条，只用来知道后面还有没有。只出本产品的记录（`product_id` 等于路径里的产品）；平台范围的记录不在任何列表里。
+- 筛选。`recorded_since`（含）、`recorded_before`（不含）、`action`、`outcome`、`actor_issuer`、`actor_subject`、`resource_type`、`resource_id`、`correlation_id`，都是精确匹配，互相叠加。时刻按表里存的样子比：UTC，到微秒，更细的截到微秒。
+- 一页读多少行。不带筛选的一页读的行数和它返回的相当，不管表多大；带 `correlation_id`（有自己的索引）或一个时间范围的也一样。按动作、结果、行动人和资源筛选没有索引：是在按时间读索引的时候一边读一边过滤，满足条件的记录越少，一页读的行越多，最坏要读完这个产品的全部审计。测试里两个产品各 2 万条记录，十分之一是 `DENIED`，数一页读的行：不带筛选 101 行，一个时间范围 100 行，一个请求 1 行，`outcome=DENIED` 1001 行。数的是读的行数，不是耗时。
+- 仍然只能追加。应用角色在表上没有 `UPDATE`、`DELETE`、`TRUNCATE`，没有任何列上的 `UPDATE`，也不能 `SELECT … FOR UPDATE` 或 `FOR SHARE`（这两个要有 `UPDATE` 权限）。这是权限层面的限制：表的所有者（迁移用的角色）仍然能改，不是防篡改的证明（F05 §14）。靠什么保证见 F05 §6.9。
+
+**新角色。** 迁移 `productgovernance/009_auditor_role.sql` 把 `product_role_assignment_role_known` 约束换成四个取值：`product_owner`、`security_admin`、`security_reviewer`、`internal_auditor`。已有的分配不变，§5.5 的其余规则也不变；没有新表，没有新权限。迁移之前表拒绝 `internal_auditor`，迁移之后接受。0.27.0 的进程在迁移后的库上仍能授予它认识的三个角色，但它不认识 `internal_auditor`。
+
+**升级。** 两个迁移各只做一件事：`productgovernance/009` 放宽一个约束，`platformoperations/002` 建两个索引；都不改已有的行，也不授权。授权在 `ApplicationPrivileges()` 里。从 0.25.0 升级需要重新授权：执行 `fabric-migrate -apply -grant-to <application_role>`，应用 `productgovernance/009` 和 `platformoperations/002`，并给应用角色补上审计表的 `SELECT`，然后再换进程。只迁移不授权，新进程拒绝启动：`db: the application role lacks privileges this build needs; run fabric-migrate -apply -grant-to <role>: missing SELECT on platformoperations.audit_record`；补救是再执行一次带 `-grant-to` 的命令，没有东西要迁移。既没有迁移也没有授权时，报的是同一条：启动时先核对权限，后核对迁移。旧进程在迁移和授权之后照常运行：它只往审计表里写，多出来的 `SELECT` 不影响它，它的启动检查也只查缺的迁移和权限，不查多的。索引用普通 `CREATE INDEX` 建，建的时候审计表的写入要等；成功的写操作的审计和业务写在同一个事务里（§4 INV-13），所以那段时间写操作也会等，表越大等得越久。所有进程升级以后，才授予 `internal_auditor`：旧进程的契约里没有这个取值，授予请求会被它拒绝（400 `REQUEST_INVALID`）；库里有了审计员的分配，旧进程列产品角色、读这条分配会返回 500（契约没有声明的取值不发出去），回滚到旧版本也一样。0.26.0 和 0.27.0 没有迁移，也不需要授权。
+
+**和 §15 读模型的对应。** 现在有的和还缺的：
+
+| §15 的读模型 | 现在有的 | 还没有的 |
+|---|---|---|
+| WorkspaceNavigationView | 产品列表和 Workspace 列表，按调用人持有的角色和成员关系过滤（§5.5） | 没有把角色和待办汇在一起的视图，没有“我是谁”的读取 |
+| AuthorizedCatalogView | 资产列表，授权过滤在分页之前，可按 Workspace、类型、领域和文本过滤（§5.7） | — |
+| ContractReviewView | 修订、原文、检查、比较、评审和它们的历史（§5.7–§5.9）；Release 的来源一次读出修订、检查和批准（0.27.0） | 没有评审队列 |
+| PublicationTimelineView | 槽位（含 `blocked` 和 `approval_problem`）、槽位的操作历史、一个目标上的槽位列表、一个资产发布到了哪些目标（0.26.0）、Release 的列表和来源 | `delivery_status` 仍然只有 `UNKNOWN`；不能按批准有没有问题筛选槽位；没有按产品列出槽位 |
+| AuthorizedDocumentView | 没有 | 对外读取需要的身份、授权和边缘分发；现在只有 `internal` 受众可读，读到的是字节，不是文档视图 |
+| DeveloperApplicationView | 没有 | 开发者应用和订阅（V1） |
+| OperationsIncidentView | 审计员按产品读审计记录（0.28.0） | Job 和对账都没有；平台范围的审计记录没有读取途径 |
+
+**尚未实现，以及与设计不一致的地方。**
+
+- 不属于任何产品的审计记录（`product_id` 为空，例如无权的人登记产品被拒绝）没有读取途径；审计员以外没有人读审计，也没有跨产品的读取。
+- F05 §14 列的核心审计事实是 `actor_ref`、`impersonation_ref`（如有）、`product_id`、`resource_ref`、`action`、`policy_digest`、`decision_id`、`before/after generation`、`timestamp`、`result`、`correlation_id` 和最小安全标签。表里有行动人（issuer 和 subject）、`product_id`、资源（类型和编号）、`action`、`recorded_at`、`outcome`、`correlation_id`，另有 `rule_id`；没有 `impersonation_ref`、`policy_digest`、`decision_id`（`rule_id` 是授权矩阵里的规则编号，不是决定的编号）、`before/after generation` 和安全标签。
+- 审计里的行动人按原值存，也按原值给出，没有脱敏：设计没有定义怎么脱敏，见 F05 §6.9。F03 OD-09（审计里的个人信息与删除请求的冲突）没有处理：应用角色不能改也不能删，没有去标识化，也没有保留期；审计导出、归档和保留策略（FR-068，V1）都没有。
+- `delivery_status` 仍然只有 `UNKNOWN`（§5.10）。
+- 按编号下载 Release 不看阻断，不核对批准，与设计正文不一致，待裁决，见 F05 §6.9。
+- Release 的来源是准备时的记录，Git 提交是声明，不回仓库核对（FR-021，V1）。
 
 ## 6. 数据权威、制品摘要与可追溯发布链
 

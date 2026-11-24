@@ -20,6 +20,10 @@ type ReleaseScopes interface {
 	Asset(context.Context, ScopeQuery) (AssetScope, error)
 	ReleaseMembership(context.Context, domain.Principal, domain.AssetRef) (reader, publisher, active bool, err error)
 	Approval(context.Context, domain.Revision, string, domain.Principal) (domain.ApprovalEvidence, error)
+	// Evidence reads the check and the approval a release names, as they
+	// were recorded: it fails for ones that are not what the release
+	// recorded, and says nothing of whether the approval holds now.
+	Evidence(context.Context, domain.Release) (domain.ReleaseEvidence, error)
 }
 
 type ReleaseEvents interface {

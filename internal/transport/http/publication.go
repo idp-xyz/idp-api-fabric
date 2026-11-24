@@ -16,6 +16,8 @@ type Publications interface {
 	GetTarget(context.Context, domain.Request) (domain.Target, error)
 	ListTargets(context.Context, domain.Request, *ports.TargetPosition, int) (publication.TargetPage, error)
 	GetSlot(context.Context, domain.Request) (domain.SlotView, error)
+	ListSlots(context.Context, domain.Request, *ports.SlotPosition, int) (publication.SlotPage, error)
+	ListAssetPublications(context.Context, domain.Request, *ports.SlotPosition, int) (publication.SlotPage, error)
 	ChangeSlot(context.Context, domain.Request, domain.Change) (domain.Operation, error)
 	ListOperations(context.Context, domain.Request, int64, int) (publication.OperationPage, error)
 	ActiveArtifact(context.Context, domain.Request) (ports.Artifact, error)
@@ -107,6 +109,17 @@ func (o operations) GetPublicationSlot(ctx context.Context, request GetPublicati
 	if err != nil {
 		return nil, err
 	}
+	body, err := showSlot(slot)
+	if err != nil {
+		return nil, err
+	}
+	return GetPublicationSlot200JSONResponse{Body: body, Headers: GetPublicationSlot200ResponseHeaders{CacheControl: noStore}}, nil
+}
+
+// showSlot is a slot as the contract shows it. The read of one slot and the
+// lists of slots show every slot through it, so that a slot reads the same
+// wherever it is read.
+func showSlot(slot domain.SlotView) (PublicationSlot, error) {
 	body := PublicationSlot{
 		SlotID: optionalString(slot.ID), PublicationTargetID: slot.TargetID, APIAssetID: slot.AssetID,
 		ActiveReleaseID: optionalString(slot.ActiveReleaseID), Generation: slot.Generation,
@@ -115,11 +128,11 @@ func (o operations) GetPublicationSlot(ctx context.Context, request GetPublicati
 	if slot.Unapproved != nil {
 		code, err := approvalProblem(slot.Unapproved)
 		if err != nil {
-			return nil, err
+			return PublicationSlot{}, err
 		}
 		body.ApprovalProblem = &code
 	}
-	return GetPublicationSlot200JSONResponse{Body: body, Headers: GetPublicationSlot200ResponseHeaders{CacheControl: noStore}}, nil
+	return body, nil
 }
 
 // approvalProblem names why an approval does not hold in the words an

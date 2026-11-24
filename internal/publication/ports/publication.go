@@ -23,6 +23,13 @@ type Store interface {
 	EnsureSlot(context.Context, domain.Slot) error
 	OperationByKey(ctx context.Context, slotID, keyDigest string) (domain.Operation, bool, error)
 	Operations(ctx context.Context, slotID string, after int64, limit int) ([]domain.Operation, error)
+	// Slots are the slots of the target on the assets named that have taken
+	// an operation: a page of at most limit of them, behind after. No asset
+	// named is no slot, and is never read as every asset.
+	Slots(ctx context.Context, target domain.Target, assets []string, after *SlotPosition, limit int) ([]PlacedSlot, error)
+	// AssetSlots are the slots of the asset on the targets of its product
+	// that have taken an operation, a page of them in the order of Slots.
+	AssetSlots(ctx context.Context, productID, assetID string, after *SlotPosition, limit int) ([]PlacedSlot, error)
 	// PriorRelease reports whether a release was ever active on the slot.
 	PriorRelease(ctx context.Context, slotID, releaseID string) (bool, error)
 	// LatestRelease is the last release activated or restored to the slot,
@@ -42,11 +49,39 @@ type TargetPosition struct {
 	ID string
 }
 
+// SlotPosition is where a page of slots starts: behind the slot that took
+// its first operation at At, of the identifier ID. The slots are listed in
+// that order, and neither value of a slot ever changes, so a slot keeps its
+// place for as long as it is listed.
+type SlotPosition struct {
+	At time.Time
+	ID string
+}
+
+// PlacedSlot is a slot of a list with the target it is on and the position
+// it has in the list.
+type PlacedSlot struct {
+	Slot   domain.Slot
+	Target domain.Target
+	// Since is the instant the first operation of the slot was accepted.
+	Since time.Time
+}
+
+// Position is where the page that follows the slot starts.
+func (s PlacedSlot) Position() SlotPosition { return SlotPosition{At: s.Since, ID: s.Slot.ID} }
+
 type AssetAccess struct {
 	WorkspaceID string
 	Reader      bool
 	Publisher   bool
 	Active      bool
+}
+
+// ReadableAsset is an asset whose slots a caller reads, with the workspace
+// that owns it.
+type ReadableAsset struct {
+	AssetID     string
+	WorkspaceID string
 }
 
 type Artifact struct {
@@ -61,6 +96,14 @@ type Authority interface {
 	ReadBlocks(ctx context.Context, request domain.Request) error
 	Config(ctx context.Context, productID, configID string) (audience, environment string, err error)
 	Asset(ctx context.Context, request domain.Request) (AssetAccess, error)
+	// ReadableAssets are the assets of the product whose slots the caller
+	// reads now, as Asset says of one of them: those of the workspaces where
+	// it holds the author, the reviewer or the publisher grant. A caller who
+	// cannot know the product is refused as for a product that is missing,
+	// and one who holds none of the grants in any workspace of it is
+	// refused. One who reads workspaces that own no asset is answered with
+	// no asset, which is an answer and not a refusal.
+	ReadableAssets(ctx context.Context, request domain.Request) ([]ReadableAsset, error)
 	// BlockScope checks optional asset/release IDs for a security operator
 	// who already holds the product grant for the target.
 	BlockScope(ctx context.Context, block domain.AccessBlock) error

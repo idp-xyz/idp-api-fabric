@@ -45,6 +45,12 @@ PR #10 和 #11 的实现详见 [F03 §5.6](docs/F03_Domain_and_Data_Model.md#56-
 
 实现详见 [F03 §5.11](docs/F03_Domain_and_Data_Model.md#511-已实现的复审与批准状态的可见性)、[F04 §11.7](docs/F04_API_Contract_Governance.md#117-已实现的复审接口与批准状态) 和 [F05 §6.8](docs/F05_Security_and_Multitenancy.md#68-已实现的复审与批准状态的权限)。授权矩阵没有新增条目。
 
+管理 API 0.26.0–0.28.0 加入查询与追溯：资产所属 Workspace 的作者、评审人和发布人能列出一个发布目标上的槽位，也能列出一个资产发布到了哪些目标，列表里的每一项和单独读到的槽位完全一样，含 `blocked` 和 `approval_problem`（0.26.0）；能按编号下载一个 Release 的制品，已经被替换或撤回的也行，也能读出一个 Release 的来源：它依据的修订（含提交人声明的 Git 来源）、检查和批准，复审之后不变（0.27.0）；产品多了一个角色 `internal_auditor`（审计员），由产品负责人授予，审计员按产品读审计记录，新的在前，可以按时间、动作、结果、行动人、资源和请求编号筛选（0.28.0）。新增 5 个操作，共 57 个。按编号下载不看发布目标上的访问阻断，也不重新核对批准；审计记录里的行动人如实给出，没有脱敏。这两处与设计正文不一致，待裁决。
+
+从 0.25.0 升级需要重新授权：先执行 `fabric-migrate -apply -grant-to <application_role>`，应用 `productgovernance/009` 和 `platformoperations/002`，并给应用角色补上审计表的 `SELECT`（它仍然没有 `UPDATE` 和 `DELETE`），再换进程。只迁移不授权时，新进程拒绝启动：`db: the application role lacks privileges this build needs; run fabric-migrate -apply -grant-to <role>: missing SELECT on platformoperations.audit_record`。建索引用普通 `CREATE INDEX`，建的时候审计表的写入要等。旧进程在迁移和授权之后照常运行。所有进程升级以后，才授予 `internal_auditor`：旧进程的契约里没有这个角色，会拒绝授予请求；库里有了审计员，它列产品角色会返回 500。0.26.0 和 0.27.0 本身没有迁移，也不需要授权。
+
+实现详见 [F03 §5.12](docs/F03_Domain_and_Data_Model.md#512-已实现的查询与追溯)、[F04 §11.8](docs/F04_API_Contract_Governance.md#118-已实现的查询接口) 和 [F05 §6.9](docs/F05_Security_and_Multitenancy.md#69-已实现的查询与审计读取的权限)。授权矩阵没有新增条目。
+
 ## 阅读入口
 
 - [index.html](index.html) — 统一的离线 HTML 文档阅读入口。

@@ -26,6 +26,7 @@ import (
 	registry "go.idp.xyz/idp-api-fabric/internal/contractregistry/application"
 	"go.idp.xyz/idp-api-fabric/internal/platform/buildinfo"
 	"go.idp.xyz/idp-api-fabric/internal/platform/ids"
+	auditing "go.idp.xyz/idp-api-fabric/internal/platformoperations/application"
 	checks "go.idp.xyz/idp-api-fabric/internal/policyreview/application"
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/application"
 	publication "go.idp.xyz/idp-api-fabric/internal/publication/application"
@@ -44,6 +45,8 @@ type Config struct {
 	PolicyReview PolicyReview
 	Releases     ContractReleases
 	Publication  Publications
+	// Audit reads the audit records of a product to its auditors.
+	Audit AuditReading
 }
 
 // NewHandler returns the root handler of fabric-api.
@@ -63,10 +66,13 @@ func NewHandler(config Config) (http.Handler, error) {
 		return nil, errors.New("the transport needs the use cases of Policy & Review")
 	case config.Releases == nil || config.Publication == nil:
 		return nil, errors.New("the transport needs release and publication use cases")
+	case config.Audit == nil:
+		return nil, errors.New("the transport needs the use case of reading the audit records")
 	}
 	return newHandler(config.Logger, config.Verifier, operations{
 		build: config.Build, governance: config.Governance, catalog: config.Catalog, registry: config.Registry,
 		policyReview: config.PolicyReview, releases: config.Releases, publication: config.Publication,
+		audit: config.Audit,
 	})
 }
 
@@ -121,6 +127,7 @@ type operations struct {
 	policyReview PolicyReview
 	releases     ContractReleases
 	publication  Publications
+	audit        AuditReading
 }
 
 func (operations) GetHealthz(context.Context, GetHealthzRequestObject) (GetHealthzResponseObject, error) {
@@ -167,7 +174,7 @@ func (f failures) operationFailed(w http.ResponseWriter, r *http.Request, err er
 		return
 	}
 	switch {
-	case errors.Is(err, application.ErrRefusalNotAudited), errors.Is(err, catalog.ErrRefusalNotAudited), errors.Is(err, registry.ErrRefusalNotAudited), errors.Is(err, checks.ErrRefusalNotAudited), errors.Is(err, checks.ErrReviewNotAudited), errors.Is(err, publication.ErrRefusalNotAudited):
+	case errors.Is(err, application.ErrRefusalNotAudited), errors.Is(err, catalog.ErrRefusalNotAudited), errors.Is(err, registry.ErrRefusalNotAudited), errors.Is(err, checks.ErrRefusalNotAudited), errors.Is(err, checks.ErrReviewNotAudited), errors.Is(err, publication.ErrRefusalNotAudited), errors.Is(err, auditing.ErrRefusalNotAudited):
 		// The caller was refused all the same. Whoever operates the service
 		// has to know that the audit trail has a gap.
 		f.logger.ErrorContext(r.Context(), "a refusal could not be audited",

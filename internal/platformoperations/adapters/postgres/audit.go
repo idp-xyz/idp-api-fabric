@@ -13,8 +13,9 @@ import (
 )
 
 // AuditRecords appends to platformoperations.audit_record. The application
-// role holds INSERT on that table and nothing else, so this type has no way
-// to read a record back, to change one or to remove one.
+// role holds INSERT on that table, and SELECT for AuditReader, and nothing
+// else, so this type has no way to change a record or to remove one. It reads
+// none back: that is the reader's.
 type AuditRecords struct {
 	framework *bentopostgres.DB
 }

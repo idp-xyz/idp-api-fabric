@@ -742,6 +742,9 @@ func problemOf(err error) (Problem, bool) {
 	if found, ok := publicationProblem(err); ok {
 		return found, true
 	}
+	if found, ok := auditProblem(err); ok {
+		return found, true
+	}
 	if found, ok := registryProblem(err); ok {
 		return found, true
 	}

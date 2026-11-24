@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.25.0
+  version: 0.28.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -14,7 +14,8 @@ info:
 
 
     A list is read a page at a time, in a fixed order. Publication and block
-    history use generations. Other lists are oldest first, by the instant an
+    history use generations. The audit records of a product are newest first,
+    by the instant they were recorded, then by identifier. Other lists are oldest first, by the instant an
     item was created or granted, then by identifier. An item keeps its place for as
     long as it is listed. A page holds at most 100 items and says where the
     next one starts. It starts behind a position, not at an offset: an offset
@@ -327,11 +328,15 @@ paths:
       summary: Make a principal hold a role in a product
       description: >-
         Makes the principal hold the role in the product, from now until the
-        assignment is revoked. A product has one role, product_owner. An
-        owner of the product may, and so may a platform administrator: naming
-        the owners of a product is part of registering it, and it is how a
-        product whose owner was mistyped is repaired. Naming an owner gives
-        the administrator no view of what is inside the product. Nothing
+        assignment is revoked. A product has four roles: product_owner,
+        security_admin, security_reviewer and internal_auditor. An owner of
+        the product may grant any of them, itself included: an owner that
+        makes itself an auditor reads the audit records of the product then,
+        and the grant is on record. A platform administrator may name owners
+        and no other role (403 FORBIDDEN for the three that are left):
+        naming the owners of a product is part of registering it, and it is
+        how a product whose owner was mistyped is repaired. Naming an owner
+        gives the administrator no view of what is inside the product. Nothing
         keeps it from naming itself, here as at registration: it is then an
         owner like any other, and the grant is on record. Whoever else may
         know the product exists, as a member of one of its workspaces does,
@@ -469,6 +474,136 @@ paths:
         '404':
           $ref: '#/components/responses/Problem'
         '409':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/audit-records:
+    get:
+      operationId: listAuditRecords
+      summary: List the audit records of a product
+      description: >-
+        Returns the audit records of the product to an auditor of it: a
+        principal that holds the role internal_auditor in the product now.
+        Nobody else reads them. An owner of the product does not by being one,
+        nor does a platform administrator, nor whoever holds another role in
+        the product: an owner that is to read them makes itself an auditor
+        (grantProductRole), and that grant is on record. Whoever may know the
+        product exists and is no auditor of it is refused (403 FORBIDDEN); to
+        anyone else there is no such product (404 PRODUCT_NOT_FOUND), the same
+        as for a product that is missing. What the caller holds is decided
+        again with every page: a role that was revoked reads no page after
+        it, whatever page token the caller holds. An auditor reads the records
+        from the beginning, those recorded before it became one included.
+        The role gives no other view of the product: no contract, no revision,
+        no release and no publication.
+
+
+        Only the records of this product are listed. A record that belongs to
+        no product, such as the refusal of a request to register one, is not
+        read here. A record says when it was recorded, who acted, what was
+        attempted, how it ended, which rule decided it, and the kind and the
+        identifier of the resource it names, if it left one behind; and the
+        identifier of the request, which is the trace_id of its problem and
+        ties it to its log lines and its events. The actor is the principal
+        as it was recorded: the issuer and the subject, not masked. A record
+        holds no token and no request body.
+
+
+        The records are newest first, by the instant they were recorded and
+        then by identifier. What is recorded while the list is read is newer
+        than any position a page handed out and comes before it: it repeats
+        no record that was read and takes nothing from the records that were
+        not. Each filter keeps the records that match it exactly, and the
+        filters narrow the list together; recorded_since is included and
+        recorded_before is not. They are applied before paging: keep them the
+        same when following a page token. A recorded_since that is not
+        earlier than recorded_before is refused (422 REQUEST_UNPROCESSABLE).
+        An instant is best sent in UTC, ending in Z. A numeric offset is read
+        as well, but its + has to be percent-encoded (%2B08:00): left as it
+        is, it is a space in a query and the request is refused (400
+        REQUEST_INVALID). The trail keeps the microsecond: a finer instant is
+        cut to it.
+
+
+        A read that is answered leaves no audit record, as no read does. One
+        that is refused does (audit.search, under DENY-03), unless there is no
+        such product.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+        - in: query
+          name: recorded_since
+          description: Only the records recorded at this instant or after it
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: recorded_before
+          description: Only the records recorded before this instant
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: action
+          schema:
+            $ref: '#/components/schemas/AuditAction'
+        - in: query
+          name: outcome
+          schema:
+            $ref: '#/components/schemas/AuditOutcome'
+        - in: query
+          name: actor_issuer
+          description: >-
+            Only the records of principals under this issuer. It is asked for
+            alone, or with actor_subject.
+          schema:
+            $ref: '#/components/schemas/Reference'
+        - in: query
+          name: actor_subject
+          description: >-
+            Only the records of this subject, under any issuer unless
+            actor_issuer says which
+          schema:
+            $ref: '#/components/schemas/Reference'
+        - in: query
+          name: resource_type
+          schema:
+            $ref: '#/components/schemas/AuditResourceType'
+        - in: query
+          name: resource_id
+          schema:
+            $ref: '#/components/schemas/Identifier'
+        - in: query
+          name: correlation_id
+          description: Only the records of the request that has this identifier
+          schema:
+            $ref: '#/components/schemas/Reference'
+      responses:
+        '200':
+          description: A page of the audit records of the product
+          headers:
+            Cache-Control:
+              description: An audit record is private to the auditors of its product
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditRecordList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '422':
           $ref: '#/components/responses/Problem'
         '503':
           $ref: '#/components/responses/Problem'
@@ -2032,6 +2167,10 @@ paths:
     get:
       operationId: getContractRelease
       summary: Read the metadata of a release of the API asset
+      description: >-
+        Where the release came from is read with getContractReleaseProvenance,
+        and its artifact is downloaded by the identifier of the release with
+        getContractReleaseArtifact.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/CheckAssetId'
@@ -2049,6 +2188,106 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ContractRelease'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}/artifact:
+    get:
+      operationId: getContractReleaseArtifact
+      summary: Download the artifact of a release of the API asset by the identifier of the release
+      description: >-
+        The octet stream contains the exact bytes the release was prepared
+        with, and their SHA-256 digest is the X-Artifact-Digest of the answer:
+        the artifact_digest the release records. The release is named by its
+        identifier under its asset, so it is downloaded whatever a
+        publication slot points at, and whatever was released after it.
+        Whoever may read the release may download it: an author, a reviewer
+        or a publisher of the workspace of the asset, also while the product
+        is suspended. The download does not look at an access block on a
+        publication target and does not verify the approval of the release
+        again: those belong to the read of an artifact through the slot of a
+        target.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/CheckAssetId'
+        - $ref: '#/components/parameters/ContractReleaseId'
+      responses:
+        '200':
+          description: The verified artifact bytes
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+            X-Artifact-Digest:
+              description: SHA-256 of the response bytes, formatted as sha256 followed by a colon and lowercase hex.
+              required: true
+              schema:
+                $ref: '#/components/schemas/ContractDigest'
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/releases/{release_id}/provenance:
+    get:
+      operationId: getContractReleaseProvenance
+      summary: Read where a release came from
+      description: >-
+        The release, its revision with where the source of the revision came
+        from, the check the approval rests on and the approval itself, read at
+        once. It says what the release was prepared on: the review and the
+        check named when it was prepared, whatever has been recorded of the
+        revision since. The revision may be reviewed again and approved anew,
+        and a release prepared before keeps the approval and the check it was
+        prepared on. It does not say whether the approval holds now: that is
+        for the slot to say, in approval_problem, which getPublicationSlot
+        gives and so does each item of listPublicationSlots and
+        listAssetPublications. Whoever may read the release may read this, in
+        the same way.
+
+        A Git origin is what the submitter of the revision declared when it
+        was imported. Fabric does not read the repository, so the commit is
+        evidence of what was said and not proof of what the commit holds.
+        When the same files are imported again from a later commit, the
+        revision recorded first is the one that is answered, so the commit
+        stays the first one that was recorded. The entrypoint is the path of
+        the file inside the bundle of files that was submitted.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/CheckAssetId'
+        - $ref: '#/components/parameters/ContractReleaseId'
+      responses:
+        '200':
+          description: What the release was prepared on
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractReleaseProvenance'
         '400':
           $ref: '#/components/responses/Problem'
         '401':
@@ -2178,6 +2417,104 @@ paths:
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/publication-targets/{publication_target_id}/assets:
+    get:
+      operationId: listPublicationSlots
+      summary: List the slots of a publication target that the caller may read
+      description: >-
+        Lists the slots of the target that have taken an operation, oldest
+        first by the instant their first operation was accepted, then by
+        slot_id. A slot keeps its place whatever is done to it later. Only
+        what was published is listed: an asset that was never published to
+        the target has no slot, which getPublicationSlot reads as empty, and
+        a withdrawn slot is listed. A caller sees the slots of the assets of
+        the workspaces where it is an author, a reviewer or a publisher now,
+        the same rule as getPublicationSlot. The other slots are left out
+        before the page is cut, so every page but the last is full. A caller
+        who knows the product and reads none of its workspaces receives 403,
+        and one who cannot know the product receives 404 PRODUCT_NOT_FOUND.
+        A caller who reads a workspace without a slot on the target receives
+        an empty list. A target the product does not have is answered with
+        404 PUBLICATION_TARGET_NOT_FOUND to whoever may read. Each item is
+        the slot exactly as getPublicationSlot reads it, with blocked and
+        approval_problem. approval_problem is worked out when the slot is
+        read and is not stored, so the list cannot be filtered by it.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PublicationTargetId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: One page of the slots the caller may read
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationSlotList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/assets/{api_asset_id}/publications:
+    get:
+      operationId: listAssetPublications
+      summary: List where an API asset is published
+      description: >-
+        Lists the slots of the asset on the publication targets of its
+        product that have taken an operation, oldest first by the instant
+        their first operation was accepted, then by slot_id. Only what was
+        published is listed: a target the asset was never published to has no
+        slot of it and is not listed, and a withdrawn slot is. Whoever may
+        read the slots of the asset (getPublicationSlot) may read this list:
+        an author, a reviewer or a publisher of the workspace that owns it.
+        Anyone who cannot know the product receives 404 PRODUCT_NOT_FOUND. A
+        missing, cross-product or withheld asset returns API_ASSET_NOT_FOUND
+        when the caller can know the product exists. A caller who may know
+        the asset but holds none of those roles in its workspace receives
+        403. An asset that is published nowhere has an empty list. Each item
+        is the slot exactly as getPublicationSlot reads it, with blocked and
+        approval_problem. approval_problem is worked out when the slot is
+        read and is not stored, so the list cannot be filtered by it.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/CheckAssetId'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: One page of the slots of the asset
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationSlotList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}:
     get:
       operationId: getPublicationSlot
@@ -2187,10 +2524,11 @@ paths:
         database pointer, origin blocking, and the separate delivery status.
         It also says whether the approval the active release rests on still
         holds for this target. The artifact of a release whose approval does
-        not hold is not served, and getPublishedArtifact answers 404 without
-        a reason; approval_problem names the reason here, to whoever may read
-        the slot. A revision whose approval does not hold is approved again
-        with a supplementary review, and released and activated under it.
+        not hold is not served through the slot, and getPublishedArtifact
+        answers 404 without a reason; approval_problem names the reason here,
+        to whoever may read the slot. A revision whose approval does not hold
+        is approved again with a supplementary review, and released and
+        activated under it.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -2315,7 +2653,9 @@ paths:
       description: >-
         The octet stream contains the exact release JSON bytes. The origin checks
         current workspace membership, target configuration, the active pointer,
-        approval and effective access blocks on every read.
+        approval and effective access blocks on every read. Whoever may read the
+        release downloads the same bytes by its identifier with
+        getContractReleaseArtifact, which looks at no target, block or approval.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -2388,6 +2728,10 @@ paths:
         A product security administrator supplies a reason. Omitting the asset
         blocks the target. Naming an asset blocks its slot, or one release when
         a release ID is given. The slot generation and pointer stay independent.
+        A block covers what is read through the target: its slots and their
+        artifacts. Whoever may read the release, an author, a reviewer or a
+        publisher of the workspace of its asset, still downloads its artifact
+        by the identifier of the release, with getContractReleaseArtifact.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -2747,6 +3091,130 @@ components:
             $ref: '#/components/schemas/ContractRelease'
         next_page_token:
           $ref: '#/components/schemas/NextPageToken'
+    ContractReleaseProvenance:
+      description: >-
+        What a release was prepared on: the release, its revision, the check
+        and the approval it rests on. All of it was recorded before the
+        release was, and none of it changes with what is recorded after.
+      type: object
+      additionalProperties: false
+      required: [release, revision, check, approval]
+      properties:
+        release:
+          $ref: '#/components/schemas/ContractRelease'
+        revision:
+          $ref: '#/components/schemas/ReleaseProvenanceRevision'
+        check:
+          $ref: '#/components/schemas/ReleaseProvenanceCheck'
+        approval:
+          $ref: '#/components/schemas/ReleaseProvenanceApproval'
+    ReleaseProvenanceRevision:
+      description: >-
+        The revision a release was prepared from: what it holds and where
+        its source came from. Where the revision stands in its review is not
+        part of it.
+      type: object
+      additionalProperties: false
+      required: [revision_id, revision_sequence, source_kind, entrypoint, source_digest, ref_closure_digest]
+      properties:
+        revision_id:
+          $ref: '#/components/schemas/Identifier'
+        revision_sequence:
+          type: integer
+          format: int64
+          minimum: 1
+        source_kind:
+          description: GIT for a source submitted with a Git origin, UPLOAD for one without
+          type: string
+          enum: [UPLOAD, GIT]
+        git_origin:
+          description: >-
+            The origin the source was submitted with. It is present exactly
+            when source_kind is GIT.
+          $ref: '#/components/schemas/GitOrigin'
+        entrypoint:
+          description: The path of the entrypoint in the bundle of files that was submitted
+          $ref: '#/components/schemas/ContractSourcePath'
+        source_digest:
+          $ref: '#/components/schemas/ContractDigest'
+        ref_closure_digest:
+          $ref: '#/components/schemas/ContractDigest'
+    ReleaseProvenanceCheck:
+      description: >-
+        The check the approval of a release rests on: which check it was, the
+        policy it was held to, the tools that evaluated it and what it
+        concluded.
+      type: object
+      additionalProperties: false
+      required: [check_run_id, policy_set_id, policy_digest, tool_manifest, status, summary, completed_at]
+      properties:
+        check_run_id:
+          $ref: '#/components/schemas/Identifier'
+        policy_set_id:
+          type: string
+        policy_digest:
+          $ref: '#/components/schemas/ContractDigest'
+        tool_manifest:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CheckRunTool'
+        status:
+          $ref: '#/components/schemas/CheckRunStatus'
+        summary:
+          $ref: '#/components/schemas/CheckRunSummary'
+        completed_at:
+          type: string
+          format: date-time
+    ReleaseProvenanceApproval:
+      description: >-
+        The approval a release was prepared under: which review it was, who
+        approved, when, for what and until when, and the rules it let stand.
+        It says nothing of whether the approval holds now.
+      type: object
+      additionalProperties: false
+      required: [review_id, supplementary, scope, concluded_by, concluded_at, valid_until, waivers]
+      properties:
+        review_id:
+          $ref: '#/components/schemas/Identifier'
+        supplementary:
+          description: Whether the revision was approved already when this review was asked for
+          type: boolean
+        scope:
+          description: The targets the revision was approved for, by audience and then environment
+          type: array
+          minItems: 1
+          maxItems: 6
+          items:
+            $ref: '#/components/schemas/ReviewTarget'
+        concluded_by:
+          $ref: '#/components/schemas/Principal'
+        concluded_at:
+          type: string
+          format: date-time
+        valid_until:
+          description: Until when the approval held, as it was given
+          type: string
+          format: date-time
+        waivers:
+          description: >-
+            The rules the approval let stand although they did not pass, by
+            rule. Why is for the review to say.
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ReleaseProvenanceWaiver'
+    ReleaseProvenanceWaiver:
+      type: object
+      additionalProperties: false
+      required: [rule_id, expires_at]
+      properties:
+        rule_id:
+          $ref: '#/components/schemas/ReviewRuleId'
+        expires_at:
+          description: Until when the waiver held, as it was given
+          type: string
+          format: date-time
     PublicationTargetRegistration:
       type: object
       additionalProperties: false
@@ -2826,6 +3294,21 @@ components:
         delivery_status:
           type: string
           enum: [UNKNOWN]
+    PublicationSlotList:
+      description: >-
+        One page of slots, oldest first by their first operation, each as
+        getPublicationSlot reads it.
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PublicationSlot'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
     PublicationChange:
       type: object
       additionalProperties: false
@@ -3142,9 +3625,10 @@ components:
         What a principal is in a product. A product_owner manages the
         workspaces, their members and product roles. A security_admin blocks
         publication access. A security_reviewer independently clears blocks.
-        These roles are scoped to the product.
+        An internal_auditor reads the audit records of the product and nothing
+        else. These roles are scoped to the product.
       type: string
-      enum: [product_owner, security_admin, security_reviewer]
+      enum: [product_owner, security_admin, security_reviewer, internal_auditor]
     ProductRoleGrant:
       type: object
       additionalProperties: false
@@ -3172,6 +3656,64 @@ components:
         granted_at:
           type: string
           format: date-time
+    AuditOutcome:
+      description: >-
+        How an attempt to act ended. SUCCEEDED is an action that was allowed
+        and took effect. DENIED is one that was refused: nothing changed.
+      type: string
+      enum: [SUCCEEDED, DENIED]
+    AuditAction:
+      description: >-
+        The smallest unit of what was attempted, such as product_role.grant:
+        words of lower case letters, digits and underscores, joined by dots.
+      type: string
+      maxLength: 64
+      pattern: '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'
+    AuditResourceType:
+      description: What was attempted on, such as RoleAssignment.
+      type: string
+      maxLength: 64
+      pattern: '^[A-Za-z][A-Za-z0-9]*$'
+    AuditRecord:
+      description: >-
+        The minimal fact of one attempt to act: who acted, what was attempted
+        on which resource, when, how it ended and under which rule. It is as
+        the trail holds it, and the trail holds references only: no token, no
+        request body and no name of a private object.
+      type: object
+      additionalProperties: false
+      required: [audit_id, recorded_at, actor, action, outcome, rule_id, product_id, resource_type, correlation_id]
+      properties:
+        audit_id:
+          $ref: '#/components/schemas/Identifier'
+        recorded_at:
+          type: string
+          format: date-time
+        actor:
+          $ref: '#/components/schemas/Principal'
+        action:
+          $ref: '#/components/schemas/AuditAction'
+        outcome:
+          $ref: '#/components/schemas/AuditOutcome'
+        rule_id:
+          description: >-
+            The rule that allowed or refused the action, by its stable
+            identifier in the access matrix, such as AC-10 or DENY-03.
+          $ref: '#/components/schemas/Reference'
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        resource_type:
+          $ref: '#/components/schemas/AuditResourceType'
+        resource_id:
+          description: >-
+            The resource the action was on. A refusal that left none behind
+            names none, and the member is absent.
+          $ref: '#/components/schemas/Identifier'
+        correlation_id:
+          description: >-
+            Ties the record to the request, its log lines and its events: the
+            trace_id of the problem that answered it.
+          $ref: '#/components/schemas/Reference'
     CheckRunStatus:
       type: string
       enum: [PASS, WARN, FAIL, UNKNOWN]
@@ -4029,6 +4571,20 @@ components:
           maxItems: 100
           items:
             $ref: '#/components/schemas/ProductRoleAssignment'
+        next_page_token:
+          $ref: '#/components/schemas/NextPageToken'
+    AuditRecordList:
+      description: >-
+        One page of the audit records of a product, newest first.
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/AuditRecord'
         next_page_token:
           $ref: '#/components/schemas/NextPageToken'
     AudienceConfigList:

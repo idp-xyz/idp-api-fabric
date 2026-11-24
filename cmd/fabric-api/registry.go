@@ -46,7 +46,7 @@ func (s revisionScopes) Reader(ctx context.Context, caller registrydomain.Princi
 
 func (a auditTrail) recordRevision(ctx context.Context, entry registryports.AuditEntry) error {
 	resource, id := "ContractRevision", entry.RevisionID
-	if entry.Action == "release.prepare" || entry.Action == "release.read" {
+	if entry.Action == "release.prepare" || entry.Action == "release.read" || entry.Action == "release.download" {
 		resource, id = "ContractRelease", entry.ReleaseID
 	}
 	return a.Record(ctx, governanceports.AuditEntry{

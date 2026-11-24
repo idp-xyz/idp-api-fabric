@@ -128,14 +128,7 @@ func (s *Publication) GetSlot(ctx context.Context, request domain.Request) (doma
 		if err != nil {
 			return err
 		}
-		blocked, err := s.deps.Store.HasBlock(tx, target, request.AssetID, slot.ActiveReleaseID)
-		if err != nil {
-			return err
-		}
-		result = domain.SlotView{Slot: slot, Blocked: blocked}
-		if slot.ActiveReleaseID != "" {
-			result.Unapproved, err = s.deps.Authority.Approval(tx, request, access.WorkspaceID, target, slot.ActiveReleaseID)
-		}
+		result, err = s.view(tx, request, access.WorkspaceID, target, slot)
 		return err
 	})
 	return result, s.refused(ctx, request, "publication.read", "PublicationSlot", err)

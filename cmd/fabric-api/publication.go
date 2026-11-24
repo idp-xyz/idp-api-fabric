@@ -122,6 +122,41 @@ func (s publicationAuthority) Asset(ctx context.Context, request publicationdoma
 	return publicationports.AssetAccess{WorkspaceID: scope.Asset.WorkspaceID, Reader: read, Publisher: publish, Active: active}, err
 }
 
+// ReadableAssets places the assets whose slots the caller reads: those of the
+// workspaces where it holds the author, the reviewer or the publisher grant
+// now, which is what Asset asks of the workspace of one asset, here asked of
+// every workspace of the product at once. A caller that owns the product and
+// holds none of the grants reads none, as it reads no slot. The Catalog is
+// asked only where the caller reads, so it grants nothing.
+func (s publicationAuthority) ReadableAssets(ctx context.Context, request publicationdomain.Request) ([]publicationports.ReadableAsset, error) {
+	readers, err := s.governance.ReleaseReaderScope(ctx, governancedomain.Principal(request.Caller), governancedomain.ProductID(request.ProductID))
+	if err != nil {
+		if errors.Is(err, governance.ErrForbidden) || errors.Is(err, governance.ErrProductNotFound) {
+			err = errors.Join(err, publication.ErrForbidden)
+		}
+		return nil, err
+	}
+	switch {
+	case !readers.Known:
+		return nil, errors.Join(governance.ErrProductNotFound, publication.ErrForbidden)
+	case len(readers.Workspaces) == 0:
+		return nil, publication.ErrForbidden
+	}
+	workspaces := make([]catalogdomain.WorkspaceID, 0, len(readers.Workspaces))
+	for _, workspace := range readers.Workspaces {
+		workspaces = append(workspaces, catalogdomain.WorkspaceID(workspace))
+	}
+	placed, err := s.catalog.AssetsInWorkspaces(ctx, catalogdomain.ProductID(request.ProductID), workspaces)
+	if err != nil {
+		return nil, err
+	}
+	readable := make([]publicationports.ReadableAsset, 0, len(placed))
+	for _, asset := range placed {
+		readable = append(readable, publicationports.ReadableAsset{AssetID: string(asset.ID), WorkspaceID: string(asset.WorkspaceID)})
+	}
+	return readable, nil
+}
+
 func (s publicationAuthority) BlockScope(ctx context.Context, block publicationdomain.AccessBlock) error {
 	if block.AssetID == "" {
 		return nil
