@@ -841,6 +841,35 @@ type BuildInfo struct {
 	Version string `json:"version"`
 }
 
+// Caller Who the caller is: the principal its token is about, and whether the deployment names it an administrator of the platform. Nothing else of the token is passed on.
+type Caller struct {
+	// PlatformAdministrator Whether the principal administers the platform. It holds nothing in any product by being one.
+	PlatformAdministrator bool `json:"platform_administrator"`
+
+	// Principal A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
+	Principal Principal `json:"principal"`
+}
+
+// CallerInProduct What the caller holds in one product, as it is in force when the answer is given: its roles of the product and its roles in each workspace it is a member of. What was revoked is not shown, and neither is who granted what, or when.
+type CallerInProduct struct {
+	// ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	ProductID Identifier `json:"product_id"`
+
+	// Roles The roles of the product the caller holds, each once. Empty if it holds none. The order carries no meaning.
+	Roles []ProductRole `json:"roles"`
+
+	// Workspaces The workspaces of the product the caller is a member of, with its roles in each. It is not a page of a list and has no next_page_token: it has one item for each workspace the caller holds a membership in, all of them. An owner of the product reads every workspace of it without being a member of any, so this is what the caller holds, not what it may read. The order carries no meaning.
+	Workspaces []CallerInWorkspace `json:"workspaces"`
+}
+
+// CallerInWorkspace What the caller holds in one workspace of the product: its roles there, each once. A workspace is shown for as long as the caller holds at least one.
+type CallerInWorkspace struct {
+	Roles []WorkspaceRole `json:"roles"`
+
+	// WorkspaceID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	WorkspaceID Identifier `json:"workspace_id"`
+}
+
 // CheckRuleOutcome defines model for CheckRuleOutcome.
 type CheckRuleOutcome struct {
 	Category     string            `json:"category"`
@@ -2023,6 +2052,9 @@ type ServerInterface interface {
 	// GetHealthz Report liveness
 	// (GET /healthz)
 	GetHealthz(w http.ResponseWriter, r *http.Request)
+	// GetCaller Read who the caller is
+	// (GET /v1/caller)
+	GetCaller(w http.ResponseWriter, r *http.Request)
 	// ListProducts List the products
 	// (GET /v1/products)
 	ListProducts(w http.ResponseWriter, r *http.Request, params ListProductsParams)
@@ -2119,6 +2151,9 @@ type ServerInterface interface {
 	// ChangeProductBrand Change the brand of a product
 	// (PUT /v1/products/{product_id}/brand)
 	ChangeProductBrand(w http.ResponseWriter, r *http.Request, productID ProductID, params ChangeProductBrandParams)
+	// GetCallerInProduct Read what the caller holds in a product
+	// (GET /v1/products/{product_id}/caller)
+	GetCallerInProduct(w http.ResponseWriter, r *http.Request, productID ProductID)
 	// ListPublicationTargets List a product's publication targets
 	// (GET /v1/products/{product_id}/publication-targets)
 	ListPublicationTargets(w http.ResponseWriter, r *http.Request, productID ProductID, params ListPublicationTargetsParams)
@@ -2207,6 +2242,20 @@ func (siw *ServerInterfaceWrapper) GetHealthz(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealthz(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCaller operation middleware
+func (siw *ServerInterfaceWrapper) GetCaller(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCaller(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3906,6 +3955,32 @@ func (siw *ServerInterfaceWrapper) ChangeProductBrand(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetCallerInProduct operation middleware
+func (siw *ServerInterfaceWrapper) GetCallerInProduct(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCallerInProduct(w, r, productID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListPublicationTargets operation middleware
 func (siw *ServerInterfaceWrapper) ListPublicationTargets(w http.ResponseWriter, r *http.Request) {
 
@@ -5096,9 +5171,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/healthz", wrapper.GetHealthz)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/version", wrapper.GetVersion)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/caller", wrapper.GetCaller)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products", wrapper.ListProducts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products", wrapper.RegisterProduct)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}", wrapper.GetProduct)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/caller", wrapper.GetCallerInProduct)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/products/{product_id}/brand", wrapper.ChangeProductBrand)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/role-assignments", wrapper.ListProductRoles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/role-assignments", wrapper.GrantProductRole)
@@ -5193,6 +5270,99 @@ type GetHealthzdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetHealthzdefaultApplicationProblemPlusJSONResponse) VisitGetHealthzResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCallerRequestObject struct {
+}
+
+type GetCallerResponseObject interface {
+	VisitGetCallerResponse(w http.ResponseWriter) error
+}
+
+type GetCaller200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetCaller200JSONResponse struct {
+	Body    Caller
+	Headers GetCaller200ResponseHeaders
+}
+
+func (response GetCaller200JSONResponse) VisitGetCallerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCaller400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetCaller400ApplicationProblemPlusJSONResponse) VisitGetCallerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCaller401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetCaller401ApplicationProblemPlusJSONResponse) VisitGetCallerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCaller503ApplicationProblemPlusJSONResponse Problem
+
+func (response GetCaller503ApplicationProblemPlusJSONResponse) VisitGetCallerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCallerdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetCallerdefaultApplicationProblemPlusJSONResponse) VisitGetCallerResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -9478,6 +9648,114 @@ func (response ChangeProductBranddefaultApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type GetCallerInProductRequestObject struct {
+	ProductID ProductID `json:"product_id"`
+}
+
+type GetCallerInProductResponseObject interface {
+	VisitGetCallerInProductResponse(w http.ResponseWriter) error
+}
+
+type GetCallerInProduct200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetCallerInProduct200JSONResponse struct {
+	Body    CallerInProduct
+	Headers GetCallerInProduct200ResponseHeaders
+}
+
+func (response GetCallerInProduct200JSONResponse) VisitGetCallerInProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCallerInProduct400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetCallerInProduct400ApplicationProblemPlusJSONResponse) VisitGetCallerInProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCallerInProduct401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetCallerInProduct401ApplicationProblemPlusJSONResponse) VisitGetCallerInProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCallerInProduct404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetCallerInProduct404ApplicationProblemPlusJSONResponse) VisitGetCallerInProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCallerInProduct503ApplicationProblemPlusJSONResponse Problem
+
+func (response GetCallerInProduct503ApplicationProblemPlusJSONResponse) VisitGetCallerInProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCallerInProductdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response GetCallerInProductdefaultApplicationProblemPlusJSONResponse) VisitGetCallerInProductResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListPublicationTargetsRequestObject struct {
 	ProductID ProductID `json:"product_id"`
 	Params    ListPublicationTargetsParams
@@ -12463,6 +12741,9 @@ type StrictServerInterface interface {
 	// GetHealthz Report liveness
 	// (GET /healthz)
 	GetHealthz(ctx context.Context, request GetHealthzRequestObject) (GetHealthzResponseObject, error)
+	// GetCaller Read who the caller is
+	// (GET /v1/caller)
+	GetCaller(ctx context.Context, request GetCallerRequestObject) (GetCallerResponseObject, error)
 	// ListProducts List the products
 	// (GET /v1/products)
 	ListProducts(ctx context.Context, request ListProductsRequestObject) (ListProductsResponseObject, error)
@@ -12559,6 +12840,9 @@ type StrictServerInterface interface {
 	// ChangeProductBrand Change the brand of a product
 	// (PUT /v1/products/{product_id}/brand)
 	ChangeProductBrand(ctx context.Context, request ChangeProductBrandRequestObject) (ChangeProductBrandResponseObject, error)
+	// GetCallerInProduct Read what the caller holds in a product
+	// (GET /v1/products/{product_id}/caller)
+	GetCallerInProduct(ctx context.Context, request GetCallerInProductRequestObject) (GetCallerInProductResponseObject, error)
 	// ListPublicationTargets List a product's publication targets
 	// (GET /v1/products/{product_id}/publication-targets)
 	ListPublicationTargets(ctx context.Context, request ListPublicationTargetsRequestObject) (ListPublicationTargetsResponseObject, error)
@@ -12689,6 +12973,30 @@ func (sh *strictHandler) GetHealthz(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHealthzResponseObject); ok {
 		if err := validResponse.VisitGetHealthzResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCaller operation middleware
+func (sh *strictHandler) GetCaller(w http.ResponseWriter, r *http.Request) {
+	var request GetCallerRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCaller(ctx, request.(GetCallerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCaller")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCallerResponseObject); ok {
+		if err := validResponse.VisitGetCallerResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -13642,6 +13950,32 @@ func (sh *strictHandler) ChangeProductBrand(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ChangeProductBrandResponseObject); ok {
 		if err := validResponse.VisitChangeProductBrandResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCallerInProduct operation middleware
+func (sh *strictHandler) GetCallerInProduct(w http.ResponseWriter, r *http.Request, productID ProductID) {
+	var request GetCallerInProductRequestObject
+
+	request.ProductID = productID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCallerInProduct(ctx, request.(GetCallerInProductRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCallerInProduct")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCallerInProductResponseObject); ok {
+		if err := validResponse.VisitGetCallerInProductResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

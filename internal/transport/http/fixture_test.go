@@ -164,6 +164,13 @@ type governance struct {
 	membershipsListed []application.ListMemberships
 	rolesListed       []application.ListProductRoles
 	configsListed     []application.ListAudienceConfigs
+	callersRead       []application.GetCaller
+	standingsRead     []application.GetCallerInProduct
+
+	// held is what the caller holds in the product when a test sets it.
+	// Otherwise the caller holds what the fixtures above say: the role of the
+	// assignment, and the role of the membership in its workspace.
+	held *application.CallerStanding
 }
 
 func newGovernance() *governance {
@@ -179,7 +186,7 @@ func (g *governance) calls() int {
 		len(g.rolesGranted) + len(g.rolesRead) + len(g.rolesRevoked) +
 		len(g.configured) + len(g.configsRead) + len(g.configsChanged) + len(g.configsRemoved) +
 		len(g.productsListed) + len(g.spacesListed) + len(g.membershipsListed) + len(g.rolesListed) +
-		len(g.configsListed)
+		len(g.configsListed) + len(g.callersRead) + len(g.standingsRead)
 }
 
 func (g *governance) RegisterProduct(_ context.Context, command application.RegisterProduct) (domain.Product, error) {
@@ -293,6 +300,27 @@ func (g *governance) ListProductRoles(_ context.Context, query application.ListP
 func (g *governance) ListAudienceConfigs(_ context.Context, query application.ListAudienceConfigs) (application.Page[domain.AudienceConfig], error) {
 	g.configsListed = append(g.configsListed, query)
 	return page(g, g.config), g.err
+}
+
+// GetCaller answers as the real use case does: the principal that was asked
+// about, and an administrator if it is the one of these fixtures.
+func (g *governance) GetCaller(_ context.Context, query application.GetCaller) (application.CallerIdentity, error) {
+	g.callersRead = append(g.callersRead, query)
+	return application.CallerIdentity{Principal: query.Caller, PlatformAdministrator: query.Caller == domain.Principal(admin)}, g.err
+}
+
+func (g *governance) GetCallerInProduct(_ context.Context, query application.GetCallerInProduct) (application.CallerStanding, error) {
+	g.standingsRead = append(g.standingsRead, query)
+	if g.held != nil {
+		return *g.held, g.err
+	}
+	return application.CallerStanding{
+		ProductID: g.product.ID,
+		Roles:     []domain.Role{g.assignment.Role},
+		Workspaces: []domain.HeldInWorkspace{
+			{WorkspaceID: g.membership.WorkspaceID, Roles: []domain.Role{g.membership.Role}},
+		},
+	}, g.err
 }
 
 // service is the transport under test, with what it logged.

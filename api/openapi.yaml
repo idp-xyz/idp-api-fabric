@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.28.0
+  version: 0.29.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -67,6 +67,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BuildInfo'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/caller:
+    get:
+      operationId: getCaller
+      summary: Read who the caller is
+      description: >-
+        Returns the principal the token of the request is about, an issuer and
+        a subject, and whether the deployment names it an administrator of the
+        platform. It is about the caller and nobody else: the operation takes
+        no parameter, and a request that sends a query parameter or a body is
+        refused (400 REQUEST_INVALID), as any request is that sends what its
+        operation does not declare. The token says nothing else that is passed
+        on, so there is no name to show.
+
+
+        Being an administrator of the platform holds nothing in any product:
+        what a principal holds in a product is read with getCallerInProduct.
+        Nothing is recorded, and nobody is refused here but a caller that is
+        not authenticated, which is answered before the operation runs.
+      responses:
+        '200':
+          description: Who the caller is
+          headers:
+            Cache-Control:
+              description: What a caller is told of itself is private to it
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Caller'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
   /v1/products:
@@ -191,6 +231,63 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/products/{product_id}/caller:
+    get:
+      operationId: getCallerInProduct
+      summary: Read what the caller holds in a product
+      description: >-
+        Returns what the caller holds in the product now: the roles of the
+        product it holds, and the workspaces of the product it is a member of,
+        with its roles in each. It is about the caller and nobody else: the
+        only parameter is the product. Every request reads what is in force
+        when it is made, so a role or a membership that was revoked is not in
+        the answer from the moment the revocation is committed, under the very
+        token that was used before.
+
+
+        It says what the caller holds and nothing of what that lets it do.
+        Owning the product is holding product_owner, and an owner reads every
+        workspace of the product without being a member of any (listWorkspaces),
+        so workspaces lists the memberships the caller holds, not the
+        workspaces it may read. It is not a page of a list and has no
+        next_page_token: it has one item for each workspace the caller is a
+        member of, all of them.
+
+
+        It is answered to whoever getProduct answers: a platform administrator
+        and whoever holds something in force in the product, a role in it or a
+        membership of one of its workspaces. An administrator that holds
+        nothing in it is told so, with two empty lists. To anyone else the
+        product does not exist: the answer is 404 PRODUCT_NOT_FOUND, the same
+        as for a product that is missing, and that includes whoever held
+        something in it that was revoked since. A suspended product still
+        tells what is held in it.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: What the caller holds in the product
+          headers:
+            Cache-Control:
+              description: What a caller is told of itself is private to it
+              required: true
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallerInProduct'
         '400':
           $ref: '#/components/responses/Problem'
         '401':
@@ -3512,6 +3609,70 @@ components:
           $ref: '#/components/schemas/Reference'
         subject:
           $ref: '#/components/schemas/Reference'
+    Caller:
+      description: >-
+        Who the caller is: the principal its token is about, and whether the
+        deployment names it an administrator of the platform. Nothing else of
+        the token is passed on.
+      type: object
+      additionalProperties: false
+      required: [principal, platform_administrator]
+      properties:
+        principal:
+          $ref: '#/components/schemas/Principal'
+        platform_administrator:
+          description: >-
+            Whether the principal administers the platform. It holds nothing in
+            any product by being one.
+          type: boolean
+    CallerInProduct:
+      description: >-
+        What the caller holds in one product, as it is in force when the answer
+        is given: its roles of the product and its roles in each workspace it
+        is a member of. What was revoked is not shown, and neither is who
+        granted what, or when.
+      type: object
+      additionalProperties: false
+      required: [product_id, roles, workspaces]
+      properties:
+        product_id:
+          $ref: '#/components/schemas/Identifier'
+        roles:
+          description: >-
+            The roles of the product the caller holds, each once. Empty if it
+            holds none. The order carries no meaning.
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/ProductRole'
+        workspaces:
+          description: >-
+            The workspaces of the product the caller is a member of, with its
+            roles in each. It is not a page of a list and has no next_page_token:
+            it has one item for each workspace the caller holds a membership
+            in, all of them. An owner of the product reads every workspace of it
+            without being a member of any, so this is what the caller holds, not
+            what it may read. The order carries no meaning.
+          type: array
+          items:
+            $ref: '#/components/schemas/CallerInWorkspace'
+    CallerInWorkspace:
+      description: >-
+        What the caller holds in one workspace of the product: its roles there,
+        each once. A workspace is shown for as long as the caller holds at
+        least one.
+      type: object
+      additionalProperties: false
+      required: [workspace_id, roles]
+      properties:
+        workspace_id:
+          $ref: '#/components/schemas/Identifier'
+        roles:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/WorkspaceRole'
     OrganizationRef:
       description: >-
         A reference to the organization a product belongs to, in the identity

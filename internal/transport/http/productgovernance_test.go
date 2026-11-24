@@ -489,6 +489,12 @@ func TestAValueTheContractDoesNotDeclareIsNotSent(t *testing.T) {
 			// A revocation is answered without a body.
 			continue
 		}
+		if operation.Target == "/v1/caller" {
+			// It says who the caller is, a principal and whether it
+			// administers the platform. That shows no status and no role,
+			// so there is no value of this kind for it to hold back.
+			continue
+		}
 		operation.Token = "alice"
 		response := s.do(t, operation)
 		wantProblem(t, response, http.StatusInternalServerError, CodeInternalError, "")
@@ -624,6 +630,8 @@ func TestAnOperationReachedWithoutAPrincipalIsFailed(t *testing.T) {
 		_, errListMemberships := o.ListMemberships(ctx, ListMembershipsRequestObject{ProductID: productID, WorkspaceID: workspaceID})
 		_, errListRoles := o.ListProductRoles(ctx, ListProductRolesRequestObject{ProductID: productID})
 		_, errListConfigs := o.ListAudienceConfigs(ctx, ListAudienceConfigsRequestObject{ProductID: productID})
+		_, errGetCaller := o.GetCaller(ctx, GetCallerRequestObject{})
+		_, errGetStanding := o.GetCallerInProduct(ctx, GetCallerInProductRequestObject{ProductID: productID})
 		for operation, err := range map[string]error{
 			"RegisterProduct": errRegister, "GetProduct": errGet, "ChangeProductBrand": errChangeBrand,
 			"CreateWorkspace": errCreate, "GetWorkspace": errGetWorkspace,
@@ -633,6 +641,7 @@ func TestAnOperationReachedWithoutAPrincipalIsFailed(t *testing.T) {
 			"ChangeAudienceConfig": errChangeConfig, "RemoveAudienceConfig": errRemoveConfig,
 			"ListProducts": errListProducts, "ListWorkspaces": errListWorkspaces,
 			"ListMemberships": errListMemberships, "ListProductRoles": errListRoles, "ListAudienceConfigs": errListConfigs,
+			"GetCaller": errGetCaller, "GetCallerInProduct": errGetStanding,
 		} {
 			if err == nil {
 				t.Errorf("%s with %s was served", operation, name)
