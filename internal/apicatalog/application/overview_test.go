@@ -274,15 +274,12 @@ func identifiersOf(views []AssetView) []domain.AssetID {
 }
 
 // The assets that are looked in are those of the Workspaces whose revisions the
-// caller reads, and nothing is asked about any other asset: a Workspace the
-// caller is a member of and reads no revisions in, and a Workspace it reads
-// only by owning the product, are not looked in, and the question that is
-// asked names the assets of the first alone. A Workspace that is asked for
-// and is not one of those is looked in no more for it.
+// caller reads. A member who can see a workspace but cannot read its
+// revisions cannot filter its assets by their overview.
 func TestAFilteredListLooksOnlyInTheWorkspacesTheCallerReadsRevisionsInAndAsksOnlyAboutTheirAssets(t *testing.T) {
 	workspaces := []domain.WorkspaceID{engineering, operations, financeWorkspace}
 	assets := assetsOf(30, func(n int) domain.WorkspaceID { return workspaces[n%3] })
-	scope := ports.ProductScope{Owner: true, Workspaces: []domain.WorkspaceID{engineering, operations}, Readers: []domain.WorkspaceID{engineering}}
+	scope := ports.ProductScope{Workspaces: []domain.WorkspaceID{engineering, operations}, Readers: []domain.WorkspaceID{engineering}}
 
 	for name, filter := range map[string]ListAssets{
 		"a status":      {CheckStatus: domain.CheckUnknown},
@@ -339,12 +336,12 @@ func TestAFilteredListLooksOnlyInTheWorkspacesTheCallerReadsRevisionsInAndAsksOn
 func TestAnUnfilteredListAsksOnlyAboutTheAssetsOfTheWorkspacesTheCallerReadsRevisionsIn(t *testing.T) {
 	workspaces := []domain.WorkspaceID{engineering, operations, financeWorkspace}
 	assets := assetsOf(9, func(n int) domain.WorkspaceID { return workspaces[n%3] })
-	ownsAndReads := ports.ProductScope{Owner: true, Workspaces: []domain.WorkspaceID{engineering, operations}, Readers: []domain.WorkspaceID{engineering}}
+	readsEngineering := ports.ProductScope{Workspaces: []domain.WorkspaceID{engineering, operations}, Readers: []domain.WorkspaceID{engineering}}
 
-	w := newWorld(t, ownsAndReads, assets, pending)
+	w := newWorld(t, readsEngineering, assets, pending)
 	page, err := w.list(ListAssets{PageSize: 100})
-	if err != nil || len(page.Items) != 9 {
-		t.Fatalf("the page holds %d assets (%v), want the nine of the product", len(page.Items), err)
+	if err != nil || len(page.Items) != 6 {
+		t.Fatalf("the page holds %d assets (%v), want the six in both memberships", len(page.Items), err)
 	}
 	for _, view := range page.Items {
 		reads := view.Asset.WorkspaceID == engineering
@@ -355,8 +352,8 @@ func TestAnUnfilteredListAsksOnlyAboutTheAssetsOfTheWorkspacesTheCallerReadsRevi
 	if len(w.overviews.asked) != 1 || w.overviews.asked[0].filter.Any() || len(w.overviews.asked[0].places) != 3 {
 		t.Errorf("the overviews were asked %+v, want one question without a filter about the three assets of engineering", w.overviews.asked)
 	}
-	if len(w.assets.asked) != 1 || !w.assets.asked[0].All || w.assets.asked[0].Limit != 101 {
-		t.Errorf("the Catalog was asked %+v, want one list of what the owner reads, a page and one more", w.assets.asked)
+	if len(w.assets.asked) != 1 || w.assets.asked[0].All || w.assets.asked[0].Limit != 101 {
+		t.Errorf("the Catalog was asked %+v, want one workspace-scoped list, a page and one more", w.assets.asked)
 	}
 	for _, view := range page.Items {
 		if view.Overview != nil && !reflect.DeepEqual(*view.Overview, mustOverview(pending(view.Asset.ID))) {
@@ -370,9 +367,8 @@ func TestAnUnfilteredListAsksOnlyAboutTheAssetsOfTheWorkspacesTheCallerReadsRevi
 		scope     ports.ProductScope
 		workspace domain.WorkspaceID
 	}{
-		"the page holds none of the assets that are read": {ownsAndReads, financeWorkspace},
+		"the page holds none of the assets that are read": {readsEngineering, financeWorkspace},
 		"the caller reads the revisions of no workspace":  {ports.ProductScope{Workspaces: []domain.WorkspaceID{engineering, operations}}, ""},
-		"an owner that is a member of nothing":            {ports.ProductScope{Owner: true}, ""},
 	} {
 		w := newWorld(t, c.scope, assets, pending)
 		page, err := w.list(ListAssets{PageSize: 100, WorkspaceID: c.workspace})
@@ -427,8 +423,6 @@ func TestACallerThatReadsNoRevisionsIsRefusedAFilterAsItIsForAnyListItMayNotRead
 	assets := assetsOf(5, inWorkspace(engineering))
 	for name, scope := range map[string]ports.ProductScope{
 		"a maintainer":                 {Workspaces: []domain.WorkspaceID{engineering}},
-		"an owner that maintains":      {Owner: true, Workspaces: []domain.WorkspaceID{engineering}},
-		"an owner that is no member":   {Owner: true},
 		"readers of an empty set only": {Workspaces: []domain.WorkspaceID{engineering}, Readers: []domain.WorkspaceID{}},
 	} {
 		for filtering, query := range map[string]ListAssets{
@@ -617,7 +611,7 @@ func TestAFilteredPageIsFullUnlessItIsTheLastAndEveryAssetKeptIsListedOnce(t *te
 // kind, the domain and the search of the caller, and the position the page
 // token holds in the first.
 func TestEveryRoundOfAFilteredListKeepsTheOtherFiltersAndStartsWhereTheTokenSaid(t *testing.T) {
-	scope := ports.ProductScope{Owner: true, Workspaces: []domain.WorkspaceID{engineering}, Readers: []domain.WorkspaceID{engineering}}
+	scope := ports.ProductScope{Workspaces: []domain.WorkspaceID{engineering}, Readers: []domain.WorkspaceID{engineering}}
 	assets := assetsOf(300, inWorkspace(engineering))
 	w := newWorld(t, scope, assets, never)
 	token := &ports.Position{At: assets[9].CreatedAt, ID: assets[9].ID}

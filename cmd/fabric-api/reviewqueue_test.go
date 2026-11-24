@@ -396,7 +396,7 @@ func TestTheQueueShowsEachCallerExactlyWhatItsSingleReadsAnswer(t *testing.T) {
 		{"reviewer", http.StatusOK, "", http.StatusOK, ""},
 		{"publisher", http.StatusOK, "", http.StatusOK, ""},
 		{"maintainer", http.StatusForbidden, "FORBIDDEN", http.StatusForbidden, "FORBIDDEN"},
-		{"owner", http.StatusForbidden, "FORBIDDEN", http.StatusForbidden, "FORBIDDEN"},
+		{"owner", http.StatusOK, "", http.StatusOK, ""},
 		{"ops-author", http.StatusNotFound, "WORKSPACE_NOT_FOUND", http.StatusNotFound, "API_ASSET_NOT_FOUND"},
 		{"ops-reviewer", http.StatusNotFound, "WORKSPACE_NOT_FOUND", http.StatusNotFound, "API_ASSET_NOT_FOUND"},
 		{"ops-maintainer", http.StatusNotFound, "WORKSPACE_NOT_FOUND", http.StatusNotFound, "API_ASSET_NOT_FOUND"},
@@ -632,7 +632,6 @@ func TestWhoMayNotReadTheQueueIsRefusedAsFarAsItMayKnow(t *testing.T) {
 	}{
 		// Seeing the workspace is not reading what is reviewed in it.
 		{"maintainer", http.StatusForbidden, "FORBIDDEN"},
-		{"owner", http.StatusForbidden, "FORBIDDEN"},
 		// A member of another workspace is told what an asset of this one is.
 		{"ops-author", http.StatusNotFound, "WORKSPACE_NOT_FOUND"},
 		{"ops-maintainer", http.StatusNotFound, "WORKSPACE_NOT_FOUND"},
@@ -788,7 +787,6 @@ func TestAPageTokenOfTheQueueGrantsNothing(t *testing.T) {
 		code   string
 	}{
 		"maintainer":     {http.StatusForbidden, "FORBIDDEN"},
-		"owner":          {http.StatusForbidden, "FORBIDDEN"},
 		"stranger":       {http.StatusNotFound, "PRODUCT_NOT_FOUND"},
 		"ops-author":     {http.StatusNotFound, "WORKSPACE_NOT_FOUND"},
 		"platform-admin": {http.StatusNotFound, "WORKSPACE_NOT_FOUND"},
@@ -796,9 +794,11 @@ func TestAPageTokenOfTheQueueGrantsNothing(t *testing.T) {
 		s.expect("the token of an author", subject, []exchange{{http.MethodGet, queue + "?page_token=" + token, "", c.status, c.code}})
 	}
 	// A reader that holds a grant reads from the position, the same queue.
-	got, _ := s.page(queue+"?page_size=100&page_token="+token, "reviewer")
-	if want := queueMadeIDs(made)[2:]; !slices.Equal(told(got, "review_id"), want) {
-		t.Errorf("a reviewer with the token of an author reads %v, want what is behind its position, %v", told(got, "review_id"), want)
+	for _, reader := range []string{"reviewer", "owner"} {
+		got, _ := s.page(queue+"?page_size=100&page_token="+token, reader)
+		if want := queueMadeIDs(made)[2:]; !slices.Equal(told(got, "review_id"), want) {
+			t.Errorf("%s with the token of an author reads %v, want what is behind its position, %v", reader, told(got, "review_id"), want)
+		}
 	}
 	// The token of another list is none.
 	_, ofRevisions := s.page(w.revisions+"?page_size=1", "author")

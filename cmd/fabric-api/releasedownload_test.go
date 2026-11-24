@@ -286,7 +286,7 @@ func TestWhoReadsAReleaseDownloadsItAndReadsItsProvenanceAndNoOneElse(t *testing
 		{"author", http.StatusOK, ""}, {"coauthor", http.StatusOK, ""}, {"reviewer", http.StatusOK, ""}, {"publisher", http.StatusOK, ""},
 		// Maintaining the workspace or owning the product is not reading
 		// what it releases.
-		{"maintainer", http.StatusForbidden, "FORBIDDEN"}, {"owner", http.StatusForbidden, "FORBIDDEN"},
+		{"maintainer", http.StatusForbidden, "FORBIDDEN"}, {"owner", http.StatusOK, ""},
 		{"between", http.StatusForbidden, "FORBIDDEN"},
 		// The grant counts where it was made, and nobody sees an asset of
 		// a workspace they have no grant in, whoever they are.
@@ -416,7 +416,7 @@ func TestARefusedReadIsOnRecordAsARefusalAndASuccessfulOneIsNot(t *testing.T) {
 	path := s.releaseAt(id)
 	records, events := s.count("platformoperations.audit_record"), s.count("bento.outbox")
 
-	for _, reader := range []string{"author", "reviewer", "publisher"} {
+	for _, reader := range []string{"author", "reviewer", "publisher", "owner"} {
 		for _, suffix := range []string{"/artifact", "/provenance"} {
 			s.require(s.call(http.MethodGet, path+suffix, reader, ""), http.StatusOK, "")
 		}
@@ -428,7 +428,7 @@ func TestARefusedReadIsOnRecordAsARefusalAndASuccessfulOneIsNot(t *testing.T) {
 		t.Errorf("the reads that were served or found nothing left %d audit records and %d events, want none", after-records, sent-events)
 	}
 
-	for _, caller := range []string{"maintainer", "owner"} {
+	for _, caller := range []string{"maintainer"} {
 		s.require(s.call(http.MethodGet, path+"/artifact", caller, ""), http.StatusForbidden, "FORBIDDEN")
 		if download, read := s.on(caller, "release.download", "DENY-03", false), s.on(caller, "release.read", "DENY-03", false); download != 1 || read != 0 {
 			t.Errorf("%s was refused the download: %d refusals of the download and %d of a read are on record, want 1 and 0", caller, download, read)
@@ -454,8 +454,8 @@ func TestARefusedReadIsOnRecordAsARefusalAndASuccessfulOneIsNot(t *testing.T) {
 	refusals := s.recorded(func(row audited) bool {
 		return strings.HasPrefix(row.Action, "release.") && row.Outcome != "SUCCEEDED"
 	})
-	if occurrences(refusals) != 6 {
-		t.Errorf("%d refusals of a release are on record, want 6: %v", occurrences(refusals), refusals)
+	if occurrences(refusals) != 4 {
+		t.Errorf("%d refusals of a release are on record, want 4: %v", occurrences(refusals), refusals)
 	}
 	for row := range refusals {
 		if row.Rule != "DENY-03" || row.ResourceType != "ContractRelease" || row.ResourceID != "" || row.ProductID != s.product {

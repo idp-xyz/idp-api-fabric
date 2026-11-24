@@ -42,9 +42,9 @@ func TestAnAuthorComparesTwoRecordedRevisionsOfTheSameAsset(t *testing.T) {
 		{http.MethodGet, path, "", http.StatusBadRequest, "REQUEST_INVALID"},
 		{http.MethodGet, path + "?baseline_revision_id=" + otherSource.id("revision_id"), "", http.StatusNotFound, "REVISION_NOT_FOUND"},
 	})
-	s.expect("owning the product does not authorize reading a comparison", "owner", []exchange{
-		{http.MethodGet, path + query, "", http.StatusForbidden, "FORBIDDEN"},
-	})
+	if owner := s.call(http.MethodGet, path+query, "owner", ""); owner.status != http.StatusOK || !reflect.DeepEqual(owner.body, compare.body) {
+		t.Errorf("the owner's comparison: status %d, result %v", owner.status, owner.body)
+	}
 	s.revoke(s.membership, "owner")
 	s.expect("the author was revoked", "author", []exchange{
 		{http.MethodGet, path + query, "", http.StatusForbidden, "FORBIDDEN"},

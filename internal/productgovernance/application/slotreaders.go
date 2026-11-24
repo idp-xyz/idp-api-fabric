@@ -13,6 +13,8 @@ type ReleaseReaders struct {
 	// Known is whether the principal may know that the product exists: it
 	// holds something in it, or it administers the platform.
 	Known bool
+	// Owner may read release and slot evidence in every workspace of the product.
+	Owner bool
 	// Workspaces are the workspaces of the product where the principal holds
 	// the author, the reviewer or the publisher grant now, in order. A
 	// principal that owns the product holds none of them by owning it.
@@ -35,7 +37,7 @@ func (s *ProductGovernance) ReleaseReaderScope(ctx context.Context, actor domain
 	if err != nil || !seen.productFound {
 		return ReleaseReaders{}, err
 	}
-	readers := ReleaseReaders{Known: s.knows(seen.standing, actor)}
+	readers := ReleaseReaders{Known: s.knows(seen.standing, actor), Owner: seen.standing.Owns()}
 	for _, membership := range seen.standing.Memberships {
 		if slices.Contains(revisionReaders, membership.Role) {
 			readers.Workspaces = append(readers.Workspaces, membership.WorkspaceID)

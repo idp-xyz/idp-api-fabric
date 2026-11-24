@@ -412,6 +412,16 @@ F03 INV-09 写的是“有效 deny 阻断内容读取及后续激活”，没有
 
 功能回归见 `cmd/fabric-api/` 下的 `caller_test.go`、`reviewqueue_test.go`、`assetoverview_test.go`、`assetoverview_reach_test.go` 和 `assetoverview_pages_test.go`，使用真实 PostgreSQL 和本地替代 IdP，其中包括：每种角色读到自己的、撤销之后的下一次请求就没有、撤销时另一个会话还没提交也不等、13 种调用人在队列和单读上的答案逐人一致、令牌不带权限、被拒绝时留下的记录、概况跟着每一步变、别的 Workspace 的变化不改变调用人的页、检查的记录被改坏时答 500。用例层的判权和审计见 `internal/productgovernance/application/caller_test.go`、`internal/policyreview/application/queue_test.go` 和 `internal/apicatalog/application/overview_test.go`；队列和概况用的名单与读修订的名单不分叉，见 `internal/productgovernance/application/reviewscope_test.go` 和 `catalogscope_readers_test.go`；迁移见 `internal/platform/db/migrate/reviewqueue_test.go`；传输层和契约见 `internal/transport/http/caller_test.go`、`reviewqueue_test.go` 和 `assetoverview_test.go`；没有跨 schema 的 SQL，见 `internal/architecture/schemas_test.go`。SEC-01…36 的正式安全验收状态为 NOT_RUN。
 
+
+### 6.11 产品负责人读取契约治理材料（0.32.0）
+
+产品负责人可以读取本产品各 Workspace 的资产概况和筛选结果、修订与原文、检查和比较、评审与评审队列、Release 与来源、发布槽位及历史。经槽位读取制品时，服务端核对当前权限、批准及 AccessBlock。历史 Release 按编号下载沿用 §6.9 的读取语义。
+
+产品负责人角色只为上述治理材料授予读取权限。提交、决定及发布分别检查 Workspace 内的作者、评审人及发布人授权。产品审计查询需要 `internal_auditor`，安全阻断与解除需要各自的安全角色。读取仍按所请求的产品隔离，撤销负责人角色后继续按当前 Workspace 成员关系判权。
+
+权限回归使用真实 PostgreSQL，覆盖同产品多 Workspace、跨产品拒绝、撤权后使用原令牌和分页游标，以及没有评审人授权时拒绝作出评审决定。
+
+
 ## 7. 授权策略表达与执行边界
 
 本阶段提供 `governance/policies/F05_Authorization_Policy_DRAFT.json`，是**可机器解析的策略结构样例**，包含 `deny_overrides`、资源关系、显式 Allow 条件及关键禁止项；这不是运行中的 PDP，不可由 CI “JSON 通过”就宣称安全实现完成。

@@ -8,18 +8,28 @@ import (
 )
 
 // revisionReaders are the roles of a workspace that read its contract
-// revisions. Maintaining the workspace is not one of them, and neither is
-// owning the product.
+// revisions. A product owner's read grant is checked separately.
 var revisionReaders = []domain.Role{domain.RoleInternalAuthor, domain.RoleInternalReviewer, domain.RoleInternalPublisher}
 
 // RevisionReader reports whether actor may read the contract revisions of
-// the workspace now: it holds the author, the reviewer or the publisher
-// grant there. A reviewer reads what it is to decide on, and a publisher
+// the workspace now: it owns the product or holds the author, the reviewer
+// or the publisher grant there. A reviewer reads what it is to decide on, and a publisher
 // what it is to release: the revision, its checks and the reviews that
 // approved it, which a release names. Neither writes a revision. A read
 // takes no lock: the grant is read again with every request.
 func (s *ProductGovernance) RevisionReader(ctx context.Context, actor domain.Principal,
 	productID domain.ProductID, workspaceID domain.WorkspaceID) (bool, error) {
+	roles, err := s.deps.Roles.RolesOf(ctx, productID, actor)
+	if err != nil {
+		return false, err
+	}
+	if slices.Contains(roles, domain.RoleProductOwner) {
+		if _, err := domain.ParseWorkspaceID(string(workspaceID)); err != nil {
+			return false, nil
+		}
+		_, found, err := s.deps.Workspaces.Find(ctx, productID, workspaceID)
+		return found, err
+	}
 	memberships, err := s.deps.Memberships.HeldBy(ctx, productID, actor)
 	if err != nil {
 		return false, err

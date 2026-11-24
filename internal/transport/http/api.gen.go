@@ -656,7 +656,7 @@ type APIAsset struct {
 	DomainKey Key               `json:"domain_key"`
 	Lifecycle APIAssetLifecycle `json:"lifecycle"`
 
-	// Overview Where the asset stands. It is there when the caller holds the internal_author, internal_reviewer or internal_publisher role in the owning workspace now, the grants that read its revisions, and is not there for a caller that reads the asset without one, whatever the asset has. Only the reads of an asset carry it: registering one answers without.
+	// Overview Where the asset stands. Present for a product owner or a current author, reviewer or publisher of the workspace that owns it. Only the reads of an asset carry it.
 	Overview *AssetOverview `json:"overview,omitempty"`
 
 	// ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.

@@ -57,6 +57,8 @@ PR #10 和 #11 的实现详见 [F03 §5.6](docs/F03_Domain_and_Data_Model.md#56-
 
 实现详见 [F03 §5.13](docs/F03_Domain_and_Data_Model.md#513-已实现的工作台查询)、[F04 §11.9](docs/F04_API_Contract_Governance.md#119-已实现的工作台查询接口) 和 [F05 §6.10](docs/F05_Security_and_Multitenancy.md#610-已实现的工作台查询的权限)。授权矩阵没有新增条目。
 
+管理 API 0.32.0 支持产品负责人读取本产品各 Workspace 的资产概况、契约修订和原文、检查、评审、Release 及发布历史。作者、评审人和发布人的写操作继续按 Workspace 授权，审计和安全操作使用各自的产品角色。升级不涉及数据库迁移或重新授权。
+
 ## 阅读入口
 
 - [index.html](index.html) — 统一的离线 HTML 文档阅读入口。

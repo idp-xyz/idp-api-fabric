@@ -257,10 +257,9 @@ func TestACheckThatIsNotWhatWasRecordedFailsTheOverviewAsItFailsTheHistory(t *te
 	if kept, _ := w.page(w.assets()+"?check_status=UNKNOWN", "author"); len(kept) != 0 {
 		t.Errorf("the list of the checks that could not judge holds %v, want none: the stored status of the check is PASS", kept)
 	}
-	for _, subject := range []string{"owner", "maintainer"} {
-		if got := w.call(http.MethodGet, asset.asset, subject, ""); got.status != http.StatusOK || got.body["overview"] != nil {
-			t.Errorf("%s reads the asset as %d %v, want it as it is read without an overview", subject, got.status, got.body)
-		}
+	w.require(w.call(http.MethodGet, asset.asset, "owner", ""), history.status, history.code())
+	if got := w.call(http.MethodGet, asset.asset, "maintainer", ""); got.status != http.StatusOK || got.body["overview"] != nil {
+		t.Errorf("the maintainer reads the asset as %d %v, want it without an overview", got.status, got.body)
 	}
 
 	setStatus("UNKNOWN")

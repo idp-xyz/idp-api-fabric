@@ -16,12 +16,9 @@ type CatalogScope struct {
 	Known      bool
 	Owner      bool
 	Workspaces []domain.WorkspaceID
-	// ContractReaders are the Workspaces, among those, where the principal
-	// holds the author, the reviewer or the publisher grant now: where it
-	// reads the contract revisions, and so the checks and releases, of what
-	// the Workspace owns. Owning the product and maintaining a Workspace are
-	// not among them. It is read with the memberships that make up
-	// Workspaces, and costs nothing more.
+	// ContractReaders are the workspaces where the principal has an author,
+	// reviewer or publisher membership. Owner covers the product-wide read
+	// grant separately.
 	ContractReaders []domain.WorkspaceID
 }
 

@@ -62,8 +62,8 @@ func TestWhatACallerIsToAWorkspaceForTheReadingOfItsReviews(t *testing.T) {
 		"an owner of the product that is also an author":   {coowner, cargopai, engineering, reads},
 		"the author of the other workspace":                {dave, cargopai, operations, reads},
 		"the maintainer of the workspace":                  {carol, cargopai, engineering, sees},
-		"the owner of the product":                         {alice, cargopai, engineering, sees},
-		"the owner, in the other workspace":                {alice, cargopai, operations, sees},
+		"the owner of the product":                         {alice, cargopai, engineering, reads},
+		"the owner, in the other workspace":                {alice, cargopai, operations, reads},
 		"an author of the other workspace":                 {dave, cargopai, engineering, knows},
 		"a maintainer of the other workspace":              {carol, cargopai, operations, knows},
 		"the administrator of the platform":                {admin, cargopai, engineering, knows},
@@ -85,7 +85,7 @@ func TestWhatACallerIsToAWorkspaceForTheReadingOfItsReviews(t *testing.T) {
 		"the owner, asking for no workspace":                      {alice, cargopai, "", absent(sees)},
 		"an author, asking for what is not an identifier":         {author, cargopai, "not-a-workspace", absent(knows)},
 		"an author of the product, asking for no workspace":       {dave, cargopai, "", absent(knows)},
-		"the owner of the other product, in its own workspace":    {bob, s.parcel.ID, s.sorting.ID, sees},
+		"the owner of the other product, in its own workspace":    {bob, s.parcel.ID, s.sorting.ID, reads},
 		"an author of this workspace, in the workspace of Parcel": {author, s.parcel.ID, s.sorting.ID, nothing},
 	} {
 		got, err := s.service.ReadReviewScope(ctx, c.caller, c.product, c.workspace)

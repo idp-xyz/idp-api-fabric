@@ -99,8 +99,10 @@ SET valid_until = concluded_at + interval '1 millisecond' WHERE review_id = $1`,
 	}
 	s.require(s.prepare(id, first, "1.0.1", "publisher"), http.StatusConflict, "APPROVAL_EXPIRED")
 	// Whoever does not read the slot is not told either.
-	for _, caller := range []string{"maintainer", "owner"} {
-		s.require(s.call(http.MethodGet, slot, caller, ""), http.StatusForbidden, "FORBIDDEN")
+	s.require(s.call(http.MethodGet, slot, "maintainer", ""), http.StatusForbidden, "FORBIDDEN")
+	owner := s.call(http.MethodGet, slot, "owner", "")
+	if owner.status != http.StatusOK || owner.body["approval_problem"] != "APPROVAL_EXPIRED" {
+		t.Errorf("the owner reads the expired approval as %d %v", owner.status, owner.body)
 	}
 
 	// The revision is approved again and released under that approval.

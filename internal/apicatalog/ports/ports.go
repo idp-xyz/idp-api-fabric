@@ -21,14 +21,16 @@ type ProductScope struct {
 	Workspaces []domain.WorkspaceID
 	// Readers are the Workspaces where the caller holds a grant that reads
 	// the contract revisions of the Workspace: the author, the reviewer or the
-	// publisher grant. They are among the Workspaces it is a member of, and
-	// owning the product adds none: the caller who reads the assets of a
-	// Workspace reads where they stand only if it is one of these.
+	// publisher grant. Product owners read every workspace through Owner.
 	Readers []domain.WorkspaceID
 }
 
 func (s ProductScope) CanRead(workspace domain.WorkspaceID) bool {
 	return s.Owner || slices.Contains(s.Workspaces, workspace)
+}
+
+func (s ProductScope) CanReadOverview(workspace domain.WorkspaceID) bool {
+	return s.Owner || slices.Contains(s.Readers, workspace)
 }
 
 type RegistrationScope struct {
@@ -72,9 +74,9 @@ type Assets interface {
 	Add(context.Context, domain.Asset) error
 	Find(context.Context, domain.ProductID, domain.AssetID) (domain.Asset, bool, error)
 	List(context.Context, domain.ProductID, Selection) ([]domain.Asset, error)
-	// InWorkspaces places the assets of the product that the Workspaces own.
-	// No Workspace owns no asset.
-	InWorkspaces(context.Context, domain.ProductID, []domain.WorkspaceID) ([]AssetPlace, error)
+	// Places returns placements from the named workspaces, or from the
+	// entire product when all is true.
+	Places(ctx context.Context, product domain.ProductID, workspaces []domain.WorkspaceID, all bool) ([]AssetPlace, error)
 }
 
 type AuditEntry struct {
