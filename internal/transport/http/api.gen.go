@@ -1996,6 +1996,24 @@ type ListMembershipsParams struct {
 	PageToken *PageToken `form:"page_token,omitempty" json:"page_token,omitempty"`
 }
 
+// ListWorkspaceReviewsParams defines parameters for ListWorkspaceReviews.
+type ListWorkspaceReviewsParams struct {
+	// PageSize How many items the page holds at most. A list is read to its end by asking for the page that follows, never by asking for a larger one.
+	PageSize *PageSize `form:"page_size,omitempty" json:"page_size,omitempty"`
+
+	// PageToken Where the page starts: the next_page_token of the page before, as it was given. Without it the list starts at its beginning. The token is opaque. It names a position in one list and grants nothing: what the caller may read is decided again with every page, from what it holds then. One that is not a token of this list is refused (400 PAGE_TOKEN_INVALID).
+	PageToken *PageToken `form:"page_token,omitempty" json:"page_token,omitempty"`
+
+	// Status Only the reviews that stand at this status
+	Status *ReviewStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// RequestedByIssuer Only the reviews asked for by principals under this issuer. It is asked for alone, or with requested_by_subject.
+	RequestedByIssuer *Reference `form:"requested_by_issuer,omitempty" json:"requested_by_issuer,omitempty"`
+
+	// RequestedBySubject Only the reviews this subject asked for, under any issuer unless requested_by_issuer says which
+	RequestedBySubject *Reference `form:"requested_by_subject,omitempty" json:"requested_by_subject,omitempty"`
+}
+
 // RegisterProductJSONRequestBody defines body for RegisterProduct for application/json ContentType.
 type RegisterProductJSONRequestBody = ProductRegistration
 
@@ -2223,6 +2241,9 @@ type ServerInterface interface {
 	// GetMembership Read a membership of a workspace
 	// (GET /v1/products/{product_id}/workspaces/{workspace_id}/memberships/{membership_id})
 	GetMembership(w http.ResponseWriter, r *http.Request, productID ProductID, workspaceID WorkspaceID, membershipID MembershipID)
+	// ListWorkspaceReviews List the reviews of a workspace
+	// (GET /v1/products/{product_id}/workspaces/{workspace_id}/reviews)
+	ListWorkspaceReviews(w http.ResponseWriter, r *http.Request, productID ProductID, workspaceID WorkspaceID, params ListWorkspaceReviewsParams)
 	// GetVersion Report the build identity
 	// (GET /version)
 	GetVersion(w http.ResponseWriter, r *http.Request)
@@ -5035,6 +5056,109 @@ func (siw *ServerInterfaceWrapper) GetMembership(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListWorkspaceReviews operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkspaceReviews(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "product_id" -------------
+	var productID ProductID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workspace_id" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspace_id", r.PathValue("workspace_id"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspace_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListWorkspaceReviewsParams
+
+	// ------------- Optional query parameter "page_size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_size", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_size", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page_token" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_token", r.URL.Query(), &params.PageToken, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_token"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_token", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "requested_by_issuer" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "requested_by_issuer", r.URL.Query(), &params.RequestedByIssuer, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "requested_by_issuer"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "requested_by_issuer", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "requested_by_subject" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "requested_by_subject", r.URL.Query(), &params.RequestedBySubject, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "requested_by_subject"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "requested_by_subject", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorkspaceReviews(w, r, productID, workspaceID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetVersion operation middleware
 func (siw *ServerInterfaceWrapper) GetVersion(w http.ResponseWriter, r *http.Request) {
 
@@ -5198,6 +5322,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}", wrapper.GetRevisionReview)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/withdrawal", wrapper.WithdrawRevisionReview)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/decision", wrapper.DecideRevisionReview)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/workspaces/{workspace_id}/reviews", wrapper.ListWorkspaceReviews)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ListAudienceConfigs)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ConfigureAudience)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs/{audience_config_id}", wrapper.RemoveAudienceConfig)
@@ -12690,6 +12815,130 @@ func (response GetMembershipdefaultApplicationProblemPlusJSONResponse) VisitGetM
 	return err
 }
 
+type ListWorkspaceReviewsRequestObject struct {
+	ProductID   ProductID   `json:"product_id"`
+	WorkspaceID WorkspaceID `json:"workspace_id"`
+	Params      ListWorkspaceReviewsParams
+}
+
+type ListWorkspaceReviewsResponseObject interface {
+	VisitListWorkspaceReviewsResponse(w http.ResponseWriter) error
+}
+
+type ListWorkspaceReviews200ResponseHeaders struct {
+	CacheControl string
+}
+
+type ListWorkspaceReviews200JSONResponse struct {
+	Body    ReviewList
+	Headers ListWorkspaceReviews200ResponseHeaders
+}
+
+func (response ListWorkspaceReviews200JSONResponse) VisitListWorkspaceReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceReviews400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListWorkspaceReviews400ApplicationProblemPlusJSONResponse) VisitListWorkspaceReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceReviews401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ListWorkspaceReviews401ApplicationProblemPlusJSONResponse) VisitListWorkspaceReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceReviews403ApplicationProblemPlusJSONResponse Problem
+
+func (response ListWorkspaceReviews403ApplicationProblemPlusJSONResponse) VisitListWorkspaceReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceReviews404ApplicationProblemPlusJSONResponse Problem
+
+func (response ListWorkspaceReviews404ApplicationProblemPlusJSONResponse) VisitListWorkspaceReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceReviews503ApplicationProblemPlusJSONResponse Problem
+
+func (response ListWorkspaceReviews503ApplicationProblemPlusJSONResponse) VisitListWorkspaceReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceReviewsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	StatusCode int
+}
+
+func (response ListWorkspaceReviewsdefaultApplicationProblemPlusJSONResponse) VisitListWorkspaceReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetVersionRequestObject struct {
 }
 
@@ -12912,6 +13161,9 @@ type StrictServerInterface interface {
 	// GetMembership Read a membership of a workspace
 	// (GET /v1/products/{product_id}/workspaces/{workspace_id}/memberships/{membership_id})
 	GetMembership(ctx context.Context, request GetMembershipRequestObject) (GetMembershipResponseObject, error)
+	// ListWorkspaceReviews List the reviews of a workspace
+	// (GET /v1/products/{product_id}/workspaces/{workspace_id}/reviews)
+	ListWorkspaceReviews(ctx context.Context, request ListWorkspaceReviewsRequestObject) (ListWorkspaceReviewsResponseObject, error)
 	// GetVersion Report the build identity
 	// (GET /version)
 	GetVersion(ctx context.Context, request GetVersionRequestObject) (GetVersionResponseObject, error)
@@ -14656,6 +14908,34 @@ func (sh *strictHandler) GetMembership(w http.ResponseWriter, r *http.Request, p
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetMembershipResponseObject); ok {
 		if err := validResponse.VisitGetMembershipResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListWorkspaceReviews operation middleware
+func (sh *strictHandler) ListWorkspaceReviews(w http.ResponseWriter, r *http.Request, productID ProductID, workspaceID WorkspaceID, params ListWorkspaceReviewsParams) {
+	var request ListWorkspaceReviewsRequestObject
+
+	request.ProductID = productID
+	request.WorkspaceID = workspaceID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListWorkspaceReviews(ctx, request.(ListWorkspaceReviewsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListWorkspaceReviews")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListWorkspaceReviewsResponseObject); ok {
+		if err := validResponse.VisitListWorkspaceReviewsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

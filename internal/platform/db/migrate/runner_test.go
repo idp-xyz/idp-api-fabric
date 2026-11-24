@@ -960,7 +960,7 @@ func TestRunLetsAReviewBeDecidedAndLeavesTheWithdrawalsOfTheBuildBeforeWhatTheyA
 		t.Fatalf("build the plan: %v", err)
 	}
 	// That build had the steps of Policy & Review before this one: neither
-	// this one nor the one that came after it.
+	// this one nor the ones that came after it.
 	var later []string
 	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool {
 		if step.Schema != "policyreview" || step.ID < reviewDecision {
@@ -969,7 +969,7 @@ func TestRunLetsAReviewBeDecidedAndLeavesTheWithdrawalsOfTheBuildBeforeWhatTheyA
 		later = append(later, step.ID)
 		return true
 	})
-	if want := []string{reviewDecision, supplementaryReview}; !slices.Equal(later, want) {
+	if want := []string{reviewDecision, supplementaryReview, reviewQueueOrder}; !slices.Equal(later, want) {
 		t.Fatalf("the plan carries the steps %v of Policy & Review from %s on, want %v; this test would not be of the build before",
 			later, reviewDecision, want)
 	}
@@ -1161,11 +1161,13 @@ func TestRunLetsAnApprovedRevisionBeReviewedAgainAndLeavesTheRequestsOfTheBuildB
 	if err != nil {
 		t.Fatalf("build the plan: %v", err)
 	}
-	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool { return step.ID == supplementaryReview })
-	if len(before) != len(plan)-1 || slices.ContainsFunc(plan, func(step migrate.Step) bool {
-		return step.Schema == "policyreview" && step.ID > supplementaryReview
-	}) {
-		t.Fatalf("the plan does not carry %s as the last step of Policy & Review; this test would not be of the build before", supplementaryReview)
+	// That build had the steps of Policy & Review before this one: neither
+	// this one nor the ones that came after it.
+	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool {
+		return step.Schema == "policyreview" && step.ID >= supplementaryReview
+	})
+	if len(before) > len(plan)-1 {
+		t.Fatalf("the plan does not carry %s; this test would not be of the build before", supplementaryReview)
 	}
 	if err := migrate.Apply(t.Context(), conn, quiet, before); err != nil {
 		t.Fatalf("migrate as the build before: %v", err)

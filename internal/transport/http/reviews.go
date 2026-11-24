@@ -19,6 +19,7 @@ type ContractReviews interface {
 	DecideReview(ctx context.Context, target ports.Target, id string, decision domain.Decision) (domain.Review, error)
 	GetReview(ctx context.Context, target ports.Target, id string) (domain.Review, error)
 	ListReviews(context.Context, checks.ListReviews) (checks.ReviewPage, error)
+	ListWorkspaceReviews(context.Context, checks.ListWorkspaceReviews) (checks.ReviewPage, error)
 }
 
 func reviewsOf(target ports.Target) string {
@@ -213,6 +214,6 @@ func reviewProblem(err error) (Problem, bool) {
 	case errors.Is(err, domain.ErrInvalidReview):
 		return problem(http.StatusUnprocessableEntity, CodeRequestUnprocessable, ""), true
 	default:
-		return Problem{}, false
+		return queueProblem(err)
 	}
 }
