@@ -41,7 +41,7 @@
 @media(max-width:780px){.doc table{min-width:700px}.architecture-figure{overflow-wrap:anywhere}.fig-grid.cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.fig-grid.cols-3{grid-template-columns:1fr}.doc .architecture-figure{padding:12px 9px}.doc .fig-mini{font-size:10px}}
 @media print{.doc .architecture-figure{break-inside:avoid}.doc table{min-width:0;font-size:7.5pt}}
-</style></head><body><a class="skip-link" href="#main-content">跳到文档正文</a><button id="sideBackdrop" class="side-backdrop" aria-label="关闭章节目录" aria-hidden="true" tabindex="-1"></button><div class="layout"><aside class="side" id="sidebar"><a href="../index.html" style="text-decoration:none"><div class="logo">IDP API Fabric<small>ENGINEERING BASELINE</small></div></a><div class="side-kicker">文档体系</div><div class="navlist"><a href="F01_Product_Requirements.html" class="">F01 · Product Requirements</a><a href="F02_System_Architecture.html" class="">F02 · System Architecture</a><a href="F03_Domain_and_Data_Model.html" class="active">F03 · Domain & Data Model</a><a href="F04_API_Contract_Governance.html" class="">F04 · Contract Governance</a><a href="F05_Security_and_Multitenancy.html" class="">F05 · Security & Multitenancy</a><div class="pending">F06 · Dual Portal Experience <span class="mini">待编写</span></div><div class="pending">F07 · Engineering & Quality <span class="mini">待编写</span></div><a href="F08_Delivery_and_Acceptance.html" class="">F08 · Delivery & Acceptance</a></div><hr><div class="side-kicker">F03 · 目录</div><input id="navsearch" type="search" placeholder="筛选本文章节…" aria-label="筛选目录章节"><nav class="navlist" id="toc"><a href="#section-0" class="" style="">0. 执行摘要与设计结论</a><a href="#section-1" class="" style="">1. 约束、适用性及精确边界</a><a href="#section-1-1" class="sub" style="padding-left:24px">1.1 上位约束继承</a><a href="#section-1-2" class="sub" style="padding-left:24px">1.2 明确“不属于 Fabric”的事实</a><a href="#section-1-3" class="sub" style="padding-left:24px">1.3 时间、身份、租户与不可变性的共同语义</a><a href="#section-2" class="" style="">2. 统一语言及领域概念辞典</a><a href="#section-3" class="" style="">3. Context Map、事实权威与上下文协作</a><a href="#section-3-1" class="sub" style="padding-left:24px">3.1 上下文边界和公开语言</a><a href="#section-3-2" class="sub" style="padding-left:24px">3.2 依赖类型及事务边界</a><a href="#section-3-3" class="sub" style="padding-left:24px">3.3 核心查询投影的权威来源</a><a href="#section-4" class="" style="">4. 核心聚合模型与不变量</a><a href="#section-4-1" class="sub" style="padding-left:24px">4.1 不变量不应被数据库约束替代</a><a href="#section-4-2" class="sub" style="padding-left:24px">4.2 发布 Slot 的必要精化（待 ADR-0004 批准时确认）</a><a href="#section-5" class="" style="">5. 逻辑数据模型与关系基数</a><a href="#section-5-1" class="sub" style="padding-left:24px">5.1 核心逻辑 ERD（不是已执行数据库 DDL）</a><a href="#section-5-2" class="sub" style="padding-left:24px">5.2 主数据关系及完整性规则</a><a href="#section-5-3" class="sub" style="padding-left:24px">5.3 字段设计原则与物理落地边界</a><a href="#section-5-4" class="sub" style="padding-left:24px">5.4 数据字典的伴随机器资产</a><a href="#section-5-5" class="sub" style="padding-left:24px">5.5 Product Governance 已实现的物理模型（PR #6 / #7，2026-11-17 同步）</a><a href="#section-5-6" class="sub" style="padding-left:24px">5.6 已实现的受众配置和产品品牌（PR #10 / #11）</a><a href="#section-5-7" class="sub" style="padding-left:24px">5.7 已实现的 API 目录和契约修订</a><a href="#section-5-8" class="sub" style="padding-left:24px">5.8 已实现的契约检查</a><a href="#section-5-9" class="sub" style="padding-left:24px">5.9 已实现的契约评审</a><a href="#section-5-10" class="sub" style="padding-left:24px">5.10 已实现的 Release 与发布</a><a href="#section-5-11" class="sub" style="padding-left:24px">5.11 已实现的复审与批准状态的可见性</a><a href="#section-5-12" class="sub" style="padding-left:24px">5.12 已实现的查询与追溯</a><a href="#section-6" class="" style="">6. 数据权威、制品摘要与可追溯发布链</a><a href="#section-7" class="" style="">7. 多维访问范围与关系模型</a><a href="#section-7-1" class="sub" style="padding-left:24px">7.1 授权关系及拒绝优先决策</a><a href="#section-7-2" class="sub" style="padding-left:24px">7.2 跨产品负面样例</a><a href="#section-8" class="" style="">8. 四类状态机及事务性状态边界</a><a href="#section-8-1" class="sub" style="padding-left:24px">8.1 Revision 状态转换（基于内容不可变）</a><a href="#section-8-2" class="sub" style="padding-left:24px">8.2 Release 状态转换</a><a href="#section-8-3" class="sub" style="padding-left:24px">8.3 Publication 状态、指针与撤销</a><a href="#section-8-4" class="sub" style="padding-left:24px">8.4 API Asset 生命周期</a><a href="#section-9" class="" style="">9. 命令、查询、事件与数据流映射</a><a href="#section-10" class="" style="">10. 统一贯通案例：CargoPai 契约发布</a><a href="#section-10-1" class="sub" style="padding-left:24px">10.1 角色与样本边界</a><a href="#section-10-2" class="sub" style="padding-left:24px">10.2 正常路径，明确哪些环节不在同一事务</a><a href="#section-10-3" class="sub" style="padding-left:24px">10.3 发布结果的三级可观察语义</a><a href="#section-11" class="" style="">11. 竞态、异常、失败恢复和证明义务</a><a href="#section-11-1" class="sub" style="padding-left:24px">11.1 并发 CAS 与幂等边界</a><a href="#section-11-2" class="sub" style="padding-left:24px">11.2 失败模式矩阵</a><a href="#section-11-3" class="sub" style="padding-left:24px">11.3 紧急撤销的安全优先序</a><a href="#section-12" class="" style="">12. Outbox、Job、事件、查询一致性</a><a href="#section-12-1" class="sub" style="padding-left:24px">12.1 可靠消息边界</a><a href="#section-12-2" class="sub" style="padding-left:24px">12.2 设计事件目录及所有者</a><a href="#section-12-3" class="sub" style="padding-left:24px">12.3 Outbox 与业务事务是否同库</a><a href="#section-13" class="" style="">13. 数据完整性、删除、历史、保留与重建</a><a href="#section-13-1" class="sub" style="padding-left:24px">13.1 归档和一致性恢复检查点</a><a href="#section-14" class="" style="">14. F01/F02 需求追溯及关联证明</a><a href="#section-14-1" class="sub" style="padding-left:24px">14.1 可执行追溯资产</a><a href="#section-14-2" class="sub" style="padding-left:24px">14.2 F03 设计验证场景（Definition of Verifiability）</a><a href="#section-14-3" class="sub" style="padding-left:24px">14.3 与上位六道门禁的关系</a><a href="#section-15" class="" style="">15. 双门户最小读模型和协作输入（仅领域视角）</a><a href="#section-16" class="" style="">16. 设计差异、未决问题与 ADR 接续</a><a href="#section-17" class="" style="">17. F04–F08 责任边界与顺序交接</a><a href="#section-18" class="" style="">18. 参考来源与采用边界</a><a href="#section-19" class="" style="">19. F03 交付完成定义与证据状态</a></nav><div class="side-foot">V1.0 · 领域设计待具名评审<br>逻辑模型与已实现切片分开记录；正式验收场景仍为 NOT_RUN。</div></aside><div class="main"><header class="topbar"><div><button class="menu" id="menu" aria-label="展开目录" aria-controls="sidebar" aria-expanded="false">☰ 目录</button><span class="crumb"><strong>IDP API Fabric</strong>　/　设计基线　/　F03</span></div><div class="top-actions"><a class="desktop-only" href="../index.html">总目录</a><a href="F03_Domain_and_Data_Model.md">Markdown 源文件</a><button onclick="window.print()">打印 / PDF</button></div></header><main id="main-content" class="sheet" tabindex="-1"><header class="hero"><div class="eyebrow">F03 · Domain & Data Model</div><h1>IDP API Fabric<br>领域模型与数据设计</h1><p>DDD 限界上下文 · 逻辑 ERD · 聚合不变量 · 契约发布状态机 · 权限与故障恢复</p><div class="hero-meta"><span>V1.0 · 设计待评审</span><span>2026.11.09</span><span>正式工程目录</span><span>已实现切片见 §5.5 · 正式验收待执行</span></div></header><div class="metrics"><div class="metric"><b>10</b><span>专业领域与流程图</span></div><div class="metric"><b>13</b><span>聚合与事务不变量</span></div><div class="metric"><b>38</b><span>逻辑模型实体条目</span></div><div class="metric"><b>18</b><span>领域设计验证场景</span></div></div><article class="doc">
+</style></head><body><a class="skip-link" href="#main-content">跳到文档正文</a><button id="sideBackdrop" class="side-backdrop" aria-label="关闭章节目录" aria-hidden="true" tabindex="-1"></button><div class="layout"><aside class="side" id="sidebar"><a href="../index.html" style="text-decoration:none"><div class="logo">IDP API Fabric<small>ENGINEERING BASELINE</small></div></a><div class="side-kicker">文档体系</div><div class="navlist"><a href="F01_Product_Requirements.html" class="">F01 · Product Requirements</a><a href="F02_System_Architecture.html" class="">F02 · System Architecture</a><a href="F03_Domain_and_Data_Model.html" class="active">F03 · Domain & Data Model</a><a href="F04_API_Contract_Governance.html" class="">F04 · Contract Governance</a><a href="F05_Security_and_Multitenancy.html" class="">F05 · Security & Multitenancy</a><div class="pending">F06 · Dual Portal Experience <span class="mini">待编写</span></div><div class="pending">F07 · Engineering & Quality <span class="mini">待编写</span></div><a href="F08_Delivery_and_Acceptance.html" class="">F08 · Delivery & Acceptance</a></div><hr><div class="side-kicker">F03 · 目录</div><input id="navsearch" type="search" placeholder="筛选本文章节…" aria-label="筛选目录章节"><nav class="navlist" id="toc"><a href="#section-0" class="" style="">0. 执行摘要与设计结论</a><a href="#section-1" class="" style="">1. 约束、适用性及精确边界</a><a href="#section-1-1" class="sub" style="padding-left:24px">1.1 上位约束继承</a><a href="#section-1-2" class="sub" style="padding-left:24px">1.2 明确“不属于 Fabric”的事实</a><a href="#section-1-3" class="sub" style="padding-left:24px">1.3 时间、身份、租户与不可变性的共同语义</a><a href="#section-2" class="" style="">2. 统一语言及领域概念辞典</a><a href="#section-3" class="" style="">3. Context Map、事实权威与上下文协作</a><a href="#section-3-1" class="sub" style="padding-left:24px">3.1 上下文边界和公开语言</a><a href="#section-3-2" class="sub" style="padding-left:24px">3.2 依赖类型及事务边界</a><a href="#section-3-3" class="sub" style="padding-left:24px">3.3 核心查询投影的权威来源</a><a href="#section-4" class="" style="">4. 核心聚合模型与不变量</a><a href="#section-4-1" class="sub" style="padding-left:24px">4.1 不变量不应被数据库约束替代</a><a href="#section-4-2" class="sub" style="padding-left:24px">4.2 发布 Slot 的必要精化（待 ADR-0004 批准时确认）</a><a href="#section-5" class="" style="">5. 逻辑数据模型与关系基数</a><a href="#section-5-1" class="sub" style="padding-left:24px">5.1 核心逻辑 ERD（不是已执行数据库 DDL）</a><a href="#section-5-2" class="sub" style="padding-left:24px">5.2 主数据关系及完整性规则</a><a href="#section-5-3" class="sub" style="padding-left:24px">5.3 字段设计原则与物理落地边界</a><a href="#section-5-4" class="sub" style="padding-left:24px">5.4 数据字典的伴随机器资产</a><a href="#section-5-5" class="sub" style="padding-left:24px">5.5 Product Governance 已实现的物理模型（PR #6 / #7，2026-11-17 同步）</a><a href="#section-5-6" class="sub" style="padding-left:24px">5.6 已实现的受众配置和产品品牌（PR #10 / #11）</a><a href="#section-5-7" class="sub" style="padding-left:24px">5.7 已实现的 API 目录和契约修订</a><a href="#section-5-8" class="sub" style="padding-left:24px">5.8 已实现的契约检查</a><a href="#section-5-9" class="sub" style="padding-left:24px">5.9 已实现的契约评审</a><a href="#section-5-10" class="sub" style="padding-left:24px">5.10 已实现的 Release 与发布</a><a href="#section-5-11" class="sub" style="padding-left:24px">5.11 已实现的复审与批准状态的可见性</a><a href="#section-5-12" class="sub" style="padding-left:24px">5.12 已实现的查询与追溯</a><a href="#section-5-13" class="sub" style="padding-left:24px">5.13 已实现的工作台查询</a><a href="#section-6" class="" style="">6. 数据权威、制品摘要与可追溯发布链</a><a href="#section-7" class="" style="">7. 多维访问范围与关系模型</a><a href="#section-7-1" class="sub" style="padding-left:24px">7.1 授权关系及拒绝优先决策</a><a href="#section-7-2" class="sub" style="padding-left:24px">7.2 跨产品负面样例</a><a href="#section-8" class="" style="">8. 四类状态机及事务性状态边界</a><a href="#section-8-1" class="sub" style="padding-left:24px">8.1 Revision 状态转换（基于内容不可变）</a><a href="#section-8-2" class="sub" style="padding-left:24px">8.2 Release 状态转换</a><a href="#section-8-3" class="sub" style="padding-left:24px">8.3 Publication 状态、指针与撤销</a><a href="#section-8-4" class="sub" style="padding-left:24px">8.4 API Asset 生命周期</a><a href="#section-9" class="" style="">9. 命令、查询、事件与数据流映射</a><a href="#section-10" class="" style="">10. 统一贯通案例：CargoPai 契约发布</a><a href="#section-10-1" class="sub" style="padding-left:24px">10.1 角色与样本边界</a><a href="#section-10-2" class="sub" style="padding-left:24px">10.2 正常路径，明确哪些环节不在同一事务</a><a href="#section-10-3" class="sub" style="padding-left:24px">10.3 发布结果的三级可观察语义</a><a href="#section-11" class="" style="">11. 竞态、异常、失败恢复和证明义务</a><a href="#section-11-1" class="sub" style="padding-left:24px">11.1 并发 CAS 与幂等边界</a><a href="#section-11-2" class="sub" style="padding-left:24px">11.2 失败模式矩阵</a><a href="#section-11-3" class="sub" style="padding-left:24px">11.3 紧急撤销的安全优先序</a><a href="#section-12" class="" style="">12. Outbox、Job、事件、查询一致性</a><a href="#section-12-1" class="sub" style="padding-left:24px">12.1 可靠消息边界</a><a href="#section-12-2" class="sub" style="padding-left:24px">12.2 设计事件目录及所有者</a><a href="#section-12-3" class="sub" style="padding-left:24px">12.3 Outbox 与业务事务是否同库</a><a href="#section-13" class="" style="">13. 数据完整性、删除、历史、保留与重建</a><a href="#section-13-1" class="sub" style="padding-left:24px">13.1 归档和一致性恢复检查点</a><a href="#section-14" class="" style="">14. F01/F02 需求追溯及关联证明</a><a href="#section-14-1" class="sub" style="padding-left:24px">14.1 可执行追溯资产</a><a href="#section-14-2" class="sub" style="padding-left:24px">14.2 F03 设计验证场景（Definition of Verifiability）</a><a href="#section-14-3" class="sub" style="padding-left:24px">14.3 与上位六道门禁的关系</a><a href="#section-15" class="" style="">15. 双门户最小读模型和协作输入（仅领域视角）</a><a href="#section-16" class="" style="">16. 设计差异、未决问题与 ADR 接续</a><a href="#section-17" class="" style="">17. F04–F08 责任边界与顺序交接</a><a href="#section-18" class="" style="">18. 参考来源与采用边界</a><a href="#section-19" class="" style="">19. F03 交付完成定义与证据状态</a></nav><div class="side-foot">V1.0 · 领域设计待具名评审<br>逻辑模型与已实现切片分开记录；正式验收场景仍为 NOT_RUN。</div></aside><div class="main"><header class="topbar"><div><button class="menu" id="menu" aria-label="展开目录" aria-controls="sidebar" aria-expanded="false">☰ 目录</button><span class="crumb"><strong>IDP API Fabric</strong>　/　设计基线　/　F03</span></div><div class="top-actions"><a class="desktop-only" href="../index.html">总目录</a><a href="F03_Domain_and_Data_Model.md">Markdown 源文件</a><button onclick="window.print()">打印 / PDF</button></div></header><main id="main-content" class="sheet" tabindex="-1"><header class="hero"><div class="eyebrow">F03 · Domain & Data Model</div><h1>IDP API Fabric<br>领域模型与数据设计</h1><p>DDD 限界上下文 · 逻辑 ERD · 聚合不变量 · 契约发布状态机 · 权限与故障恢复</p><div class="hero-meta"><span>V1.0 · 设计待评审</span><span>2026.11.09</span><span>正式工程目录</span><span>已实现切片见 §5.5 · 正式验收待执行</span></div></header><div class="metrics"><div class="metric"><b>10</b><span>专业领域与流程图</span></div><div class="metric"><b>13</b><span>聚合与事务不变量</span></div><div class="metric"><b>38</b><span>逻辑模型实体条目</span></div><div class="metric"><b>18</b><span>领域设计验证场景</span></div></div><article class="doc">
 <blockquote>
 <p><strong>文档编号</strong>：F03 · Domain &amp; Data Model<br/>
 <strong>项目</strong>：IDP API Fabric (<code>idp-api-fabric</code>)<br/>
@@ -1521,18 +1521,18 @@
 <tbody>
 <tr>
 <td>WorkspaceNavigationView</td>
-<td>产品列表和 Workspace 列表，按调用人持有的角色和成员关系过滤（§5.5）</td>
-<td>没有把角色和待办汇在一起的视图，没有“我是谁”的读取</td>
+<td>产品列表和 Workspace 列表，按调用人持有的角色和成员关系过滤（§5.5）；“我是谁”：调用人是谁，在一个产品里持有什么（0.29.0，§5.13）</td>
+<td>没有把角色和待办汇在一起的视图</td>
 </tr>
 <tr>
 <td>AuthorizedCatalogView</td>
-<td>资产列表，授权过滤在分页之前，可按 Workspace、类型、领域和文本过滤（§5.7）</td>
+<td>资产列表，授权过滤在分页之前，可按 Workspace、类型、领域和文本过滤（§5.7）；0.31.0 起每个资产带概况，可按检查结论和待发布筛选（§5.13）</td>
 <td>—</td>
 </tr>
 <tr>
 <td>ContractReviewView</td>
-<td>修订、原文、检查、比较、评审和它们的历史（§5.7–§5.9）；Release 的来源一次读出修订、检查和批准（0.27.0）</td>
-<td>没有评审队列</td>
+<td>修订、原文、检查、比较、评审和它们的历史（§5.7–§5.9）；Release 的来源一次读出修订、检查和批准（0.27.0）；一个 Workspace 里的评审队列（0.30.0，§5.13）</td>
+<td>—</td>
 </tr>
 <tr>
 <td>PublicationTimelineView</td>
@@ -1564,6 +1564,183 @@
 <li><code>delivery_status</code> 仍然只有 <code>UNKNOWN</code>（§5.10）。</li>
 <li>按编号下载 Release 不看阻断，不核对批准，与设计正文不一致，待裁决，见 F05 §6.9。</li>
 <li>Release 的来源是准备时的记录，Git 提交是声明，不回仓库核对（FR-021，V1）。</li>
+</ul>
+<h3 id="section-5-13">5.13 已实现的工作台查询</h3>
+<p>本节记录管理 API 0.29.0–0.31.0 的实现事实，不替代 §5.4 逻辑模型的候选状态。这三个版本补的是内部工作台要先读的几样东西，都是读，不写业务数据：调用人是谁、在一个产品里持有什么（0.29.0），一个 Workspace 里的评审队列（0.30.0），资产列表和详情里每个资产走到了哪一步（0.31.0）。权威 DDL 只有一个：<code>migrations/policyreview/006_review_queue_order.sql</code>，只建一个索引；0.29.0 和 0.31.0 没有迁移。三个版本都没有新表、新列、新角色和新枚举取值，应用角色的权限也没有变（<code>ApplicationPrivileges()</code> 没有改）。接口见 F04 §11.9，权限见 F05 §6.10。</p>
+<p><strong>调用人的身份（0.29.0）。</strong> 没有新的数据，两个读取用的都是已有的东西。</p>
+<ul>
+<li>登录的是谁。身份只有令牌验过之后交出的签发方和主体（<code>internal/platform/identity/token.go</code> 的 <code>checkClaims</code>）；令牌里的其他声明不往下传，所以没有姓名可给。<code>getCaller</code> 不读库：<code>principal</code> 就是这两样，<code>platform_administrator</code> 来自部署配置 <code>IDP_FABRIC_PLATFORM_ADMIN_SUBJECTS</code>，进程启动时读入，进程内固定，不在库里，改了要重启。</li>
+<li>在一个产品里持有什么。<code>getCallerInProduct</code> 读的是授权时本来就读的三条语句：产品、调用人在这个产品里的产品角色（<code>product_role_assignment</code>）、调用人的成员关系（<code>workspace_membership</code>），都只取有效的行（<code>revoked_at IS NULL</code>）。每次请求现读，不加锁，不开事务，不缓存：撤销提交之后的下一次请求就没有那个角色，用的还是原来的令牌；产品暂停时照常读。</li>
+<li>应答里有什么。<code>roles</code> 是持有的产品角色，每个一次，可以为空；<code>workspaces</code> 是调用人持有成员关系的 Workspace，每个一项，带它在那里的角色，每个一次，没有成员关系的 Workspace 不出现。<code>workspaces</code> 不分页，一次给全，没有上限：判权用的成员关系本来就是整读的（<code>Memberships.HeldBy</code> 没有 <code>LIMIT</code>），页面要完整才判断得了。服务端按角色名和 Workspace 编号排序，契约不承诺这个顺序。应答只说持有什么：没有授予人、授予时间和分配编号，也没有“能做哪些操作”。</li>
+<li>不是“读得到什么”。产品负责人不是任何 Workspace 的成员也读得到全部 Workspace（§5.5），所以 <code>workspaces</code> 是“我持有成员关系的”，不是“我读得到的”。负责人要看自己读得到什么，仍用 <code>listWorkspaces</code>。</li>
+<li>库里出现契约没有的角色时不发出去，答 500，原因写进日志，与列产品角色、列成员一致，所以以后加新角色，仍要等所有进程升级以后再授予（§5.12）。</li>
+<li>页面要“我的产品和每个产品里我的身份”，得先 <code>listProducts</code> 再对每个产品问一次；没有一次给全的读取。</li>
+</ul>
+<p><strong>评审队列（0.30.0）。</strong> 读的是 §5.9 的 <code>policyreview.review_request</code> 和 <code>review_conclusion</code>。</p>
+<ul>
+<li>哪个 Workspace 的评审。评审申请表自带 <code>workspace_id</code>（提交评审时随修订记下，之后不变），所以一条语句按 <code>(product_id, workspace_id)</code> 读完，不经过目录，也不跨上下文。每条评审的列和读回的方式与读单个评审（<code>getRevisionReview</code>）是同一份（<code>reviewColumns</code>、<code>scanReview</code>），所以同一条评审在哪里读都一样；某条评审的行对不上模型记下的样子，整页答 500。</li>
+<li>状态不是列。<code>IN_REVIEW</code> 是还没有结论行（<code>LEFT JOIN review_conclusion</code> 之后 <code>review_id IS NULL</code>），其余三个取的是结论的结果（<code>outcome</code>）。开着的复审（§5.11）也是 <code>IN_REVIEW</code>，这时修订仍是 <code>APPROVED</code>。按状态筛选是固定的几段 SQL，不拼接用户的输入。</li>
+<li>顺序键。<code>(requested_at, review_id)</code> 升序：先提交的在前，同一时刻按 <code>review_id</code>。评审申请只增不改（应用角色只有 <code>SELECT</code> 和 <code>INSERT</code>，§5.9），这两列写入后不再变，所以一条评审的位置从它出现起不再变。翻页的位置是上一页最后一条的这两个值，语句把它当作一行比较；没有位置时从头读，所以一条语句读第一页，也读其余各页。存储多取一行，只用来知道后面还有没有。翻页期间新提交的评审比任何已发出的位置都晚，排在它们之后：不会让读过的重复，也不会让没读到的漏掉。</li>
+<li>新索引。迁移 <code>policyreview/006</code> 建 <code>review_request_queue_order (product_id, workspace_id, requested_at, review_id)</code>，列序就是队列的顺序，正向读。表上已有的评审索引以资产和修订开头（<code>review_request_history</code>），没有这个索引，一页要读完这个产品所有 Workspace 的评审再排序。迁移是普通的 <code>CREATE INDEX</code>：建的时候新提交评审的写入要等，读不受影响；它不改任何行，也不授权。</li>
+<li>一页读多少行。判权读 4 条语句（产品、角色、成员关系、Workspace），一页的数据是 1 条。计划测试里，一个产品的两个 Workspace 各有 20,000 条评审（共 40,000 条申请、37,970 条结论），数的是一页（<code>page_size=100</code>，语句取 101 行）读的行数；每一种都走 <code>review_request_queue_order</code>，没有排序：</li>
+</ul>
+<div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>情形</th>
+<th>读 <code>review_request</code></th>
+<th>读 <code>review_conclusion</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>首页、中间页</td>
+<td>101</td>
+<td>101</td>
+</tr>
+<tr>
+<td><code>APPROVED</code>（十分之六）</td>
+<td>168</td>
+<td>168</td>
+</tr>
+<tr>
+<td><code>WITHDRAWN</code>（十分之二）</td>
+<td>502</td>
+<td>502</td>
+</tr>
+<tr>
+<td><code>REJECTED</code>（十分之一）</td>
+<td>1,001</td>
+<td>1,001</td>
+</tr>
+<tr>
+<td>一个提交人（五十分之一），或 issuer 加 subject</td>
+<td>5,007</td>
+<td>101</td>
+</tr>
+<tr>
+<td><code>IN_REVIEW</code>，开着的占十分之一，散在各处</td>
+<td>1,010</td>
+<td>1,010</td>
+</tr>
+<tr>
+<td><code>IN_REVIEW</code>，开着的只有最新 30 条（共 20,000 条）</td>
+<td>20,000</td>
+<td>20,000</td>
+</tr>
+<tr>
+<td>别的产品的 Workspace</td>
+<td>0</td>
+<td>0</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><code>IN_REVIEW</code> 不能单靠索引。没有结论不是一列，索引读不了这一部分，所以一页要一直读到凑满，或者读完这个 Workspace 的评审，没有上界：开着的评审越靠后、越少，读得越多。这是本节唯一没有设上限的情形，测试只记录它的行数。默认不跑的负载测试 <code>TestAPageOfTheQueueIsReadInTheTimeItTakes</code>（环境变量 <code>IDP_FABRIC_REVIEW_QUEUE_LOAD=1</code>，整条 HTTP 链路，每个 Workspace 10,000 条评审，7 次读取取中位数，8 核的本机）量到：首页和各种筛选 4–5 毫秒，开着的评审只在最末尾时 10.4 毫秒，随这个 Workspace 的评审数线性增长。这是本机的数字，只说明量级，不是 SLO。</li>
+<li>没有做可更新的“已结”标记：它要给只追加的 <code>review_request</code> 加一列和 <code>UPDATE</code> 权限，而旧进程不写它，新旧混跑时队列会错。</li>
+<li>列表和单读只有一处不同：列表不核对评审的 <code>input_digest</code> 等于修订现在的摘要（单读核对），因为这要读修订，是 Contract Registry 的事。</li>
+</ul>
+<p><strong>资产的概况（0.31.0）。</strong> <code>listAssets</code> 和 <code>getAsset</code> 应答里的资产多一个可选的 <code>overview</code>：最新修订、最新修订最近的一次检查、最新的 Release，以及 <code>release_pending</code>。概况没有自己的表，也不存下来，每次读的时候从各上下文自己的表里算出来。</p>
+<ul>
+<li>每个成员怎么定。最新修订是 <code>revision_sequence</code> 最大的修订。最近检查是<strong>最新修订</strong>的、<code>(completed_at, check_run_id)</code> 最大的一次检查；没有检查就没有这个成员，较早的修订有没有检查不相干。最新 Release 是这个资产 <code>(prepared_at, release_id)</code> 最大的一个，<strong>不限于最新修订</strong>，所以它带 <code>revision_id</code>，能看出它不是从最新修订做的。没有修订的资产，概况只有 <code>release_pending: false</code>。每个成员都是 <code>ContractRevision</code>、<code>CheckRunOverview</code>、<code>ContractRelease</code> 同名成员的同义、同值。最新修订按序号取，不是 <code>listRevisions</code> 的最后一项：那个列表按 <code>(captured_at, revision_id)</code> 排，<code>captured_at</code> 在拿资产的登记锁之前取，序号在锁里分配，同一资产的两个并发导入，两个顺序可能不同（§5.7）。</li>
+<li><code>release_pending</code>。最新修订是 <code>APPROVED</code>，而且还没有从它准备出过 Release。只看状态，不重新核对批准：批准过期、豁免到期、评审人失权、策略或工具变了，它都不管，这些在准备 Release 时才核对（§5.10）。复审不改变修订的状态（§5.11），所以复审开着或结束，概况都不变。</li>
+<li>在哪里拼。API Catalog 只认一个端口 <code>Overviews</code>：给一组资产（带各自的 Workspace），答每个资产的概况。端口在 <code>cmd/fabric-api/overview.go</code> 里接上另外两个上下文各自的批量读取，三个上下文互不认识（§3.2）：Contract Registry 的 <code>Heads</code>，一条语句给出一组资产各自的最新修订、最新 Release，以及最新修订有没有从它准备出的 Release；Policy &amp; Review 的 <code>Latest</code>，一条语句给出一组修订各自最近的一次检查。两条语句都按资产逐个用已有的索引找（<code>contract_revision</code> 的 <code>(product_id, api_asset_id, revision_sequence)</code> 唯一约束、<code>contract_release_history</code>、<code>check_run_history</code>），不读别的资产的行；检查的各规则结果只在留下的检查上数（每个检查 23 行）。没有一条 SQL 点名别的上下文的 schema，<code>internal/architecture/schemas_test.go</code> 钉着这一点。</li>
+<li>不带筛选的一页。原来的查询（取一页多一行的资产）加一次概况：判权 3 条语句，取资产 1 条，<code>Heads</code> 1 条，<code>Latest</code> 1 条，共 6 条，与库里有多少资产无关。调用人读不了修订的 Workspace 里的资产不去问概况，应答与以前相同。</li>
+<li>带筛选的一页。<code>check_status</code> 和 <code>release_pending</code> 不是资产表的列，取资产的语句没法过滤。用例只在调用人读得了修订的 Workspace 里，按资产原来的顺序（<code>(created_at, api_asset_id)</code>）一批一批取：第一批 <code>page_size + 1</code> 个，之后每批翻倍，封顶 1000 个；每一批取资产、取概况，留下符合的，凑够 <code>page_size + 1</code> 个，或者资产取完，就停。页是留下的前 <code>page_size</code> 个，多出的一个只用来知道后面还有没有，令牌是页里最后一个资产的位置。所以除最后一页，每页都是满的。每一批 3 条语句，另加判权 3 条。</li>
+<li>代价。下面是实现时在本机量的：整条 HTTP 链路，页大小 50，调用人是读修订的作者，每个资产一个修订、一半有检查、1% 已批准未发布、2% 已发布，记下应用发出的每条 SELECT 并重放 <code>EXPLAIN ANALYZE</code>。量的程序是一次性的实验，没有放进仓库。耗时是同时有别的测试在跑时量的，只说明量级，不是 SLO：</li>
+</ul>
+<div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th style="text-align:right">资产数</th>
+<th>请求</th>
+<th style="text-align:right">轮</th>
+<th style="text-align:right">语句</th>
+<th style="text-align:right">耗时</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right">20,000</td>
+<td>不带筛选</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">约 9 毫秒</td>
+</tr>
+<tr>
+<td style="text-align:right">20,000</td>
+<td>符合的占四分之一</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">12</td>
+<td style="text-align:right">约 13 毫秒</td>
+</tr>
+<tr>
+<td style="text-align:right">20,000</td>
+<td>符合的占 1%（读了 5,581 个资产才凑够一页）</td>
+<td style="text-align:right">9</td>
+<td style="text-align:right">30</td>
+<td style="text-align:right">约 55 毫秒</td>
+</tr>
+<tr>
+<td style="text-align:right">20,000</td>
+<td>一个都不符合</td>
+<td style="text-align:right">24</td>
+<td style="text-align:right">75</td>
+<td style="text-align:right">约 0.24 秒</td>
+</tr>
+<tr>
+<td style="text-align:right">2,000</td>
+<td>一个都不符合</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">21</td>
+<td style="text-align:right">约 35 毫秒</td>
+</tr>
+</tbody>
+</table></div>
+<p>读的行数受规划器的选择影响：这份数据里 <code>contract_release</code> 只有几十到几百行（2,000 个资产时 40 行，20,000 个资产时 400 行），规划器把它整张读，所以量到的行数里它占了很大一部分（20,000 个资产、不带筛选的一页读 1,129 行，其中 400 行是它）。提交里的计划测试用两万行的大表，数的是读的行数：一组资产在 <code>contract_revision</code>、<code>source_snapshot</code>、<code>contract_release</code>、<code>check_run</code> 里读的行数与这一组的大小成正比，不做全表扫描，规则结果只读留下的检查。</p>
+<ul>
+<li>批量读取和单独读在校验上的差别。批量读取和单独读一样，要求检查的行对得上模型记下的样子（状态等于各规则结果之和），而且检查读的闭包摘要就是修订现在的；行被改坏时，概况和单独读一样答 500，而且对读得了概况的人，这让这个资产的读（<code>getAsset</code> 和列表）整个答 500，不只是少了概况。两处不同：批量读取不去 Contract Registry 查对比检查的基线修订；带 <code>check_status</code> 时，被排除的检查不读规则结果，用的是库里存的状态，不核对它等于规则结果之和。</li>
+<li>没有汇总表。设计阶段比较过两种做法，都没有选。一是触发器维护的汇总表：读的行数不随资产总数涨，但触发器要进到导入、检查、评审、准备 Release 四条核心写路径，它出错就是这些写全部失败；这是仓库里第一次让数据库替应用维护数据，也是第一次在库里跨上下文。二是 Outbox 加 worker 的事件投影（§3.3、§12 设计的做法）：不碰写路径，但概况会落后一小段时间，要新增 worker 和回填，而事件现在只写进库，没有任何消费者。现在的做法与它们的契约和端口相同，以后可以换，换的只是 <code>cmd/fabric-api/overview.go</code> 背后的读取。§3.3 里目录列表的可重建投影 <code>AssetSearchIndex</code> 仍然没有：列表读 <code>api_asset</code> 的索引，概况在读的时候算。资产多到一个产品几万个，或者页面轮询这两个筛选时，要重新看这一点；待裁决。</li>
+</ul>
+<p><strong>升级。</strong> 从 0.28.0 升级只需要 <code>fabric-migrate -apply</code>，不需要重新授权：应用 <code>policyreview/006</code>，只建 <code>review_request_queue_order</code> 一个索引，不改行，应用角色的权限没有变。库没有迁移时，0.30.0 和 0.31.0 的新进程拒绝启动并指出这一步没有记录：<code>db: the database is not migrated for this build; run fabric-migrate -apply first: migration policyreview/006_review_queue_order is not recorded</code>。旧进程在迁移后的库上照常运行：它读评审和写评审用的语句没有变，它的启动检查只查自己计划里的步骤，计划以外的步骤接受（<code>internal/platform/db/open.go</code> 的 <code>checkHistory</code>）。旧进程没有新的路径，对 <code>GET /v1/caller</code>、<code>GET /v1/products/{product_id}/caller</code> 和 <code>GET …/workspaces/{workspace_id}/reviews</code> 答 404 <code>ROUTE_NOT_FOUND</code>；它的 <code>listAssets</code> 不认识 <code>check_status</code> 和 <code>release_pending</code>，答 400 <code>REQUEST_INVALID</code>，资产的应答里没有 <code>overview</code>。建索引用普通 <code>CREATE INDEX</code>，建的时候新提交评审的写入要等，评审越多等得越久，读不受影响。概况没有状态，0.31.0 不需要任何准备，要用新筛选的页面等所有进程升级完再上。</p>
+<p><strong>和 §15 读模型的对应。</strong> 三个读模型现在有的和还缺的（§5.12 的表里的其余几行没有变）：</p>
+<div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>§15 的读模型</th>
+<th>现在有的</th>
+<th>还没有的</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>WorkspaceNavigationView</td>
+<td>产品列表和 Workspace 列表，按调用人持有的角色和成员关系过滤（§5.5）；“我是谁”：调用人是谁，在一个产品里持有哪些角色和成员关系（0.29.0）</td>
+<td>没有把角色和待办汇在一起的一次读取：首页要先问“我是谁”，再分别读评审队列、资产列表和槽位；没有“我在所有产品里的身份”的一次读取，要逐个产品问；没有“能做哪些操作”的清单；没有姓名</td>
+</tr>
+<tr>
+<td>AuthorizedCatalogView</td>
+<td>资产列表和详情带概况（最新修订、最近一次检查、最新 Release、<code>release_pending</code>），可按检查结论和待发布筛选，授权过滤和筛选都在分页之前（0.31.0）</td>
+<td>概况只给读得了修订的人，负责人和维护者看不到；概况里没有“当前发布”，要读 <code>listAssetPublications</code>；没有 <code>AssetSearchIndex</code> 投影</td>
+</tr>
+<tr>
+<td>ContractReviewView</td>
+<td>一个 Workspace 里的评审队列，先提交的在前，可按状态和提交人筛选（0.30.0），加上 §5.12 列的各项</td>
+<td>队列不给总数，不标“这条该不该我批”，不能只列我能决定的，没有评审的指派；<code>IN_REVIEW</code> 比别的状态读得多</td>
+</tr>
+</tbody>
+</table></div>
+<p>F06 的 IN-01（首页的待审核、检查失败、可发布、撤销风险）没有单独的汇总接口，要由页面拼：待审核是 <code>listWorkspaceReviews</code> 加 <code>status=IN_REVIEW</code>，检查失败是 <code>listAssets</code> 加 <code>check_status=FAIL</code>，可发布是 <code>listAssets</code> 加 <code>release_pending=true</code>，撤销风险是 <code>listPublicationSlots</code> 和 <code>listAssetPublications</code>（每项带 <code>approval_problem</code> 和 <code>blocked</code>，不能按它们筛选）。页面先用 <code>getCallerInProduct</code> 看自己的身份，再决定调哪些：没有权限的调用每次都被拒绝，也每次都留下一条审计记录（F05 §6.10）。</p>
+<p><strong>尚未实现，以及与设计不一致的地方。</strong></p>
+<ul>
+<li>“我是谁”只有签发方和主体。显示名从哪里来没有定，另存会碰到个人信息的保留和删除，与 OD-09 同类。平台管理员只来自部署配置：页面能知道调用人是不是管理员，不能增减管理员，几个副本的配置不一致时，同一个人的答案会不同；没有放在库里的、可撤销且有记录的平台管理员角色。</li>
+<li>没有评审的指派、“只列我能决定的”和待审核的条数：队列不给总数，要精确的数得另开一个操作。评审人点进去批的时候才知道自己批不了（403 <code>REVIEWER_NOT_INDEPENDENT</code>，§5.9）。<code>IN_REVIEW</code> 在评审特别多时读得更多，没有设上界，等量大了再决定要不要加“已结”标记。</li>
+<li>概况里没有“当前发布”（资产现在在哪些目标上生效）：逐个槽位核对批准太重，只看指针又可能与实际不符。要看用 <code>listAssetPublications</code>，撤销风险用 <code>listPublicationSlots</code>。<code>release_pending</code> 不重新核对批准；另给一个把批准是否还成立算进去的“可以发布”筛选，没有做。</li>
+<li><code>check_status</code> 收 <code>PASS</code>、<code>WARN</code>、<code>FAIL</code>、<code>UNKNOWN</code> 四个取值。基线里有规则没有工具，一次检查里就有 <code>NOT_RUN</code> 的规则，检查的总状态目前只会是 <code>FAIL</code> 或 <code>UNKNOWN</code>（§5.8），所以 <code>PASS</code> 和 <code>WARN</code> 今天没有结果。“检查失败”是最新修订最近一次检查是 <code>FAIL</code>，也包括评审时豁免了失败规则并批准的修订，这样的修订同时是 <code>release_pending</code>。</li>
+<li>没有汇总表，没有 <code>AssetSearchIndex</code>，没有事件投影，见上；这是与 §3.3 的设计不一致的地方，待裁决。</li>
+<li>设计里首页的 Worklist（F06 IN-01）和目录的 Asset Index（F06 IN-03）都没有做成读模型：首页要由页面拼，目录列表读 <code>api_asset</code>。</li>
+<li>批量读取带回完整的修订行，一个都不符合的 20,000 个资产要收 40,002 行；只选概况用到的列，等有人觉得慢再做。</li>
+<li>浏览器登录、会话、CORS 和前端工程没有做（等 ADR-0005、ADR-0006）；评审的通知；让负责人、维护者或只读角色读修订、检查、评审、Release 没有做，<code>internal_reader</code> 仍然没有（F05 §6.10）。</li>
 </ul>
 <h2 id="section-6">6. 数据权威、制品摘要与可追溯发布链</h2>
 <figure class="architecture-figure"><div class="fig-label">FIGURE 05 · 单一事实权威与来源追踪 / Import → Release → Portal</div><div class="fig-grid cols-5"><div class="fig-box"><b>SourceSnapshot</b><small>Git Commit/Upload · 原文 digest</small></div><div class="fig-box"><b>Revision</b><small>Immutable content · ref closure</small></div><div class="fig-box"><b>Check + Decision</b><small>Policy digest · scope · review evidence</small></div><div class="fig-box"><b>Release</b><small>READY · immutable artifact manifest</small></div><div class="fig-box fig-primary"><b>PublicationSlot</b><small>CAS pointer · target audience/env</small></div></div><div class="fig-arrow">↓ 主库目标版本权威 → Outbox/Worker → PortalProjection；读时再次按当前策略判定</div><div class="fig-grid cols-3"><div class="fig-box tone-green"><b>Git / Upload</b><small>来源事实</small></div><div class="fig-box tone-green"><b>Registry / Object Store</b><small>正式内容/摘要事实</small></div><div class="fig-box tone-green"><b>Publication DB</b><small>当前生效和阻断事实</small></div></div><figcaption>不允许把门户索引、CDN 或 `latest` 当成权威；完整 digest 链可核验来源、引用闭包、构建工具及最终制品。</figcaption></figure>

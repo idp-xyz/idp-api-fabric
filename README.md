@@ -45,11 +45,17 @@ PR #10 和 #11 的实现详见 [F03 §5.6](docs/F03_Domain_and_Data_Model.md#56-
 
 实现详见 [F03 §5.11](docs/F03_Domain_and_Data_Model.md#511-已实现的复审与批准状态的可见性)、[F04 §11.7](docs/F04_API_Contract_Governance.md#117-已实现的复审接口与批准状态) 和 [F05 §6.8](docs/F05_Security_and_Multitenancy.md#68-已实现的复审与批准状态的权限)。授权矩阵没有新增条目。
 
-管理 API 0.26.0–0.28.0 加入查询与追溯：资产所属 Workspace 的作者、评审人和发布人能列出一个发布目标上的槽位，也能列出一个资产发布到了哪些目标，列表里的每一项和单独读到的槽位完全一样，含 `blocked` 和 `approval_problem`（0.26.0）；能按编号下载一个 Release 的制品，已经被替换或撤回的也行，也能读出一个 Release 的来源：它依据的修订（含提交人声明的 Git 来源）、检查和批准，复审之后不变（0.27.0）；产品多了一个角色 `internal_auditor`（审计员），由产品负责人授予，审计员按产品读审计记录，新的在前，可以按时间、动作、结果、行动人、资源和请求编号筛选（0.28.0）。新增 5 个操作，共 57 个。按编号下载不看发布目标上的访问阻断，也不重新核对批准；审计记录里的行动人如实给出，没有脱敏。这两处与设计正文不一致，待裁决。
+管理 API 0.26.0–0.28.0 加入查询与追溯：资产所属 Workspace 的作者、评审人和发布人能列出一个发布目标上的槽位，也能列出一个资产发布到了哪些目标，列表里的每一项和单独读到的槽位完全一样，含 `blocked` 和 `approval_problem`（0.26.0）；能按编号下载一个 Release 的制品，已经被替换或撤回的也行，也能读出一个 Release 的来源：它依据的修订（含提交人声明的 Git 来源）、检查和批准，复审之后不变（0.27.0）；产品多了一个角色 `internal_auditor`（审计员），由产品负责人授予，审计员按产品读审计记录，新的在前，可以按时间、动作、结果、行动人、资源和请求编号筛选（0.28.0）。新增 5 个操作，到 0.28.0 共 57 个。按编号下载不看发布目标上的访问阻断，也不重新核对批准；审计记录里的行动人如实给出，没有脱敏。这两处与设计正文不一致，待裁决。
 
 从 0.25.0 升级需要重新授权：先执行 `fabric-migrate -apply -grant-to <application_role>`，应用 `productgovernance/009` 和 `platformoperations/002`，并给应用角色补上审计表的 `SELECT`（它仍然没有 `UPDATE` 和 `DELETE`），再换进程。只迁移不授权时，新进程拒绝启动：`db: the application role lacks privileges this build needs; run fabric-migrate -apply -grant-to <role>: missing SELECT on platformoperations.audit_record`。建索引用普通 `CREATE INDEX`，建的时候审计表的写入要等。旧进程在迁移和授权之后照常运行。所有进程升级以后，才授予 `internal_auditor`：旧进程的契约里没有这个角色，会拒绝授予请求；库里有了审计员，它列产品角色会返回 500。0.26.0 和 0.27.0 本身没有迁移，也不需要授权。
 
 实现详见 [F03 §5.12](docs/F03_Domain_and_Data_Model.md#512-已实现的查询与追溯)、[F04 §11.8](docs/F04_API_Contract_Governance.md#118-已实现的查询接口) 和 [F05 §6.9](docs/F05_Security_and_Multitenancy.md#69-已实现的查询与审计读取的权限)。授权矩阵没有新增条目。
+
+管理 API 0.29.0–0.31.0 加入内部工作台要先读的几样东西，都是读：调用人能问自己是谁、是不是平台管理员，也能问自己在一个产品里持有哪些角色、是哪些 Workspace 的成员，不能问别人（0.29.0，平台管理员来自部署配置，不在库里）；资产所属 Workspace 的作者、评审人和发布人能列出一个 Workspace 里的评审，先提交的在前，可以按状态和提交人筛选，读到的是整个 Workspace 的全部评审（0.30.0）；他们读到的资产多一个概况：最新修订、最新修订最近一次检查、最新 Release，以及最新修订已批准而还没做 Release，资产列表可以按检查结论和“可发布”筛选（0.31.0）。概况是读的时候现算的，没有汇总表；负责人和维护者读得到资产，读不到概况。新增 3 个操作，共 60 个。没有读权限的人每调用一次留下一条拒绝记录，页面应当先问身份再决定调不调。没有做汇总表和事件投影，设计里目录列表的可重建投影 `AssetSearchIndex` 仍然没有，这与设计不一致，待裁决；概况只给读得了修订的人，评审队列沿用读评审的名单，也待裁决。
+
+从 0.28.0 升级只需要 `fabric-migrate -apply`，不需要重新授权，再换进程：它应用 `policyreview/006`，只建一个索引，不改行，应用角色的权限不变。库没迁移时，0.30.0 起的新进程拒绝启动：`db: the database is not migrated for this build; run fabric-migrate -apply first: migration policyreview/006_review_queue_order is not recorded`。建索引用普通 `CREATE INDEX`，建的时候新提交评审的写入要等，读不受影响。旧进程在迁移之后照常运行，对三个新路径答 404 `ROUTE_NOT_FOUND`，对带 `check_status` 或 `release_pending` 的资产列表答 400 `REQUEST_INVALID`，资产的应答里没有概况，所以用这些接口的页面等所有进程升级完再上。0.29.0 和 0.31.0 本身没有迁移，也没有新角色和新配置。
+
+实现详见 [F03 §5.13](docs/F03_Domain_and_Data_Model.md#513-已实现的工作台查询)、[F04 §11.9](docs/F04_API_Contract_Governance.md#119-已实现的工作台查询接口) 和 [F05 §6.10](docs/F05_Security_and_Multitenancy.md#610-已实现的工作台查询的权限)。授权矩阵没有新增条目。
 
 ## 阅读入口
 

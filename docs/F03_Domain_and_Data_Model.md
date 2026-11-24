@@ -541,9 +541,9 @@ Git 来源是提交者的声明：仓库的 https 网址（至多 300 个字符�
 
 | §15 的读模型 | 现在有的 | 还没有的 |
 |---|---|---|
-| WorkspaceNavigationView | 产品列表和 Workspace 列表，按调用人持有的角色和成员关系过滤（§5.5） | 没有把角色和待办汇在一起的视图，没有“我是谁”的读取 |
-| AuthorizedCatalogView | 资产列表，授权过滤在分页之前，可按 Workspace、类型、领域和文本过滤（§5.7） | — |
-| ContractReviewView | 修订、原文、检查、比较、评审和它们的历史（§5.7–§5.9）；Release 的来源一次读出修订、检查和批准（0.27.0） | 没有评审队列 |
+| WorkspaceNavigationView | 产品列表和 Workspace 列表，按调用人持有的角色和成员关系过滤（§5.5）；“我是谁”：调用人是谁，在一个产品里持有什么（0.29.0，§5.13） | 没有把角色和待办汇在一起的视图 |
+| AuthorizedCatalogView | 资产列表，授权过滤在分页之前，可按 Workspace、类型、领域和文本过滤（§5.7）；0.31.0 起每个资产带概况，可按检查结论和待发布筛选（§5.13） | — |
+| ContractReviewView | 修订、原文、检查、比较、评审和它们的历史（§5.7–§5.9）；Release 的来源一次读出修订、检查和批准（0.27.0）；一个 Workspace 里的评审队列（0.30.0，§5.13） | — |
 | PublicationTimelineView | 槽位（含 `blocked` 和 `approval_problem`）、槽位的操作历史、一个目标上的槽位列表、一个资产发布到了哪些目标（0.26.0）、Release 的列表和来源 | `delivery_status` 仍然只有 `UNKNOWN`；不能按批准有没有问题筛选槽位；没有按产品列出槽位 |
 | AuthorizedDocumentView | 没有 | 对外读取需要的身份、授权和边缘分发；现在只有 `internal` 受众可读，读到的是字节，不是文档视图 |
 | DeveloperApplicationView | 没有 | 开发者应用和订阅（V1） |
@@ -557,6 +557,87 @@ Git 来源是提交者的声明：仓库的 https 网址（至多 300 个字符�
 - `delivery_status` 仍然只有 `UNKNOWN`（§5.10）。
 - 按编号下载 Release 不看阻断，不核对批准，与设计正文不一致，待裁决，见 F05 §6.9。
 - Release 的来源是准备时的记录，Git 提交是声明，不回仓库核对（FR-021，V1）。
+
+### 5.13 已实现的工作台查询
+
+本节记录管理 API 0.29.0–0.31.0 的实现事实，不替代 §5.4 逻辑模型的候选状态。这三个版本补的是内部工作台要先读的几样东西，都是读，不写业务数据：调用人是谁、在一个产品里持有什么（0.29.0），一个 Workspace 里的评审队列（0.30.0），资产列表和详情里每个资产走到了哪一步（0.31.0）。权威 DDL 只有一个：`migrations/policyreview/006_review_queue_order.sql`，只建一个索引；0.29.0 和 0.31.0 没有迁移。三个版本都没有新表、新列、新角色和新枚举取值，应用角色的权限也没有变（`ApplicationPrivileges()` 没有改）。接口见 F04 §11.9，权限见 F05 §6.10。
+
+**调用人的身份（0.29.0）。** 没有新的数据，两个读取用的都是已有的东西。
+
+- 登录的是谁。身份只有令牌验过之后交出的签发方和主体（`internal/platform/identity/token.go` 的 `checkClaims`）；令牌里的其他声明不往下传，所以没有姓名可给。`getCaller` 不读库：`principal` 就是这两样，`platform_administrator` 来自部署配置 `IDP_FABRIC_PLATFORM_ADMIN_SUBJECTS`，进程启动时读入，进程内固定，不在库里，改了要重启。
+- 在一个产品里持有什么。`getCallerInProduct` 读的是授权时本来就读的三条语句：产品、调用人在这个产品里的产品角色（`product_role_assignment`）、调用人的成员关系（`workspace_membership`），都只取有效的行（`revoked_at IS NULL`）。每次请求现读，不加锁，不开事务，不缓存：撤销提交之后的下一次请求就没有那个角色，用的还是原来的令牌；产品暂停时照常读。
+- 应答里有什么。`roles` 是持有的产品角色，每个一次，可以为空；`workspaces` 是调用人持有成员关系的 Workspace，每个一项，带它在那里的角色，每个一次，没有成员关系的 Workspace 不出现。`workspaces` 不分页，一次给全，没有上限：判权用的成员关系本来就是整读的（`Memberships.HeldBy` 没有 `LIMIT`），页面要完整才判断得了。服务端按角色名和 Workspace 编号排序，契约不承诺这个顺序。应答只说持有什么：没有授予人、授予时间和分配编号，也没有“能做哪些操作”。
+- 不是“读得到什么”。产品负责人不是任何 Workspace 的成员也读得到全部 Workspace（§5.5），所以 `workspaces` 是“我持有成员关系的”，不是“我读得到的”。负责人要看自己读得到什么，仍用 `listWorkspaces`。
+- 库里出现契约没有的角色时不发出去，答 500，原因写进日志，与列产品角色、列成员一致，所以以后加新角色，仍要等所有进程升级以后再授予（§5.12）。
+- 页面要“我的产品和每个产品里我的身份”，得先 `listProducts` 再对每个产品问一次；没有一次给全的读取。
+
+**评审队列（0.30.0）。** 读的是 §5.9 的 `policyreview.review_request` 和 `review_conclusion`。
+
+- 哪个 Workspace 的评审。评审申请表自带 `workspace_id`（提交评审时随修订记下，之后不变），所以一条语句按 `(product_id, workspace_id)` 读完，不经过目录，也不跨上下文。每条评审的列和读回的方式与读单个评审（`getRevisionReview`）是同一份（`reviewColumns`、`scanReview`），所以同一条评审在哪里读都一样；某条评审的行对不上模型记下的样子，整页答 500。
+- 状态不是列。`IN_REVIEW` 是还没有结论行（`LEFT JOIN review_conclusion` 之后 `review_id IS NULL`），其余三个取的是结论的结果（`outcome`）。开着的复审（§5.11）也是 `IN_REVIEW`，这时修订仍是 `APPROVED`。按状态筛选是固定的几段 SQL，不拼接用户的输入。
+- 顺序键。`(requested_at, review_id)` 升序：先提交的在前，同一时刻按 `review_id`。评审申请只增不改（应用角色只有 `SELECT` 和 `INSERT`，§5.9），这两列写入后不再变，所以一条评审的位置从它出现起不再变。翻页的位置是上一页最后一条的这两个值，语句把它当作一行比较；没有位置时从头读，所以一条语句读第一页，也读其余各页。存储多取一行，只用来知道后面还有没有。翻页期间新提交的评审比任何已发出的位置都晚，排在它们之后：不会让读过的重复，也不会让没读到的漏掉。
+- 新索引。迁移 `policyreview/006` 建 `review_request_queue_order (product_id, workspace_id, requested_at, review_id)`，列序就是队列的顺序，正向读。表上已有的评审索引以资产和修订开头（`review_request_history`），没有这个索引，一页要读完这个产品所有 Workspace 的评审再排序。迁移是普通的 `CREATE INDEX`：建的时候新提交评审的写入要等，读不受影响；它不改任何行，也不授权。
+- 一页读多少行。判权读 4 条语句（产品、角色、成员关系、Workspace），一页的数据是 1 条。计划测试里，一个产品的两个 Workspace 各有 20,000 条评审（共 40,000 条申请、37,970 条结论），数的是一页（`page_size=100`，语句取 101 行）读的行数；每一种都走 `review_request_queue_order`，没有排序：
+
+| 情形 | 读 `review_request` | 读 `review_conclusion` |
+|---|---|---|
+| 首页、中间页 | 101 | 101 |
+| `APPROVED`（十分之六） | 168 | 168 |
+| `WITHDRAWN`（十分之二） | 502 | 502 |
+| `REJECTED`（十分之一） | 1,001 | 1,001 |
+| 一个提交人（五十分之一），或 issuer 加 subject | 5,007 | 101 |
+| `IN_REVIEW`，开着的占十分之一，散在各处 | 1,010 | 1,010 |
+| `IN_REVIEW`，开着的只有最新 30 条（共 20,000 条） | 20,000 | 20,000 |
+| 别的产品的 Workspace | 0 | 0 |
+
+- `IN_REVIEW` 不能单靠索引。没有结论不是一列，索引读不了这一部分，所以一页要一直读到凑满，或者读完这个 Workspace 的评审，没有上界：开着的评审越靠后、越少，读得越多。这是本节唯一没有设上限的情形，测试只记录它的行数。默认不跑的负载测试 `TestAPageOfTheQueueIsReadInTheTimeItTakes`（环境变量 `IDP_FABRIC_REVIEW_QUEUE_LOAD=1`，整条 HTTP 链路，每个 Workspace 10,000 条评审，7 次读取取中位数，8 核的本机）量到：首页和各种筛选 4–5 毫秒，开着的评审只在最末尾时 10.4 毫秒，随这个 Workspace 的评审数线性增长。这是本机的数字，只说明量级，不是 SLO。
+- 没有做可更新的“已结”标记：它要给只追加的 `review_request` 加一列和 `UPDATE` 权限，而旧进程不写它，新旧混跑时队列会错。
+- 列表和单读只有一处不同：列表不核对评审的 `input_digest` 等于修订现在的摘要（单读核对），因为这要读修订，是 Contract Registry 的事。
+
+**资产的概况（0.31.0）。** `listAssets` 和 `getAsset` 应答里的资产多一个可选的 `overview`：最新修订、最新修订最近的一次检查、最新的 Release，以及 `release_pending`。概况没有自己的表，也不存下来，每次读的时候从各上下文自己的表里算出来。
+
+- 每个成员怎么定。最新修订是 `revision_sequence` 最大的修订。最近检查是**最新修订**的、`(completed_at, check_run_id)` 最大的一次检查；没有检查就没有这个成员，较早的修订有没有检查不相干。最新 Release 是这个资产 `(prepared_at, release_id)` 最大的一个，**不限于最新修订**，所以它带 `revision_id`，能看出它不是从最新修订做的。没有修订的资产，概况只有 `release_pending: false`。每个成员都是 `ContractRevision`、`CheckRunOverview`、`ContractRelease` 同名成员的同义、同值。最新修订按序号取，不是 `listRevisions` 的最后一项：那个列表按 `(captured_at, revision_id)` 排，`captured_at` 在拿资产的登记锁之前取，序号在锁里分配，同一资产的两个并发导入，两个顺序可能不同（§5.7）。
+- `release_pending`。最新修订是 `APPROVED`，而且还没有从它准备出过 Release。只看状态，不重新核对批准：批准过期、豁免到期、评审人失权、策略或工具变了，它都不管，这些在准备 Release 时才核对（§5.10）。复审不改变修订的状态（§5.11），所以复审开着或结束，概况都不变。
+- 在哪里拼。API Catalog 只认一个端口 `Overviews`：给一组资产（带各自的 Workspace），答每个资产的概况。端口在 `cmd/fabric-api/overview.go` 里接上另外两个上下文各自的批量读取，三个上下文互不认识（§3.2）：Contract Registry 的 `Heads`，一条语句给出一组资产各自的最新修订、最新 Release，以及最新修订有没有从它准备出的 Release；Policy & Review 的 `Latest`，一条语句给出一组修订各自最近的一次检查。两条语句都按资产逐个用已有的索引找（`contract_revision` 的 `(product_id, api_asset_id, revision_sequence)` 唯一约束、`contract_release_history`、`check_run_history`），不读别的资产的行；检查的各规则结果只在留下的检查上数（每个检查 23 行）。没有一条 SQL 点名别的上下文的 schema，`internal/architecture/schemas_test.go` 钉着这一点。
+- 不带筛选的一页。原来的查询（取一页多一行的资产）加一次概况：判权 3 条语句，取资产 1 条，`Heads` 1 条，`Latest` 1 条，共 6 条，与库里有多少资产无关。调用人读不了修订的 Workspace 里的资产不去问概况，应答与以前相同。
+- 带筛选的一页。`check_status` 和 `release_pending` 不是资产表的列，取资产的语句没法过滤。用例只在调用人读得了修订的 Workspace 里，按资产原来的顺序（`(created_at, api_asset_id)`）一批一批取：第一批 `page_size + 1` 个，之后每批翻倍，封顶 1000 个；每一批取资产、取概况，留下符合的，凑够 `page_size + 1` 个，或者资产取完，就停。页是留下的前 `page_size` 个，多出的一个只用来知道后面还有没有，令牌是页里最后一个资产的位置。所以除最后一页，每页都是满的。每一批 3 条语句，另加判权 3 条。
+- 代价。下面是实现时在本机量的：整条 HTTP 链路，页大小 50，调用人是读修订的作者，每个资产一个修订、一半有检查、1% 已批准未发布、2% 已发布，记下应用发出的每条 SELECT 并重放 `EXPLAIN ANALYZE`。量的程序是一次性的实验，没有放进仓库。耗时是同时有别的测试在跑时量的，只说明量级，不是 SLO：
+
+| 资产数 | 请求 | 轮 | 语句 | 耗时 |
+|---:|---|---:|---:|---:|
+| 20,000 | 不带筛选 | 1 | 6 | 约 9 毫秒 |
+| 20,000 | 符合的占四分之一 | 3 | 12 | 约 13 毫秒 |
+| 20,000 | 符合的占 1%（读了 5,581 个资产才凑够一页） | 9 | 30 | 约 55 毫秒 |
+| 20,000 | 一个都不符合 | 24 | 75 | 约 0.24 秒 |
+| 2,000 | 一个都不符合 | 6 | 21 | 约 35 毫秒 |
+
+读的行数受规划器的选择影响：这份数据里 `contract_release` 只有几十到几百行（2,000 个资产时 40 行，20,000 个资产时 400 行），规划器把它整张读，所以量到的行数里它占了很大一部分（20,000 个资产、不带筛选的一页读 1,129 行，其中 400 行是它）。提交里的计划测试用两万行的大表，数的是读的行数：一组资产在 `contract_revision`、`source_snapshot`、`contract_release`、`check_run` 里读的行数与这一组的大小成正比，不做全表扫描，规则结果只读留下的检查。
+
+- 批量读取和单独读在校验上的差别。批量读取和单独读一样，要求检查的行对得上模型记下的样子（状态等于各规则结果之和），而且检查读的闭包摘要就是修订现在的；行被改坏时，概况和单独读一样答 500，而且对读得了概况的人，这让这个资产的读（`getAsset` 和列表）整个答 500，不只是少了概况。两处不同：批量读取不去 Contract Registry 查对比检查的基线修订；带 `check_status` 时，被排除的检查不读规则结果，用的是库里存的状态，不核对它等于规则结果之和。
+- 没有汇总表。设计阶段比较过两种做法，都没有选。一是触发器维护的汇总表：读的行数不随资产总数涨，但触发器要进到导入、检查、评审、准备 Release 四条核心写路径，它出错就是这些写全部失败；这是仓库里第一次让数据库替应用维护数据，也是第一次在库里跨上下文。二是 Outbox 加 worker 的事件投影（§3.3、§12 设计的做法）：不碰写路径，但概况会落后一小段时间，要新增 worker 和回填，而事件现在只写进库，没有任何消费者。现在的做法与它们的契约和端口相同，以后可以换，换的只是 `cmd/fabric-api/overview.go` 背后的读取。§3.3 里目录列表的可重建投影 `AssetSearchIndex` 仍然没有：列表读 `api_asset` 的索引，概况在读的时候算。资产多到一个产品几万个，或者页面轮询这两个筛选时，要重新看这一点；待裁决。
+
+**升级。** 从 0.28.0 升级只需要 `fabric-migrate -apply`，不需要重新授权：应用 `policyreview/006`，只建 `review_request_queue_order` 一个索引，不改行，应用角色的权限没有变。库没有迁移时，0.30.0 和 0.31.0 的新进程拒绝启动并指出这一步没有记录：`db: the database is not migrated for this build; run fabric-migrate -apply first: migration policyreview/006_review_queue_order is not recorded`。旧进程在迁移后的库上照常运行：它读评审和写评审用的语句没有变，它的启动检查只查自己计划里的步骤，计划以外的步骤接受（`internal/platform/db/open.go` 的 `checkHistory`）。旧进程没有新的路径，对 `GET /v1/caller`、`GET /v1/products/{product_id}/caller` 和 `GET …/workspaces/{workspace_id}/reviews` 答 404 `ROUTE_NOT_FOUND`；它的 `listAssets` 不认识 `check_status` 和 `release_pending`，答 400 `REQUEST_INVALID`，资产的应答里没有 `overview`。建索引用普通 `CREATE INDEX`，建的时候新提交评审的写入要等，评审越多等得越久，读不受影响。概况没有状态，0.31.0 不需要任何准备，要用新筛选的页面等所有进程升级完再上。
+
+**和 §15 读模型的对应。** 三个读模型现在有的和还缺的（§5.12 的表里的其余几行没有变）：
+
+| §15 的读模型 | 现在有的 | 还没有的 |
+|---|---|---|
+| WorkspaceNavigationView | 产品列表和 Workspace 列表，按调用人持有的角色和成员关系过滤（§5.5）；“我是谁”：调用人是谁，在一个产品里持有哪些角色和成员关系（0.29.0） | 没有把角色和待办汇在一起的一次读取：首页要先问“我是谁”，再分别读评审队列、资产列表和槽位；没有“我在所有产品里的身份”的一次读取，要逐个产品问；没有“能做哪些操作”的清单；没有姓名 |
+| AuthorizedCatalogView | 资产列表和详情带概况（最新修订、最近一次检查、最新 Release、`release_pending`），可按检查结论和待发布筛选，授权过滤和筛选都在分页之前（0.31.0） | 概况只给读得了修订的人，负责人和维护者看不到；概况里没有“当前发布”，要读 `listAssetPublications`；没有 `AssetSearchIndex` 投影 |
+| ContractReviewView | 一个 Workspace 里的评审队列，先提交的在前，可按状态和提交人筛选（0.30.0），加上 §5.12 列的各项 | 队列不给总数，不标“这条该不该我批”，不能只列我能决定的，没有评审的指派；`IN_REVIEW` 比别的状态读得多 |
+
+F06 的 IN-01（首页的待审核、检查失败、可发布、撤销风险）没有单独的汇总接口，要由页面拼：待审核是 `listWorkspaceReviews` 加 `status=IN_REVIEW`，检查失败是 `listAssets` 加 `check_status=FAIL`，可发布是 `listAssets` 加 `release_pending=true`，撤销风险是 `listPublicationSlots` 和 `listAssetPublications`（每项带 `approval_problem` 和 `blocked`，不能按它们筛选）。页面先用 `getCallerInProduct` 看自己的身份，再决定调哪些：没有权限的调用每次都被拒绝，也每次都留下一条审计记录（F05 §6.10）。
+
+**尚未实现，以及与设计不一致的地方。**
+
+- “我是谁”只有签发方和主体。显示名从哪里来没有定，另存会碰到个人信息的保留和删除，与 OD-09 同类。平台管理员只来自部署配置：页面能知道调用人是不是管理员，不能增减管理员，几个副本的配置不一致时，同一个人的答案会不同；没有放在库里的、可撤销且有记录的平台管理员角色。
+- 没有评审的指派、“只列我能决定的”和待审核的条数：队列不给总数，要精确的数得另开一个操作。评审人点进去批的时候才知道自己批不了（403 `REVIEWER_NOT_INDEPENDENT`，§5.9）。`IN_REVIEW` 在评审特别多时读得更多，没有设上界，等量大了再决定要不要加“已结”标记。
+- 概况里没有“当前发布”（资产现在在哪些目标上生效）：逐个槽位核对批准太重，只看指针又可能与实际不符。要看用 `listAssetPublications`，撤销风险用 `listPublicationSlots`。`release_pending` 不重新核对批准；另给一个把批准是否还成立算进去的“可以发布”筛选，没有做。
+- `check_status` 收 `PASS`、`WARN`、`FAIL`、`UNKNOWN` 四个取值。基线里有规则没有工具，一次检查里就有 `NOT_RUN` 的规则，检查的总状态目前只会是 `FAIL` 或 `UNKNOWN`（§5.8），所以 `PASS` 和 `WARN` 今天没有结果。“检查失败”是最新修订最近一次检查是 `FAIL`，也包括评审时豁免了失败规则并批准的修订，这样的修订同时是 `release_pending`。
+- 没有汇总表，没有 `AssetSearchIndex`，没有事件投影，见上；这是与 §3.3 的设计不一致的地方，待裁决。
+- 设计里首页的 Worklist（F06 IN-01）和目录的 Asset Index（F06 IN-03）都没有做成读模型：首页要由页面拼，目录列表读 `api_asset`。
+- 批量读取带回完整的修订行，一个都不符合的 20,000 个资产要收 40,002 行；只选概况用到的列，等有人觉得慢再做。
+- 浏览器登录、会话、CORS 和前端工程没有做（等 ADR-0005、ADR-0006）；评审的通知；让负责人、维护者或只读角色读修订、检查、评审、Release 没有做，`internal_reader` 仍然没有（F05 §6.10）。
 
 ## 6. 数据权威、制品摘要与可追溯发布链
 
