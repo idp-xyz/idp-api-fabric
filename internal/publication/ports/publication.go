@@ -89,6 +89,15 @@ type Artifact struct {
 	Payload []byte
 }
 
+// PartnerGrantRequest names the exact publication scope a partner asks to read.
+type PartnerGrantRequest struct {
+	Caller      domain.Principal
+	ProductID   string
+	TargetID    string
+	AssetID     string
+	Environment string
+}
+
 type Authority interface {
 	ProductKnown(ctx context.Context, request domain.Request) error
 	TargetManager(ctx context.Context, request domain.Request) (active bool, err error)

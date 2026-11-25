@@ -1,0 +1,64 @@
+openapi: 3.1.2
+info:
+  title: CargoPai partner reference origin
+  version: 0.1.0
+  description: >-
+    Serves an immutable contract bundle from one configured CargoPai partner
+    publication target. Authorization checks the current developer grant,
+    target, slot, approval and access blocks on each request.
+security:
+  - partnerBearer: []
+paths:
+  /v1/reference/{asset}:
+    get:
+      operationId: getPartnerReference
+      parameters:
+        - name: asset
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The exact immutable source bundle of the active release
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            X-Artifact-Digest:
+              schema:
+                type: string
+                pattern: '^sha256:[0-9a-f]{64}$'
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: A valid partner bearer token is required
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            WWW-Authenticate:
+              schema:
+                type: string
+        '404':
+          description: No reference is available to this caller
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+        '503':
+          description: Reference authorization or retrieval is temporarily unavailable
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+components:
+  securitySchemes:
+    partnerBearer:
+      type: http
+      scheme: bearer
+  headers:
+    NoStore:
+      schema:
+        type: string
+        const: no-store

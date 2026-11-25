@@ -31,8 +31,17 @@ func (s *ProductGovernance) ReleaseMembership(ctx context.Context, actor domain.
 		}
 		reader = slices.Contains(roles, domain.RoleProductOwner)
 	}
-	current, found, err := s.deps.Products.Find(ctx, product)
-	return reader, publisher, found && current.Status == domain.ProductActive, err
+	key, err := s.ActiveProductKey(ctx, product)
+	return reader, publisher, key != "", err
+}
+
+// ActiveProductKey identifies a product that can serve a publication.
+func (s *ProductGovernance) ActiveProductKey(ctx context.Context, id domain.ProductID) (string, error) {
+	product, found, err := s.deps.Products.Find(ctx, id)
+	if err != nil || !found || product.Status != domain.ProductActive {
+		return "", err
+	}
+	return product.Key, nil
 }
 
 // HoldsApprovalGrant checks that the grant under which a reviewer approved
