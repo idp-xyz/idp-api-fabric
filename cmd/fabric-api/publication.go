@@ -195,7 +195,7 @@ func (s publicationAuthority) Artifact(ctx context.Context, request publicationd
 // it.
 func (s publicationAuthority) Admission(ctx context.Context, request publicationdomain.Request, workspaceID string,
 	target publicationdomain.Target, releaseID, previousID string, returning bool) error {
-	err := s.verify(ctx, assetOf(request, workspaceID), target, releaseID, previousID, registrydomain.Principal(request.Caller), returning)
+	_, err := s.verify(ctx, assetOf(request, workspaceID), target, releaseID, previousID, registrydomain.Principal(request.Caller), returning)
 	if errors.Is(err, checks.ErrPublisherInvolved) {
 		err = errors.Join(err, publication.ErrForbidden)
 	}
@@ -208,7 +208,7 @@ func (s publicationAuthority) Admission(ctx context.Context, request publication
 // says it, and serves the release all the same.
 func (s publicationAuthority) Approval(ctx context.Context, request publicationdomain.Request, workspaceID string,
 	target publicationdomain.Target, releaseID string) (error, error) {
-	err := s.verify(ctx, assetOf(request, workspaceID), target, releaseID, "", registrydomain.Principal{}, false)
+	_, err := s.verify(ctx, assetOf(request, workspaceID), target, releaseID, "", registrydomain.Principal{}, false)
 	if unapproved(err) {
 		return err, nil
 	}
@@ -253,16 +253,16 @@ func (s publicationAuthority) release(ctx context.Context, asset registrydomain.
 // verifies the approval as it was given and not whether it still holds. It
 // hands on what it finds as it is.
 func (s publicationAuthority) verify(ctx context.Context, asset registrydomain.AssetRef, target publicationdomain.Target,
-	releaseID, previousID string, publisher registrydomain.Principal, returning bool) error {
-	release, revision, _, err := s.release(ctx, asset, releaseID)
+	releaseID, previousID string, publisher registrydomain.Principal, returning bool) (publicationports.Artifact, error) {
+	release, revision, artifact, err := s.release(ctx, asset, releaseID)
 	if err != nil {
-		return err
+		return publicationports.Artifact{}, err
 	}
 	var baseline *checkdomain.ComparisonBaseline
 	if previousID != "" && previousID != release.ID {
 		previous, err := s.releases.FindRelease(ctx, asset, previousID)
 		if err != nil {
-			return err
+			return publicationports.Artifact{}, err
 		}
 		if previous.RevisionID != release.RevisionID {
 			baseline = &checkdomain.ComparisonBaseline{RevisionID: previous.RevisionID, InputDigest: previous.InputDigest}
@@ -271,12 +271,12 @@ func (s publicationAuthority) verify(ctx context.Context, asset registrydomain.A
 	evidence, err := s.approval(ctx, revision, release.ReviewID, publisher,
 		&checkdomain.Target{Audience: target.Audience, Environment: target.Environment}, baseline, returning)
 	if err != nil {
-		return err
+		return publicationports.Artifact{}, err
 	}
 	if release.Approval != evidence {
-		return checkdomain.ErrReviewDamaged
+		return publicationports.Artifact{}, checkdomain.ErrReviewDamaged
 	}
-	return nil
+	return artifact, nil
 }
 
 func (a auditTrail) recordPublication(ctx context.Context, entry publicationports.AuditEntry) error {

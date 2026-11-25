@@ -232,15 +232,7 @@ func TestTheContractStatesPublicationAsTheModelDoes(t *testing.T) {
 	}
 }
 
-// The contract says what an approval that does not hold does to what is
-// published: nothing. The slot and the read of a published artifact say
-// that the artifact is served until the slot is withdrawn or blocked, a
-// change of the slot says that an activation asks for an approval that
-// holds and a restoration does not, and what a slot says of an approval
-// says that it takes nothing down. Nothing in it still states the rule of
-// before, under which the artifact of such a release was not served and a
-// restoration was held to the approval.
-func TestTheContractSaysThatAnApprovalThatDoesNotHoldTakesNothingDown(t *testing.T) {
+func TestContractDescribesApprovalByAudience(t *testing.T) {
 	contract, err := loadContract()
 	if err != nil {
 		t.Fatal(err)
@@ -253,19 +245,25 @@ func TestTheContractSaysThatAnApprovalThatDoesNotHoldTakesNothingDown(t *testing
 	}{
 		"getPublicationSlot": {
 			text: contract.Paths.Find(slot).Get.Description,
-			says: []string{"takes nothing down", "is served through the slot until the slot is withdrawn or blocked", "approval_problem names why the release would not be activated today"},
-			not:  []string{"is not served", "answers 404"},
+			says: []string{
+				"The slot keeps its pointer when an approval stops holding",
+				"The internal origin serves the artifact until the slot is withdrawn or blocked",
+				"The partner origin requires a current approval",
+				"approval_problem names why the release would not be activated today",
+			},
+			not: []string{"is not served", "answers 404"},
 		},
 		"changePublicationSlot": {
 			text: contract.Paths.Find(slot + "/operations").Post.Description,
 			says: []string{
 				"An activation puts a release on the slot and requires an approval that holds for this target now",
-				"A restoration returns the slot to a release that was active on it before and does not ask whether the approval of that release still holds",
-				"is activated, rather than restored, as any other release is",
+				"A restoration returns the slot to a release it served before",
+				"Internal restoration verifies the approval as it was given",
+				"Partner restoration also requires the approval to hold now",
+				"An activation of a previously served release uses the same checks as any activation",
 				"Activation and restoration both require a publisher who took no part in the revision",
 				"A withdrawal requires the publisher role alone",
 			},
-			not: []string{"restoration requires a current approval"},
 		},
 		"getPublishedArtifact": {
 			text: contract.Paths.Find(slot + "/artifact").Get.Description,
@@ -274,12 +272,20 @@ func TestTheContractSaysThatAnApprovalThatDoesNotHoldTakesNothingDown(t *testing
 		},
 		"clearPublicationAccessBlock": {
 			text: contract.Paths.Find(clearance).Post.Description,
-			says: []string{"revalidates the publisher's independence and artifact integrity"},
-			not:  []string{"revalidates approval"},
+			says: []string{
+				"revalidates the publisher's independence and artifact integrity",
+				"Partner restoration also checks the current approval",
+			},
+			not: []string{"revalidates approval"},
 		},
 		"the approval_problem of a slot": {
 			text: contract.Components.Schemas["PublicationSlot"].Value.Properties["approval_problem"].Value.Description,
-			says: []string{"the error code an activation of that release would be refused with", "takes nothing down", "its artifact is served"},
+			says: []string{
+				"the error code an activation of that release would be refused with",
+				"The slot retains the release pointer",
+				"The internal origin can still serve the artifact",
+				"The partner origin requires a current approval to serve that release",
+			},
 		},
 	} {
 		// A description is read as one line, however the contract breaks it.
