@@ -90,7 +90,10 @@ const (
 const (
 	// rulePlatformAdministrator permits product.register (AC-08). Naming
 	// the owners of a product is part of registering it: an administrator
-	// that names one afterwards is recorded under the same rule.
+	// that names one afterwards is recorded under the same rule. So is
+	// one that appoints or dismisses an auditor of a product, for which
+	// the matrix has no row: it is what an administrator does about a
+	// product without holding anything in it.
 	rulePlatformAdministrator = "AC-08"
 	// ruleProductOwner permits workspace.manage (AC-09). The matrix has no
 	// row for the audiences of a product, nor for its brand. Its portal is
@@ -809,13 +812,20 @@ type GrantProductRole struct {
 }
 
 // GrantProductRole makes a principal hold a role in a product. An owner can
-// assign product roles (AC-10). A platform administrator can appoint owners (AC-08): naming the
-// owners of a product is part of registering it, and it is the only way to
-// repair a product whose owner was mistyped. Naming an owner gives the
-// administrator nothing inside the product. Nothing keeps it from naming
-// itself, here as at registration: it is then an owner like any other, and
-// the grant is on record. Whoever else may know the product exists is told
-// it may not; to anyone else there is no such product.
+// assign the product roles (AC-10) but that of an auditor: whoever is
+// audited does not pick who audits it, itself least of all. A platform
+// administrator can appoint owners and auditors (AC-08). Naming the owners of
+// a product is part of registering it, and it is the only way to repair a
+// product whose owner was mistyped; appointing who audits it is for somebody
+// who answers for nothing inside it. Neither gives the administrator
+// anything inside the product. Nothing keeps it from naming itself an owner,
+// here as at registration: it is then an owner like any other, and the grant
+// is on record. Whoever else may know the product exists is told it may not;
+// to anyone else there is no such product.
+//
+// An auditor is independent of what it audits (mayGrant, independent): no
+// owner of the product and no platform administrator is appointed one, and
+// no auditor of the product is named its owner (ErrAuditorNotIndependent).
 //
 // The decision is made inside the transaction of the write, from what the
 // caller holds then. The assignment, the audit fact and the event commit
@@ -840,23 +850,36 @@ func (s *ProductGovernance) GrantProductRole(ctx context.Context, command GrantP
 			return ErrProductNotFound
 		}
 		// An owner acts as one, whatever else it is: an administrator that
-		// owns the product is recorded under the rule of the owners.
+		// owns the product is recorded under the rule of the owners, and
+		// appoints no auditor of it.
 		rule := ruleMembersOfOwnProduct
 		held, err := s.deps.Roles.LockHeldRoles(ctx, productID, command.Caller)
 		if err != nil {
 			return err
 		}
-		if !(domain.Standing{Roles: held}).Owns() {
-			role := domain.Role(command.Role)
-			if !s.deps.Administrators.Includes(command.Caller) || role == domain.RoleSecurityAdmin || role == domain.RoleSecurityReviewer ||
-				role == domain.RoleInternalAuditor {
-				refused = s.notOwner(seen.standing, ports.AuditEntry{
-					Actor: command.Caller, Action: ActionProductRoleGrant, Rule: ruleNoRole,
-					ProductID: productID, ResourceType: resourceRoleAssignment, CorrelationID: command.CorrelationID,
-				})
-				return refused.err
-			}
+		role := domain.Role(command.Role)
+		owns := (domain.Standing{Roles: held}).Owns()
+		entry := ports.AuditEntry{
+			Actor: command.Caller, Action: ActionProductRoleGrant, Rule: ruleNoRole,
+			ProductID: productID, ResourceType: resourceRoleAssignment, CorrelationID: command.CorrelationID,
+		}
+		if !mayGrant(owns, s.deps.Administrators.Includes(command.Caller), role) {
+			refused = s.notOwner(seen.standing, entry)
+			return refused.err
+		}
+		if !owns {
 			rule = rulePlatformAdministrator
+		}
+		// Who may grant the role is settled. Whether this principal can hold
+		// it is another question, and is asked of whoever may grant.
+		apart, err := s.independent(ctx, productID, command.Principal, role)
+		if err != nil {
+			return err
+		}
+		if !apart {
+			entry.Rule = ruleNotIndependent
+			refused = &refusal{ErrAuditorNotIndependent, entry}
+			return refused.err
 		}
 
 		id, err := domain.ParseRoleAssignmentID(s.deps.Identifiers.NewID())
@@ -904,7 +927,9 @@ type GetProductRole struct {
 
 // GetProductRole returns a role assignment in force to an owner of its
 // product. Who owns a product is the owners' to manage and nobody else's to
-// read: a platform administrator names an owner and reads none.
+// read: a platform administrator names an owner and reads none. It reads
+// the assignment of an auditor, which is its own to end, and no other: what
+// a list of the auditors gives it is what one read gives it.
 //
 // Whoever does not own the product is answered as far as it may know: no
 // such product to a stranger, no such role assignment to whoever knows the
@@ -928,6 +953,9 @@ func (s *ProductGovernance) GetProductRole(ctx context.Context, query GetProduct
 
 	if !seen.productFound {
 		return domain.RoleAssignment{}, ErrProductNotFound
+	}
+	if !seen.standing.Owns() && s.appointed(query.Caller, seen) {
+		return seen.assignment, nil
 	}
 	if !seen.standing.Owns() {
 		refused := refusal{ErrRoleAssignmentNotFound, ports.AuditEntry{
@@ -956,11 +984,16 @@ type RevokeProductRole struct {
 	RoleAssignmentID string
 }
 
-// RevokeProductRole ends a role assignment (FR-003). Only an owner of the
-// product may, its own assignment included: a platform administrator names
-// owners and removes none. Whoever does not own the product and may know it
-// exists is told it may not; to anyone else there is no such product. A
-// suspended product takes no new owner; its owners can still be removed.
+// RevokeProductRole ends a role assignment (FR-003). An owner of the product
+// ends every assignment but that of an auditor, its own included: whoever
+// is audited does not send its auditor away, and is told it may not. A
+// platform administrator ends the assignment of an auditor (AC-08), as it
+// made it, and no other: it names owners and removes none, and an
+// assignment that is not there is to it what one of another role is. An
+// administrator that owns the product acts as an owner there. Whoever does
+// not own the product and may know it exists is told it may not; to anyone
+// else there is no such product. A suspended product takes no new owner;
+// its owners can still be removed.
 //
 // A product always has an owner: the last assignment in force that makes
 // somebody one is not revoked (domain.ErrLastOwner). The owners in force are
@@ -999,7 +1032,16 @@ func (s *ProductGovernance) RevokeProductRole(ctx context.Context, command Revok
 		if !seen.productFound {
 			return ErrProductNotFound
 		}
-		if !seen.standing.Owns() {
+		// An owner ends what an owner grants, and an administrator that
+		// does not own the product what an administrator appoints. Either
+		// is refused the other's, and anyone else all of it.
+		owns := seen.standing.Owns()
+		rule := ruleMembersOfOwnProduct
+		if !owns {
+			rule = rulePlatformAdministrator
+		}
+		auditor := seen.assignmentFound && appointedByAdministrator(seen.assignment.Role)
+		if owns && auditor || !owns && !s.appointed(command.Caller, seen) {
 			entry := ports.AuditEntry{
 				Actor: command.Caller, Action: ActionProductRoleRevoke, Rule: ruleNoRole,
 				ProductID: productID, ResourceType: resourceRoleAssignment, CorrelationID: command.CorrelationID,
@@ -1029,7 +1071,7 @@ func (s *ProductGovernance) RevokeProductRole(ctx context.Context, command Revok
 			return err
 		}
 		if err := s.deps.Audit.Record(ctx, ports.AuditEntry{
-			Actor: command.Caller, Action: ActionProductRoleRevoke, Allowed: true, Rule: ruleMembersOfOwnProduct,
+			Actor: command.Caller, Action: ActionProductRoleRevoke, Allowed: true, Rule: rule,
 			ProductID: productID, ResourceType: resourceRoleAssignment, ResourceID: string(revoked.ID),
 			CorrelationID: command.CorrelationID,
 		}); err != nil {

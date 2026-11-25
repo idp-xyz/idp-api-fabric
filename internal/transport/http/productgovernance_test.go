@@ -384,6 +384,7 @@ func TestAFailureAUseCaseNamesIsAnsweredWithItsProblem(t *testing.T) {
 		detail string
 	}{
 		"the caller may not":          {application.ErrForbidden, http.StatusForbidden, CodeForbidden, "The caller may not perform this action."},
+		"an auditor of what it owns":  {application.ErrAuditorNotIndependent, http.StatusForbidden, CodeAuditorNotIndependent, "An auditor of a product neither owns it nor administers the platform."},
 		"no such product":             {application.ErrProductNotFound, http.StatusNotFound, CodeProductNotFound, ""},
 		"no such workspace":           {application.ErrWorkspaceNotFound, http.StatusNotFound, CodeWorkspaceNotFound, ""},
 		"no such membership":          {application.ErrMembershipNotFound, http.StatusNotFound, CodeMembershipNotFound, ""},

@@ -693,7 +693,7 @@ func TestWhoMayNotReadTheQueueIsRefusedAsFarAsItMayKnow(t *testing.T) {
 	// The refusals are read as any record of the trail is, by an auditor of the
 	// product: what the contract says of a record takes the new action, the
 	// kind of resource, and a record that names no resource.
-	s.auditorOf(w.product, "owner", "queue-auditor")
+	s.auditorOf(w.product, "queue-auditor")
 	want := 0
 	for _, row := range s.trail(w.product) {
 		if row.Action == "review.read" {

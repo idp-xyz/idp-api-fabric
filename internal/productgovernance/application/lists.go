@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/domain"
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/ports"
@@ -251,17 +252,25 @@ type ListProductRoles struct {
 	Caller        domain.Principal
 	CorrelationID string
 	ProductID     string
-	PageSize      int
-	After         *ports.Position
+	// Role keeps the list to the assignments of one role. Empty asks for
+	// those of every role.
+	Role     string
+	PageSize int
+	After    *ports.Position
 }
 
 // ListProductRoles returns a page of the role assignments in force of a
-// product to an owner of it. As with one assignment, who owns a product is
-// the owners' to manage and nobody else's to read: a platform administrator
-// names an owner and reads none.
+// product to an owner of it, those of one role if the query names one. As
+// with one assignment, who owns a product is the owners' to manage and
+// nobody else's to read: a platform administrator names an owner and reads
+// none.
 //
 // It is how an owner finds the assignment of another: that of an owner who
 // was named when the product was registered is in no other answer.
+//
+// A platform administrator that does not own the product lists its auditors,
+// whom it appoints and dismisses, by asking for that role, and lists nothing
+// else: asked for every role, or for another, it is refused as before.
 //
 // Whoever does not own the product is answered as far as it may know: no
 // such product to a stranger, and that it may not to whoever knows the
@@ -282,13 +291,19 @@ func (s *ProductGovernance) ListProductRoles(ctx context.Context, query ListProd
 	if !seen.productFound {
 		return Page[domain.RoleAssignment]{}, ErrProductNotFound
 	}
-	if !seen.standing.Owns() {
+	role := domain.Role(query.Role)
+	if !seen.standing.Owns() && !(s.deps.Administrators.Includes(query.Caller) && appointedByAdministrator(role)) {
 		return Page[domain.RoleAssignment]{}, s.refuse(ctx, *s.notOwner(seen.standing, ports.AuditEntry{
 			Actor: query.Caller, Action: ActionProductRoleRead, Rule: ruleNoRole,
 			ProductID: productID, ResourceType: resourceRoleAssignment, CorrelationID: query.CorrelationID,
 		}))
 	}
 
+	// What else the request says is looked at once the caller is known to
+	// read the list: whoever is refused is told nothing else.
+	if query.Role != "" && !slices.Contains(domain.ProductRoles(), role) {
+		return Page[domain.RoleAssignment]{}, fmt.Errorf("%w: a list of roles is kept to one of the roles of a product", domain.ErrInvalid)
+	}
 	page, size, err := paging(query.PageSize, query.After, func(id string) error {
 		_, err := domain.ParseRoleAssignmentID(id)
 		return err
@@ -296,7 +311,12 @@ func (s *ProductGovernance) ListProductRoles(ctx context.Context, query ListProd
 	if err != nil {
 		return Page[domain.RoleAssignment]{}, err
 	}
-	assignments, err := s.deps.Roles.List(ctx, productID, page)
+	var assignments []domain.RoleAssignment
+	if query.Role == "" {
+		assignments, err = s.deps.Roles.List(ctx, productID, page)
+	} else {
+		assignments, err = s.deps.Roles.ListOfRole(ctx, productID, role, page)
+	}
 	if err != nil {
 		return Page[domain.RoleAssignment]{}, fmt.Errorf("list the role assignments: %w", err)
 	}

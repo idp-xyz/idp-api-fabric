@@ -30,7 +30,10 @@ const (
 	CodeIdentityProviderUnavailable = "IDENTITY_PROVIDER_UNAVAILABLE"
 
 	// What the caller may do, and what there is.
-	CodeForbidden              = "FORBIDDEN"
+	CodeForbidden = "FORBIDDEN"
+	// The caller may appoint an auditor and name an owner, and not this
+	// principal: it would audit what it answers for.
+	CodeAuditorNotIndependent  = "AUDITOR_NOT_INDEPENDENT"
 	CodeProductNotFound        = "PRODUCT_NOT_FOUND"
 	CodeWorkspaceNotFound      = "WORKSPACE_NOT_FOUND"
 	CodeMembershipNotFound     = "MEMBERSHIP_NOT_FOUND"

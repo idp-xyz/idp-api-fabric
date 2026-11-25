@@ -3,11 +3,9 @@ package application
 import (
 	"context"
 	"errors"
-	"slices"
 	"testing"
 
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/domain"
-	"go.idp.xyz/idp-api-fabric/internal/productgovernance/ports"
 )
 
 var (
@@ -15,12 +13,13 @@ var (
 	ivan  = domain.Principal{Issuer: trustedIssuer, Subject: "ivan"}
 )
 
-// auditor makes principal an auditor of the product, as one of its owners.
-func auditor(t *testing.T, service *ProductGovernance, product domain.Product, owner, principal domain.Principal) domain.RoleAssignment {
+// auditor makes principal an auditor of the product, as the platform
+// administrator does: no owner of a product appoints who audits it.
+func auditor(t *testing.T, service *ProductGovernance, product domain.Product, principal domain.Principal) domain.RoleAssignment {
 	t.Helper()
 
 	assignment, err := service.GrantProductRole(ctx, GrantProductRole{
-		Caller: owner, CorrelationID: "correlation-a", ProductID: string(product.ID),
+		Caller: admin, CorrelationID: "correlation-a", ProductID: string(product.ID),
 		Principal: principal, Role: string(domain.RoleInternalAuditor),
 	})
 	if err != nil {
@@ -51,11 +50,12 @@ func TestTheAuditScopeSaysWhoMayReadTheTrailOfAProduct(t *testing.T) {
 	cargopai := string(s.cargopai.ID)
 
 	// frank audits CargoPai and ivan audits Parcel. heidi audited CargoPai
-	// until alice revoked her role. grace holds a security role in CargoPai.
-	auditor(t, s.service, s.cargopai, alice, frank)
-	auditor(t, s.service, s.parcel, bob, ivan)
-	former := auditor(t, s.service, s.cargopai, alice, heidi)
-	if err := s.revokeRole(alice, s.cargopai, former.ID); err != nil {
+	// until the administrator ended her role. grace holds a security role
+	// in CargoPai.
+	auditor(t, s.service, s.cargopai, frank)
+	auditor(t, s.service, s.parcel, ivan)
+	former := auditor(t, s.service, s.cargopai, heidi)
+	if err := s.revokeRole(admin, s.cargopai, former.ID); err != nil {
 		t.Fatalf("revoke the role of heidi: %v", err)
 	}
 	if _, err := s.service.GrantProductRole(ctx, GrantProductRole{
@@ -122,12 +122,12 @@ func TestTheAuditScopeSaysWhoMayReadTheTrailOfAProduct(t *testing.T) {
 func TestARevokedAuditorIsNoAuditorAtOnce(t *testing.T) {
 	s := newTeam(t)
 	cargopai := string(s.cargopai.ID)
-	role := auditor(t, s.service, s.cargopai, alice, frank)
+	role := auditor(t, s.service, s.cargopai, frank)
 
 	if got, err := s.auditScope(frank, cargopai); err != nil || !got.Auditor {
 		t.Fatalf("the auditor reads the scope as %+v (%v), want an auditor", got, err)
 	}
-	if err := s.revokeRole(alice, s.cargopai, role.ID); err != nil {
+	if err := s.revokeRole(admin, s.cargopai, role.ID); err != nil {
 		t.Fatalf("revoke the role: %v", err)
 	}
 	if got, err := s.auditScope(frank, cargopai); err != nil || got != (AuditScope{Found: true}) {
@@ -135,7 +135,7 @@ func TestARevokedAuditorIsNoAuditorAtOnce(t *testing.T) {
 	}
 
 	// The role can be granted again, as an assignment of its own.
-	again := auditor(t, s.service, s.cargopai, alice, frank)
+	again := auditor(t, s.service, s.cargopai, frank)
 	if again.ID == role.ID {
 		t.Errorf("the role was granted again under the identifier %s of the one that was revoked", again.ID)
 	}
@@ -148,93 +148,19 @@ func TestARevokedAuditorIsNoAuditorAtOnce(t *testing.T) {
 // is not read: whoever decides from it does so where the records are read.
 func TestTheAuditScopeIsReadInATransactionOnly(t *testing.T) {
 	s := newTeam(t)
-	auditor(t, s.service, s.cargopai, alice, frank)
+	auditor(t, s.service, s.cargopai, frank)
 
 	if got, err := s.service.ReadAuditScope(ctx, frank, s.cargopai.ID); err == nil || got.Auditor {
 		t.Errorf("read outside a transaction: got %+v and %v, want a refusal and no auditor", got, err)
 	}
 }
 
-// Administering the platform conveys nothing inside a product (F05 §6), and
-// reading what was recorded about it is inside. An owner names an auditor,
-// under the rule of the owners, and may name itself: it reads the trail then,
-// and the grant is on record. An administrator that owns the product is an
-// owner there, and is recorded as one.
-func TestAnAdministratorWhoOwnsNothingIsRefusedTheAuditorRoleAndAnOwnerNamesOne(t *testing.T) {
-	s := newTeam(t)
-	cargopai := string(s.cargopai.ID)
-	grantAuditor := func(caller domain.Principal, product domain.Product, principal domain.Principal) (domain.RoleAssignment, error) {
-		return s.service.GrantProductRole(ctx, GrantProductRole{
-			Caller: caller, CorrelationID: "correlation-8", ProductID: string(product.ID),
-			Principal: principal, Role: string(domain.RoleInternalAuditor),
-		})
-	}
-	before := len(s.w.roles)
-
-	// The administrator names owners and no auditor. It is told it may not,
-	// and the refusal is on record, as that of the security roles is.
-	if assignment, err := grantAuditor(admin, s.cargopai, frank); err != ErrForbidden || assignment != (domain.RoleAssignment{}) {
-		t.Fatalf("the administrator names an auditor: got %+v and %v, want nothing and exactly %v", assignment, err, ErrForbidden)
-	}
-	wantRefusal := []audited{{ports.AuditEntry{
-		Actor: admin, Action: "product_role.grant", Rule: "DENY-03",
-		ProductID: s.cargopai.ID, ResourceType: "RoleAssignment", CorrelationID: "correlation-8",
-	}, false}}
-	if !slices.Equal(s.w.audited, wantRefusal) || len(s.w.roles) != before || len(s.w.events) != 0 {
-		t.Errorf("the refusal left the audit records\n %+v\nwant, outside the transaction,\n %+v\nand %d roles and the events %v",
-			s.w.audited, wantRefusal, len(s.w.roles)-before, s.w.events)
-	}
-
-	// An owner names one, and itself.
-	s.w.quiet()
-	assignment, err := grantAuditor(alice, s.cargopai, frank)
-	if err != nil {
-		t.Fatalf("the owner names an auditor: %v", err)
-	}
-	want := domain.RoleAssignment{
-		ID: assignment.ID, ProductID: s.cargopai.ID, Principal: frank, Role: domain.RoleInternalAuditor,
-		Version: 1, GrantedAt: s.w.now, GrantedBy: alice,
-	}
-	if assignment != want || s.w.roles[assignment.ID] != want {
-		t.Errorf("assignment\n %+v\nstored\n %+v\nwant\n %+v", assignment, s.w.roles[assignment.ID], want)
-	}
-	wantGrant := []audited{{ports.AuditEntry{
-		Actor: alice, Action: "product_role.grant", Allowed: true, Rule: "AC-10",
-		ProductID: s.cargopai.ID, ResourceType: "RoleAssignment", ResourceID: string(assignment.ID), CorrelationID: "correlation-8",
-	}, true}}
-	if !slices.Equal(s.w.audited, wantGrant) {
-		t.Errorf("audited\n %+v\nwant, inside the transaction,\n %+v", s.w.audited, wantGrant)
-	}
-	if want := []string{"ProductRoleChanged " + string(assignment.ID) + " granted correlation-8"}; !slices.Equal(s.w.events, want) {
-		t.Errorf("events %v, want %v", s.w.events, want)
-	}
-	if _, err := grantAuditor(alice, s.cargopai, alice); err != nil {
-		t.Errorf("the owner names itself an auditor: %v", err)
-	}
-	if got, err := s.auditScope(alice, cargopai); err != nil || !got.Auditor {
-		t.Errorf("the owner that named itself reads the scope as %+v (%v), want an auditor", got, err)
-	}
-	// The role is held once at a time, as the others are.
-	if _, err := grantAuditor(alice, s.cargopai, frank); !errors.Is(err, ports.ErrRoleAssignmentExists) {
-		t.Errorf("the role named twice: got %v, want %v", err, ports.ErrRoleAssignmentExists)
-	}
-
-	// An administrator that owns a product acts there as its owner.
-	named(t, s.service, s.parcel, bob, admin)
-	s.w.quiet()
-	if _, err := grantAuditor(admin, s.parcel, ivan); err != nil {
-		t.Fatalf("an administrator that owns the product names an auditor: %v", err)
-	}
-	if len(s.w.audited) != 1 || s.w.audited[0].entry.Rule != "AC-10" || !s.w.audited[0].entry.Allowed {
-		t.Errorf("audited %+v, want one record under the rule of the owners", s.w.audited)
-	}
-}
-
 // An auditor reads the trail and manages nothing: it is no owner, so it names
-// no role and ends none, and it reads none of the role assignments.
+// no role and ends none, and it reads none of the role assignments. Who
+// appoints one, and who may be appointed, is in auditorappointment_test.go.
 func TestAnAuditorIsNoOwnerAndManagesNoRole(t *testing.T) {
 	s := newTeam(t)
-	role := auditor(t, s.service, s.cargopai, alice, frank)
+	role := auditor(t, s.service, s.cargopai, frank)
 	s.w.quiet()
 	before := len(s.w.roles)
 
@@ -258,14 +184,15 @@ func TestAnAuditorIsNoOwnerAndManagesNoRole(t *testing.T) {
 	if got, err := s.product(frank, s.cargopai); err != nil || got.ID != s.cargopai.ID {
 		t.Errorf("the auditor reads the product: got %+v and %v", got, err)
 	}
-	// An owner ends the role, and records it under its rule.
+	// The administrator ends the role it appointed, and records it under
+	// its rule.
 	s.w.quiet()
-	if err := s.revokeRole(alice, s.cargopai, role.ID); err != nil {
-		t.Fatalf("the owner revokes the role of the auditor: %v", err)
+	if err := s.revokeRole(admin, s.cargopai, role.ID); err != nil {
+		t.Fatalf("the administrator revokes the role of the auditor: %v", err)
 	}
-	if len(s.w.audited) != 1 || s.w.audited[0].entry.Action != "product_role.revoke" || s.w.audited[0].entry.Rule != "AC-10" ||
+	if len(s.w.audited) != 1 || s.w.audited[0].entry.Action != "product_role.revoke" || s.w.audited[0].entry.Rule != "AC-08" ||
 		!s.w.audited[0].entry.Allowed || !s.w.audited[0].transacted {
-		t.Errorf("audited %+v, want one record of the revocation under the rule of the owners, inside the transaction", s.w.audited)
+		t.Errorf("audited %+v, want one record of the revocation under the rule of the administrator, inside the transaction", s.w.audited)
 	}
 	if _, err := s.product(frank, s.cargopai); err != ErrProductNotFound {
 		t.Errorf("the revoked auditor reads the product: got %v, want exactly %v", err, ErrProductNotFound)

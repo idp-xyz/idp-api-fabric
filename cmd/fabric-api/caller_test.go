@@ -235,9 +235,11 @@ func TestEachRoleIsShownToItsHolderInTheProduct(t *testing.T) {
 	sorting := s.createWorkspace(parcel, "bob", "sorting")
 
 	// One holder of each role of a product, and one of each role of a
-	// workspace.
+	// workspace. The owner hands out the security roles, and the
+	// administrator appoints the auditors.
+	grantor := map[string]string{"security_admin": "alice", "security_reviewer": "alice", "internal_auditor": "platform-admin"}
 	for subject, role := range map[string]string{"sam": "security_admin", "rita": "security_reviewer", "ada": "internal_auditor"} {
-		s.requireThat(s.grantRole(cargopai, "alice", subject, role), http.StatusCreated, "")
+		s.requireThat(s.grantRole(cargopai, grantor[role], subject, role), http.StatusCreated, "")
 	}
 	s.join(cargopai, engineering, "alice", "mia", "workspace_maintainer")
 	s.join(cargopai, engineering, "alice", "uma", "internal_author")
@@ -247,7 +249,7 @@ func TestEachRoleIsShownToItsHolderInTheProduct(t *testing.T) {
 	// holds a role in Parcel and a workspace of CargoPai, and neither is the
 	// other's.
 	for _, role := range []string{"security_admin", "internal_auditor"} {
-		s.requireThat(s.grantRole(cargopai, "alice", "dan", role), http.StatusCreated, "")
+		s.requireThat(s.grantRole(cargopai, grantor[role], "dan", role), http.StatusCreated, "")
 	}
 	s.join(cargopai, operations, "alice", "dan", "workspace_maintainer")
 	s.join(cargopai, engineering, "alice", "dan", "internal_reviewer")
@@ -457,7 +459,7 @@ func TestTheStandingInASuspendedProductIsStillRead(t *testing.T) {
 	cargopai := s.register("platform-admin", "cargopai", "alice")
 	engineering := s.createWorkspace(cargopai, "alice", "engineering")
 	s.join(cargopai, engineering, "alice", "carol", "workspace_maintainer")
-	s.requireThat(s.grantRole(cargopai, "alice", "frank", "internal_auditor"), http.StatusCreated, "")
+	s.requireThat(s.grantRole(cargopai, "platform-admin", "frank", "internal_auditor"), http.StatusCreated, "")
 
 	if _, err := s.owner.Exec(t.Context(), `UPDATE productgovernance.product SET status = 'SUSPENDED' WHERE product_id = $1`, cargopai); err != nil {
 		t.Fatalf("suspend the product: %v", err)

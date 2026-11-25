@@ -502,8 +502,14 @@ func (o operations) ListProductRoles(ctx context.Context, request ListProductRol
 	if err != nil {
 		return nil, err
 	}
+	// A list that is kept to one role is the same list, read from the
+	// same positions: the role is no part of where a page starts.
+	var role string
+	if request.Params.Role != nil {
+		role = string(*request.Params.Role)
+	}
 	page, err := o.governance.ListProductRoles(ctx, application.ListProductRoles{
-		Caller: principal, CorrelationID: correlationID, ProductID: request.ProductID, PageSize: size, After: after,
+		Caller: principal, CorrelationID: correlationID, ProductID: request.ProductID, Role: role, PageSize: size, After: after,
 	})
 	if err != nil {
 		return nil, err
@@ -696,6 +702,9 @@ func problemOf(err error) (Problem, bool) {
 			"A change needs If-Match: the ETag of what it changes, as it was read."), true
 	case errors.Is(err, application.ErrForbidden):
 		return problem(http.StatusForbidden, CodeForbidden, "The caller may not perform this action."), true
+	case errors.Is(err, application.ErrAuditorNotIndependent):
+		return problem(http.StatusForbidden, CodeAuditorNotIndependent,
+			"An auditor of a product neither owns it nor administers the platform."), true
 	case errors.Is(err, application.ErrProductNotFound):
 		return problem(http.StatusNotFound, CodeProductNotFound, ""), true
 	case errors.Is(err, application.ErrWorkspaceNotFound):

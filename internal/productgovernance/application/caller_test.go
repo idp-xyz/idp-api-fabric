@@ -11,12 +11,14 @@ import (
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/ports"
 )
 
-// callerHolds makes principal hold the role in the product, as an owner of it.
-func callerHolds(t *testing.T, service *ProductGovernance, product domain.Product, owner, principal domain.Principal, role domain.Role) domain.RoleAssignment {
+// callerHolds makes principal hold the role in the product, as whoever
+// grants that role: an owner of the product, or the platform administrator
+// for an auditor.
+func callerHolds(t *testing.T, service *ProductGovernance, product domain.Product, by, principal domain.Principal, role domain.Role) domain.RoleAssignment {
 	t.Helper()
 
 	assignment, err := service.GrantProductRole(ctx, GrantProductRole{
-		Caller: owner, CorrelationID: "correlation-h", ProductID: string(product.ID),
+		Caller: by, CorrelationID: "correlation-h", ProductID: string(product.ID),
 		Principal: principal, Role: string(role),
 	})
 	if err != nil {
@@ -107,19 +109,24 @@ func TestGetCallerInProductGivesEachHolderWhatItHoldsAndNothingOfAnybodyElse(t *
 	reports := created(t, s.service, s.cargopai, alice, "reports")
 
 	// frank holds three roles of the product and no workspace, granted in no
-	// order of their names. alice holds a role of Parcel, which gives her
-	// nothing in CargoPai and takes nothing from it.
-	for _, role := range []domain.Role{domain.RoleSecurityReviewer, domain.RoleInternalAuditor, domain.RoleSecurityAdmin} {
-		callerHolds(t, s.service, s.cargopai, alice, frank, role)
+	// order of their names: the owner hands out the security roles and the
+	// administrator appoints the auditor. alice holds a role of Parcel,
+	// which gives her nothing in CargoPai and takes nothing from it.
+	for _, grant := range []struct {
+		role domain.Role
+		by   domain.Principal
+	}{{domain.RoleSecurityReviewer, alice}, {domain.RoleInternalAuditor, admin}, {domain.RoleSecurityAdmin, alice}} {
+		callerHolds(t, s.service, s.cargopai, grant.by, frank, grant.role)
 	}
 	callerHolds(t, s.service, s.parcel, bob, alice, domain.RoleSecurityAdmin)
 	// carol has two more roles in the workspace she maintains.
 	joined(t, s.service, s.engineering, alice, carol, domain.RoleInternalReviewer)
 	joined(t, s.service, s.engineering, alice, carol, domain.RoleInternalAuthor)
 	// grace owns the product and audits it, and is a member of all three of
-	// its workspaces, the last first.
+	// its workspaces, the last first. Nobody is made both any more: hers is
+	// an assignment from before, which is left as it is and told as it is.
 	named(t, s.service, s.cargopai, alice, grace)
-	callerHolds(t, s.service, s.cargopai, alice, grace, domain.RoleInternalAuditor)
+	s.w.assigned(s.cargopai, grace, domain.RoleInternalAuditor, alice)
 	joined(t, s.service, reports, alice, grace, domain.RoleWorkspaceMaintainer)
 	joined(t, s.service, reports, alice, grace, domain.RoleInternalAuthor)
 	joined(t, s.service, s.operations, alice, grace, domain.RoleInternalReviewer)

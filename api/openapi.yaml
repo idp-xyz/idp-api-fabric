@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.33.0
+  version: 0.35.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -382,24 +382,36 @@ paths:
       summary: List the role assignments of a product
       description: >-
         Returns the role assignments in force of the product to an owner of
-        it. It is where an owner finds the assignment of another: that of an
-        owner named when the product was registered is in no other answer.
-        Nobody else lists them. Whoever may know the product exists and does
-        not own it is refused (403 FORBIDDEN): a member of one of its
-        workspaces, and a platform administrator, who names an owner and
-        reads none. To anyone else there is no such product (404
-        PRODUCT_NOT_FOUND), the same as for a product that is missing. An
-        assignment that was revoked is in no list.
+        it, those of one role if role names it. It is where an owner finds
+        the assignment of another: that of an owner named when the product
+        was registered is in no other answer. A platform administrator that
+        does not own the product lists the auditors of the product, whom it
+        appoints and dismisses, by asking for role=internal_auditor. It
+        names an owner and reads none: without role, or with another role,
+        it is refused (403 FORBIDDEN). Nobody else lists them. Whoever else
+        may know the product exists and does not own it, as a member of one
+        of its workspaces does, is refused (403 FORBIDDEN). To anyone else
+        there is no such product (404 PRODUCT_NOT_FOUND), the same as for a
+        product that is missing. An assignment that was revoked is in no
+        list. The role is part of what is read, so every page but the last
+        is full.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageToken'
+        - in: query
+          name: role
+          description: >-
+            Only the assignments of this role. A platform administrator that
+            does not own the product asks for internal_auditor.
+          schema:
+            $ref: '#/components/schemas/ProductRole'
       responses:
         '200':
           description: A page of the role assignments in force
           headers:
             Cache-Control:
-              description: A role assignment is private to the owners of its product
+              description: A role assignment is private to whoever manages it
               required: true
               schema:
                 type: string
@@ -427,22 +439,31 @@ paths:
         Makes the principal hold the role in the product, from now until the
         assignment is revoked. A product has four roles: product_owner,
         security_admin, security_reviewer and internal_auditor. An owner of
-        the product may grant any of them, itself included: an owner that
-        makes itself an auditor reads the audit records of the product then,
-        and the grant is on record. A platform administrator may name owners
-        and no other role (403 FORBIDDEN for the three that are left):
-        naming the owners of a product is part of registering it, and it is
-        how a product whose owner was mistyped is repaired. Naming an owner
-        gives the administrator no view of what is inside the product. Nothing
-        keeps it from naming itself, here as at registration: it is then an
-        owner like any other, and the grant is on record. Whoever else may
-        know the product exists, as a member of one of its workspaces does,
-        is refused (403 FORBIDDEN); to anyone else there is no such product
-        (404 PRODUCT_NOT_FOUND), the same as for a product that is missing. A
-        role the principal holds in the product already is refused (409
-        ROLE_ASSIGNMENT_EXISTS), and so are a product that is suspended (409
-        PRODUCT_NOT_ACTIVE) and a principal under an issuer this deployment
-        does not trust (422 OWNER_ISSUER_NOT_TRUSTED).
+        the product may grant the first three, to itself as to anybody. It
+        does not grant internal_auditor, to itself or to anybody (403
+        FORBIDDEN): whoever is audited does not pick who audits it. A
+        platform administrator that does not own the product may name owners
+        and appoint auditors, and grants neither security role (403
+        FORBIDDEN). Naming the owners of a product is part of registering it,
+        and it is how a product whose owner was mistyped is repaired;
+        appointing who audits it is for somebody who answers for nothing
+        inside it. Neither gives the administrator a view of what is inside
+        the product. Nothing keeps it from naming itself an owner, here as at
+        registration: it is then an owner like any other, and the grant is on
+        record. An administrator that owns the product acts as an owner
+        there, and another administrator appoints its auditors. An auditor is
+        independent of what it audits: no owner of the product and no
+        platform administrator is appointed one, and no auditor of the
+        product is named its owner (403 AUDITOR_NOT_INDEPENDENT). Accounts
+        are compared, when the grant is made; an assignment that was in force
+        before is left as it is. Whoever else may know the product exists, as
+        a member of one of its workspaces does, is refused (403 FORBIDDEN);
+        to anyone else there is no such product (404 PRODUCT_NOT_FOUND), the
+        same as for a product that is missing. A role the principal holds in
+        the product already is refused (409 ROLE_ASSIGNMENT_EXISTS), and so
+        are a product that is suspended (409 PRODUCT_NOT_ACTIVE) and a
+        principal under an issuer this deployment does not trust (422
+        OWNER_ISSUER_NOT_TRUSTED).
 
 
         The assignment, the audit record and the event are committed together
@@ -467,7 +488,7 @@ paths:
                 type: string
                 format: uri-reference
             Cache-Control:
-              description: A role assignment is private to the owners of its product
+              description: A role assignment is private to whoever manages it
               required: true
               schema:
                 type: string
@@ -497,15 +518,18 @@ paths:
       operationId: getProductRole
       summary: Read a role assignment of a product
       description: >-
-        Returns a role assignment in force to an owner of the product. Nobody
-        else reads one, and each is answered as far as it may know: a
-        stranger is told there is no such product (404 PRODUCT_NOT_FOUND),
-        and whoever knows the product and does not own it that there is no
-        such role assignment (404 ROLE_ASSIGNMENT_NOT_FOUND). That is a
-        member of one of its workspaces, and a platform administrator, who
-        names an owner and reads none. An assignment that was revoked grants
-        nothing and is not found either, and an assignment of another product
-        is not found under this one.
+        Returns a role assignment in force to an owner of the product. A
+        platform administrator that does not own the product reads the
+        assignment of an auditor, which is its own to end, and no other: it
+        names an owner and reads none. Nobody else reads one, and each is
+        answered as far as it may know: a stranger is told there is no such
+        product (404 PRODUCT_NOT_FOUND), and whoever knows the product and
+        does not own it that there is no such role assignment (404
+        ROLE_ASSIGNMENT_NOT_FOUND). That is a member of one of its
+        workspaces, and a platform administrator for every assignment but
+        that of an auditor. An assignment that was revoked grants nothing and
+        is not found either, and an assignment of another product is not
+        found under this one.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/RoleAssignmentId'
@@ -514,7 +538,7 @@ paths:
           description: The role assignment
           headers:
             Cache-Control:
-              description: A role assignment is private to the owners of its product
+              description: A role assignment is private to whoever manages it
               required: true
               schema:
                 type: string
@@ -539,18 +563,25 @@ paths:
       description: >-
         Ends the assignment: from the moment the revocation is committed it
         grants nothing, and whoever is left with nothing in the product is a
-        stranger to it. Only an owner of the product may, and an owner may
-        revoke its own assignment. A platform administrator names owners and
-        removes none. Whoever may know the product exists and does not own
-        it, the administrator included, is refused (403 FORBIDDEN); to anyone
-        else there is no such product (404 PRODUCT_NOT_FOUND). A product
-        always has an owner: the last assignment in force that makes somebody
-        one is not revoked (409 LAST_OWNER), and of two owners who revoke
-        each other at the same time one stays. An assignment that is not in
-        force is not found (404 ROLE_ASSIGNMENT_NOT_FOUND), whoever ended it,
-        so a revocation that is sent again is answered so. The assignment is
-        kept as a record, with who revoked it and when, and the role can be
-        granted again as a new assignment.
+        stranger to it. An owner of the product ends every assignment but
+        that of an auditor, and may revoke its own. It does not dismiss an
+        auditor (403 FORBIDDEN): whoever is audited does not send its auditor
+        away. A platform administrator that does not own the product ends
+        the assignment of an auditor, as it made it, and no other: it names
+        owners and removes none, and whatever else it asks to end, an
+        assignment that is not in force included, is refused (403 FORBIDDEN).
+        An administrator that owns the product acts as an owner there. An
+        auditor does not end its own assignment. Whoever else may know the
+        product exists and does not own it is refused (403 FORBIDDEN); to
+        anyone else there is no such product (404 PRODUCT_NOT_FOUND). A
+        product always has an owner: the last assignment in force that makes
+        somebody one is not revoked (409 LAST_OWNER), and of two owners who
+        revoke each other at the same time one stays. To an owner an
+        assignment that is not in force is not found (404
+        ROLE_ASSIGNMENT_NOT_FOUND), whoever ended it, so a revocation that an
+        owner sends again is answered so. The assignment is kept as a record,
+        with who revoked it and when, and the role can be granted again as a
+        new assignment.
 
 
         The revocation, the audit record and the event are committed together
@@ -585,16 +616,17 @@ paths:
         principal that holds the role internal_auditor in the product now.
         Nobody else reads them. An owner of the product does not by being one,
         nor does a platform administrator, nor whoever holds another role in
-        the product: an owner that is to read them makes itself an auditor
-        (grantProductRole), and that grant is on record. Whoever may know the
-        product exists and is no auditor of it is refused (403 FORBIDDEN); to
-        anyone else there is no such product (404 PRODUCT_NOT_FOUND), the same
-        as for a product that is missing. What the caller holds is decided
-        again with every page: a role that was revoked reads no page after
-        it, whatever page token the caller holds. An auditor reads the records
-        from the beginning, those recorded before it became one included.
-        The role gives no other view of the product: no contract, no revision,
-        no release and no publication.
+        the product. An auditor is appointed by a platform administrator
+        (grantProductRole) from those who neither own the product nor
+        administer the platform, and the appointment is on record. Whoever
+        may know the product exists and is no auditor of it is refused (403
+        FORBIDDEN); to anyone else there is no such product (404
+        PRODUCT_NOT_FOUND), the same as for a product that is missing. What
+        the caller holds is decided again with every page: a role that was
+        revoked reads no page after it, whatever page token the caller holds.
+        An auditor reads the records from the beginning, those recorded
+        before it became one included. The role gives no other view of the
+        product: no contract, no revision, no release and no publication.
 
 
         Only the records of this product are listed. A record that belongs to
@@ -3954,10 +3986,12 @@ components:
     ProductRole:
       description: >-
         What a principal is in a product. A product_owner manages the
-        workspaces, their members and product roles. A security_admin blocks
-        publication access. A security_reviewer independently clears blocks.
-        An internal_auditor reads the audit records of the product and nothing
-        else. These roles are scoped to the product.
+        workspaces, their members and the product roles but that of an
+        auditor. A security_admin blocks publication access. A
+        security_reviewer independently clears blocks. An internal_auditor
+        reads the audit records of the product and nothing else, and is
+        appointed and dismissed by a platform administrator. These roles are
+        scoped to the product.
       type: string
       enum: [product_owner, security_admin, security_reviewer, internal_auditor]
     ProductRoleGrant:

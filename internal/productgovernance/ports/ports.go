@@ -177,6 +177,12 @@ type RoleAssignments interface {
 	// the order of the list. An assignment of another product is not among
 	// them, and neither is one that was revoked.
 	List(ctx context.Context, productID domain.ProductID, page Page) ([]domain.RoleAssignment, error)
+	// ListOfRole returns one page of the assignments in force of the
+	// product that grant the role, in the order of the list. It is List
+	// kept to one role, and the role is part of what is read: a page holds
+	// as many assignments of the role as it takes while there are that
+	// many.
+	ListOfRole(ctx context.Context, productID domain.ProductID, role domain.Role, page Page) ([]domain.RoleAssignment, error)
 	// LockOwners locks the assignments in force that make somebody an owner
 	// of the product, for the transaction ctx carries, and returns how many
 	// they are. It waits for a transaction that locked them before. Until
