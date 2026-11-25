@@ -2801,13 +2801,12 @@ paths:
         An asset without a slot starts at generation zero. The slot reports the
         database pointer, origin blocking, and the separate delivery status.
         It also says whether the approval the active release rests on still
-        holds for this target. An approval that does not hold takes nothing
-        down: the artifact is served through the slot until the slot is
-        withdrawn or blocked. approval_problem names why the release would
-        not be activated today, to whoever may read the slot, and says that
-        the revision is due another review. A revision whose approval does
-        not hold is approved again with a supplementary review, and released
-        and activated under it.
+        holds for this target. The slot keeps its pointer when an approval
+        stops holding. The internal origin serves the artifact until the slot
+        is withdrawn or blocked. The partner origin requires a current
+        approval. approval_problem names why the release would not be
+        activated today. A supplementary review lets the revision be
+        released and activated with new approval evidence.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -2881,16 +2880,16 @@ paths:
         reviewer still holds the grant, that has not run out and of which no
         waiver has, on a check of the current policy and tools that compared
         the revision with the one the slot served last, where that is another
-        revision. A restoration returns the slot to a release that was active
-        on it before and does not ask whether the approval of that release
-        still holds: it is what a publisher falls back to. A release that was
-        active on the slot is activated, rather than restored, as any other
-        release is. Activation and restoration both require a publisher who
-        took no part in the revision, its check or its approval, a product
-        that takes work and a release that no access block covers. A
-        withdrawal requires the publisher role alone. External audiences need
-        delivery and access adapters. A completed retry returns the original
-        operation.
+        revision. A restoration returns the slot to a release it served
+        before. Internal restoration verifies the approval as it was given.
+        Partner restoration also requires the approval to hold now. An
+        activation of a previously served release uses the same checks as
+        any activation. Activation and restoration both require a publisher
+        who took no part in the revision, its check or its approval, an
+        active product and a release clear of access blocks. The configured
+        CargoPai partner target supports publication when its partner origin
+        and grant authority are configured. A withdrawal requires the
+        publisher role alone. A completed retry returns the original operation.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -3122,7 +3121,8 @@ paths:
       description: >-
         A separate product security reviewer supplies a reason. Clearing a
         block does not restore a slot. Restore uses a new CAS and revalidates
-        the publisher's independence and artifact integrity.
+        the publisher's independence and artifact integrity. Partner
+        restoration also checks the current approval.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -3585,9 +3585,9 @@ components:
             Why the approval the active release rests on does not hold for
             this target now: the error code an activation of that release
             would be refused with. Absent when the approval holds and when
-            no release is active. It says that the revision is due another
-            review and takes nothing down: the release stays active and its
-            artifact is served.
+            no release is active. The slot retains the release pointer. The
+            internal origin can still serve the artifact. The partner origin
+            requires a current approval to serve that release.
           type: string
           enum: [APPROVAL_REQUIRED, APPROVAL_EXPIRED, WAIVER_EXPIRED, REVIEWER_AUTH_REVOKED, APPROVAL_SCOPE_MISMATCH, POLICY_STALE]
         delivery_status:
