@@ -1,9 +1,9 @@
-import { api, assetPath, field, fill, list, node, productPath, segment, statuses, timestamp } from "./workbench.js";
+import { api, assetPath, confirmChange, field, fill, list, node, productPath, segment, statuses, timestamp } from "./workbench.js";
 
 const actions = { ACTIVATE: "发布", WITHDRAW: "撤销", RESTORE: "恢复" };
 const visibility = { EMPTY: "尚未发布", ACTIVE: "已生效", WITHDRAWN: "已撤销" };
 
-export function publicationPanel(review, publisher, signal) {
+export function publicationPanel(review, { publisher, signal, productName }) {
   const product = productPath(review.product_id);
   const releasePath = assetPath(review.product_id, review.api_asset_id) + "/releases";
   const panel = node("details", "", "publication");
@@ -114,7 +114,11 @@ export function publicationPanel(review, publisher, signal) {
     showSlot();
     history.replaceChildren();
     if (!target.value) return;
-    slot = await api(slotPath(), { signal });
+    const current = await api(slotPath(), { signal });
+    if (current.active_release_id && !releases.some(item => item.release_id === current.active_release_id)) {
+      replaceReleases(await list(releasePath, signal));
+    }
+    slot = current;
     showSlot();
     if (!Number.isSafeInteger(slot.generation) || slot.generation === 0) return;
     const after = Math.max(0, slot.generation - 10);
@@ -172,6 +176,18 @@ export function publicationPanel(review, publisher, signal) {
         note("请填写撤销或恢复的理由。", true);
         return;
       }
+      const chosenTarget = targets.find(item => item.publication_target_id === target.value);
+      const chosenRelease = releases.find(item => item.release_id === (change.release_id || slot.active_release_id));
+      const verb = actions[change.action];
+      const values = [
+        ["产品", productName],
+        ["发布目标", chosenTarget.portal_key + " / " + chosenTarget.audience + " / " + chosenTarget.environment],
+        ["API 资产", review.api_asset_id],
+        ["Release", chosenRelease?.version || change.release_id || slot.active_release_id],
+        ["预期槽位代数", String(change.expected_generation)],
+      ];
+      if (chosenRelease?.artifact_digest) values.push(["制品摘要", chosenRelease.artifact_digest]);
+      if (!(await confirmChange("确认" + verb, values, "确认" + verb, signal))) return;
       const path = slotPath() + "/operations";
       const request = path + JSON.stringify(change);
       if (pending?.request !== request) pending = { request, key: crypto.randomUUID() };

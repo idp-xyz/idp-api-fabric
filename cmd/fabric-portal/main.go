@@ -82,7 +82,7 @@ func newPortal(origin string) (http.Handler, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", staticFile("index.html"))
-	for _, name := range []string{"app.js", "app.css", "workbench.js", "publication.js"} {
+	for _, name := range []string{"app.js", "app.css", "workbench.js", "publication.js", "access-blocks.js"} {
 		mux.HandleFunc("GET /"+name, staticFile(name))
 	}
 	proxy := fabricProxy(upstream)
@@ -90,7 +90,9 @@ func newPortal(origin string) (http.Handler, error) {
 	const product = "/api/v1/products/{product}"
 	const asset = product + "/assets/{asset}"
 	const revision = asset + "/revisions/{revision}"
-	const slot = product + "/publication-targets/{target}/assets/{asset}"
+	const target = product + "/publication-targets/{target}"
+	const slot = target + "/assets/{asset}"
+	const blocks = target + "/access-blocks"
 	for _, path := range []string{
 		"/api/v1/caller",
 		"/api/v1/products",
@@ -108,6 +110,7 @@ func newPortal(origin string) (http.Handler, error) {
 		product + "/publication-targets",
 		slot,
 		slot + "/operations",
+		blocks,
 	} {
 		mux.Handle("GET "+path, proxy)
 	}
@@ -115,6 +118,8 @@ func newPortal(origin string) (http.Handler, error) {
 	mux.Handle("POST "+revision+"/reviews/{review}/decision", proxy)
 	mux.Handle("POST "+asset+"/releases", proxy)
 	mux.Handle("POST "+slot+"/operations", proxy)
+	mux.Handle("POST "+blocks, proxy)
+	mux.Handle("POST "+blocks+"/{block}/clearance", proxy)
 
 	protected := http.NewCrossOriginProtection().Handler(mux)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

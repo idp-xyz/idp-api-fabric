@@ -1,6 +1,7 @@
 import { api, assetPath, badge, field, fill, list, node, page, productPath, revisionPath, reviewPath,
   segment, statuses, timestamp } from "./workbench.js";
 import { publicationPanel } from "./publication.js";
+import { accessBlockPanel } from "./access-blocks.js";
 
 const el = id => document.getElementById(id);
 const productSelect = el("product");
@@ -27,13 +28,23 @@ function report(error) {
   notice(error.message, true);
 }
 
+function showReviewWorkspace(visible) {
+  for (const id of ["workspace-field", "filter-field", "review-columns", "refresh"]) el(id).hidden = !visible;
+}
+
 async function chooseProduct(preferredWorkspace = "") {
   productRequest?.abort();
   view?.controller.abort();
   view = null;
   notice();
   clearWorkspace();
+  showReviewWorkspace(false);
+  const security = el("security-controls");
+  security.hidden = true;
+  security.replaceChildren();
+  el("workbench-title").textContent = "契约评审与发布";
   workspaceSelect.replaceChildren();
+  workspaceSelect.onchange = null;
   workspaceSelect.disabled = true;
   const product = productSelect.value;
   if (!product) return;
@@ -42,13 +53,31 @@ async function chooseProduct(preferredWorkspace = "") {
   const { signal } = controller;
   el("context").textContent = "正在读取产品和工作区…";
   const callerInProduct = await api(productPath(product) + "/caller", { signal });
-  const owner = callerInProduct.roles.includes("product_owner");
-  if (!owner && !callerInProduct.workspaces.length) {
+  if (signal.aborted) return;
+  const { roles } = callerInProduct;
+  const canSeeWorkspace = roles.includes("product_owner") || callerInProduct.workspaces.length > 0;
+  const canBlock = roles.includes("security_admin");
+  const canClear = roles.includes("security_reviewer");
+  const productName = productSelect.selectedOptions[0].text;
+  let blocks;
+  if (canBlock || canClear) {
+    blocks = accessBlockPanel({ product, productName, caller, canBlock, canClear, signal });
+    security.replaceChildren(blocks);
+    security.hidden = false;
+  }
+  const workspaces = canSeeWorkspace ? await list(productPath(product) + "/workspaces", signal) : [];
+  if (signal.aborted) return;
+  if (!workspaces.length && blocks) {
+    el("workbench-title").textContent = "发布访问控制";
+    el("context").textContent = productName;
+    blocks.open = true;
+    return;
+  }
+  if (!canSeeWorkspace) {
     el("context").textContent = "当前身份在此产品下没有可用的工作区。";
     return;
   }
-  const workspaces = await list(productPath(product) + "/workspaces", signal);
-  if (signal.aborted) return;
+  showReviewWorkspace(true);
   fill(workspaceSelect, workspaces, "workspace_id", item => item.display_name);
   if (workspaces.some(item => item.workspace_id === preferredWorkspace)) workspaceSelect.value = preferredWorkspace;
   workspaceSelect.onchange = () => chooseWorkspace(product, callerInProduct).catch(report);
@@ -290,7 +319,10 @@ function renderEvidence(selection, review, revision, check, signal) {
       evidence.append(decisionForm(selection, review, check));
     }
   }
-  evidence.append(publicationPanel(review, selection.roles.includes("internal_publisher"), signal));
+  evidence.append(publicationPanel(review, {
+    publisher: selection.roles.includes("internal_publisher"), signal,
+    productName: productSelect.selectedOptions[0].text,
+  }));
 }
 
 function decisionForm(selection, review, check) {
@@ -381,7 +413,6 @@ async function start() {
   }
   fill(productSelect, products, "product_id", item => item.display_name);
   el("workbench").hidden = false;
-  el("refresh").hidden = false;
   await chooseProduct();
 }
 

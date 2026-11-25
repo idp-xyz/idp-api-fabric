@@ -30,6 +30,10 @@ function describeError(status, code, trace) {
     REVIEWER_AUTH_REVOKED: "评审人授权已撤销。",
     APPROVAL_SCOPE_MISMATCH: "该目标不在评审批准范围内。",
     PUBLISHER_NOT_INDEPENDENT: "请由未参与修订、检查或评审的发布人操作。",
+    ACCESS_BLOCK_EXISTS: "此范围已有访问阻断。",
+    ACCESS_BLOCK_CLEARED: "此阻断已解除，请刷新记录。",
+    WITHDRAW_BEFORE_CLEARING: "请由发布人先撤销受此阻断影响的发布。",
+    SECURITY_REVIEWER_NOT_INDEPENDENT: "请由另一位安全评审人解除。",
     PUBLICATION_BLOCKED: "访问阻断覆盖此发布操作。",
     RELEASE_NOT_IN_SLOT_HISTORY: "该 Release 从未在此槽位生效，无法恢复。",
     PRECONDITION_FAILED: "槽位代数已变化，请核对当前状态。",
@@ -112,4 +116,37 @@ export function field(text, control, id) {
   label.htmlFor = id;
   field.append(label, control);
   return field;
+}
+
+export function confirmChange(title, values, action, signal, guidance = "") {
+  if (signal.aborted) return Promise.resolve(false);
+  return new Promise(resolve => {
+    const dialog = node("dialog", "", "operation-dialog");
+    const heading = node("h2", title);
+    heading.id = "operation-confirm-title";
+    dialog.setAttribute("aria-labelledby", heading.id);
+    dialog.append(heading);
+    if (guidance) dialog.append(node("p", guidance));
+    const facts = node("dl", "", "facts");
+    for (const [label, value] of values) facts.append(node("dt", label), node("dd", value));
+    dialog.append(facts);
+    const controls = node("form", "", "dialog-actions");
+    controls.method = "dialog";
+    const cancel = node("button", "取消");
+    cancel.value = "cancel";
+    cancel.autofocus = true;
+    const confirm = node("button", action, "primary");
+    confirm.value = "confirm";
+    controls.append(cancel, confirm);
+    dialog.append(controls);
+    const abort = () => dialog.close();
+    signal.addEventListener("abort", abort, { once: true });
+    dialog.onclose = () => {
+      signal.removeEventListener("abort", abort);
+      dialog.remove();
+      resolve(dialog.returnValue === "confirm" && !signal.aborted);
+    };
+    document.body.append(dialog);
+    dialog.showModal();
+  });
 }
