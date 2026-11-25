@@ -36,7 +36,7 @@ func (w *slotsWorld) otherProduct() (product, workspace string) {
 // answered with an empty page.
 func TestTheOverviewIsShownToWhoReadsTheRevisionsOfTheWorkspaceAndToNoOneElse(t *testing.T) {
 	w := slotsFor(t)
-	w.require(w.securityRole("auditor", "internal_auditor", "owner"), http.StatusCreated, "")
+	w.require(w.securityRole("auditor", "internal_auditor", "platform-admin"), http.StatusCreated, "")
 	w.require(w.securityRole("security", "security_admin", "owner"), http.StatusCreated, "")
 	w.join(w.product, w.workspace, "owner", "mixed", "internal_author")
 	w.join(w.product, w.operations, "owner", "mixed", "workspace_maintainer")

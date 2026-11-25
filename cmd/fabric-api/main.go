@@ -19,7 +19,9 @@
 // JSON array of subjects of that issuer, as in ["alice","ops-bot"]. Only an
 // administrator registers a product. An administrator also names an owner of
 // a product afterwards, which is how a product whose owner was mistyped is
-// repaired, and has no other say inside one. Unset, nobody does.
+// repaired, and appoints and dismisses the auditors of a product it does not
+// own: it has no other say inside one, and no administrator audits a
+// product. Unset, nobody does any of it.
 //
 // IDP_FABRIC_HTTP_ADDR sets the listen address. The default is loopback only:
 // the control plane is private (F02 §4.1), so reaching it from another host is
@@ -170,7 +172,7 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	if len(configured.administrators) == 0 {
-		logger.Warn("nobody administers the platform: no product can be registered; see IDP_FABRIC_PLATFORM_ADMIN_SUBJECTS")
+		logger.Warn("nobody administers the platform: no product can be registered and no auditor appointed or dismissed; see IDP_FABRIC_PLATFORM_ADMIN_SUBJECTS")
 	}
 
 	listener, err := net.Listen("tcp", configured.address)

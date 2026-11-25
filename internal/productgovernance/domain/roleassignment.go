@@ -18,8 +18,10 @@ const (
 
 // RoleInternalAuditor reads the audit records of one product (F05 §6, AC-29)
 // and nothing else: no contract, no revision, no publication. An owner does
-// not read them by being one; it makes itself an auditor, and that grant is
-// on record.
+// not read them by being one, and makes nobody an auditor, itself included:
+// whoever audits a product is appointed and dismissed by a platform
+// administrator, from those who neither own the product nor administer the
+// platform.
 const RoleInternalAuditor Role = "internal_auditor"
 
 // ProductRoles returns the roles a product assignment can grant.

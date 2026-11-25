@@ -50,12 +50,13 @@ func (s *stack) requireThat(got answer, status int, code string) {
 	}
 }
 
-// auditorOf makes the subject an auditor of the product, as its owner, and
-// returns where the role is read and revoked.
-func (s *stack) auditorOf(product, owner, subject string) string {
+// auditorOf makes the subject an auditor of the product, as the platform
+// administrator does, and returns where the role is read and revoked. No
+// owner of a product appoints who audits it.
+func (s *stack) auditorOf(product, subject string) string {
 	s.t.Helper()
 
-	got := s.grantRole(product, owner, subject, "internal_auditor")
+	got := s.grantRole(product, "platform-admin", subject, "internal_auditor")
 	if got.status != http.StatusCreated {
 		s.t.Fatalf("make %s an auditor: status %d %v", subject, got.status, got.body)
 	}
@@ -186,9 +187,9 @@ func TestOnlyAnAuditorOfTheProductReadsItsAuditRecords(t *testing.T) {
 	s := publicationFor(t)
 	s.require(s.securityRole("security", "security_admin", "owner"), http.StatusCreated, "")
 	s.require(s.securityRole("clearer", "security_reviewer", "owner"), http.StatusCreated, "")
-	s.auditorOf(s.product, "owner", "auditor")
+	s.auditorOf(s.product, "auditor")
 	parcel := s.register("platform-admin", "parcel", "parcel-owner")
-	s.auditorOf(parcel, "parcel-owner", "other-auditor")
+	s.auditorOf(parcel, "other-auditor")
 	path := auditPath(s.product)
 	const missing = "3e1c6a9d-74f2-4b0a-98c3-b2e5f4a6c7d8"
 
@@ -279,8 +280,8 @@ func TestAnAuditorReadsTheRecordsOfItsProductAndNoOther(t *testing.T) {
 	s.createWorkspace(parcel, "parcel-owner", "dispatch")
 	s.join(cargopai, engineering, "owner", "author", "internal_author")
 	s.join(parcel, sorting, "parcel-owner", "sorter", "internal_author")
-	s.auditorOf(cargopai, "owner", "auditor")
-	s.auditorOf(parcel, "parcel-owner", "parcel-auditor")
+	s.auditorOf(cargopai, "auditor")
+	s.auditorOf(parcel, "parcel-auditor")
 	// A refusal that concerns no product: nobody but the administrator
 	// registers one. It is the newest record there is, and it is in no list.
 	s.requireThat(s.call(http.MethodPost, "/v1/products", "owner", registration("cargopai-2", "owner")(s)), http.StatusForbidden, "FORBIDDEN")
@@ -345,7 +346,7 @@ func TestAnAuditorReadsTheRecordsOfItsProductAndNoOther(t *testing.T) {
 // answers is what the trail holds that is so, in the order of the list.
 func TestTheAuditRecordsAreFilteredByWhatTheyRecord(t *testing.T) {
 	s := publicationFor(t)
-	s.auditorOf(s.product, "owner", "auditor")
+	s.auditorOf(s.product, "auditor")
 	s.require(s.securityRole("security", "security_admin", "owner"), http.StatusCreated, "")
 	// Refusals of several kinds, and what the request of one of them is.
 	refusal := s.call(http.MethodGet, "/v1/products/"+s.product, "mallory", "")
@@ -466,7 +467,7 @@ func TestTheAuditRecordsAreFilteredByWhatTheyRecord(t *testing.T) {
 // from what is behind.
 func TestAuditRecordsAreReadNewestFirstAndPagesSurviveNewRecords(t *testing.T) {
 	s := publicationFor(t)
-	s.auditorOf(s.product, "owner", "auditor")
+	s.auditorOf(s.product, "auditor")
 	path := auditPath(s.product)
 	original := s.trail(s.product)
 	if len(original) < 8 {
@@ -540,7 +541,7 @@ func TestAuditRecordsAreReadNewestFirstAndPagesSurviveNewRecords(t *testing.T) {
 func TestAnAuditorReadsNoContractNoRevisionAndNoPublication(t *testing.T) {
 	s := publicationFor(t)
 	s.require(s.securityRole("security", "security_admin", "owner"), http.StatusCreated, "")
-	s.auditorOf(s.product, "owner", "auditor")
+	s.auditorOf(s.product, "auditor")
 	// A product with what an auditor must not read: a contract with its checks
 	// and its review, a release, a target with a slot that serves it, and a
 	// block of it.
@@ -638,33 +639,34 @@ func TestAnAuditorReadsNoContractNoRevisionAndNoPublication(t *testing.T) {
 
 // A role is held from the moment it is granted to the moment it is revoked,
 // and nothing a caller holds from before keeps it: a page token grants
-// nothing, and a role that was revoked reads no page after it. An owner that
-// is to read the records makes itself an auditor, and that is on record, for
-// the auditor to read.
+// nothing, and a role that was revoked reads no page after it. It is the
+// platform administrator that appoints the auditor and dismisses it. An owner
+// of the product does neither, for anybody or for itself, and what it was
+// refused is on record, for the auditor to read.
 func TestTheAuditorRoleTakesEffectAtOnceAndEndsAtOnce(t *testing.T) {
 	s := publicationFor(t)
 	path := auditPath(s.product)
 
 	// Not yet an auditor: the product is not there for it.
 	s.require(s.call(http.MethodGet, path, "auditor", ""), http.StatusNotFound, "PRODUCT_NOT_FOUND")
-	// An owner names itself, as a platform administrator may not.
-	s.require(s.grantRole(s.product, "platform-admin", "auditor", "internal_auditor"), http.StatusForbidden, "FORBIDDEN")
+	// An owner appoints nobody, itself least of all, and reads nothing.
+	s.require(s.grantRole(s.product, "owner", "auditor", "internal_auditor"), http.StatusForbidden, "FORBIDDEN")
+	s.require(s.grantRole(s.product, "owner", "owner", "internal_auditor"), http.StatusForbidden, "FORBIDDEN")
 	s.require(s.call(http.MethodGet, path, "owner", ""), http.StatusForbidden, "FORBIDDEN")
-	itself := s.grantRole(s.product, "owner", "owner", "internal_auditor")
-	s.require(itself, http.StatusCreated, "")
-	mine := s.listed(path+"?actor_subject=owner&action=product_role.grant&outcome=SUCCEEDED", "owner", 10)
-	if len(mine) != 1 || mine[0]["resource_id"] != last(itself.header.Get("Location")) || mine[0]["rule_id"] != "AC-10" ||
-		mine[0]["resource_type"] != "RoleAssignment" {
-		t.Errorf("the owner that made itself an auditor reads %v of its grant, want the one record of it, under the rule of the owners", mine)
-	}
-	// What the administrator was refused is on record too, and the owner reads it.
-	refused := s.listed(path+"?actor_subject=platform-admin&action=product_role.grant&outcome=DENIED", "owner", 10)
-	if len(refused) != 1 || refused[0]["rule_id"] != "DENY-03" {
-		t.Errorf("the owner reads %v of the refusal of the administrator, want the one record of it", refused)
-	}
+	s.require(s.call(http.MethodGet, path, "auditor", ""), http.StatusNotFound, "PRODUCT_NOT_FOUND")
 
-	// The role is granted: the next request reads.
-	location := s.auditorOf(s.product, "owner", "auditor")
+	// The administrator appoints: the next request reads, the record of the
+	// appointment and of what the owner was refused among the rest.
+	location := s.auditorOf(s.product, "auditor")
+	appointed := s.listed(path+"?actor_subject=platform-admin&action=product_role.grant&outcome=SUCCEEDED", "auditor", 10)
+	if len(appointed) != 1 || appointed[0]["resource_id"] != last(location) || appointed[0]["rule_id"] != "AC-08" ||
+		appointed[0]["resource_type"] != "RoleAssignment" {
+		t.Errorf("the auditor reads %v of its appointment, want the one record of it, under the rule of the administrator", appointed)
+	}
+	refused := s.listed(path+"?actor_subject=owner&action=product_role.grant&outcome=DENIED", "auditor", 10)
+	if len(refused) != 2 || refused[0]["rule_id"] != "DENY-03" || refused[1]["rule_id"] != "DENY-03" {
+		t.Errorf("the auditor reads %v of the refusals of the owner, want the two records of them", refused)
+	}
 	if pages := s.auditPagesOf(path, "auditor", 2); len(pages) < 3 {
 		t.Fatalf("the trail is read in %d pages of two, want some", len(pages))
 	}
@@ -672,21 +674,34 @@ func TestTheAuditorRoleTakesEffectAtOnceAndEndsAtOnce(t *testing.T) {
 	if len(items) != 2 || token == "" {
 		t.Fatalf("the first page holds %d records and the token %q, want two and a token", len(items), token)
 	}
+	// Whoever is audited does not send its auditor away: the owner is told it
+	// may not, and the auditor reads on.
+	s.require(s.call(http.MethodDelete, location, "owner", ""), http.StatusForbidden, "FORBIDDEN")
+	if got, _ := s.page(path+"?page_size=2&page_token="+token, "auditor"); len(got) != 2 {
+		t.Errorf("behind the token, once the owner was refused the dismissal: %d records, want 2", len(got))
+	}
 	// Ending the role ends what it was read with: the token names a position and
 	// grants nothing, and the list is none of the caller's any more.
-	s.revoke(location, "owner")
+	s.revoke(location, "platform-admin")
 	for _, target := range []string{path + "?page_size=2&page_token=" + token, path} {
 		s.require(s.call(http.MethodGet, target, "auditor", ""), http.StatusNotFound, "PRODUCT_NOT_FOUND")
 	}
-	// The record of the revocation is in the trail that the owner, which is an
-	// auditor, reads.
-	revoked := s.listed(path+"?action=product_role.revoke", "owner", 10)
-	if len(revoked) != 1 || revoked[0]["resource_id"] != last(location) {
-		t.Errorf("the owner reads %v of the revocation, want the one record of it", revoked)
+	// The dismissal and the refusal of the owner are in the trail, for whoever
+	// audits the product next.
+	s.auditorOf(s.product, "successor")
+	revoked := s.listed(path+"?action=product_role.revoke&outcome=SUCCEEDED", "successor", 10)
+	if len(revoked) != 1 || revoked[0]["resource_id"] != last(location) || revoked[0]["rule_id"] != "AC-08" ||
+		revoked[0]["actor"].(map[string]any)["subject"] != "platform-admin" {
+		t.Errorf("the next auditor reads %v of the dismissal, want the one record of it, by the administrator", revoked)
+	}
+	kept := s.listed(path+"?action=product_role.revoke&outcome=DENIED", "successor", 10)
+	if len(kept) != 1 || kept[0]["resource_id"] != last(location) || kept[0]["rule_id"] != "DENY-03" ||
+		kept[0]["actor"].(map[string]any)["subject"] != "owner" {
+		t.Errorf("the next auditor reads %v of the dismissal the owner was refused, want the one record of it", kept)
 	}
 	// Granted again, as an assignment of its own, it reads again, from the same
 	// position.
-	again := s.auditorOf(s.product, "owner", "auditor")
+	again := s.auditorOf(s.product, "auditor")
 	if last(again) == last(location) {
 		t.Errorf("the role was granted again under the identifier of the one that was revoked")
 	}
@@ -702,7 +717,7 @@ func TestTheAuditorRoleTakesEffectAtOnceAndEndsAtOnce(t *testing.T) {
 // another session, while the read waits.
 func TestARoleRevokedWhileAReadWaitsIsNoRoleToReadWith(t *testing.T) {
 	s := publicationFor(t)
-	s.auditorOf(s.product, "owner", "auditor")
+	s.auditorOf(s.product, "auditor")
 	path := auditPath(s.product)
 
 	holder := pgtest.Connect(t, s.database.Migrator)
@@ -728,11 +743,11 @@ func TestARoleRevokedWhileAReadWaitsIsNoRoleToReadWith(t *testing.T) {
 	default:
 	}
 
-	// The revocation commits, as that of the owner does: the assignment ends,
-	// who ended it is kept.
+	// The revocation commits, as that of the administrator does: the
+	// assignment ends, who ended it is kept.
 	if _, err := tx.Exec(t.Context(), `
 		UPDATE productgovernance.product_role_assignment
-		SET revoked_at = now(), revoked_by_issuer = $2, revoked_by_subject = 'owner', role_assignment_version = role_assignment_version + 1
+		SET revoked_at = now(), revoked_by_issuer = $2, revoked_by_subject = 'platform-admin', role_assignment_version = role_assignment_version + 1
 		WHERE role_assignment_id = $1`, assignment, s.issuer.URL()); err != nil {
 		t.Fatalf("revoke the role: %v", err)
 	}
@@ -756,10 +771,11 @@ func TestARoleRevokedWhileAReadWaitsIsNoRoleToReadWith(t *testing.T) {
 
 // A product that takes no new work keeps what it holds: its auditor still reads
 // the trail, which is when it matters, and the role is still ended. It takes no
-// new auditor.
+// new auditor from the administrator, and its owner is told what an owner is
+// always told: that it may not appoint one.
 func TestTheAuditRecordsOfASuspendedProductAreStillRead(t *testing.T) {
 	s := publicationFor(t)
-	location := s.auditorOf(s.product, "owner", "auditor")
+	location := s.auditorOf(s.product, "auditor")
 	path := auditPath(s.product)
 	if _, err := s.owner.Exec(t.Context(), `UPDATE productgovernance.product SET status = 'SUSPENDED' WHERE product_id = $1`, s.product); err != nil {
 		t.Fatalf("suspend the product: %v", err)
@@ -768,9 +784,11 @@ func TestTheAuditRecordsOfASuspendedProductAreStillRead(t *testing.T) {
 	if got := s.listed(path, "auditor", 10); len(got) == 0 {
 		t.Errorf("the auditor of a suspended product reads no record")
 	}
-	s.require(s.grantRole(s.product, "owner", "second-auditor", "internal_auditor"), http.StatusConflict, "PRODUCT_NOT_ACTIVE")
+	s.require(s.grantRole(s.product, "platform-admin", "second-auditor", "internal_auditor"), http.StatusConflict, "PRODUCT_NOT_ACTIVE")
+	s.require(s.grantRole(s.product, "owner", "second-auditor", "internal_auditor"), http.StatusForbidden, "FORBIDDEN")
 	s.require(s.call(http.MethodGet, path, "second-auditor", ""), http.StatusNotFound, "PRODUCT_NOT_FOUND")
-	s.revoke(location, "owner")
+	s.require(s.call(http.MethodDelete, location, "owner", ""), http.StatusForbidden, "FORBIDDEN")
+	s.revoke(location, "platform-admin")
 	s.require(s.call(http.MethodGet, path, "auditor", ""), http.StatusNotFound, "PRODUCT_NOT_FOUND")
 }
 
@@ -780,7 +798,7 @@ func TestTheAuditRecordsOfASuspendedProductAreStillRead(t *testing.T) {
 // table nor the answers of the list say any of it.
 func TestAuditRecordsHoldNoTokenAndNoRequestBody(t *testing.T) {
 	s := publicationFor(t)
-	s.auditorOf(s.product, "owner", "auditor")
+	s.auditorOf(s.product, "auditor")
 	const marker = "marker-4f1c9e27-private-name"
 	path := "/v1/products/" + s.product
 

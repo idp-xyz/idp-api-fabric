@@ -41,6 +41,13 @@ type world struct {
 	// asked are the pages the stores were asked for, in the order they
 	// were asked.
 	asked []ports.Page
+	// locked are the principals whose roles in a product were locked, in
+	// the order they were locked.
+	locked []domain.Principal
+	// unreadable is a principal whose roles cannot be read: reading them
+	// fails with the error, while those of anybody else are read.
+	unreadable      domain.Principal
+	unreadableRoles error
 	// failing makes the named step fail, to see what a failure leaves behind.
 	failing map[string]error
 	// meanwhile runs when the owners of a product are locked, before they
@@ -469,6 +476,9 @@ func (s roleStore) RolesOf(_ context.Context, productID domain.ProductID, princi
 	if err := s.fail("roles"); err != nil {
 		return nil, err
 	}
+	if s.unreadableRoles != nil && principal == s.unreadable {
+		return nil, s.unreadableRoles
+	}
 	var roles []domain.Role
 	for _, assignment := range s.roles {
 		if assignment.InForce() && assignment.ProductID == productID && assignment.Principal == principal {
@@ -482,6 +492,7 @@ func (s roleStore) LockHeldRoles(ctx context.Context, productID domain.ProductID
 	if !transacted(ctx) {
 		return nil, fmt.Errorf("a principal's roles were locked outside a transaction")
 	}
+	s.locked = append(s.locked, principal)
 	return s.RolesOf(ctx, productID, principal)
 }
 
@@ -494,6 +505,23 @@ func (s roleStore) List(_ context.Context, productID domain.ProductID, page port
 	var of []domain.RoleAssignment
 	for _, assignment := range s.roles {
 		if assignment.InForce() && assignment.ProductID == productID {
+			of = append(of, assignment)
+		}
+	}
+	return paged(of, ports.PositionOfRoleAssignment, page)
+}
+
+// ListOfRole returns a page of the role assignments in force of the product
+// that grant the role. As in the table, the role is part of what is read:
+// the page is cut from the assignments of the role.
+func (s roleStore) ListOfRole(_ context.Context, productID domain.ProductID, role domain.Role, page ports.Page) ([]domain.RoleAssignment, error) {
+	if err := s.fail("list"); err != nil {
+		return nil, err
+	}
+	s.asked = append(s.asked, page)
+	var of []domain.RoleAssignment
+	for _, assignment := range s.roles {
+		if assignment.InForce() && assignment.ProductID == productID && assignment.Role == role {
 			of = append(of, assignment)
 		}
 	}

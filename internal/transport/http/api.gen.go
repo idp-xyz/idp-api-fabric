@@ -1422,7 +1422,7 @@ type ProductRegistration struct {
 	ProductKey Key `json:"product_key"`
 }
 
-// ProductRole What a principal is in a product. A product_owner manages the workspaces, their members and product roles. A security_admin blocks publication access. A security_reviewer independently clears blocks. An internal_auditor reads the audit records of the product and nothing else. These roles are scoped to the product.
+// ProductRole What a principal is in a product. A product_owner manages the workspaces, their members and the product roles but that of an auditor. A security_admin blocks publication access. A security_reviewer independently clears blocks. An internal_auditor reads the audit records of the product and nothing else, and is appointed and dismissed by a platform administrator. These roles are scoped to the product.
 type ProductRole string
 
 // ProductRoleAssignment A principal that holds a role in one product. It is in force from granted_at until it is revoked; a revoked assignment is not shown.
@@ -1435,7 +1435,7 @@ type ProductRoleAssignment struct {
 	// ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 	ProductID Identifier `json:"product_id"`
 
-	// Role What a principal is in a product. A product_owner manages the workspaces, their members and product roles. A security_admin blocks publication access. A security_reviewer independently clears blocks. An internal_auditor reads the audit records of the product and nothing else. These roles are scoped to the product.
+	// Role What a principal is in a product. A product_owner manages the workspaces, their members and the product roles but that of an auditor. A security_admin blocks publication access. A security_reviewer independently clears blocks. An internal_auditor reads the audit records of the product and nothing else, and is appointed and dismissed by a platform administrator. These roles are scoped to the product.
 	Role ProductRole `json:"role"`
 
 	// RoleAssignmentID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
@@ -1455,7 +1455,7 @@ type ProductRoleGrant struct {
 	// Principal A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
 	Principal Principal `json:"principal"`
 
-	// Role What a principal is in a product. A product_owner manages the workspaces, their members and product roles. A security_admin blocks publication access. A security_reviewer independently clears blocks. An internal_auditor reads the audit records of the product and nothing else. These roles are scoped to the product.
+	// Role What a principal is in a product. A product_owner manages the workspaces, their members and the product roles but that of an auditor. A security_admin blocks publication access. A security_reviewer independently clears blocks. An internal_auditor reads the audit records of the product and nothing else, and is appointed and dismissed by a platform administrator. These roles are scoped to the product.
 	Role ProductRole `json:"role"`
 }
 
@@ -2078,6 +2078,9 @@ type ListProductRolesParams struct {
 
 	// PageToken Where the page starts: the next_page_token of the page before, as it was given. Without it the list starts at its beginning. The token is opaque. It names a position in one list and grants nothing: what the caller may read is decided again with every page, from what it holds then. One that is not a token of this list is refused (400 PAGE_TOKEN_INVALID).
 	PageToken *PageToken `form:"page_token,omitempty" json:"page_token,omitempty"`
+
+	// Role Only the assignments of this role. A platform administrator that does not own the product asks for internal_auditor.
+	Role *ProductRole `form:"role,omitempty" json:"role,omitempty"`
 }
 
 // ListWorkspacesParams defines parameters for ListWorkspaces.
@@ -4770,6 +4773,19 @@ func (siw *ServerInterfaceWrapper) ListProductRoles(w http.ResponseWriter, r *ht
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_token"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_token", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "role" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "role", r.URL.Query(), &params.Role, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "role"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "role", Err: err})
 		}
 		return
 	}
