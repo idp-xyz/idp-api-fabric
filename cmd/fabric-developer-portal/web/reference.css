@@ -1,0 +1,70 @@
+:root {
+  color-scheme: light;
+  --ink: #143438;
+  --muted: #456268;
+  --teal: #087461;
+  --strong: #12443f;
+  --canvas: #f5f8f7;
+  --surface: #fff;
+  --line: #d9e6e2;
+  --mint: #e2f4ee;
+  font: 16px/1.6 system-ui, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; color: var(--ink); background: var(--canvas); }
+a { color: var(--teal); }
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid #207ab0; outline-offset: 3px; }
+code { font-family: "IBM Plex Mono", ui-monospace, monospace; overflow-wrap: anywhere; }
+.container { width: min(100% - 3rem, 73rem); margin-inline: auto; }
+.skip { position: absolute; inset: 1rem auto auto 1rem; transform: translateY(-150%); padding: .4rem .8rem; background: var(--surface); z-index: 1; }
+.skip:focus { transform: none; }
+.top { background: var(--strong); color: #f0fcf8; }
+.top-inner { display: flex; gap: 2rem; align-items: center; min-height: 4.5rem; }
+.brand { display: inline-flex; align-items: baseline; gap: .45rem; color: inherit; text-decoration: none; }
+.brand strong { font-size: 1.35rem; letter-spacing: -.03em; }
+.brand span { color: #bce7dc; font-size: .9rem; }
+.nav { margin-left: auto; color: inherit; text-decoration-color: #89cabb; text-underline-offset: .4rem; }
+.heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 2rem; padding: 3rem 0 2rem; border-bottom: 1px solid var(--line); }
+.version { color: var(--muted); font-size: .85rem; margin: 0 0 .6rem; }
+h1 { font-size: clamp(1.9rem, 4vw, 3.15rem); line-height: 1.17; letter-spacing: -.035em; margin: 0; overflow-wrap: anywhere; }
+.description { white-space: pre-line; color: var(--muted); max-width: 66ch; margin: .9rem 0 0; overflow-wrap: anywhere; }
+.button { display: inline-block; background: var(--teal); color: white; padding: .62rem .95rem; text-decoration: none; border-radius: .4rem; font-weight: 650; white-space: nowrap; }
+.button:hover { background: #065d50; }
+.reference { display: grid; grid-template-columns: minmax(13.75rem, 1fr) minmax(0, 3fr); align-items: start; gap: 2rem; padding: 1.75rem 0 3rem; }
+aside { min-width: 0; }
+form label { display: block; font-weight: 650; margin-bottom: .45rem; }
+.search { display: flex; gap: .4rem; }
+input, button { font: inherit; color: var(--ink); border: 1px solid var(--line); border-radius: .35rem; background: var(--surface); padding: .34rem .52rem; }
+input { min-width: 0; flex: 1; }
+button { flex-shrink: 0; white-space: nowrap; cursor: pointer; }
+button:hover { background: var(--mint); }
+aside nav { margin-top: 1rem; }
+aside nav a { display: block; padding: .42rem .25rem; text-decoration: none; overflow-wrap: anywhere; }
+aside nav a:hover { text-decoration: underline; }
+aside nav strong { font: 700 .78rem ui-monospace, monospace; }
+.operations { display: grid; gap: 1rem; min-width: 0; }
+article, .notice { padding: 1.3rem 1.55rem; background: var(--surface); border: 1px solid var(--line); border-radius: .65rem; }
+article { scroll-margin-top: 1rem; }
+article:target { border-color: var(--teal); }
+article h2 { margin: 0; font-size: 1.12rem; line-height: 1.45; }
+article h3 { font-size: .9rem; margin: 1.25rem 0 .4rem; }
+.method { display: inline-block; border-radius: .25rem; background: var(--mint); color: #075a4c; font: 700 .78rem/1 ui-monospace, monospace; padding: .4rem .45rem; margin-right: .3rem; vertical-align: .1rem; }
+.summary { font-weight: 650; margin: .55rem 0 0; overflow-wrap: anywhere; }
+dl { margin: 0; }
+dl div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); border-top: 1px solid var(--line); padding: .45rem 0; }
+dt { font-weight: 650; }
+dd { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.digest { margin: 0; font-size: .8rem; color: var(--muted); }
+.notice { max-width: 40rem; margin: 3rem auto; }
+.notice h1 { font-size: 1.8rem; }
+.notice p { margin-block: .65rem 1.25rem; }
+
+@media (max-width: 48rem) {
+  .container { width: min(100% - 2rem, 73rem); }
+  .heading { display: grid; gap: 1.25rem; padding-top: 2rem; }
+  .heading .button { justify-self: start; }
+  .reference { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  aside nav { display: none; }
+  article { padding: 1rem; }
+}
