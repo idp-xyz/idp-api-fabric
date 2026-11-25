@@ -24,6 +24,7 @@ type Dependencies struct {
 	Transactions ports.Transactions
 	Store        ports.Store
 	Authority    ports.Authority
+	Partner      *PartnerAccess
 	Audit        func(context.Context, ports.AuditEntry) error
 	Enqueue      func(context.Context, domain.Request, ports.Event) error
 	Clock        ports.Clock
@@ -36,6 +37,10 @@ func New(deps Dependencies) (*Publication, error) {
 	if deps.Transactions == nil || deps.Store == nil || deps.Authority == nil || deps.Audit == nil ||
 		deps.Enqueue == nil || deps.Clock == nil || deps.IDs == nil {
 		return nil, errors.New("publication needs transactions, storage, authority, audit, outbox, clock and identifiers")
+	}
+	if p := deps.Partner; p != nil && (p.ProductID == "" || p.TargetID == "" || p.ProductActive == nil ||
+		p.Allowed == nil || p.ReadApproved == nil) {
+		return nil, errors.New("partner publication needs a product, target, grant authority and approved artifact reader")
 	}
 	return &Publication{deps: deps}, nil
 }
@@ -112,9 +117,9 @@ func (s *Publication) ListTargets(ctx context.Context, request domain.Request, a
 // GetSlot reads what a slot points at, whether an access block stands
 // between that release and whoever asks for its artifact, and whether the
 // approval the release rests on still holds. A block is why the artifact is
-// not served, and the read that is refused says nothing of it. An approval
-// that does not hold takes nothing down: it is why the release would not be
-// put on the slot today, and whoever may read the slot is told here.
+// not served, and the read that is refused says nothing of it. The approval
+// status explains whether the release could be activated today and also
+// governs whether the partner origin can serve it.
 func (s *Publication) GetSlot(ctx context.Context, request domain.Request) (domain.SlotView, error) {
 	var result domain.SlotView
 	err := s.deps.Transactions.WithinTransaction(ctx, func(tx context.Context) error {
@@ -205,7 +210,7 @@ func (s *Publication) ChangeSlot(ctx context.Context, request domain.Request, ch
 // that compared its revision with what the slot served last. A restoration
 // returns the slot to a release it served before, which is what a publisher
 // falls back to when what is served has to go: the release has to be in the
-// history of the slot, and whether its approval still holds is not asked.
+// history of the slot. Partner restorations require a current approval.
 // Both take a product that admits work, a target that serves, no access
 // block and a publisher who had no part in the revision.
 func (s *Publication) checkActivation(ctx context.Context, request domain.Request, access ports.AssetAccess, target domain.Target, slot domain.Slot, op domain.Operation) error {
@@ -241,7 +246,8 @@ func (s *Publication) checkActivation(ctx context.Context, request domain.Reques
 			return err
 		}
 	}
-	return s.deps.Authority.Admission(ctx, request, access.WorkspaceID, target, op.ReleaseID, baseline, returning)
+	return s.deps.Authority.Admission(ctx, request, access.WorkspaceID, target, op.ReleaseID, baseline,
+		returning && target.Audience == "internal")
 }
 
 type OperationPage struct {
@@ -294,7 +300,7 @@ func (s *Publication) ActiveArtifact(ctx context.Context, request domain.Request
 		if err != nil {
 			return err
 		}
-		if !access.Active {
+		if !access.Active || target.Audience != "internal" {
 			return ErrNoVisibleArtifact
 		}
 		if err := s.servingTarget(tx, target); err != nil {
@@ -323,11 +329,18 @@ func (s *Publication) ActiveArtifact(ctx context.Context, request domain.Request
 	return artifact, s.refused(ctx, request, "publication.download", "PublicationSlot", err)
 }
 
-// Until the external delivery and authorization adapters are available,
-// only an authenticated internal origin can serve a publication.
 func (s *Publication) servingTarget(ctx context.Context, target domain.Target) error {
 	if target.Audience != "internal" {
-		return ErrUnavailableTarget
+		if !s.deps.Partner.matches(target) {
+			return ErrUnavailableTarget
+		}
+		active, err := s.deps.Partner.ProductActive(ctx, target.ProductID)
+		if err != nil {
+			return err
+		}
+		if !active {
+			return ErrUnavailableTarget
+		}
 	}
 	audience, environment, err := s.deps.Authority.Config(ctx, target.ProductID, target.AudienceConfigID)
 	if err != nil {

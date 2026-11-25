@@ -2,8 +2,8 @@
 //
 // It reads a database that fabric-migrate has already migrated and never
 // executes DDL: the process refuses to start against a schema it does not
-// recognise. It verifies the bearer tokens of one identity provider and
-// issues none.
+// recognise. It verifies management tokens against the management issuer.
+// An optional partner listener verifies tokens against its own issuer.
 //
 // IDP_FABRIC_POSTGRES_DSN is the connection string of the application role:
 // the one fabric-migrate grants to, not the one it migrates as. The process
@@ -93,6 +93,7 @@ type settings struct {
 	// never echoed.
 	dsn      string
 	identity identity.Config
+	partner  *partnerSettings
 	// administrators are the principals that administer the platform.
 	administrators []governancedomain.Principal
 }
@@ -104,6 +105,7 @@ func readSettings(getenv func(string) string) (settings, error) {
 	configured := settings{
 		address: getenv("IDP_FABRIC_HTTP_ADDR"),
 		dsn:     getenv("IDP_FABRIC_POSTGRES_DSN"),
+		partner: readPartnerSettings(getenv),
 		identity: identity.Config{
 			Issuer:   getenv("IDP_FABRIC_OIDC_ISSUER"),
 			Audience: getenv("IDP_FABRIC_OIDC_AUDIENCE"),
@@ -178,7 +180,23 @@ func run(logger *slog.Logger) error {
 	logger.Info("fabric-api listening", "address", listener.Addr().String(), "build", buildinfo.Current(),
 		"issuer", configured.identity.Issuer, "audience", configured.identity.Audience,
 		"platform_administrators", len(configured.administrators))
-	return serve(ctx, listener, handler)
+	if handler.partner == nil {
+		return serve(ctx, listener, handler)
+	}
+	partner, err := net.Listen("tcp", configured.partner.address)
+	if err != nil {
+		_ = listener.Close()
+		return fmt.Errorf("listen for partner references: %w", err)
+	}
+	logger.Info("CargoPai partner reference origin listening", "address", partner.Addr().String())
+	ctx, cancelOrigins := context.WithCancel(ctx)
+	defer cancelOrigins()
+	results := make(chan error, 2)
+	go func() { results <- serve(ctx, listener, handler) }()
+	go func() { results <- serve(ctx, partner, handler.partner) }()
+	first := <-results
+	cancelOrigins()
+	return errors.Join(first, <-results)
 }
 
 // systemClock is the clock of the machine.
@@ -210,13 +228,22 @@ func (a auditTrail) Record(ctx context.Context, entry governanceports.AuditEntry
 	})
 }
 
+type apiHandlers struct {
+	management http.Handler
+	partner    http.Handler
+}
+
+func (h *apiHandlers) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.management.ServeHTTP(w, r)
+}
+
 // compose wires the bounded contexts to the database and to each other, and
 // puts them behind the transport.
 //
 // Every write of a use case goes through the one transaction owner of the
 // process, so the rows of a context, the audit record of Platform Operations
 // and the event in the outbox of the framework commit together (INV-13).
-func compose(database *db.Database, verifier httptransport.TokenVerifier, configured settings, logger *slog.Logger) (http.Handler, error) {
+func compose(database *db.Database, verifier httptransport.TokenVerifier, configured settings, logger *slog.Logger) (*apiHandlers, error) {
 	clock, identifiers := systemClock{}, ids.UUIDs{}
 
 	recordAudit := operations.NewRecordAudit(database, operationsdb.NewAuditRecords(database.Framework), clock, identifiers)
@@ -335,10 +362,15 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 	if err != nil {
 		return nil, err
 	}
+	authority := publicationAuthority{releaseAuthority: releaseScope, releases: contractReleases}
+	partnerAccess, partnerVerifier, err := configured.partner.bind(configured.identity.Issuer, authority)
+	if err != nil {
+		return nil, err
+	}
 	publications, err := publication.New(publication.Dependencies{
 		Transactions: transactions, Store: publicationdb.NewStore(database.Framework),
-		Authority: publicationAuthority{releaseAuthority: releaseScope, releases: contractReleases},
-		Audit:     audit.recordPublication, Enqueue: publicationoutbox.NewEvents(outbox, identifiers).Enqueue,
+		Authority: authority, Partner: partnerAccess,
+		Audit: audit.recordPublication, Enqueue: publicationoutbox.NewEvents(outbox, identifiers).Enqueue,
 		Clock: clock, IDs: identifiers,
 	})
 	if err != nil {
@@ -351,11 +383,19 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 	if err != nil {
 		return nil, err
 	}
-	return httptransport.NewHandler(httptransport.Config{
+	management, err := httptransport.NewHandler(httptransport.Config{
 		Logger: logger, Build: buildinfo.Current(), Verifier: verifier, Governance: productGovernance, Catalog: apiCatalog, Registry: contractRegistry,
 		PolicyReview: policyReview{Checks: contractChecks, Reviews: contractReviews, ReviewQueue: reviewQueue},
 		Releases:     contractReleases, Publication: publications, Audit: auditReading,
 	})
+	if err != nil {
+		return nil, err
+	}
+	handler := &apiHandlers{management: management}
+	if partnerAccess != nil {
+		handler.partner = httptransport.NewPartnerHandler(partnerVerifier, publications, logger)
+	}
+	return handler, nil
 }
 
 // serve answers on listener until ctx is done, then lets in-flight requests
