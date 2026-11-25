@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} · CargoPai Developers</title>
+  <link rel="stylesheet" href="/reference.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="top">
+    <div class="container top-inner">
+      <a href="/" class="brand"><strong>CargoPai</strong><span>Developers</span></a>
+      <a href="/" class="nav" aria-current="page">API Reference</a>
+    </div>
+  </header>
+  <main class="container" id="main">
+    {{if .Notice}}
+    <section class="notice">
+      <h1>{{.Title}}</h1>
+      <p>{{.Notice}}</p>
+      <a class="button" href="/">Try again</a>
+    </section>
+    {{else}}
+    <section class="heading">
+      <div>
+        <p class="version">OpenAPI {{.OpenAPI}} <span aria-hidden="true">·</span> Contract version {{.Version}}</p>
+        <h1>{{.Title}}</h1>
+        {{if .Description}}<p class="description">{{.Description}}</p>{{end}}
+      </div>
+      <a class="button" href="/openapi-source.json" download>Download source bundle</a>
+    </section>
+    <div class="reference">
+      <aside aria-label="Operation directory">
+        <form action="/" method="get" role="search">
+          <label for="operation-search">Find an operation</label>
+          <div class="search">
+            <input id="operation-search" name="q" type="search" value="{{.Query}}" placeholder="Method or path">
+            <button type="submit">Search</button>
+          </div>
+        </form>
+        {{if .Operations}}<nav aria-label="API operations">
+          {{range .Operations}}<a href="#{{.Anchor}}"><strong>{{.Method}}</strong> <code>{{.Path}}</code></a>{{end}}
+        </nav>{{end}}
+      </aside>
+      <section class="operations" aria-label="Operation details">
+        {{range .Operations}}
+        <article id="{{.Anchor}}">
+          <h2><span class="method">{{.Method}}</span> <code>{{.Path}}</code></h2>
+          {{if .Summary}}<p class="summary">{{.Summary}}</p>{{end}}
+          {{if .Description}}<p class="description">{{.Description}}</p>{{end}}
+          {{if .Responses}}
+          <h3>Responses</h3>
+          <dl>{{range .Responses}}<div><dt><code>{{.Code}}</code></dt><dd>{{.Description}}</dd></div>{{end}}</dl>
+          {{end}}
+        </article>
+        {{else}}
+        <article>{{if .Query}}<p>No operations match your search.</p><a href="/">See all operations</a>{{else}}<p>This contract has no HTTP operations to display. The original source bundle is available for download.</p>{{end}}</article>
+        {{end}}
+        <p class="digest"><strong>Artifact digest</strong> <code>{{.Digest}}</code></p>
+      </section>
+    </div>
+    {{end}}
+  </main>
+</body>
+</html>
