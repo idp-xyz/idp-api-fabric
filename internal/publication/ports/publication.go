@@ -107,14 +107,26 @@ type Authority interface {
 	// BlockScope checks optional asset/release IDs for a security operator
 	// who already holds the product grant for the target.
 	BlockScope(ctx context.Context, block domain.AccessBlock) error
-	// Material verifies a release, its approval and its digest. previousID
-	// pins the comparison for activation, and reading omits publisher duties.
-	Material(ctx context.Context, request domain.Request, workspaceID string, target domain.Target, releaseID, previousID string, reading bool) (Artifact, error)
-	// Approval verifies, as a read of the artifact does, that the approval
-	// a release rests on holds for the target now. unapproved is why it
-	// does not: the refusal an activation of the release would meet. It is
-	// nil when the approval holds. Anything else that goes wrong, a
-	// release or evidence that is not what was recorded, is err.
+	// Artifact reads the artifact of a release of the asset, for a slot
+	// that points at it to serve, and verifies it against the digest the
+	// release names. It asks nothing of the approval the release rests on:
+	// an approval decides what is put on a slot, and what is on a slot is
+	// served until it is withdrawn or blocked.
+	Artifact(ctx context.Context, request domain.Request, workspaceID, releaseID string) (Artifact, error)
+	// Admission verifies that the caller may put the release on a slot of
+	// the target: the release and its artifact are what was recorded, and
+	// the caller had no part in the revision, its check or its approval.
+	// A release that the slot is to take for the first time is admitted on
+	// an approval that holds for the target now, on a check that compared
+	// the revision with the one of previousID where that is another one.
+	// returning admits a release the slot served before without asking
+	// whether its approval still holds.
+	Admission(ctx context.Context, request domain.Request, workspaceID string, target domain.Target, releaseID, previousID string, returning bool) error
+	// Approval verifies that the approval a release rests on holds for
+	// the target now. unapproved is why it does not: the refusal an
+	// activation of the release would meet. It is nil when the approval
+	// holds. Anything else that goes wrong, a release or evidence that is
+	// not what was recorded, is err.
 	Approval(ctx context.Context, request domain.Request, workspaceID string, target domain.Target, releaseID string) (unapproved, err error)
 }
 

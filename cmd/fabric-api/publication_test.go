@@ -342,10 +342,16 @@ WHERE product_id = $1 AND workspace_id = $2 AND principal_subject = 'reviewer'
 	}
 	path := "/v1/products/" + s.product + "/workspaces/" + s.workspace + "/memberships/" + membership
 	s.require(s.call(http.MethodDelete, path, "owner", ""), http.StatusNoContent, "")
-	s.require(s.call(http.MethodGet, slot+"/artifact", "author", ""), http.StatusNotFound, "PUBLISHED_ARTIFACT_NOT_FOUND")
+	// The revocation stops the next release under that approval. What is
+	// published stays published.
+	s.requireArtifact(slot, release.id("artifact_digest"), revisionSource)
 	s.require(s.prepare(revision, review, "1.0.1", "publisher"), http.StatusConflict, "REVIEWER_AUTH_REVOKED")
 	s.join(s.product, s.workspace, "owner", "reviewer", "internal_reviewer")
 	s.require(s.prepare(revision, review, "1.0.1", "publisher"), http.StatusConflict, "REVIEWER_AUTH_REVOKED")
 	s.require(s.change(slot, "publisher", "WITHDRAW", 1, "", "reviewer grant revoked", "withdraw"), http.StatusOK, "")
-	s.require(s.change(slot, "publisher", "RESTORE", 2, id, "restore", "restore"), http.StatusConflict, "REVIEWER_AUTH_REVOKED")
+	// The slot does not take the release as a new one, and returns to it
+	// as the one it served.
+	s.require(s.change(slot, "publisher", "ACTIVATE", 2, id, "", "activate-again"), http.StatusConflict, "REVIEWER_AUTH_REVOKED")
+	s.require(s.change(slot, "publisher", "RESTORE", 2, id, "restore", "restore"), http.StatusOK, "")
+	s.requireArtifact(slot, release.id("artifact_digest"), revisionSource)
 }

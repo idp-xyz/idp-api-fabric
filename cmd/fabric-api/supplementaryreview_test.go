@@ -265,15 +265,23 @@ func TestAnApprovedRevisionIsReviewedAgainAndStaysApproved(t *testing.T) {
 	}
 }
 
-// What is published under an approval that ran out is served no more, and
-// is published again once the revision is approved again: the same content,
-// released under the other approval, takes the place of the release whose
-// approval is over. Nothing of the content changes, and nothing of what was
-// recorded before.
-func TestWhatAnExpiredApprovalPublishedIsPublishedAgainUnderAnother(t *testing.T) {
+// What is published under an approval that ran out stays published, and
+// nothing else is published under it: no other release is prepared, and the
+// release is put on no slot it was not on. The slot that served it returns
+// to it. Once the revision is approved again the same content, released
+// under the other approval, takes the place of the release whose approval
+// is over and goes where that one could not. Nothing of the content
+// changes, and nothing of what was recorded before.
+func TestWhatAnExpiredApprovalPublishedStaysAndIsPublishedAgainUnderAnother(t *testing.T) {
 	s := publicationFor(t)
-	target, _ := s.target(internalSandbox, "engineering")
+	target, configPath := s.target(internalSandbox, "engineering")
 	slot := assetSlot(target, s.asset)
+	// Another portal of the same audience, which the release was never on.
+	preview := s.call(http.MethodPost, "/v1/products/"+s.product+"/publication-targets", "owner", jsonBody(map[string]string{
+		"audience_config_id": last(configPath), "portal_key": "preview",
+	}))
+	s.require(preview, http.StatusCreated, "")
+	elsewhere := assetSlot(preview.header.Get("Location"), s.asset)
 	id, first := s.approve(revisionSource, "", internalSandbox)
 	revision := s.revisions + "/" + id
 	released := s.prepare(id, first, "1.0.0", "publisher")
@@ -287,10 +295,17 @@ func TestWhatAnExpiredApprovalPublishedIsPublishedAgainUnderAnother(t *testing.T
 SET valid_until = concluded_at + interval '1 millisecond' WHERE review_id = $1`, first); err != nil {
 		t.Fatal(err)
 	}
-	s.require(s.call(http.MethodGet, slot+"/artifact", "author", ""), http.StatusNotFound, "PUBLISHED_ARTIFACT_NOT_FOUND")
+	// What it published is served as before. Nothing more goes out under
+	// it: no other release, and this one to no slot it was not on.
+	s.requireArtifact(slot, released.id("artifact_digest"), revisionSource)
 	s.require(s.prepare(id, first, "1.0.1", "publisher"), http.StatusConflict, "APPROVAL_EXPIRED")
+	s.require(s.change(elsewhere, "publisher", "ACTIVATE", 0, old, "", "old-elsewhere"), http.StatusConflict, "APPROVAL_EXPIRED")
+	// The slot is taken down and returns to the release it served. It
+	// does not take it as a new one.
 	s.require(s.change(slot, "publisher", "WITHDRAW", 1, "", "the approval ran out", "down"), http.StatusOK, "")
-	s.require(s.change(slot, "publisher", "RESTORE", 2, old, "try again", "up"), http.StatusConflict, "APPROVAL_EXPIRED")
+	s.require(s.change(slot, "publisher", "ACTIVATE", 2, old, "", "anew"), http.StatusConflict, "APPROVAL_EXPIRED")
+	s.require(s.change(slot, "publisher", "RESTORE", 2, old, "nothing else to serve yet", "up"), http.StatusOK, "")
+	s.requireArtifact(slot, released.id("artifact_digest"), revisionSource)
 	// The content is what it was: importing it again answers the revision
 	// that is there, approved.
 	if again := s.call(http.MethodPost, s.revisions, "author", uploadRevision("openapi.yaml", revisionSource)); again.status != http.StatusOK ||
@@ -303,21 +318,28 @@ SET valid_until = concluded_at + interval '1 millisecond' WHERE review_id = $1`,
 	s.require(asked, http.StatusCreated, "")
 	s.require(s.call(http.MethodPost, asked.header.Get("Location")+"/decision", "reviewer",
 		deciding("APPROVED", "", time.Now().Add(time.Hour))), http.StatusOK, "")
-	// The release of before is what it was, under the approval it had.
-	s.require(s.change(slot, "publisher", "RESTORE", 2, old, "try again", "up"), http.StatusConflict, "APPROVAL_EXPIRED")
+	// The release of before is what it was, under the approval it had:
+	// the other approval of the revision does not reach it.
+	s.require(s.change(elsewhere, "publisher", "ACTIVATE", 0, old, "", "old-elsewhere-again"), http.StatusConflict, "APPROVAL_EXPIRED")
 	if got := s.call(http.MethodGet, s.asset+"/releases/"+old, "publisher", ""); got.status != http.StatusOK || !reflect.DeepEqual(got.body, released.body) {
 		t.Errorf("the release of before reads %d %v, want it as it was prepared", got.status, got.body)
 	}
 	// Another release of the same content under the other approval is
 	// published in its place, and what the slot serves is byte for byte
-	// what it served before.
+	// what it served before. It goes where the release of before could
+	// not.
 	renewed := s.prepare(id, asked.id("review_id"), "1.0.0-r2", "publisher")
 	s.require(renewed, http.StatusCreated, "")
 	if renewed.body["artifact_digest"] != released.body["artifact_digest"] || s.count("contractregistry.release_artifact") != 1 {
 		t.Fatalf("the release under the other approval: %v; %d artifacts", renewed.body, s.count("contractregistry.release_artifact"))
 	}
-	s.require(s.change(slot, "publisher", "ACTIVATE", 2, renewed.id("release_id"), "", "renewed"), http.StatusOK, "")
+	s.require(s.change(slot, "publisher", "ACTIVATE", 3, renewed.id("release_id"), "", "renewed"), http.StatusOK, "")
 	s.requireArtifact(slot, released.id("artifact_digest"), revisionSource)
+	if got := s.call(http.MethodGet, slot, "publisher", ""); got.body["active_release_id"] != renewed.id("release_id") || got.body["approval_problem"] != nil {
+		t.Errorf("the slot reads %v, want it to point at the release under the other approval and to say nothing of it", got.body)
+	}
+	s.require(s.change(elsewhere, "publisher", "ACTIVATE", 0, renewed.id("release_id"), "", "renewed-elsewhere"), http.StatusOK, "")
+	s.requireArtifact(elsewhere, released.id("artifact_digest"), revisionSource)
 	if got := s.where(revision); got != "APPROVED at 3" {
 		t.Errorf("the revision is %s, want it where its first approval left it", got)
 	}

@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 
 	"go.idp.xyz/idp-api-fabric/internal/platform/ids"
 )
@@ -179,12 +178,13 @@ func TestTwoReleasesOfAnAssetAreDownloadedEachAsItself(t *testing.T) {
 
 // A release is downloaded by its identifier whatever stands between a slot
 // and the artifact: an access block on its target, on its asset or on the
-// release, an approval that ran out, a reviewer who lost the grant, a
-// product that is suspended, an audience that is not configured any more. A
-// slot serves an artifact to a target, and these are what it holds to. A
-// release read by its identifier is served to none, and is read by whoever
-// may read the release: whoever reads the revision it was prepared from. This
-// is what the contract says of the download, and what was decided of it.
+// release, a product that is suspended, an audience that is not configured
+// any more. A slot serves an artifact to a target, and these are what it
+// holds to. An approval that ran out and a reviewer who lost the grant are
+// not among them: the slot serves on, as the download does. A release read
+// by its identifier is served to none, and is read by whoever may read the
+// release: whoever reads the revision it was prepared from. This is what
+// the contract says of the download, and what was decided of it.
 func TestAReleaseOnABlockedTargetIsStillDownloadedByItsIdentifier(t *testing.T) {
 	s := publicationFor(t)
 	target, configPath := s.target(internalSandbox, "engineering")
@@ -220,19 +220,25 @@ func TestAReleaseOnABlockedTargetIsStillDownloadedByItsIdentifier(t *testing.T) 
 	s.suspend("ACTIVE")
 	served("the product active again", http.StatusOK, "")
 
-	var validUntil time.Time
-	if err := s.owner.QueryRow(t.Context(), `SELECT valid_until FROM policyreview.review_conclusion WHERE review_id = $1`, review).Scan(&validUntil); err != nil {
-		t.Fatal(err)
-	}
+	// An approval that stops holding takes the release neither off the
+	// slot nor out of reach by its identifier. The slot says what became
+	// of the approval.
 	if _, err := s.owner.Exec(t.Context(), `UPDATE policyreview.review_conclusion
 SET valid_until = concluded_at + interval '1 millisecond' WHERE review_id = $1`, review); err != nil {
 		t.Fatal(err)
 	}
-	served("an approval that ran out", http.StatusNotFound, "PUBLISHED_ARTIFACT_NOT_FOUND")
-	if _, err := s.owner.Exec(t.Context(), `UPDATE policyreview.review_conclusion SET valid_until = $2 WHERE review_id = $1`, review, validUntil); err != nil {
+	served("an approval that ran out", http.StatusOK, "")
+	var membership string
+	if err := s.owner.QueryRow(t.Context(), `SELECT membership_id FROM productgovernance.workspace_membership
+WHERE product_id = $1 AND workspace_id = $2 AND principal_subject = 'reviewer'
+  AND role = 'internal_reviewer' AND revoked_at IS NULL`, s.product, s.workspace).Scan(&membership); err != nil {
 		t.Fatal(err)
 	}
-	served("the approval as it was given", http.StatusOK, "")
+	s.revoke("/v1/products/"+s.product+"/workspaces/"+s.workspace+"/memberships/"+membership, "owner")
+	served("a reviewer who lost the grant", http.StatusOK, "")
+	if shown := s.call(http.MethodGet, slot, "publisher", ""); shown.body["approval_problem"] == nil || shown.body["blocked"] != false {
+		t.Fatalf("the slot reads %v, want it to name what became of the approval and no block", shown.body)
+	}
 
 	s.require(s.securityRole("security", "security_admin", "owner"), http.StatusCreated, "")
 	blocking := func(body map[string]string) {
@@ -248,15 +254,6 @@ SET valid_until = concluded_at + interval '1 millisecond' WHERE review_id = $1`,
 	if blocked := s.call(http.MethodGet, slot, "publisher", ""); blocked.body["blocked"] != true {
 		t.Fatalf("the slot reads %v, want it blocked", blocked.body)
 	}
-
-	var membership string
-	if err := s.owner.QueryRow(t.Context(), `SELECT membership_id FROM productgovernance.workspace_membership
-WHERE product_id = $1 AND workspace_id = $2 AND principal_subject = 'reviewer'
-  AND role = 'internal_reviewer' AND revoked_at IS NULL`, s.product, s.workspace).Scan(&membership); err != nil {
-		t.Fatal(err)
-	}
-	s.revoke("/v1/products/"+s.product+"/workspaces/"+s.workspace+"/memberships/"+membership, "owner")
-	served("a reviewer who lost the grant", http.StatusNotFound, "PUBLISHED_ARTIFACT_NOT_FOUND")
 
 	s.require(s.call(http.MethodDelete, configPath, "owner", ""), http.StatusNoContent, "")
 	served("an audience that is not configured any more", http.StatusNotFound, "AUDIENCE_CONFIG_NOT_FOUND")

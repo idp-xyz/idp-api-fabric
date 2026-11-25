@@ -322,3 +322,141 @@ func TestAnApprovalThatDoesNotHoldReleasesNothing(t *testing.T) {
 		})
 	}
 }
+
+// returning is what paula asks when she returns a slot of the sandbox to a
+// release of the revision that it served before, under the review.
+func returning(review domain.Review) application.ReleaseApproval {
+	input := releasing(review)
+	input.Target, input.Restoring = &partner[0], true
+	return input
+}
+
+// A slot returns to a release it served before whatever became of the
+// approval since. What decides whether a release is put on a slot for the
+// first time does not decide what a slot falls back to: the approval may
+// have run out, or a waiver of it, the tools may have moved on from its
+// check, a rule may not have been run, and the target may be one the review
+// was not asked for. The grant of the reviewer is not asked for, in force
+// or not. The evidence is the one the release was prepared on.
+func TestAReturnToAReleaseDoesNotAskWhetherItsApprovalStillHolds(t *testing.T) {
+	type arrange func(*testing.T, *world, domain.Review, *application.ReleaseApproval)
+	// at sets the clock so that the approval is asked about at that time.
+	at := func(when func(domain.Conclusion) time.Time) arrange {
+		return func(_ *testing.T, w *world, review domain.Review, _ *application.ReleaseApproval) {
+			w.now = when(*review.Conclusion).Add(-time.Minute)
+		}
+	}
+	returns := map[string]struct {
+		given   approval
+		arrange arrange
+	}{
+		"an approval that holds": {},
+		"the time the approval holds until": {
+			arrange: at(func(c domain.Conclusion) time.Time { return c.ValidUntil })},
+		"a year after the approval ended": {
+			arrange: at(func(c domain.Conclusion) time.Time { return c.ValidUntil.Add(365 * 24 * time.Hour) })},
+		"a clock that is behind the approval": {
+			arrange: at(func(c domain.Conclusion) time.Time { return c.ConcludedAt.Add(-time.Minute) })},
+		"a waiver that ran out while the approval lasts": {
+			given:   approval{waived: true},
+			arrange: at(func(c domain.Conclusion) time.Time { return c.Waivers[0].ExpiresAt.Add(24 * time.Hour) })},
+		"a check the tools have moved on from": {
+			arrange: func(t *testing.T, w *world, _ domain.Review, _ *application.ReleaseApproval) {
+				w.runs["check"] = approval{}.check(t, w, domain.Tool{Name: rulesTool.Name, Version: "2"})
+			}},
+		"a check that did not run a rule that blocks": {given: approval{unanswered: "F04-GOV-004"}},
+		"another environment than the review was asked for": {
+			arrange: func(_ *testing.T, _ *world, _ domain.Review, input *application.ReleaseApproval) {
+				input.Target = &domain.Target{Audience: "partner", Environment: "production"}
+			}},
+		"a baseline the check did not compare with": {
+			arrange: func(_ *testing.T, _ *world, _ domain.Review, input *application.ReleaseApproval) {
+				input.Baseline = &before
+			}},
+	}
+	for name, c := range returns {
+		t.Run(name, func(t *testing.T) {
+			w, reviews, review := approved(t, c.given)
+			input := returning(review)
+			if c.arrange != nil {
+				c.arrange(t, w, review, &input)
+			}
+			// Nobody holds the grant, and it cannot even be read.
+			members := &grant{err: errNoReading}
+			got, err := reviews.VerifyReleaseApproval(context.Background(), input, members.hold)
+			want := application.VerifiedApproval{CheckRunID: "check", PolicySnapshotID: "snapshot", PolicyDigest: domain.Baseline().Digest()}
+			if err != nil || got != want {
+				t.Fatalf("got %+v, %v; want %+v", got, err, want)
+			}
+			if len(members.asked) != 0 {
+				t.Errorf("the grant was asked of %v, want it not asked", members.asked)
+			}
+			unchanged(t, w, review)
+		})
+	}
+}
+
+// A return is still a publication by someone, of something that was
+// approved. Whoever had a part in the revision does not put it back, and a
+// review that is not the approval of this content is none to return under.
+func TestAReturnToAReleaseIsRefusedToWhoeverHadAPartInItAndWithoutItsApproval(t *testing.T) {
+	type arrange func(*world, domain.Review, *application.ReleaseApproval)
+	concluded := func(outcome domain.ReviewOutcome) arrange {
+		return func(w *world, review domain.Review, _ *application.ReleaseApproval) {
+			conclusion := domain.Conclusion{ReviewID: review.Request.ID, Outcome: outcome, Reason: "not this one", ConcludedBy: rita, ConcludedAt: w.now}
+			w.reviews[review.Request.ID] = domain.Review{Request: review.Request, Conclusion: &conclusion}
+		}
+	}
+	publisher := func(who domain.Principal) arrange {
+		return func(_ *world, _ domain.Review, input *application.ReleaseApproval) { input.Publisher = who }
+	}
+	refused := map[string]struct {
+		arrange arrange
+		want    error
+	}{
+		"a publisher who recorded the revision": {publisher(dave), application.ErrPublisherInvolved},
+		"a publisher who ran the check":         {publisher(carol), application.ErrPublisherInvolved},
+		"a publisher who asked for the review":  {publisher(erin), application.ErrPublisherInvolved},
+		"a publisher who approved the revision": {publisher(rita), application.ErrPublisherInvolved},
+
+		"a review nobody asked for": {
+			func(_ *world, _ domain.Review, input *application.ReleaseApproval) { input.ReviewID = "another" },
+			application.ErrApprovalRequired},
+		"a review of another revision": {
+			func(_ *world, _ domain.Review, input *application.ReleaseApproval) {
+				input.Revision.RevisionID = "another"
+			},
+			application.ErrApprovalRequired},
+		"a review that is still open": {
+			func(w *world, review domain.Review, _ *application.ReleaseApproval) {
+				w.reviews[review.Request.ID] = domain.Review{Request: review.Request}
+			},
+			application.ErrApprovalRequired},
+		"a review that was withdrawn":         {concluded(domain.ReviewWithdrawn), application.ErrApprovalRequired},
+		"a review that rejected the revision": {concluded(domain.ReviewRejected), application.ErrApprovalRequired},
+		"other content than the review was of": {
+			func(_ *world, _ domain.Review, input *application.ReleaseApproval) {
+				input.InputDigest = "sha256:" + strings.Repeat("c", 64)
+			},
+			domain.ErrReviewDamaged},
+		"a check that is gone": {
+			func(w *world, _ domain.Review, _ *application.ReleaseApproval) { delete(w.runs, "check") },
+			domain.ErrReviewDamaged},
+	}
+	for name, c := range refused {
+		t.Run(name, func(t *testing.T) {
+			w, reviews, review := approved(t, approval{})
+			input, members := returning(review), &grant{held: true}
+			c.arrange(w, review, &input)
+			stored := w.reviews[review.Request.ID]
+			got, err := reviews.VerifyReleaseApproval(context.Background(), input, members.hold)
+			if !errors.Is(err, c.want) || got != (application.VerifiedApproval{}) {
+				t.Fatalf("got %+v, %v; want %v and no evidence", got, err, c.want)
+			}
+			if len(members.asked) != 0 {
+				t.Errorf("the grant was asked of %v, want it not asked", members.asked)
+			}
+			unchanged(t, w, stored)
+		})
+	}
+}

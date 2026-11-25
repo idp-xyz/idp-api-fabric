@@ -231,3 +231,68 @@ func TestTheContractStatesPublicationAsTheModelDoes(t *testing.T) {
 		t.Errorf("a change of a slot does not require an Idempotency-Key of the pattern of the model, %q", domain.IdempotencyKeyPattern)
 	}
 }
+
+// The contract says what an approval that does not hold does to what is
+// published: nothing. The slot and the read of a published artifact say
+// that the artifact is served until the slot is withdrawn or blocked, a
+// change of the slot says that an activation asks for an approval that
+// holds and a restoration does not, and what a slot says of an approval
+// says that it takes nothing down. Nothing in it still states the rule of
+// before, under which the artifact of such a release was not served and a
+// restoration was held to the approval.
+func TestTheContractSaysThatAnApprovalThatDoesNotHoldTakesNothingDown(t *testing.T) {
+	contract, err := loadContract()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const slot = "/v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}"
+	const clearance = "/v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks/{access_block_id}/clearance"
+	for name, c := range map[string]struct {
+		text      string
+		says, not []string
+	}{
+		"getPublicationSlot": {
+			text: contract.Paths.Find(slot).Get.Description,
+			says: []string{"takes nothing down", "is served through the slot until the slot is withdrawn or blocked", "approval_problem names why the release would not be activated today"},
+			not:  []string{"is not served", "answers 404"},
+		},
+		"changePublicationSlot": {
+			text: contract.Paths.Find(slot + "/operations").Post.Description,
+			says: []string{
+				"An activation puts a release on the slot and requires an approval that holds for this target now",
+				"A restoration returns the slot to a release that was active on it before and does not ask whether the approval of that release still holds",
+				"is activated, rather than restored, as any other release is",
+				"Activation and restoration both require a publisher who took no part in the revision",
+				"A withdrawal requires the publisher role alone",
+			},
+			not: []string{"restoration requires a current approval"},
+		},
+		"getPublishedArtifact": {
+			text: contract.Paths.Find(slot + "/artifact").Get.Description,
+			says: []string{"It does not ask whether the approval the release rests on still holds", "is served until it is withdrawn or blocked"},
+			not:  []string{"approval and effective access blocks"},
+		},
+		"clearPublicationAccessBlock": {
+			text: contract.Paths.Find(clearance).Post.Description,
+			says: []string{"revalidates the publisher's independence and artifact integrity"},
+			not:  []string{"revalidates approval"},
+		},
+		"the approval_problem of a slot": {
+			text: contract.Components.Schemas["PublicationSlot"].Value.Properties["approval_problem"].Value.Description,
+			says: []string{"the error code an activation of that release would be refused with", "takes nothing down", "its artifact is served"},
+		},
+	} {
+		// A description is read as one line, however the contract breaks it.
+		text := strings.Join(strings.Fields(c.text), " ")
+		for _, said := range c.says {
+			if !strings.Contains(text, said) {
+				t.Errorf("%s does not say %q:\n%s", name, said, text)
+			}
+		}
+		for _, said := range c.not {
+			if strings.Contains(text, said) {
+				t.Errorf("%s still says %q:\n%s", name, said, text)
+			}
+		}
+	}
+}
