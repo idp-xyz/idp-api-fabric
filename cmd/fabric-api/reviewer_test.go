@@ -21,7 +21,7 @@ func TestAReviewerReadsTheRevisionsAndChecksOfItsWorkspaceAndWritesNone(t *testi
 	other := s.createWorkspace(product, "owner", "operations")
 	s.join(product, other, "owner", "elsewhere", "internal_reviewer")
 	// Someone who sees the assets of engineering and reviews in operations.
-	s.join(product, workspace, "owner", "between", "workspace_maintainer")
+	s.join(product, workspace, "owner", "between", "internal_reader")
 	s.join(product, other, "owner", "between", "internal_reviewer")
 	path := s.revisionAsset(product, workspace, "maintainer", "shipping-api", "HTTP")
 
@@ -78,7 +78,7 @@ func TestAReviewerReadsTheRevisionsAndChecksOfItsWorkspaceAndWritesNone(t *testi
 	for _, read := range reads {
 		for caller, want := range map[string]int{
 			"elsewhere": http.StatusNotFound, "between": http.StatusForbidden,
-			"maintainer": http.StatusForbidden, "owner": http.StatusOK,
+			"maintainer": http.StatusOK, "owner": http.StatusOK,
 		} {
 			if got := s.call(http.MethodGet, read, caller, ""); got.status != want {
 				t.Errorf("GET %s as %s: %d %v, want %d", read, caller, got.status, got.body, want)

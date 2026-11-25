@@ -8,31 +8,52 @@ import (
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/domain"
 )
 
-// ReleaseMembership holds the caller's grants while a release is prepared,
-// published or read. A publisher can read the releases of the workspace.
-func (s *ProductGovernance) ReleaseMembership(ctx context.Context, actor domain.Principal,
-	product domain.ProductID, workspace domain.WorkspaceID) (reader, publisher, active bool, err error) {
+// PublicationScope records the grants for release records, evidence, slots,
+// artifact delivery and publication. An internal reader downloads through
+// the active slot so that the origin applies AccessBlock.
+type PublicationScope struct {
+	ReleaseMetadata bool
+	ReleaseMaterial bool
+	Slots           bool
+	Artifact        bool
+	Publisher       bool
+	Active          bool
+}
+
+// HoldPublicationScope holds the grants for this asset's workspace and product
+// while Registry or Publication handles the request.
+func (s *ProductGovernance) HoldPublicationScope(ctx context.Context, actor domain.Principal,
+	product domain.ProductID, workspace domain.WorkspaceID) (PublicationScope, error) {
 	members, err := s.deps.Memberships.LockHeldInWorkspace(ctx, product, workspace, actor)
 	if err != nil {
-		return false, false, false, err
+		return PublicationScope{}, err
 	}
+	var scope PublicationScope
+	var internalReader bool
 	for _, member := range members {
-		switch member.Role {
-		case domain.RoleInternalPublisher:
-			publisher, reader = true, true
-		case domain.RoleInternalAuthor, domain.RoleInternalReviewer:
-			reader = true
-		}
+		scope.Publisher = scope.Publisher || member.Role == domain.RoleInternalPublisher
+		scope.ReleaseMaterial = scope.ReleaseMaterial || slices.Contains(revisionReaders, member.Role)
+		internalReader = internalReader || member.Role == domain.RoleInternalReader
 	}
-	if !reader {
+	var security bool
+	if !scope.ReleaseMaterial {
 		roles, err := s.deps.Roles.LockHeldRoles(ctx, product, actor)
 		if err != nil {
-			return false, false, false, err
+			return PublicationScope{}, err
 		}
-		reader = slices.Contains(roles, domain.RoleProductOwner)
+		scope.ReleaseMaterial = slices.Contains(roles, domain.RoleProductOwner)
+		security = holdsSecurityRole(roles)
 	}
+	scope.ReleaseMetadata = internalReader || scope.ReleaseMaterial
+	scope.Artifact = scope.ReleaseMetadata
+	scope.Slots = scope.Artifact || security
 	current, found, err := s.deps.Products.Find(ctx, product)
-	return reader, publisher, found && current.Status == domain.ProductActive, err
+	scope.Active = found && current.Status == domain.ProductActive
+	return scope, err
+}
+
+func holdsSecurityRole(roles []domain.Role) bool {
+	return slices.Contains(roles, domain.RoleSecurityAdmin) || slices.Contains(roles, domain.RoleSecurityReviewer)
 }
 
 // HoldsApprovalGrant checks that the grant under which a reviewer approved

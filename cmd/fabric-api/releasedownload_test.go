@@ -259,16 +259,14 @@ WHERE product_id = $1 AND workspace_id = $2 AND principal_subject = 'reviewer'
 	served("an audience that is not configured any more", http.StatusNotFound, "AUDIENCE_CONFIG_NOT_FOUND")
 }
 
-// Whoever reads a release downloads it and reads where it came from, and
-// nobody else does: an author, a reviewer or a publisher of the workspace of
-// the asset, the answer being the one that reading the release gives to
-// everyone else. The grant is read with every request.
-func TestWhoReadsAReleaseDownloadsItAndReadsItsProvenanceAndNoOneElse(t *testing.T) {
+// Release downloads and provenance require a governance read grant for the
+// asset. The grant is checked on every request.
+func TestReleaseDownloadsAndProvenanceRequireGovernanceAccess(t *testing.T) {
 	s := publicationFor(t)
 	other := s.createWorkspace(s.product, "owner", "operations")
 	s.join(s.product, other, "owner", "elsewhere", "internal_publisher")
-	// Someone who sees the assets of engineering and publishes in operations.
-	s.join(s.product, s.workspace, "owner", "between", "workspace_maintainer")
+	// Someone who reads release metadata in engineering and publishes in operations.
+	s.join(s.product, s.workspace, "owner", "between", "internal_reader")
 	s.join(s.product, other, "owner", "between", "internal_publisher")
 	_, _, id := s.released(revisionSource, "", "1.0.0")
 	paths := map[string]string{
@@ -281,10 +279,7 @@ func TestWhoReadsAReleaseDownloadsItAndReadsItsProvenanceAndNoOneElse(t *testing
 		code    string
 	}{
 		{"author", http.StatusOK, ""}, {"coauthor", http.StatusOK, ""}, {"reviewer", http.StatusOK, ""}, {"publisher", http.StatusOK, ""},
-		// Maintaining the workspace or owning the product is not reading
-		// what it releases.
-		{"maintainer", http.StatusForbidden, "FORBIDDEN"}, {"owner", http.StatusOK, ""},
-		{"between", http.StatusForbidden, "FORBIDDEN"},
+		{"maintainer", http.StatusOK, ""}, {"owner", http.StatusOK, ""},
 		// The grant counts where it was made, and nobody sees an asset of
 		// a workspace they have no grant in, whoever they are.
 		{"elsewhere", http.StatusNotFound, "API_ASSET_NOT_FOUND"}, {"platform-admin", http.StatusNotFound, "API_ASSET_NOT_FOUND"},
@@ -295,6 +290,11 @@ func TestWhoReadsAReleaseDownloadsItAndReadsItsProvenanceAndNoOneElse(t *testing
 				t.Errorf("%s reads %s: %d %s, want %d %q", c.subject, what, got.status, got.code(), c.status, c.code)
 			}
 		}
+	}
+
+	s.require(s.call(http.MethodGet, paths["the release"], "between", ""), http.StatusOK, "")
+	for _, suffix := range []string{"/artifact", "/provenance"} {
+		s.require(s.call(http.MethodGet, s.releaseAt(id)+suffix, "between", ""), http.StatusForbidden, "FORBIDDEN")
 	}
 
 	for what, path := range paths {
@@ -409,6 +409,7 @@ func sameProblem(a, b downloaded) bool {
 // leave nothing: no audit record and no event.
 func TestARefusedReadIsOnRecordAsARefusalAndASuccessfulOneIsNot(t *testing.T) {
 	s := publicationFor(t)
+	s.join(s.product, s.workspace, "owner", "reader", "internal_reader")
 	_, _, id := s.released(revisionSource, "", "1.0.0")
 	path := s.releaseAt(id)
 	records, events := s.count("platformoperations.audit_record"), s.count("bento.outbox")
@@ -425,7 +426,7 @@ func TestARefusedReadIsOnRecordAsARefusalAndASuccessfulOneIsNot(t *testing.T) {
 		t.Errorf("the reads that were served or found nothing left %d audit records and %d events, want none", after-records, sent-events)
 	}
 
-	for _, caller := range []string{"maintainer"} {
+	for _, caller := range []string{"reader"} {
 		s.require(s.call(http.MethodGet, path+"/artifact", caller, ""), http.StatusForbidden, "FORBIDDEN")
 		if download, read := s.on(caller, "release.download", "DENY-03", false), s.on(caller, "release.read", "DENY-03", false); download != 1 || read != 0 {
 			t.Errorf("%s was refused the download: %d refusals of the download and %d of a read are on record, want 1 and 0", caller, download, read)

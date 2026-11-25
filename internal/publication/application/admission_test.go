@@ -119,7 +119,7 @@ func onSlot() *publishing {
 	return &publishing{
 		listing: &listing{
 			targets: map[string]domain.Target{listedTarget: target},
-			access:  ports.AssetAccess{WorkspaceID: engineering, Reader: true, Publisher: true, Active: true},
+			access:  ports.AssetAccess{WorkspaceID: engineering, Reader: true, ArtifactReader: true, Publisher: true, Active: true},
 			blocked: map[string]bool{}, unapproved: map[string]error{},
 		},
 		held: domain.Slot{

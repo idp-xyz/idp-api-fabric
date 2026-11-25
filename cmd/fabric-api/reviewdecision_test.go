@@ -346,7 +346,7 @@ func TestADecisionIsMadeByAReviewerWhoHadNoPartInWhatIsReviewed(t *testing.T) {
 	wantRefusals := map[[3]string]int{
 		{"both", "review.approve", "DENY-06"}: 3, {"both", "review.reject", "DENY-06"}: 3, {"both", "review.approve", "DENY-03"}: 1,
 		{"author", "review.approve", "DENY-03"}: 1, {"coauthor", "review.reject", "DENY-03"}: 1,
-		{"owner", "review.approve", "DENY-03"}: 1,
+		{"owner", "review.approve", "DENY-03"}: 1, {"maintainer", "review.approve", "DENY-03"}: 1,
 	}
 	made := occurrences(s.recorded(func(row audited) bool {
 		return (row.Action == "review.approve" || row.Action == "review.reject") && row.Outcome == "SUCCEEDED" && row.Rule == "AC-03"

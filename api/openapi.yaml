@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.35.0
+  version: 0.36.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -743,18 +743,19 @@ paths:
       operationId: listAssets
       summary: List API assets the caller can read
       description: >-
-        Lists a product's API assets in creation order. Product owners see
-        the whole product. Other readers see only assets in workspaces where
-        they are current members. A platform administrator without either
-        relationship receives 403. Anyone who cannot know the product exists
+        Lists a product's API assets in creation order. Product owners and
+        product security roles see the whole product's asset catalog. Other
+        readers see assets in workspaces where they are current members.
+        A platform administrator with no asset read grant receives 403.
+        Anyone who cannot know the product exists
         receives 404. Filters and text matching apply only to visible assets
         before paging. Keep the filters the same when following a page token.
 
 
         An asset carries an overview when the caller owns the product or
-        holds internal_author, internal_reviewer or internal_publisher in the
-        asset's workspace. These roles can read its revisions, checks and
-        releases. An asset the caller reads without a contract read grant
+        holds workspace_maintainer, internal_author, internal_reviewer or
+        internal_publisher in the asset's workspace. These roles can read its
+        revisions, checks and releases. An asset without a contract read grant
         carries no overview.
 
 
@@ -891,14 +892,14 @@ paths:
       operationId: getAsset
       summary: Read one API asset within the caller's scope
       description: >-
-        Product owners and current members of the owning workspace can read
-        an asset. A missing, cross-product or withheld asset returns the same
-        API_ASSET_NOT_FOUND response when the caller can know the product
-        exists. Otherwise the response is PRODUCT_NOT_FOUND.
+        Product owners, product security roles and current members of the
+        owning workspace can read an asset. If the caller can know the
+        product exists, missing, cross-product and withheld assets all return
+        API_ASSET_NOT_FOUND. Otherwise the response is PRODUCT_NOT_FOUND.
 
 
         The asset carries its overview for a product owner or a current
-        author, reviewer or publisher of the asset's workspace.
+        maintainer, author, reviewer or publisher of the asset's workspace.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - in: path
@@ -932,10 +933,10 @@ paths:
       operationId: listRevisions
       summary: List draft revision metadata for an API asset
       description: >-
-        A product owner or a current author, reviewer or publisher of the
-        asset's workspace can read its revision history, oldest capture first. The cursor belongs to
-        this product and asset and conveys no authorization. Results include
-        source and closure digests and omit the original source bytes.
+        A product owner or a current maintainer, author, reviewer or publisher
+        of the asset's workspace can read its revision history, oldest capture
+        first. The cursor belongs to this product and asset and conveys no
+        authorization. Results include source and closure digests.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - name: api_asset_id
@@ -1067,9 +1068,9 @@ paths:
       operationId: getRevision
       summary: Read one immutable draft revision's metadata
       description: >-
-        A product owner or a current author, reviewer or publisher of the
-        asset's workspace can read a revision of this asset and product. A revision from
-        a different asset is indistinguishable from one that is missing.
+        A product owner or a current maintainer, author, reviewer or publisher
+        of the asset's workspace can read a revision of this asset and product.
+        Revisions from a different asset and missing revisions both yield 404.
         The files the revision was recorded from are read with
         getRevisionSource.
       parameters:
@@ -1114,8 +1115,8 @@ paths:
       operationId: getRevisionSource
       summary: Read the files a draft revision was recorded from
       description: >-
-        A product owner or a current author, reviewer or publisher of the
-        asset's workspace may read the source. The access response follows
+        A product owner or a current maintainer, author, reviewer or publisher
+        of the asset's workspace may read the source. The access response follows
         getRevision, and a revision from a different asset is
         indistinguishable from one that is missing.
         The answer holds the closure that was recorded: the entrypoint and
@@ -1176,9 +1177,9 @@ paths:
       operationId: listRevisionChecks
       summary: List the recorded checks of one draft revision
       description: >-
-        A product owner or a current author, reviewer or publisher of the
-        asset's workspace can
-        read the check summaries of the revision. The list is ordered by when the checks
+        A product owner or a current maintainer, author, reviewer or publisher
+        of the asset's workspace can read the check summaries of the revision.
+        The list is ordered by when the checks
         completed and then their identifiers. Its page token belongs to
         this product, asset and revision. Each summary binds the result to
         its input, policy snapshot and tools.
@@ -1278,9 +1279,9 @@ paths:
       operationId: getRevisionCheck
       summary: Read a recorded check with its rule outcomes and findings
       description: >-
-        A product owner or a current author, reviewer or publisher of the
-        asset's workspace can
-        read a check of the requested revision. A check from another revision is reported as
+        A product owner or a current maintainer, author, reviewer or publisher
+        of the asset's workspace can read a check of the requested revision.
+        A check from another revision is reported as
         missing. The recorded input digest must match the revision's
         reference closure digest.
       parameters:
@@ -1322,9 +1323,9 @@ paths:
       operationId: compareRevisionCompatibility
       summary: Compare a candidate revision with a chosen baseline
       description: >-
-        A product owner or a current author, reviewer or publisher of the
-        asset's workspace can compare two recorded revisions of that asset. The tool verifies both input
-        closures and reports observed changes and their classification.
+        A product owner or a current maintainer, author, reviewer or publisher
+        of the asset's workspace can compare two recorded revisions of that asset.
+        The tool verifies both input closures and reports observed changes and their classification.
         UNKNOWN denotes uncertainty in the comparison. The response names
         the comparator and its version.
       parameters:
@@ -1370,9 +1371,8 @@ paths:
       operationId: listRevisionReviews
       summary: List the reviews of one revision
       description: >-
-        A product owner or a current author, reviewer or publisher of the
-        asset's workspace can
-        read the reviews of the revision, in the order they were asked for. The page
+        A product owner or a current maintainer, author, reviewer or publisher
+        of the asset's workspace can read the reviews of the revision in request order. The page
         token belongs to this product, asset and revision. Each review says
         what was asked, on which check, for which scope, and how it ended
         if it has ended.
@@ -1489,9 +1489,8 @@ paths:
       operationId: getRevisionReview
       summary: Read one review of a revision
       description: >-
-        A product owner or a current author, reviewer or publisher of the
-        asset's workspace can
-        read a review of the requested revision. A publisher reads here
+        A product owner or a current maintainer, author, reviewer or publisher
+        of the asset's workspace can read a review of the requested revision. A publisher reads here
         which review approved the revision it is to release. A review of another revision is
         reported as missing.
       responses:
@@ -1663,8 +1662,8 @@ paths:
         position a page handed out: it repeats no review that was read and
         takes none from those that were not.
 
-        A product owner or a current author, reviewer or publisher of the
-        workspace reads every review of it, as getRevisionReview reads each one alone, and each
+        A product owner or a current maintainer, author, reviewer or publisher
+        of the workspace reads its reviews. As with getRevisionReview, each
         item is the review that operation answers. The two differ in one
         check only: getRevisionReview verifies that the review still rests
         on the content its revision has now (input_digest), which needs the
@@ -1677,8 +1676,8 @@ paths:
         same as for a product that is missing. One that knows the product
         and is neither an owner of it nor a member of the workspace
         receives 404 WORKSPACE_NOT_FOUND, the same as for a workspace the
-        product has not, and for a workspace of another product. A non-owner
-        member who holds none of the three grants receives 403 FORBIDDEN.
+        product has not, and for a workspace of another product. A workspace
+        member without a review read grant receives 403 FORBIDDEN.
         An owner that asks for a
         workspace the product has not receives 404 WORKSPACE_NOT_FOUND. A
         caller that reads a workspace in which no review was asked for
@@ -2347,8 +2346,8 @@ paths:
       operationId: listContractReleases
       summary: List the immutable releases of the API asset
       description: >-
-        Product owners and current authors, reviewers and publishers of the
-        asset's workspace can read this list.
+        Product owners and current maintainers, authors, reviewers, publishers
+        and internal readers of the asset's workspace can read release metadata.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/CheckAssetId'
@@ -2444,9 +2443,10 @@ paths:
       operationId: getContractRelease
       summary: Read the metadata of a release of the API asset
       description: >-
-        Where the release came from is read with getContractReleaseProvenance,
-        and its artifact is downloaded by the identifier of the release with
-        getContractReleaseArtifact.
+        The same grants apply as for listContractReleases. Reading the
+        provenance or downloading by release identifier requires a release
+        evidence grant. An internal reader downloads an active artifact
+        through getPublishedArtifact.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/CheckAssetId'
@@ -2484,12 +2484,10 @@ paths:
         the artifact_digest the release records. The release is named by its
         identifier under its asset, so it is downloaded whatever a
         publication slot points at, and whatever was released after it.
-        Whoever may read the release may download it: an owner of the product
-        or an author, reviewer or publisher of the workspace, including while
-        the product is suspended. The download does not look at an access block on a
-        publication target, which belongs to the read of an artifact through
-        the slot of a target, and does not verify the approval of the release
-        again, which no read does.
+        A product owner or a current maintainer, author, reviewer or publisher
+        of the asset's workspace can download by release identifier, including
+        while the product is suspended. Access blocks apply to target delivery
+        through getPublishedArtifact.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/CheckAssetId'
@@ -2537,8 +2535,8 @@ paths:
         prepared on. It does not say whether the approval holds now: that is
         for the slot to say, in approval_problem, which getPublicationSlot
         gives and so does each item of listPublicationSlots and
-        listAssetPublications. Whoever may read the release may read this, in
-        the same way.
+        listAssetPublications. Provenance uses the same grants as
+        getContractReleaseArtifact.
 
         A Git origin is what the submitter of the revision declared when it
         was imported. Fabric does not read the repository, so the commit is
@@ -2703,9 +2701,10 @@ paths:
         slot_id. A slot keeps its place whatever is done to it later. Only
         what was published is listed: an asset that was never published to
         the target has no slot, which getPublicationSlot reads as empty, and
-        a withdrawn slot is listed. Product owners see slots of the product.
-        Other callers see slots of assets in workspaces where they are an
-        author, reviewer or publisher, as in getPublicationSlot. The other slots are left out
+        a withdrawn slot is listed. Product owners and product security roles
+        see slots across the product. Other callers see slots of assets in
+        workspaces where they are maintainers, authors, reviewers, publishers
+        or internal readers, as in getPublicationSlot. The other slots are left out
         before the page is cut, so every page but the last is full. A caller
         who knows the product and reads none of its workspaces receives 403,
         and one who cannot know the product receives 404 PRODUCT_NOT_FOUND.
@@ -2753,9 +2752,7 @@ paths:
         their first operation was accepted, then by slot_id. Only what was
         published is listed: a target the asset was never published to has no
         slot of it and is not listed, and a withdrawn slot is. Whoever may
-        read the slots of the asset (getPublicationSlot) may read this list:
-        an owner of the product or an author, reviewer or publisher of the
-        workspace that owns it.
+        read the slots of the asset (getPublicationSlot) may read this list.
         Anyone who cannot know the product receives 404 PRODUCT_NOT_FOUND. A
         missing, cross-product or withheld asset returns API_ASSET_NOT_FOUND
         when the caller can know the product exists. A caller who may know
@@ -2796,8 +2793,9 @@ paths:
       operationId: getPublicationSlot
       summary: Read the current publication slot and its generation
       description: >-
-        Product owners and current authors, reviewers and publishers of the
-        asset's workspace can read its slot.
+        Product owners and product security roles can inspect slots across the
+        product. A current maintainer, author, reviewer, publisher or
+        internal reader can inspect slots of their workspace.
         An asset without a slot starts at generation zero. The slot reports the
         database pointer, origin blocking, and the separate delivery status.
         It also says whether the approval the active release rests on still
@@ -2840,8 +2838,7 @@ paths:
       operationId: listPublicationOperations
       summary: Read a page of slot operations in generation order
       description: >-
-        Product owners and current authors, reviewers and publishers of the
-        asset's workspace can read this list.
+        Anyone who may read the slot can read its operations.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -2944,15 +2941,16 @@ paths:
       operationId: getPublishedArtifact
       summary: Download the current authorized artifact from the internal origin
       description: >-
-        The octet stream contains the exact release JSON bytes. The origin
-        checks the owner's or member's current read grant, target configuration,
+        The octet stream contains the exact release JSON bytes. Artifact readers
+        are product owners and current maintainers, authors, reviewers,
+        publishers and internal readers of the asset's workspace. The origin
+        checks the current read grant, target configuration,
         the active pointer and effective access blocks on every read, and the
         bytes against the digest of the release. It does not ask whether the
         approval the release rests on still holds: what a slot points at is
         served until it is withdrawn or blocked, and getPublicationSlot says
-        what became of the approval. Whoever may read the release downloads
-        the same bytes by its identifier with getContractReleaseArtifact,
-        which looks at no target or block.
+        what became of the approval. getContractReleaseArtifact serves the
+        same bytes to callers with a release evidence grant.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -3025,10 +3023,9 @@ paths:
         A product security administrator supplies a reason. Omitting the asset
         blocks the target. Naming an asset blocks its slot, or one release when
         a release ID is given. The slot generation and pointer stay independent.
-        A block covers what is read through the target: its slots and their
-        artifacts. Whoever may read the release, an author, a reviewer or a
-        publisher of the workspace of its asset, still downloads its artifact
-        by the identifier of the release, with getContractReleaseArtifact.
+        A block marks affected slots as blocked and prevents artifact delivery
+        through the target. getContractReleaseArtifact is a governance
+        download by release identifier and uses its own grants.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -4714,7 +4711,7 @@ components:
         overview:
           description: >-
             Where the asset stands. Present for a product owner or a current
-            author, reviewer or publisher of the workspace that owns it.
+            maintainer, author, reviewer or publisher of the workspace that owns it.
             Only the reads of an asset carry it.
           $ref: '#/components/schemas/AssetOverview'
     AssetOverview:
@@ -4924,13 +4921,15 @@ components:
     WorkspaceRole:
       description: >-
         What a member is in a workspace. A workspace_maintainer creates and
-        updates the API assets of the workspace; an internal_author writes and
-        reads its contract revisions and runs their checks; an
+        updates its API assets and reads their governance evidence. An
+        internal_author writes and reads its contract revisions and runs their checks. An
         internal_reviewer reads revisions and checks and decides on reviews.
         An internal_publisher prepares and publishes approved releases.
+        An internal_reader reads its asset catalog, release metadata, publication slots and
+        history, and active artifacts through the internal publication origin.
         Owners of the product manage the workspace and its members.
       type: string
-      enum: [workspace_maintainer, internal_author, internal_reviewer, internal_publisher]
+      enum: [workspace_maintainer, internal_author, internal_reviewer, internal_publisher, internal_reader]
     MembershipGrant:
       type: object
       additionalProperties: false

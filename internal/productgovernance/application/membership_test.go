@@ -219,7 +219,7 @@ func TestGrantMembershipRefusesWhatCannotBeAMembership(t *testing.T) {
 		err  error
 		want error
 	}{
-		"a role nobody defined":         {grant(cargopai, engineering, mallory, "internal_reader"), domain.ErrInvalid},
+		"a role nobody defined":         {grant(cargopai, engineering, mallory, "superuser"), domain.ErrInvalid},
 		"the role that owns a product":  {grant(cargopai, engineering, mallory, string(domain.RoleProductOwner)), domain.ErrInvalid},
 		"no role":                       {grant(cargopai, engineering, mallory, ""), domain.ErrInvalid},
 		"a member that is no principal": {grant(cargopai, engineering, domain.Principal{Issuer: trustedIssuer}, author), domain.ErrInvalid},

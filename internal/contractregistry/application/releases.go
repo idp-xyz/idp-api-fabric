@@ -55,7 +55,7 @@ func (r *Releases) Prepare(ctx context.Context, command PrepareRelease) (Prepara
 	}
 	var result Preparation
 	err := r.deps.Transactions.WithinTransaction(ctx, func(tx context.Context) error {
-		asset, err := r.authorizedAsset(tx, command.ScopeQuery, true)
+		asset, err := r.authorizedAsset(tx, command.ScopeQuery, releasePublisher)
 		if err != nil {
 			return err
 		}
@@ -139,7 +139,7 @@ func (r *Releases) approvedRevision(ctx context.Context, asset domain.AssetRef, 
 func (r *Releases) GetRelease(ctx context.Context, query ports.ScopeQuery, id string) (domain.Release, error) {
 	var release domain.Release
 	err := r.deps.Transactions.WithinTransaction(ctx, func(tx context.Context) error {
-		asset, err := r.authorizedAsset(tx, query, false)
+		asset, err := r.authorizedAsset(tx, query, releaseMetadata)
 		if err != nil {
 			return err
 		}
@@ -163,7 +163,7 @@ func (r *Releases) ListReleases(ctx context.Context, query ports.ScopeQuery, aft
 	}
 	var items []domain.Release
 	err := r.deps.Transactions.WithinTransaction(ctx, func(tx context.Context) error {
-		asset, err := r.authorizedAsset(tx, query, false)
+		asset, err := r.authorizedAsset(tx, query, releaseMetadata)
 		if err != nil {
 			return err
 		}
@@ -180,19 +180,36 @@ func (r *Releases) ListReleases(ctx context.Context, query ports.ScopeQuery, aft
 	return ReleasePage{Items: items[:size], Next: &ports.Position{At: last.PreparedAt, ID: last.ID}}, nil
 }
 
-func (r *Releases) authorizedAsset(ctx context.Context, query ports.ScopeQuery, publishing bool) (domain.AssetRef, error) {
+type releaseGrant int
+
+const (
+	releaseMetadata releaseGrant = iota
+	releaseMaterial
+	releasePublisher
+)
+
+func (r *Releases) authorizedAsset(ctx context.Context, query ports.ScopeQuery, required releaseGrant) (domain.AssetRef, error) {
 	scope, err := r.deps.Scopes.Asset(ctx, query)
 	if err != nil {
 		return domain.AssetRef{}, err
 	}
-	read, publish, active, err := r.deps.Scopes.ReleaseMembership(ctx, query.Caller, scope.Asset)
+	access, err := r.deps.Scopes.ReleaseAccess(ctx, query.Caller, scope.Asset)
 	if err != nil {
 		return domain.AssetRef{}, err
 	}
-	if !read || (publishing && !publish) {
+	var allowed bool
+	switch required {
+	case releaseMetadata:
+		allowed = access.Metadata
+	case releaseMaterial:
+		allowed = access.Material
+	case releasePublisher:
+		allowed = access.Publisher
+	}
+	if !allowed {
 		return domain.AssetRef{}, ErrForbidden
 	}
-	if publishing && !active {
+	if required == releasePublisher && !access.Active {
 		return domain.AssetRef{}, ErrProductSuspended
 	}
 	return scope.Asset, nil
@@ -212,7 +229,7 @@ func (r *Releases) refused(ctx context.Context, query ports.ScopeQuery, action s
 // caller. Publication uses them for what a slot serves, and its use case
 // checks caller, target, current pointer and grants before serving any
 // release material. GetReleaseArtifact uses them too, to download a release by
-// its identifier, and checks only that the caller may read the release.
+// its identifier after checking the caller's release evidence grant.
 func (r *Releases) FindRelease(ctx context.Context, asset domain.AssetRef, id string) (domain.Release, error) {
 	release, found, err := r.deps.Releases.Find(ctx, asset, id)
 	if err != nil {

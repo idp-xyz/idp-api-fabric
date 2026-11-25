@@ -67,7 +67,7 @@ func TestAMembershipIsGrantedInForceAtVersionOne(t *testing.T) {
 func TestAMembershipGrantsOneOfTheRolesOfAWorkspace(t *testing.T) {
 	product, workspace := engineering(t)
 
-	if want := []Role{"workspace_maintainer", "internal_author", "internal_reviewer", "internal_publisher"}; !slices.Equal(WorkspaceRoles(), want) {
+	if want := []Role{"workspace_maintainer", "internal_author", "internal_reviewer", "internal_publisher", "internal_reader"}; !slices.Equal(WorkspaceRoles(), want) {
 		t.Fatalf("the roles of a workspace are %v, want %v", WorkspaceRoles(), want)
 	}
 	for _, role := range WorkspaceRoles() {
@@ -80,7 +80,7 @@ func TestAMembershipGrantsOneOfTheRolesOfAWorkspace(t *testing.T) {
 		"no role":                         "",
 		"the role that owns a product":    RoleProductOwner,
 		"a role of the platform":          "platform_admin",
-		"a role nobody defined":           "internal_reader",
+		"a role nobody defined":           "superuser",
 		"a role of a workspace, in upper": "WORKSPACE_MAINTAINER",
 		"a role with a space after it":    "internal_author ",
 	}

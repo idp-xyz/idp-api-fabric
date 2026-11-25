@@ -126,9 +126,10 @@ func TestTheSourceOfARevisionIsReadBackByWhoMayReadTheRevision(t *testing.T) {
 	}
 
 	// Whoever may not read the revision is told the same about its source.
+	s.join(product, workspace, "owner", "reader", "internal_reader")
 	withheld := map[string]int{
-		"maintainer": http.StatusForbidden,
-		"elsewhere":  http.StatusNotFound, "stranger": http.StatusNotFound, "": http.StatusUnauthorized,
+		"reader":    http.StatusForbidden,
+		"elsewhere": http.StatusNotFound, "stranger": http.StatusNotFound, "": http.StatusUnauthorized,
 	}
 	refusals := func() int {
 		return occurrences(s.recorded(func(row audited) bool { return row.Action == "revision.read" && row.Outcome != "SUCCEEDED" }))

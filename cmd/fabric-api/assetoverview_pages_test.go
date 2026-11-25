@@ -141,7 +141,7 @@ func TestTheOverviewIsShownForAsLongAsTheGrantThatReadsItIsHeld(t *testing.T) {
 	w.putInState(w.releaseFixture, "released")
 	w.putInState(w.assetIn(w.product, w.workspace, "second"), "pending-unknown")
 	grant := w.join(w.product, w.workspace, "owner", "temp", "internal_author")
-	w.join(w.product, w.workspace, "owner", "temp", "workspace_maintainer")
+	w.join(w.product, w.workspace, "owner", "temp", "internal_reader")
 
 	filtered := w.assets() + "?check_status=UNKNOWN&page_size=1"
 	listed, filteredToken := w.page(filtered, "temp")
@@ -156,7 +156,7 @@ func TestTheOverviewIsShownForAsLongAsTheGrantThatReadsItIsHeld(t *testing.T) {
 
 	w.revoke(grant, "owner")
 
-	// It still maintains the workspace: it reads what the maintainer reads.
+	// Its remaining membership reads published material and the asset metadata.
 	if got := w.call(http.MethodGet, w.asset, "temp", ""); got.status != http.StatusOK || got.body["overview"] != nil {
 		t.Errorf("the member reads the asset as %d %v, want it without an overview", got.status, got.body)
 	}
@@ -258,8 +258,10 @@ func TestACheckThatIsNotWhatWasRecordedFailsTheOverviewAsItFailsTheHistory(t *te
 		t.Errorf("the list of the checks that could not judge holds %v, want none: the stored status of the check is PASS", kept)
 	}
 	w.require(w.call(http.MethodGet, asset.asset, "owner", ""), history.status, history.code())
-	if got := w.call(http.MethodGet, asset.asset, "maintainer", ""); got.status != http.StatusOK || got.body["overview"] != nil {
-		t.Errorf("the maintainer reads the asset as %d %v, want it without an overview", got.status, got.body)
+	w.require(w.call(http.MethodGet, asset.asset, "maintainer", ""), history.status, history.code())
+	w.join(w.product, w.workspace, "owner", "reader", "internal_reader")
+	if got := w.call(http.MethodGet, asset.asset, "reader", ""); got.status != http.StatusOK || got.body["overview"] != nil {
+		t.Errorf("the published reader reads the asset as %d %v, want it without an overview", got.status, got.body)
 	}
 
 	setStatus("UNKNOWN")

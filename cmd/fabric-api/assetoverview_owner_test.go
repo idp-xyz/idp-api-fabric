@@ -9,10 +9,10 @@ import (
 
 func TestProductOwnershipAllowsReadingAndFilteringOverviewsInEveryWorkspace(t *testing.T) {
 	w := slotsFor(t)
-	grant := w.securityRole("owner-maintainer", "product_owner", "owner")
+	grant := w.securityRole("owner-reader", "product_owner", "owner")
 	w.require(grant, http.StatusCreated, "")
 	w.require(w.securityRole("owner-mixed", "product_owner", "owner"), http.StatusCreated, "")
-	w.join(w.product, w.operations, "owner", "owner-maintainer", "workspace_maintainer")
+	w.join(w.product, w.operations, "owner", "owner-reader", "internal_reader")
 	w.join(w.product, w.workspace, "owner", "owner-mixed", "internal_author")
 	w.join(w.product, w.operations, "owner", "owner-mixed", "workspace_maintainer")
 
@@ -22,7 +22,7 @@ func TestProductOwnershipAllowsReadingAndFilteringOverviewsInEveryWorkspace(t *t
 	both := []string{engineering.identifier(), operations.identifier()}
 	pending := []string{operations.identifier()}
 
-	for _, subject := range []string{"owner", "owner-maintainer", "owner-mixed"} {
+	for _, subject := range []string{"owner", "owner-reader", "owner-mixed"} {
 		listed, next := w.page(w.assets(), subject)
 		if got := told(listed, "api_asset_id"); !slices.Equal(got, both) || next != "" {
 			t.Errorf("%s lists %v with token %q, want %v", subject, got, next, both)
@@ -56,12 +56,12 @@ func TestProductOwnershipAllowsReadingAndFilteringOverviewsInEveryWorkspace(t *t
 
 	parcel, parcelWorkspace := w.otherProduct()
 	parcelAsset := w.assetIn(parcel, parcelWorkspace, "parcel-api")
-	w.require(w.call(http.MethodGet, parcelAsset.asset, "owner-maintainer", ""), http.StatusNotFound, "PRODUCT_NOT_FOUND")
+	w.require(w.call(http.MethodGet, parcelAsset.asset, "owner-reader", ""), http.StatusNotFound, "PRODUCT_NOT_FOUND")
 	w.require(w.call(http.MethodGet, operations.asset, "parcel-owner", ""), http.StatusNotFound, "PRODUCT_NOT_FOUND")
-	w.require(w.call(http.MethodGet, "/v1/products/"+w.product+"/audit-records", "owner-maintainer", ""), http.StatusForbidden, "FORBIDDEN")
+	w.require(w.call(http.MethodGet, "/v1/products/"+w.product+"/audit-records", "owner-reader", ""), http.StatusForbidden, "FORBIDDEN")
 
 	filtered := w.assets() + "?check_status=UNKNOWN&page_size=1"
-	caller := w.token("owner-maintainer")
+	caller := w.token("owner-reader")
 	first := w.callWithHeaders(http.MethodGet, filtered, caller, "", nil)
 	w.require(first, http.StatusOK, "")
 	cursor := first.id("next_page_token")
@@ -71,7 +71,7 @@ func TestProductOwnershipAllowsReadingAndFilteringOverviewsInEveryWorkspace(t *t
 	got := w.callWithHeaders(http.MethodGet, operations.asset, caller, "", nil)
 	w.require(got, http.StatusOK, "")
 	if overviewOf(t, got.body) != nil {
-		t.Errorf("a former owner with a maintainer grant reads an overview: %v", got.body)
+		t.Errorf("a former owner with a published-reader grant reads an overview: %v", got.body)
 	}
 	w.require(w.callWithHeaders(http.MethodGet, operations.revisions, caller, "", nil), http.StatusForbidden, "FORBIDDEN")
 }

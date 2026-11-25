@@ -37,7 +37,7 @@ func catalogScopeOf(scope governance.CatalogScope) catalogports.ProductScope {
 		readers = append(readers, catalogdomain.WorkspaceID(workspace))
 	}
 	return catalogports.ProductScope{
-		Exists: scope.Found, Active: scope.Active, Known: scope.Known, Owner: scope.Owner, Workspaces: workspaces,
+		Exists: scope.Found, Active: scope.Active, Known: scope.Known, Owner: scope.Owner, Security: scope.Security, Workspaces: workspaces,
 		Readers: readers,
 	}
 }

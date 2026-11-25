@@ -32,7 +32,7 @@ func checksFor(t *testing.T) checkFixture {
 	product := s.register("platform-admin", "cargopai", "owner")
 	workspace := s.createWorkspace(product, "owner", "engineering")
 	s.join(product, workspace, "owner", "maintainer", "workspace_maintainer")
-	s.join(product, workspace, "owner", "author", "workspace_maintainer")
+	s.join(product, workspace, "owner", "author", "internal_reader")
 	membership := s.join(product, workspace, "owner", "author", "internal_author")
 	return checkFixture{
 		stack: s, product: product, workspace: workspace, membership: membership,
