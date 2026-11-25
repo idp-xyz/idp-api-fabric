@@ -59,6 +59,12 @@ PR #10 和 #11 的实现详见 [F03 §5.6](docs/F03_Domain_and_Data_Model.md#56-
 
 管理 API 0.32.0 支持产品负责人读取本产品各 Workspace 的资产概况、契约修订和原文、检查、评审、Release 及发布历史。作者、评审人和发布人的写操作继续按 Workspace 授权，审计和安全操作使用各自的产品角色。升级不涉及数据库迁移或重新授权。
 
+管理 API 0.33.0 将批准有效性和已生效的内部发布分开判定。源站按当前读取权限、槽位指针及 AccessBlock 提供制品。准备 Release 和 `ACTIVATE` 要求当前批准。内部 `RESTORE` 核对原批准证据、独立发布人及槽位历史。
+
+管理 API 0.35.0 将审计员的任命和撤销交给对该产品独立的平台管理员。产品负责人仍可查询本产品审计员。管理员使用 `role=internal_auditor` 分页查询审计员。既有任命保留，可由有权管理员复核。
+
+管理 API 0.36.0 扩充治理与发布的读取权限。维护者读所属 Workspace 的治理材料，安全角色读本产品的资产目录和发布记录，`internal_reader` 读所属 Workspace 的资产目录、Release 元数据和发布记录，并通过当前槽位下载内部制品。服务端每次从槽位下载都核对 AccessBlock 和现行权限。先执行 `fabric-migrate -apply` 应用 `productgovernance/010_internal_reader`，再更换所有 API 进程，最后授予新角色。 [读取权限与升级说明](docs/F05_Security_and_Multitenancy.md#612-内部发布审计与读取权限033003500360)
+
 ## 阅读入口
 
 - [index.html](index.html) — 统一的离线 HTML 文档阅读入口。

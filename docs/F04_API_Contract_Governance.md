@@ -452,7 +452,7 @@ F04-GOV-014 到 020、025 到 027 这 10 条（Release 摘要链、发布授权�
 
 ### 11.6 已实现的 Release 与发布接口
 
-本节对应管理 API 0.20.0–0.22.0：0.20.0 加入发布人和两种安全角色，0.21.0 加入 Release，0.22.0 加入发布目标、槽位和访问阻断。数据模型见 F03 §5.10，访问规则见 F05 §6.7。以下路径均以 `/v1/products/{product_id}` 开头。 [管理 API 契约](../api/openapi.yaml)
+本节对应管理 API 0.20.0–0.22.0。0.20.0 加入发布人和两种安全角色，0.21.0 加入 Release，0.22.0 加入发布目标、槽位和访问阻断。数据模型见 F03 §5.10，访问规则见 F05 §6.7。自 0.33.0 起，内部恢复和制品读取遵循 §11.10。以下路径均以 `/v1/products/{product_id}` 开头。 [管理 API 契约](../api/openapi.yaml)
 
 | 路径 | 行为 |
 |---|---|
@@ -476,7 +476,7 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 
 **改变槽位。** `POST …/operations` 的请求体是 `action`、`expected_generation`，以及按动作需要的 `release_id` 和 `reason`；请求头 `Idempotency-Key` 必填，1–128 个字符的字母、数字和 `.` `_` `:` `-`。`ACTIVATE` 要有 `release_id`；`WITHDRAW` 要有 `reason`，不能有 `release_id`；`RESTORE` 两者都要有，而且只能回到这个槽位上生效过的 Release（否则 409 `RELEASE_NOT_IN_SLOT_HISTORY`）。成功返回 200 和操作记录。代次不是当前的返回 412 `PRECONDITION_FAILED`；同一个键用于另一个请求返回 409 `IDEMPOTENCY_CONFLICT`；要激活的已经在生效返回 409 `RELEASE_ALREADY_ACTIVE`；没有可撤销的返回 409 `NO_ACTIVE_RELEASE`。激活和恢复还会重新核对批准，除上一段的错误码外：目标的受众和环境不在批准的范围内返回 409 `APPROVAL_SCOPE_MISMATCH`；用另一个修订的 Release 替换槽位上最近生效过的那个（中间撤销过也算），而批准依据的检查不是以那个修订为基线，返回 409 `COMPATIBILITY_BASELINE_MISMATCH`，同一个修订的另一个 Release 不需要比较，恢复也不需要；目标不是 `internal` 受众返回 409 `PUBLICATION_TARGET_UNAVAILABLE`，目标的受众配置已被移除返回 404 `AUDIENCE_CONFIG_NOT_FOUND`；被阻断覆盖返回 409 `PUBLICATION_BLOCKED`；产品已暂停返回 409 `PRODUCT_NOT_ACTIVE`。撤销不核对批准，产品暂停时也可以撤销，参与过这个修订的发布人也可以撤销。
 
-**读取槽位和制品。** 槽位的响应有 `generation`、`visibility`（`EMPTY`、`ACTIVE`、`WITHDRAWN`）、可选的 `active_release_id`、`blocked` 和 `delivery_status`（恒为 `UNKNOWN`）。阻断不改变槽位的指针和代次，只让 `blocked` 为真。制品以 `application/octet-stream` 返回，`X-Artifact-Digest` 是响应字节的 SHA-256。没有生效的 Release、被阻断、产品暂停、批准已不成立时，都返回 404 `PUBLISHED_ARTIFACT_NOT_FOUND`，不区分原因；目标的受众配置已被移除时返回 404 `AUDIENCE_CONFIG_NOT_FOUND`。批准已不成立包括批准或豁免过期、批准人的评审人身份被撤销，以及策略或检查工具更新后原检查不再是现行的（F05 §6.7）。0.25.0 起，槽位的响应用 `approval_problem` 说明是哪一种，恢复的办法是复审，见 §11.7。
+**读取槽位和制品。** 槽位的响应有 `generation`、`visibility`（`EMPTY`、`ACTIVE`、`WITHDRAWN`）、可选的 `active_release_id`、`blocked` 和 `delivery_status`（恒为 `UNKNOWN`）。阻断将 `blocked` 置为真，槽位的指针和代次保持原值。制品以 `application/octet-stream` 返回，`X-Artifact-Digest` 是响应字节的 SHA-256。没有生效的 Release、被阻断或产品暂停时返回 404 `PUBLISHED_ARTIFACT_NOT_FOUND`。目标的受众配置已被移除时返回 404 `AUDIENCE_CONFIG_NOT_FOUND`。0.22.0 中，批准失效也会导致制品返回 404。0.25.0 起槽位通过 `approval_problem` 说明批准失效原因（§11.7）。0.33.0 起已生效的内部制品继续受 §11.10 的读取条件约束。
 
 **访问阻断。** `POST …/access-blocks` 的请求体是 `reason` 和可选的 `api_asset_id`、`release_id`（有后者必有前者），分别阻断整个目标、一个资产或一个 Release。新建返回 201；同一范围已有未解除的阻断时，同一个人以同样的理由再次提交返回 200，否则 409 `ACCESS_BLOCK_EXISTS`。资产不属于这个产品返回 404 `API_ASSET_NOT_FOUND`，Release 不属于这个资产返回 404 `RELEASE_NOT_FOUND`。`POST …/clearance` 的请求体是 `reason`：解除人就是建立人返回 403 `SECURITY_REVIEWER_NOT_INDEPENDENT`；阻断覆盖的槽位还有生效的 Release 返回 409 `WITHDRAW_BEFORE_CLEARING`，只看它覆盖的那部分，按 Release 阻断时同一资产换成了别的 Release 就可以解除；已经解除的阻断，解除人以同样的理由再次提交返回 200，否则 409 `ACCESS_BLOCK_CLEARED`。阻断的响应里 `edge_status` 恒为 `UNKNOWN`。
 
@@ -669,6 +669,16 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 401 是 `CREDENTIALS_MISSING` 或 `TOKEN_INVALID`。队列的 404 分两种：不认识产品的人和不存在的产品，是 `PRODUCT_NOT_FOUND`；认识产品、却既不是负责人也不是这个 Workspace 成员的人（别的 Workspace 的成员、平台管理员、只有产品角色的人），是 `WORKSPACE_NOT_FOUND`，与不存在的 Workspace 和别的产品的 Workspace 相同；负责人问产品没有的 Workspace，也是 `WORKSPACE_NOT_FOUND`。队列里没有读评审的身份的人得到的是 403，不是空列表，空列表会说这个 Workspace 没有评审。`listAssets` 带新筛选的 403：本来就不能列资产的人（陌生人、平台管理员、审计员、安全角色）的答案与不带筛选时相同；能列资产却在哪个 Workspace 都读不了修订的人（负责人、维护者）带任一筛选得 403，不答空页，因为空页会说出筛选留下了什么。
 
 **兼容性。** 0.29.0 增加两个操作和三个 schema（`Caller`、`CallerInProduct`、`CallerInWorkspace`）；0.30.0 增加一个操作，没有新的 schema；0.31.0 增加四个 schema（`AssetOverview`、`OverviewRevision`、`OverviewCheck`、`OverviewRelease`），给 `APIAsset` 增加可选成员 `overview`，给 `listAssets` 增加两个可选参数。七个新 schema 都是封闭的（`additionalProperties: false`）：以后加成员，例如显示名，是新增成员，按契约严格校验应答的客户端要先升级。`APIAsset` 本来就不封闭，多一个可选成员不影响读它的客户端；按 §5.1，新增可选响应字段是 COMPATIBLE / RISKY，严格解码、按签名或缓存消费应答的客户端要先确认。没有新的错误码，没有改已有操作对读不了修订的人的行为。滚动升级时，旧进程对三个新路径答 404 `ROUTE_NOT_FOUND`，对带 `check_status` 或 `release_pending` 的 `listAssets` 答 400 `REQUEST_INVALID`（未声明的参数），资产的应答里没有 `overview`；要用新接口和新筛选的页面，等所有进程都升级以后再上（F03 §5.13、F05 §6.10）。
+
+### 11.10 内部发布与读取权限的契约更新
+
+| 管理契约 | 变更 | 调用方需要核对 |
+|---|---|---|
+| 0.33.0 | 已生效的内部制品沿用当前槽位。批准失效通过 `approval_problem` 告知。内部 `RESTORE` 验证原批准证据，`ACTIVATE` 验证当前批准 | 读取成功仍须满足现行权限、配置和 AccessBlock。恢复沿用槽位历史、独立发布人和 CAS |
+| 0.35.0 | 角色分配列表支持 `role` 筛选。平台管理员在有权的产品内使用 `role=internal_auditor` 查看审计员 | 分页请求保持相同角色筛选。产品负责人保留查询权限，任命和撤销由独立的平台管理员操作 |
+| 0.36.0 | Workspace 角色枚举增加 `internal_reader`。该角色可查询所属 Workspace 的 Release 列表和元数据。目录、治理材料和发布读取体现维护者及安全角色的作用域 | 先应用迁移 010 并升级所有副本，再授予新角色。只读角色通过槽位读取内部制品并处理阻断后的 404 |
+
+上述变更沿用现有 60 个管理操作。服务端按请求重新判权，列表在分页之前按授予的产品和 Workspace 范围过滤。写操作按各自角色检查。详细作用域与拒绝语义见 [F05 §6.12](F05_Security_and_Multitenancy.md#612-内部发布审计与读取权限033003500360)。
 
 ## 12. API Catalog 元数据、文档产物和发布加工
 
