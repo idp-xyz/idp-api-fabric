@@ -16,9 +16,16 @@ type Releases interface {
 	Artifact(context.Context, string) ([]byte, error)
 }
 
+type ReleaseAccess struct {
+	Metadata  bool
+	Material  bool
+	Publisher bool
+	Active    bool
+}
+
 type ReleaseScopes interface {
 	Asset(context.Context, ScopeQuery) (AssetScope, error)
-	ReleaseMembership(context.Context, domain.Principal, domain.AssetRef) (reader, publisher, active bool, err error)
+	ReleaseAccess(context.Context, domain.Principal, domain.AssetRef) (ReleaseAccess, error)
 	Approval(context.Context, domain.Revision, string, domain.Principal) (domain.ApprovalEvidence, error)
 	// Evidence reads the check and the approval a release names, as they
 	// were recorded: it fails for ones that are not what the release

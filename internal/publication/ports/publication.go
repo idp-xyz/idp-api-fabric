@@ -71,10 +71,11 @@ type PlacedSlot struct {
 func (s PlacedSlot) Position() SlotPosition { return SlotPosition{At: s.Since, ID: s.Slot.ID} }
 
 type AssetAccess struct {
-	WorkspaceID string
-	Reader      bool
-	Publisher   bool
-	Active      bool
+	WorkspaceID    string
+	Reader         bool
+	ArtifactReader bool
+	Publisher      bool
+	Active         bool
 }
 
 // ReadableAsset is an asset whose slots a caller reads, with the workspace

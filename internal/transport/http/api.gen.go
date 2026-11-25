@@ -604,6 +604,7 @@ func (e WorkspaceStatus) Valid() bool {
 const (
 	WorkspaceRoleInternalAuthor      WorkspaceRole = "internal_author"
 	WorkspaceRoleInternalPublisher   WorkspaceRole = "internal_publisher"
+	WorkspaceRoleInternalReader      WorkspaceRole = "internal_reader"
 	WorkspaceRoleInternalReviewer    WorkspaceRole = "internal_reviewer"
 	WorkspaceRoleWorkspaceMaintainer WorkspaceRole = "workspace_maintainer"
 )
@@ -614,6 +615,8 @@ func (e WorkspaceRole) Valid() bool {
 	case WorkspaceRoleInternalAuthor:
 		return true
 	case WorkspaceRoleInternalPublisher:
+		return true
+	case WorkspaceRoleInternalReader:
 		return true
 	case WorkspaceRoleInternalReviewer:
 		return true
@@ -656,7 +659,7 @@ type APIAsset struct {
 	DomainKey Key               `json:"domain_key"`
 	Lifecycle APIAssetLifecycle `json:"lifecycle"`
 
-	// Overview Where the asset stands. Present for a product owner or a current author, reviewer or publisher of the workspace that owns it. Only the reads of an asset carry it.
+	// Overview Where the asset stands. Present for a product owner or a current maintainer, author, reviewer or publisher of the workspace that owns it. Only the reads of an asset carry it.
 	Overview *AssetOverview `json:"overview,omitempty"`
 
 	// ProductID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
@@ -1283,7 +1286,7 @@ type Membership struct {
 	// ProductID The product the workspace belongs to
 	ProductID Identifier `json:"product_id"`
 
-	// Role What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions and runs their checks; an internal_reviewer reads revisions and checks and decides on reviews. An internal_publisher prepares and publishes approved releases. Owners of the product manage the workspace and its members.
+	// Role What a member is in a workspace. A workspace_maintainer creates and updates its API assets and reads their governance evidence. An internal_author writes and reads its contract revisions and runs their checks. An internal_reviewer reads revisions and checks and decides on reviews. An internal_publisher prepares and publishes approved releases. An internal_reader reads its asset catalog, release metadata, publication slots and history, and active artifacts through the internal publication origin. Owners of the product manage the workspace and its members.
 	Role WorkspaceRole `json:"role"`
 
 	// WorkspaceID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
@@ -1295,7 +1298,7 @@ type MembershipGrant struct {
 	// Member A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
 	Member Principal `json:"member"`
 
-	// Role What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions and runs their checks; an internal_reviewer reads revisions and checks and decides on reviews. An internal_publisher prepares and publishes approved releases. Owners of the product manage the workspace and its members.
+	// Role What a member is in a workspace. A workspace_maintainer creates and updates its API assets and reads their governance evidence. An internal_author writes and reads its contract revisions and runs their checks. An internal_reviewer reads revisions and checks and decides on reviews. An internal_publisher prepares and publishes approved releases. An internal_reader reads its asset catalog, release metadata, publication slots and history, and active artifacts through the internal publication origin. Owners of the product manage the workspace and its members.
 	Role WorkspaceRole `json:"role"`
 }
 
@@ -1840,7 +1843,7 @@ type WorkspaceList struct {
 	NextPageToken *NextPageToken `json:"next_page_token,omitempty"`
 }
 
-// WorkspaceRole What a member is in a workspace. A workspace_maintainer creates and updates the API assets of the workspace; an internal_author writes and reads its contract revisions and runs their checks; an internal_reviewer reads revisions and checks and decides on reviews. An internal_publisher prepares and publishes approved releases. Owners of the product manage the workspace and its members.
+// WorkspaceRole What a member is in a workspace. A workspace_maintainer creates and updates its API assets and reads their governance evidence. An internal_author writes and reads its contract revisions and runs their checks. An internal_reviewer reads revisions and checks and decides on reviews. An internal_publisher prepares and publishes approved releases. An internal_reader reads its asset catalog, release metadata, publication slots and history, and active artifacts through the internal publication origin. Owners of the product manage the workspace and its members.
 type WorkspaceRole string
 
 // AccessBlockID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.

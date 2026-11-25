@@ -296,6 +296,9 @@ func (s *Publication) ActiveArtifact(ctx context.Context, request domain.Request
 		if err != nil {
 			return err
 		}
+		if !access.ArtifactReader {
+			return ErrForbidden
+		}
 		target, err := s.target(tx, request, ports.HoldTarget)
 		if err != nil {
 			return err

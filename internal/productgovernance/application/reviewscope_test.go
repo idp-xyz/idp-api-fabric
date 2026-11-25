@@ -61,7 +61,7 @@ func TestWhatACallerIsToAWorkspaceForTheReadingOfItsReviews(t *testing.T) {
 		"a maintainer that also publishes":                 {several, cargopai, engineering, reads},
 		"an owner of the product that is also an author":   {coowner, cargopai, engineering, reads},
 		"the author of the other workspace":                {dave, cargopai, operations, reads},
-		"the maintainer of the workspace":                  {carol, cargopai, engineering, sees},
+		"the maintainer of the workspace":                  {carol, cargopai, engineering, reads},
 		"the owner of the product":                         {alice, cargopai, engineering, reads},
 		"the owner, in the other workspace":                {alice, cargopai, operations, reads},
 		"an author of the other workspace":                 {dave, cargopai, engineering, knows},

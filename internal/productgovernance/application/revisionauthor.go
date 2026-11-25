@@ -9,11 +9,13 @@ import (
 
 // revisionReaders are the roles of a workspace that read its contract
 // revisions. A product owner's read grant is checked separately.
-var revisionReaders = []domain.Role{domain.RoleInternalAuthor, domain.RoleInternalReviewer, domain.RoleInternalPublisher}
+var revisionReaders = []domain.Role{
+	domain.RoleWorkspaceMaintainer, domain.RoleInternalAuthor, domain.RoleInternalReviewer, domain.RoleInternalPublisher,
+}
 
 // RevisionReader reports whether actor may read the contract revisions of
-// the workspace now: it owns the product or holds the author, the reviewer
-// or the publisher grant there. A reviewer reads what it is to decide on, and a publisher
+// the workspace now: it owns the product or holds a governance reading role
+// there. A reviewer reads what it is to decide on, and a publisher
 // what it is to release: the revision, its checks and the reviews that
 // approved it, which a release names. Neither writes a revision. A read
 // takes no lock: the grant is read again with every request.

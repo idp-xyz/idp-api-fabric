@@ -29,8 +29,8 @@ type ReviewScope struct {
 	// WorkspaceFound is whether the product has such a workspace. A workspace
 	// of another product is not one of this.
 	WorkspaceFound bool
-	// Reads is whether the caller owns the product or holds the author,
-	// reviewer or publisher grant in the workspace now.
+	// Reads is whether the caller currently has a governance read grant in
+	// the workspace or owns the product.
 	Reads bool
 }
 

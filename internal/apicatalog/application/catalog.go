@@ -141,7 +141,7 @@ func (c *Catalog) visibleAsset(ctx context.Context, query GetAsset) (ports.Produ
 	if err != nil {
 		return ports.ProductScope{}, domain.Asset{}, err
 	}
-	if !scope.CanRead(asset.WorkspaceID) {
+	if !scope.CanReadAsset(asset.WorkspaceID) {
 		return ports.ProductScope{}, domain.Asset{}, c.refuse(ctx, query.Request, actionRead, string(asset.ID), ErrAssetNotFound)
 	}
 	return scope, asset, nil
@@ -202,14 +202,15 @@ func (c *Catalog) ListAssets(ctx context.Context, query ListAssets) (Page, error
 	if err != nil {
 		return Page{}, err
 	}
-	if !scope.Owner && len(scope.Workspaces) == 0 {
+	allAssets := scope.Owner || scope.Security
+	if !allAssets && len(scope.Workspaces) == 0 {
 		return Page{}, c.refuse(ctx, query.Request, actionSearch, "", ErrForbidden)
 	}
 	if filter := (ports.OverviewFilter{CheckStatus: query.CheckStatus, ReleasePending: query.ReleasePending}); filter.Any() {
 		return c.listKept(ctx, query, size, scope, filter)
 	}
 	items, err := c.deps.Assets.List(ctx, query.ProductID, ports.Selection{
-		All: scope.Owner, Workspaces: scope.Workspaces, Workspace: query.WorkspaceID,
+		All: allAssets, Workspaces: scope.Workspaces, Workspace: query.WorkspaceID,
 		Kind: query.Kind, DomainKey: query.DomainKey, Query: query.Query, After: query.After, Limit: size + 1,
 	})
 	if err != nil {

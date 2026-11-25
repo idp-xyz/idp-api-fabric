@@ -32,8 +32,8 @@ func TestTheCatalogScopeKeepsOwnershipSeparateFromWorkspaceMembership(t *testing
 		actor            domain.Principal
 		visible, readers []domain.WorkspaceID
 	}{
-		"an owner that maintains a workspace":                         {maintaining, []domain.WorkspaceID{operations}, nil},
-		"an owner that maintains a workspace and writes in the other": {mixed, bothWorkspaces, []domain.WorkspaceID{operations}},
+		"an owner that maintains a workspace":                         {maintaining, []domain.WorkspaceID{operations}, []domain.WorkspaceID{operations}},
+		"an owner that maintains a workspace and writes in the other": {mixed, bothWorkspaces, bothWorkspaces},
 		"an owner that writes in a workspace":                         {writing, []domain.WorkspaceID{engineering}, []domain.WorkspaceID{engineering}},
 		"the owner of the product that is a member of no workspace":   {alice, nil, nil},
 	} {

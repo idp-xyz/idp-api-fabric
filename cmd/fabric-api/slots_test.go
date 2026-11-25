@@ -144,12 +144,11 @@ func TestASlotIsChangedByAPublisherWhoHadNoPartInTheRevision(t *testing.T) {
 	// Contract readers and product owners can read the slot, its history
 	// and the currently authorized artifact it serves.
 	for _, path := range []string{slot, operations, artifact} {
-		for _, caller := range []string{"author", "coauthor", "reviewer", "publisher", "owner"} {
+		for _, caller := range []string{"author", "coauthor", "reviewer", "publisher", "owner", "maintainer"} {
 			if got := s.call(http.MethodGet, path, caller, ""); got.status != http.StatusOK || got.header.Get("Cache-Control") != "no-store" {
 				t.Errorf("%s reads %s: %d %v", caller, path, got.status, got.body)
 			}
 		}
-		s.require(s.call(http.MethodGet, path, "maintainer", ""), http.StatusForbidden, "FORBIDDEN")
 		s.require(s.call(http.MethodGet, path, "stranger", ""), http.StatusNotFound, "PRODUCT_NOT_FOUND")
 	}
 	history := s.call(http.MethodGet, operations, "reviewer", "")
@@ -180,9 +179,6 @@ func TestASlotIsChangedByAPublisherWhoHadNoPartInTheRevision(t *testing.T) {
 		{"maintainer", "publication.activate", "DENY-03", false, 1},
 		{"owner", "publication.activate", "DENY-03", false, 1},
 		{"author", "publication.restore", "DENY-03", false, 1},
-		{"maintainer", "publication.read", "DENY-03", false, 1},
-		{"maintainer", "publication.history", "DENY-03", false, 1},
-		{"maintainer", "publication.download", "DENY-03", false, 1},
 	} {
 		if got := s.on(c.subject, c.action, c.rule, c.done); got != c.want {
 			t.Errorf("%d records of %s by %s under %s, want %d", got, c.action, c.subject, c.rule, c.want)

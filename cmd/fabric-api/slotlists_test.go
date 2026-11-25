@@ -353,6 +353,7 @@ func TestTheSlotsAreListedOldestFirstAndTheListIsReadToItsEnd(t *testing.T) {
 // A list that is answered leaves no record and no event.
 func TestWhoReadsNoSlotsIsListedNone(t *testing.T) {
 	w := slotsFor(t)
+	w.require(w.securityRole("auditor", "internal_auditor", "platform-admin"), http.StatusCreated, "")
 	target, _ := w.target(internalSandbox, "engineering")
 	listing := target + "/assets"
 	engineering, operations := w.assetIn(w.product, w.workspace, "e1"), w.assetIn(w.product, w.operations, "o1")
@@ -391,8 +392,8 @@ func TestWhoReadsNoSlotsIsListedNone(t *testing.T) {
 		assetStatus int
 		assetCode   string
 	}{
-		// Maintaining a workspace does not grant slot reads.
-		{"maintainer", http.StatusForbidden, "FORBIDDEN", http.StatusForbidden, "FORBIDDEN"},
+		// A product auditor holds the separate audit grant.
+		{"auditor", http.StatusForbidden, "FORBIDDEN", http.StatusNotFound, "API_ASSET_NOT_FOUND"},
 		// An administrator of the platform knows the product and reads none
 		// of its assets: of one asset it is told what the read of the slot
 		// tells it, and of the slots of a target that it reads none.
@@ -602,6 +603,7 @@ func TestAnAssetIsListedOnTheTargetsItWasPublishedTo(t *testing.T) {
 // is a stranger to the next one.
 func TestAPageTokenOfASlotListGrantsNothing(t *testing.T) {
 	w := slotsFor(t)
+	w.require(w.securityRole("auditor", "internal_auditor", "platform-admin"), http.StatusCreated, "")
 	target, configPath := w.target(internalSandbox, "engineering")
 	listing := target + "/assets"
 	var engineering []*releaseFixture
@@ -618,7 +620,7 @@ func TestAPageTokenOfASlotListGrantsNothing(t *testing.T) {
 		t.Fatalf("the first page holds %v and the token %q", items, token)
 	}
 	// The token of a reader of engineering in the hands of others.
-	w.require(w.call(http.MethodGet, listing+"?page_size=1&page_token="+token, "maintainer", ""), http.StatusForbidden, "FORBIDDEN")
+	w.require(w.call(http.MethodGet, listing+"?page_size=1&page_token="+token, "auditor", ""), http.StatusForbidden, "FORBIDDEN")
 	w.require(w.call(http.MethodGet, listing+"?page_size=1&page_token="+token, "stranger", ""), http.StatusNotFound, "PRODUCT_NOT_FOUND")
 	if got, _ := w.page(listing+"?page_size=100&page_token="+token, "ops-reader"); !slices.Equal(told(got, "api_asset_id"), []string{operations.identifier()}) {
 		t.Errorf("a reader of operations, with the token of a reader of engineering, lists %v, want the slots it reads", told(got, "api_asset_id"))

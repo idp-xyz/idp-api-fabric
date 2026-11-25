@@ -39,7 +39,7 @@ func TestTheOverviewIsShownToWhoReadsTheRevisionsOfTheWorkspaceAndToNoOneElse(t 
 	w.require(w.securityRole("auditor", "internal_auditor", "platform-admin"), http.StatusCreated, "")
 	w.require(w.securityRole("security", "security_admin", "owner"), http.StatusCreated, "")
 	w.join(w.product, w.workspace, "owner", "mixed", "internal_author")
-	w.join(w.product, w.operations, "owner", "mixed", "workspace_maintainer")
+	w.join(w.product, w.operations, "owner", "mixed", "internal_reader")
 	w.join(w.product, w.workspace, "owner", "double", "workspace_maintainer")
 	w.join(w.product, w.workspace, "owner", "double", "internal_publisher")
 
@@ -63,9 +63,10 @@ func TestTheOverviewIsShownToWhoReadsTheRevisionsOfTheWorkspaceAndToNoOneElse(t 
 		{"eng-reviewer", engOnly, engOnly},
 		// Holds the publisher grant next to the maintainer's.
 		{"double", engOnly, engOnly},
-		// Reads the revisions of engineering and maintains operations.
+		// Reads engineering evidence and the published material of operations.
 		{"mixed", both, engOnly},
-		{"maintainer", both, nil},
+		{"maintainer", both, both},
+		{"security", both, nil},
 		{"owner", both, both},
 	} {
 		listed, next := w.page(w.assets(), c.subject)
@@ -141,7 +142,6 @@ func TestTheOverviewIsShownToWhoReadsTheRevisionsOfTheWorkspaceAndToNoOneElse(t 
 		{"platform-admin", "API_ASSET_NOT_FOUND", "FORBIDDEN"},
 		{"stranger", "PRODUCT_NOT_FOUND", "PRODUCT_NOT_FOUND"},
 		{"auditor", "", ""},
-		{"security", "", ""},
 	} {
 		single := w.call(http.MethodGet, engineering.asset, c.subject, "")
 		start := len(w.audit())
@@ -179,12 +179,12 @@ func TestTheOverviewIsShownToWhoReadsTheRevisionsOfTheWorkspaceAndToNoOneElse(t 
 // what happens to the assets of a workspace the caller reads no overview of
 // changes none of their pages, filtered or not, nor the tokens of them. The
 // asset is imported, checked, approved and released there, and the caller
-// that reads only the other workspace, or maintains this one, reads the same
+// that reads only the other workspace, or reads published material of this one, reads the same
 // pages as before.
 func TestWhatHappensToAnAssetInAWorkspaceTheCallerReadsNoOverviewOfChangesNoPageOfTheirs(t *testing.T) {
 	w := slotsFor(t)
 	w.join(w.product, w.workspace, "owner", "mixed", "internal_author")
-	w.join(w.product, w.operations, "owner", "mixed", "workspace_maintainer")
+	w.join(w.product, w.operations, "owner", "mixed", "internal_reader")
 	asset := func(workspace, key, state string) (fixture *releaseFixture, revision, review string) {
 		fixture = w.assetIn(w.product, workspace, key)
 		revision, review = w.putInState(fixture, state)
@@ -198,6 +198,8 @@ func TestWhatHappensToAnAssetInAWorkspaceTheCallerReadsNoOverviewOfChangesNoPage
 	o2, _, _ := asset(w.operations, "o2", "plain")
 	o3, _, _ := asset(w.operations, "o3", "draft-fail")
 	asset(w.operations, "o4", "released")
+	w.join(w.product, w.workspace, "owner", "metadata-reader", "internal_reader")
+	w.join(w.product, w.operations, "owner", "metadata-reader", "internal_reader")
 
 	filters := []string{
 		"", "release_pending=true", "check_status=UNKNOWN", "check_status=FAIL", "check_status=PASS",
@@ -205,10 +207,10 @@ func TestWhatHappensToAnAssetInAWorkspaceTheCallerReadsNoOverviewOfChangesNoPage
 	}
 	read := func() map[string][]pageRead {
 		all := map[string][]pageRead{}
-		for _, subject := range []string{"eng-reader", "mixed", "maintainer"} {
+		for _, subject := range []string{"eng-reader", "mixed", "metadata-reader"} {
 			for _, filter := range filters {
 				for _, size := range []int{1, 2, 3, 100} {
-					if subject == "maintainer" && filter != "" {
+					if subject == "metadata-reader" && filter != "" {
 						continue
 					}
 					all[fmt.Sprintf("%s reads %q in pages of %d", subject, filter, size)] = w.pagesRead(filter, subject, size)

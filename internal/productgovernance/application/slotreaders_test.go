@@ -45,7 +45,7 @@ func TestWhereAPrincipalReadsSlotsIsWhereItHoldsAnAuthorReviewerOrPublisherGrant
 		"a reviewer":                        {reviewer, cargopai, ReleaseReaders{Known: true, Workspaces: engineering}},
 		"a publisher":                       {publisher, cargopai, ReleaseReaders{Known: true, Workspaces: operations}},
 		"three grants in two workspaces":    {several, cargopai, ReleaseReaders{Known: true, Workspaces: []domain.WorkspaceID{s.engineering.ID, s.operations.ID}}},
-		"the maintainer of a workspace":     {carol, cargopai, ReleaseReaders{Known: true}},
+		"the maintainer of a workspace":     {carol, cargopai, ReleaseReaders{Known: true, Workspaces: engineering}},
 		"the owner of the product":          {alice, cargopai, ReleaseReaders{Known: true}},
 		"the administrator of the platform": {admin, cargopai, ReleaseReaders{Known: true}},
 		"a stranger":                        {mallory, cargopai, ReleaseReaders{}},

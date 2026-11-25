@@ -23,8 +23,8 @@ type ReleaseDownload struct {
 	Payload []byte
 }
 
-// GetReleaseArtifact reads the artifact of a release by the identifier of
-// the release under its asset, for whoever may read the release.
+// GetReleaseArtifact reads the artifact by release identifier when the caller
+// holds a release evidence grant for the asset.
 //
 // The release is read the way GetRelease reads it, so a release of another
 // asset or product is no release here. Its bytes are read and verified as
@@ -37,7 +37,7 @@ type ReleaseDownload struct {
 func (r *Releases) GetReleaseArtifact(ctx context.Context, query ports.ScopeQuery, id string) (ReleaseDownload, error) {
 	var download ReleaseDownload
 	err := r.deps.Transactions.WithinTransaction(ctx, func(tx context.Context) error {
-		asset, err := r.authorizedAsset(tx, query, false)
+		asset, err := r.authorizedAsset(tx, query, releaseMaterial)
 		if err != nil {
 			return err
 		}
@@ -58,9 +58,8 @@ func (r *Releases) GetReleaseArtifact(ctx context.Context, query ports.ScopeQuer
 	return download, nil
 }
 
-// GetReleaseProvenance reads what a release was prepared on: the release,
-// its revision and the check and the approval it names, for whoever may read
-// the release.
+// GetReleaseProvenance returns the release, revision, check and approval it
+// names when the caller holds a release evidence grant for the asset.
 //
 // Every part is read by what the release recorded when it was prepared: the
 // revision, the review and the check it names. None of it is the latest of
@@ -73,7 +72,7 @@ func (r *Releases) GetReleaseArtifact(ctx context.Context, query ports.ScopeQuer
 func (r *Releases) GetReleaseProvenance(ctx context.Context, query ports.ScopeQuery, id string) (domain.ReleaseProvenance, error) {
 	var provenance domain.ReleaseProvenance
 	err := r.deps.Transactions.WithinTransaction(ctx, func(tx context.Context) error {
-		asset, err := r.authorizedAsset(tx, query, false)
+		asset, err := r.authorizedAsset(tx, query, releaseMaterial)
 		if err != nil {
 			return err
 		}

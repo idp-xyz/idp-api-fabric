@@ -18,15 +18,20 @@ type ProductScope struct {
 	Active     bool
 	Known      bool
 	Owner      bool
+	Security   bool
 	Workspaces []domain.WorkspaceID
 	// Readers are the Workspaces where the caller holds a grant that reads
-	// the contract revisions of the Workspace: the author, the reviewer or the
-	// publisher grant. Product owners read every workspace through Owner.
+	// the contract revisions of the Workspace. Product owners read every
+	// workspace through Owner.
 	Readers []domain.WorkspaceID
 }
 
 func (s ProductScope) CanRead(workspace domain.WorkspaceID) bool {
 	return s.Owner || slices.Contains(s.Workspaces, workspace)
+}
+
+func (s ProductScope) CanReadAsset(workspace domain.WorkspaceID) bool {
+	return s.Security || s.CanRead(workspace)
 }
 
 func (s ProductScope) CanReadOverview(workspace domain.WorkspaceID) bool {
@@ -52,8 +57,8 @@ type Position struct {
 }
 
 type Selection struct {
-	// All is true only for a product owner. Otherwise Workspaces contains
-	// the exact visible set. Filtering happens before LIMIT and pagination.
+	// All authorizes the product-wide selection. Otherwise Workspaces
+	// contains the exact visible set. Filtering happens before pagination.
 	All        bool
 	Workspaces []domain.WorkspaceID
 	Workspace  domain.WorkspaceID

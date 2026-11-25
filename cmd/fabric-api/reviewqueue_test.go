@@ -374,13 +374,13 @@ func (w *queueWorld) revisionOf(review string) string {
 // Whoever reads one review of a workspace reads the queue of it, and whoever
 // reads none is refused it, as it is refused each review: the queue lists what a
 // read of one review answers, caller by caller. An author, a reviewer and a
-// publisher of the workspace read every review of it; a maintainer and the owner
-// of the product, who see the workspace and hold none of the three grants, are
-// refused both; a member of another workspace, the administrator of the platform
+// publisher and maintainer of the workspace and the product owner read every
+// review of it; a published reader is refused both; a member of another workspace, the administrator of the platform
 // and a stranger are told as little of the workspace as of one of its reviews.
 // What is listed is what is read, one review at a time, for each.
 func TestTheQueueShowsEachCallerExactlyWhatItsSingleReadsAnswer(t *testing.T) {
 	w := queueFor(t)
+	w.join(w.product, w.workspace, "owner", "reader", "internal_reader")
 	engineering := queueMadeIDs(w.filled())
 	s := w.stack
 
@@ -395,7 +395,8 @@ func TestTheQueueShowsEachCallerExactlyWhatItsSingleReadsAnswer(t *testing.T) {
 		{"coauthor", http.StatusOK, "", http.StatusOK, ""},
 		{"reviewer", http.StatusOK, "", http.StatusOK, ""},
 		{"publisher", http.StatusOK, "", http.StatusOK, ""},
-		{"maintainer", http.StatusForbidden, "FORBIDDEN", http.StatusForbidden, "FORBIDDEN"},
+		{"maintainer", http.StatusOK, "", http.StatusOK, ""},
+		{"reader", http.StatusForbidden, "FORBIDDEN", http.StatusForbidden, "FORBIDDEN"},
 		{"owner", http.StatusOK, "", http.StatusOK, ""},
 		{"ops-author", http.StatusNotFound, "WORKSPACE_NOT_FOUND", http.StatusNotFound, "API_ASSET_NOT_FOUND"},
 		{"ops-reviewer", http.StatusNotFound, "WORKSPACE_NOT_FOUND", http.StatusNotFound, "API_ASSET_NOT_FOUND"},
@@ -583,6 +584,7 @@ func TestAReviewAskedOrConcludedWhileTheQueueIsReadRepeatsNothingAndSkipsNothing
 // record and no event, and a product that is suspended is read as it was.
 func TestWhoMayNotReadTheQueueIsRefusedAsFarAsItMayKnow(t *testing.T) {
 	w := queueFor(t)
+	w.join(w.product, w.workspace, "owner", "reader", "internal_reader")
 	w.filled()
 	s := w.stack
 	queue := w.queueOf()
@@ -631,7 +633,7 @@ func TestWhoMayNotReadTheQueueIsRefusedAsFarAsItMayKnow(t *testing.T) {
 		code    string
 	}{
 		// Seeing the workspace is not reading what is reviewed in it.
-		{"maintainer", http.StatusForbidden, "FORBIDDEN"},
+		{"reader", http.StatusForbidden, "FORBIDDEN"},
 		// A member of another workspace is told what an asset of this one is.
 		{"ops-author", http.StatusNotFound, "WORKSPACE_NOT_FOUND"},
 		{"ops-maintainer", http.StatusNotFound, "WORKSPACE_NOT_FOUND"},
@@ -685,7 +687,7 @@ func TestWhoMayNotReadTheQueueIsRefusedAsFarAsItMayKnow(t *testing.T) {
 	if items := listed(s.queuePages(queue, "", "reviewer", 4)); len(items) != 9 {
 		t.Errorf("a suspended product: the reviewer reads %d reviews, want 9", len(items))
 	}
-	refused("maintainer", queue, http.StatusForbidden, "FORBIDDEN", true)
+	refused("reader", queue, http.StatusForbidden, "FORBIDDEN", true)
 	if _, err := s.owner.Exec(t.Context(), `UPDATE productgovernance.product SET status = 'ACTIVE' WHERE product_id = $1`, w.product); err != nil {
 		t.Fatal(err)
 	}
@@ -773,6 +775,7 @@ func TestAnotherProductsWorkspaceIsAsMissingAsOneThatIsNot(t *testing.T) {
 // stranger on the next.
 func TestAPageTokenOfTheQueueGrantsNothing(t *testing.T) {
 	w := queueFor(t)
+	w.join(w.product, w.workspace, "owner", "reader", "internal_reader")
 	made := w.filled()
 	s := w.stack
 	queue := w.queueOf()
@@ -786,7 +789,7 @@ func TestAPageTokenOfTheQueueGrantsNothing(t *testing.T) {
 		status int
 		code   string
 	}{
-		"maintainer":     {http.StatusForbidden, "FORBIDDEN"},
+		"reader":         {http.StatusForbidden, "FORBIDDEN"},
 		"stranger":       {http.StatusNotFound, "PRODUCT_NOT_FOUND"},
 		"ops-author":     {http.StatusNotFound, "WORKSPACE_NOT_FOUND"},
 		"platform-admin": {http.StatusNotFound, "WORKSPACE_NOT_FOUND"},

@@ -10,7 +10,7 @@ const assetSelect = el("asset");
 const revisionSelect = el("revision");
 const checkSelect = el("check");
 const targetSelect = el("target");
-const readers = ["internal_author", "internal_reviewer", "internal_publisher"];
+const readers = ["workspace_maintainer", "internal_author", "internal_reviewer", "internal_publisher"];
 
 let productRequest;
 let view;

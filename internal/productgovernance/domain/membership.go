@@ -26,12 +26,14 @@ const (
 	RoleInternalReviewer Role = "internal_reviewer"
 	// RoleInternalPublisher prepares and publishes approved releases for the workspace.
 	RoleInternalPublisher Role = "internal_publisher"
+	// RoleInternalReader reads the catalog and published contracts of the workspace.
+	RoleInternalReader Role = "internal_reader"
 )
 
 // WorkspaceRoles returns the roles a membership can grant. The contract of
 // the API states the same roles, and a test holds the two together.
 func WorkspaceRoles() []Role {
-	return []Role{RoleWorkspaceMaintainer, RoleInternalAuthor, RoleInternalReviewer, RoleInternalPublisher}
+	return []Role{RoleWorkspaceMaintainer, RoleInternalAuthor, RoleInternalReviewer, RoleInternalPublisher, RoleInternalReader}
 }
 
 // ErrMembershipRevoked reports a change to a membership that was revoked

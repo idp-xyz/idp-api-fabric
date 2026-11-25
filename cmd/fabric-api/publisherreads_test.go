@@ -22,7 +22,7 @@ func TestAPublisherReadsWhatItIsToReleaseAndWritesNoneOfIt(t *testing.T) {
 	other := s.createWorkspace(s.product, "owner", "operations")
 	s.join(s.product, other, "owner", "elsewhere", "internal_publisher")
 	// Someone who sees the assets of engineering and publishes in operations.
-	s.join(s.product, s.workspace, "owner", "between", "workspace_maintainer")
+	s.join(s.product, s.workspace, "owner", "between", "internal_reader")
 	s.join(s.product, other, "owner", "between", "internal_publisher")
 
 	first := s.inReview(revisionSource, "author", "author", "author")
@@ -87,7 +87,7 @@ func TestAPublisherReadsWhatItIsToReleaseAndWritesNoneOfIt(t *testing.T) {
 	for _, read := range reads {
 		for caller, want := range map[string]int{
 			"elsewhere": http.StatusNotFound, "between": http.StatusForbidden,
-			"maintainer": http.StatusForbidden, "owner": http.StatusOK,
+			"maintainer": http.StatusOK, "owner": http.StatusOK,
 		} {
 			if got := s.call(http.MethodGet, read, caller, ""); got.status != want {
 				t.Errorf("GET %s as %s: %d %v, want %d", read, caller, got.status, got.body, want)

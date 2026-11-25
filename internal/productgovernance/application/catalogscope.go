@@ -15,10 +15,10 @@ type CatalogScope struct {
 	Active     bool
 	Known      bool
 	Owner      bool
+	Security   bool
 	Workspaces []domain.WorkspaceID
-	// ContractReaders are the workspaces where the principal has an author,
-	// reviewer or publisher membership. Owner covers the product-wide read
-	// grant separately.
+	// ContractReaders are the workspaces where the principal reads governance
+	// evidence. Owner covers the product-wide grant separately.
 	ContractReaders []domain.WorkspaceID
 }
 
@@ -46,7 +46,7 @@ func (s *ProductGovernance) ReadCatalogScope(ctx context.Context, caller domain.
 	return CatalogScope{
 		Found: true, Active: seen.product.Status == domain.ProductActive,
 		Known: s.knows(seen.standing, caller), Owner: seen.standing.Owns(), Workspaces: slices.Compact(workspaces),
-		ContractReaders: slices.Compact(readers),
+		Security: holdsSecurityRole(seen.standing.Roles), ContractReaders: slices.Compact(readers),
 	}, nil
 }
 

@@ -33,9 +33,12 @@ func (s releaseAuthority) Asset(ctx context.Context, query registryports.ScopeQu
 	return asset, err
 }
 
-func (s releaseAuthority) ReleaseMembership(ctx context.Context, actor registrydomain.Principal, asset registrydomain.AssetRef) (bool, bool, bool, error) {
-	return s.governance.ReleaseMembership(ctx, governancedomain.Principal(actor),
+func (s releaseAuthority) ReleaseAccess(ctx context.Context, actor registrydomain.Principal, asset registrydomain.AssetRef) (registryports.ReleaseAccess, error) {
+	grants, err := s.governance.HoldPublicationScope(ctx, governancedomain.Principal(actor),
 		governancedomain.ProductID(asset.ProductID), governancedomain.WorkspaceID(asset.WorkspaceID))
+	return registryports.ReleaseAccess{
+		Metadata: grants.ReleaseMetadata, Material: grants.ReleaseMaterial, Publisher: grants.Publisher, Active: grants.Active,
+	}, err
 }
 
 func (s releaseAuthority) Approval(ctx context.Context, revision registrydomain.Revision, id string, actor registrydomain.Principal) (registrydomain.ApprovalEvidence, error) {
@@ -122,15 +125,16 @@ func (s publicationAuthority) Asset(ctx context.Context, request publicationdoma
 		}
 		return publicationports.AssetAccess{}, err
 	}
-	read, publish, active, err := s.ReleaseMembership(ctx, registrydomain.Principal(request.Caller), scope.Asset)
-	return publicationports.AssetAccess{WorkspaceID: scope.Asset.WorkspaceID, Reader: read, Publisher: publish, Active: active}, err
+	grants, err := s.governance.HoldPublicationScope(ctx, governancedomain.Principal(request.Caller),
+		governancedomain.ProductID(scope.Asset.ProductID), governancedomain.WorkspaceID(scope.Asset.WorkspaceID))
+	return publicationports.AssetAccess{
+		WorkspaceID: scope.Asset.WorkspaceID, Reader: grants.Slots, ArtifactReader: grants.Artifact,
+		Publisher: grants.Publisher, Active: grants.Active,
+	}, err
 }
 
-// ReadableAssets places the assets whose slots the caller reads: those of the
-// workspaces where it holds the author, the reviewer or the publisher grant
-// now, which is what Asset asks of the workspace of one asset, here asked of
-// every workspace of the product at once. Product owners read all placements
-// in that product.
+// ReadableAssets returns the asset placements whose slots the caller can
+// read under the current product and workspace grants.
 func (s publicationAuthority) ReadableAssets(ctx context.Context, request publicationdomain.Request) ([]publicationports.ReadableAsset, error) {
 	readers, err := s.governance.ReleaseReaderScope(ctx, governancedomain.Principal(request.Caller), governancedomain.ProductID(request.ProductID))
 	if err != nil {
@@ -139,17 +143,18 @@ func (s publicationAuthority) ReadableAssets(ctx context.Context, request public
 		}
 		return nil, err
 	}
+	allWorkspaces := readers.Owner || readers.Security
 	switch {
 	case !readers.Known:
 		return nil, errors.Join(governance.ErrProductNotFound, publication.ErrForbidden)
-	case !readers.Owner && len(readers.Workspaces) == 0:
+	case !allWorkspaces && len(readers.Workspaces) == 0:
 		return nil, publication.ErrForbidden
 	}
 	workspaces := make([]catalogdomain.WorkspaceID, 0, len(readers.Workspaces))
 	for _, workspace := range readers.Workspaces {
 		workspaces = append(workspaces, catalogdomain.WorkspaceID(workspace))
 	}
-	placed, err := s.catalog.AssetPlaces(ctx, catalogdomain.ProductID(request.ProductID), workspaces, readers.Owner)
+	placed, err := s.catalog.AssetPlaces(ctx, catalogdomain.ProductID(request.ProductID), workspaces, allWorkspaces)
 	if err != nil {
 		return nil, err
 	}

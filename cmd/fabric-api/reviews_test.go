@@ -250,11 +250,11 @@ func TestAReviewIsAskedByAnAuthorOnACheckADecisionCanRestOn(t *testing.T) {
 	if got := s.call(http.MethodPost, reviews, "", asking(check, partnerSandbox)); got.status != http.StatusUnauthorized {
 		t.Errorf("a submission without a token: %d %v", got.status, got.body)
 	}
-	// The owner and reviewer can read the revision but cannot submit it.
+	// The owner, maintainer and reviewer can read the revision. Submission requires an author.
 	refusals := s.recorded(func(row audited) bool { return row.Action == "review.request" })
-	if occurrences(refusals) != 2 || s.on("reviewer", "review.request", "DENY-03", false) != 1 ||
-		s.on("owner", "review.request", "DENY-03", false) != 1 {
-		t.Errorf("the refused submissions are on record as %v, want those of the owner and reviewer", refusals)
+	if occurrences(refusals) != 3 || s.on("reviewer", "review.request", "DENY-03", false) != 1 ||
+		s.on("owner", "review.request", "DENY-03", false) != 1 || s.on("maintainer", "review.request", "DENY-03", false) != 1 {
+		t.Errorf("the refused submissions are on record as %v, want those of the owner, maintainer and reviewer", refusals)
 	}
 
 	if _, err := s.owner.Exec(t.Context(), `UPDATE productgovernance.product SET status = 'SUSPENDED' WHERE product_id = $1`, s.product); err != nil {
