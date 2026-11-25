@@ -56,9 +56,8 @@ type SlotView struct {
 	// Unapproved is why the approval the active release rests on does not
 	// hold for the target now: the refusal an activation of that release
 	// would meet. It is nil when the approval holds, and for a slot that
-	// points at no release. It takes nothing down: the artifact is served
-	// until the slot is withdrawn or blocked. It says that the revision is
-	// due another review, to whoever may read the slot.
+	// points at no release. The slot keeps its pointer. The partner origin
+	// requires a current approval to serve an artifact.
 	Unapproved error
 }
 
