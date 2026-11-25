@@ -13,7 +13,9 @@
 | F07 | [Engineering & Quality](F07_Engineering_and_Quality.md) · [HTML](F07_Engineering_and_Quality.html) | **V1.0 工程设计候选，待具名评审及真实 PoC** |
 | F08 | [Delivery & Acceptance](F08_Delivery_and_Acceptance.md) · [HTML](F08_Delivery_and_Acceptance.html) | **V1.0 交付与验收设计候选，待批准、真实验收 NOT_RUN** |
 
-与原规划完全一致：F06 在一份顶层文档内完成 F06-A 内部工作台、F06-B 外部开发者门户和 F06-C 设计系统。F07/F08 均已形成设计候选，真实系统实施与验收尚未开始。
+F06 在一份顶层文档内承载内部工作台、外部开发者门户和共享设计系统。F07/F08 已形成设计候选。内部治理与发布已有工程实现和隔离环境测试，正式验收记录见下文。
+
+内部发布、审计员和读取权限的近期实现记录见 [F03 §5.14](F03_Domain_and_Data_Model.md#514-内部发布事实审计员和读取范围)、[F04 §11.10](F04_API_Contract_Governance.md#1110-内部发布与读取权限的契约更新) 和 [F05 §6.12](F05_Security_and_Multitenancy.md#612-内部发布审计与读取权限033003500360)。
 
 ## F08 交付与验收设计（当前有效）
 
