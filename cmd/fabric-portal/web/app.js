@@ -1,4 +1,7 @@
-"use strict";
+import { api, assetPath, badge, field, fill, list, node, page, productPath, revisionPath, reviewPath,
+  segment, statuses, timestamp } from "./workbench.js";
+import { publicationPanel } from "./publication.js";
+import { accessBlockPanel } from "./access-blocks.js";
 
 const el = id => document.getElementById(id);
 const productSelect = el("product");
@@ -7,29 +10,11 @@ const assetSelect = el("asset");
 const revisionSelect = el("revision");
 const checkSelect = el("check");
 const targetSelect = el("target");
-const statuses = {
-  IN_REVIEW: "待评审", APPROVED: "已批准", REJECTED: "已驳回", WITHDRAWN: "已撤回",
-  DRAFT: "草稿", PASS: "通过", FAIL: "失败", WARN: "警告", UNKNOWN: "未知", NOT_RUN: "未执行",
-};
 const readers = ["internal_author", "internal_reviewer", "internal_publisher"];
-const dateFormat = new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" });
 
 let productRequest;
 let view;
 let caller;
-
-function node(tag, text, className) {
-  const item = document.createElement(tag);
-  if (text) item.textContent = text;
-  if (className) item.className = className;
-  return item;
-}
-
-function badge(state) {
-  const item = node("span", statuses[state] || state, "badge");
-  item.dataset.state = state;
-  return item;
-}
 
 function notice(text = "", error = false) {
   const item = el("notice");
@@ -43,77 +28,8 @@ function report(error) {
   notice(error.message, true);
 }
 
-function describeError(status, code, trace) {
-  const messages = {
-    FORBIDDEN: "当前身份没有所需权限。",
-    REVIEWER_NOT_INDEPENDENT: "此评审需由未参与修订、检查或提交的评审人决定。",
-    POLICY_STALE: "检查证据已过期，请让作者重新检查。",
-    REVIEW_BLOCKED: "检查存在阻断项，此修订无法提交评审。",
-    WAIVER_REQUIRED: "请填写所有必需的豁免理由。",
-    REVISION_STATUS_CONFLICT: "修订状态已有变化，请刷新队列。",
-    REVIEW_IN_PROGRESS: "此修订已有待处理的评审。",
-    FABRIC_UNAVAILABLE: "Fabric API 暂不可用，请稍后重试。",
-  };
-  let text = messages[code];
-  if (!text && status === 401) text = "登录已失效或尚未登录。请从内部登录入口进入。";
-  if (!text && status === 404) text = "资源不存在，或不在当前可见范围内。";
-  return (text || "请求失败。") + (code ? " " + code : " HTTP " + status) +
-    (trace ? " · 请求 " + trace : "");
-}
-
-async function api(path, { signal, data } = {}) {
-  const options = { signal, headers: { Accept: "application/json" }, cache: "no-store" };
-  if (data) {
-    options.method = "POST";
-    options.headers["Content-Type"] = "application/json";
-    options.body = JSON.stringify(data);
-  }
-  const response = await fetch("/api" + path, options);
-  const body = await response.json().catch(error => {
-    if (signal?.aborted) throw error;
-    return null;
-  });
-  if (!response.ok) {
-    throw new Error(describeError(response.status, body?.error_code, body?.trace_id));
-  }
-  if (!body) throw new Error("Fabric API 返回了无法读取的结果。");
-  return body;
-}
-
-const segment = value => encodeURIComponent(value);
-const productPath = id => "/v1/products/" + segment(id);
-const assetPath = (product, asset) => productPath(product) + "/assets/" + segment(asset);
-const revisionPath = (product, asset, revision) => assetPath(product, asset) + "/revisions/" + segment(revision);
-const reviewPath = review => revisionPath(review.product_id, review.api_asset_id, review.revision_id) +
-  "/reviews/" + segment(review.review_id);
-const timestamp = value => dateFormat.format(new Date(value));
-
-function fill(select, items, key, label, placeholder) {
-  select.replaceChildren();
-  if (placeholder) select.add(new Option(placeholder, "", true, true));
-  for (const item of items) select.add(new Option(label(item), item[key]));
-  select.disabled = items.length === 0;
-}
-
-async function page(path, limit, token, signal) {
-  const url = new URL(path, location.origin);
-  url.searchParams.set("page_size", String(limit));
-  if (token) url.searchParams.set("page_token", token);
-  return api(url.pathname + url.search, { signal });
-}
-
-async function list(path, signal) {
-  const items = [];
-  const seen = new Set();
-  let token;
-  do {
-    const result = await page(path, 100, token, signal);
-    items.push(...result.items);
-    token = result.next_page_token;
-    if (token && seen.has(token)) throw new Error("列表分页无法继续，请刷新后重试。");
-    seen.add(token);
-  } while (token);
-  return items;
+function showReviewWorkspace(visible) {
+  for (const id of ["workspace-field", "filter-field", "review-columns", "refresh"]) el(id).hidden = !visible;
 }
 
 async function chooseProduct(preferredWorkspace = "") {
@@ -122,7 +38,13 @@ async function chooseProduct(preferredWorkspace = "") {
   view = null;
   notice();
   clearWorkspace();
+  showReviewWorkspace(false);
+  const security = el("security-controls");
+  security.hidden = true;
+  security.replaceChildren();
+  el("workbench-title").textContent = "契约评审与发布";
   workspaceSelect.replaceChildren();
+  workspaceSelect.onchange = null;
   workspaceSelect.disabled = true;
   const product = productSelect.value;
   if (!product) return;
@@ -131,13 +53,31 @@ async function chooseProduct(preferredWorkspace = "") {
   const { signal } = controller;
   el("context").textContent = "正在读取产品和工作区…";
   const callerInProduct = await api(productPath(product) + "/caller", { signal });
-  const owner = callerInProduct.roles.includes("product_owner");
-  if (!owner && !callerInProduct.workspaces.length) {
+  if (signal.aborted) return;
+  const { roles } = callerInProduct;
+  const canSeeWorkspace = roles.includes("product_owner") || callerInProduct.workspaces.length > 0;
+  const canBlock = roles.includes("security_admin");
+  const canClear = roles.includes("security_reviewer");
+  const productName = productSelect.selectedOptions[0].text;
+  let blocks;
+  if (canBlock || canClear) {
+    blocks = accessBlockPanel({ product, productName, caller, canBlock, canClear, signal });
+    security.replaceChildren(blocks);
+    security.hidden = false;
+  }
+  const workspaces = canSeeWorkspace ? await list(productPath(product) + "/workspaces", signal) : [];
+  if (signal.aborted) return;
+  if (!workspaces.length && blocks) {
+    el("workbench-title").textContent = "发布访问控制";
+    el("context").textContent = productName;
+    blocks.open = true;
+    return;
+  }
+  if (!canSeeWorkspace) {
     el("context").textContent = "当前身份在此产品下没有可用的工作区。";
     return;
   }
-  const workspaces = await list(productPath(product) + "/workspaces", signal);
-  if (signal.aborted) return;
+  showReviewWorkspace(true);
   fill(workspaceSelect, workspaces, "workspace_id", item => item.display_name);
   if (workspaces.some(item => item.workspace_id === preferredWorkspace)) workspaceSelect.value = preferredWorkspace;
   workspaceSelect.onchange = () => chooseWorkspace(product, callerInProduct).catch(report);
@@ -330,14 +270,14 @@ async function showReview(selection, listing, focus = false) {
       api(revision, { signal }),
       api(revision + "/check-runs/" + segment(listing.check_run_id), { signal }),
     ]);
-    if (!signal.aborted) renderEvidence(selection, review, recorded, check);
+    if (!signal.aborted) renderEvidence(selection, review, recorded, check, signal);
   } catch (error) {
     if (!signal.aborted) evidence.replaceChildren(node("p", error.message, "muted"));
     throw error;
   }
 }
 
-function renderEvidence(selection, review, revision, check) {
+function renderEvidence(selection, review, revision, check, signal) {
   const evidence = el("evidence");
   const asset = selection.assets.get(review.api_asset_id);
   const scope = review.scope.map(target => target.audience + " / " + target.environment).join("，");
@@ -379,15 +319,10 @@ function renderEvidence(selection, review, revision, check) {
       evidence.append(decisionForm(selection, review, check));
     }
   }
-}
-
-function field(text, control, id) {
-  const field = node("div", "", "field");
-  const label = node("label", text);
-  control.id = id;
-  label.htmlFor = id;
-  field.append(label, control);
-  return field;
+  evidence.append(publicationPanel(review, {
+    publisher: selection.roles.includes("internal_publisher"), signal,
+    productName: productSelect.selectedOptions[0].text,
+  }));
 }
 
 function decisionForm(selection, review, check) {
@@ -478,7 +413,6 @@ async function start() {
   }
   fill(productSelect, products, "product_id", item => item.display_name);
   el("workbench").hidden = false;
-  el("refresh").hidden = false;
   await chooseProduct();
 }
 
