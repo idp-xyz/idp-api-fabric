@@ -29,13 +29,16 @@ func (s *releaseFixture) reviewedAgain(revision, reviewer, version string) answe
 	return released
 }
 
-// A slot says why what it points at is not served. The artifact of a release
-// whose approval does not hold any more answers 404 and nothing else; the
-// slot, which still points at the release, names the reason to whoever may
-// read it, in the code an activation of that release is refused with. Once
+// A slot serves the release it points at and says what became of the
+// approval that put it there. An approval that does not hold any more takes
+// nothing down: the artifact is served as it was, and the slot names the
+// reason to whoever may read it, in the code an activation of that release
+// is refused with. It says that the revision is due another review. Once
 // the revision is approved again and released under that approval, the slot
-// that takes the release says nothing of the kind.
-func TestASlotSaysWhyTheReleaseItPointsAtIsNotServed(t *testing.T) {
+// that takes the release says nothing of the kind. What keeps an artifact
+// from being served is a block or a withdrawal, and the slot says those
+// apart from the approval.
+func TestASlotServesItsReleaseAndSaysWhenItsApprovalDoesNotHold(t *testing.T) {
 	s := publicationFor(t)
 	s.join(s.product, s.workspace, "owner", "second", "internal_reviewer")
 	target, _ := s.target(internalSandbox, "engineering")
@@ -59,43 +62,48 @@ func TestASlotSaysWhyTheReleaseItPointsAtIsNotServed(t *testing.T) {
 		return got.body
 	}
 	// serving fails the test unless the slot points at the release at the
-	// generation, names the problem (or none) and the artifact is served
-	// (or is not).
+	// generation, unblocked, names the problem (or none) and serves the
+	// artifact, whichever it names.
 	serving := func(when, release string, generation float64, problem any) {
 		t.Helper()
 		got := read()
 		if _, said := got["approval_problem"]; got["active_release_id"] != release || got["generation"] != generation ||
-			got["visibility"] != "ACTIVE" || got["approval_problem"] != problem || said != (problem != nil) {
-			t.Fatalf("%s the slot reads %v, want it to point at %s at generation %v with the approval problem %v", when, got, release, generation, problem)
+			got["visibility"] != "ACTIVE" || got["blocked"] != false || got["approval_problem"] != problem || said != (problem != nil) {
+			t.Fatalf("%s the slot reads %v, want it to point at %s at generation %v, unblocked, with the approval problem %v", when, got, release, generation, problem)
 		}
-		if problem == nil && got["blocked"] == false {
-			s.requireArtifact(slot, digest, revisionSource)
-			return
+		s.requireArtifact(slot, digest, revisionSource)
+	}
+	unserved := func(when string) {
+		t.Helper()
+		if got := s.call(http.MethodGet, slot+"/artifact", "author", ""); got.status != http.StatusNotFound || got.code() != "PUBLISHED_ARTIFACT_NOT_FOUND" {
+			t.Errorf("%s the artifact answers %d %v, want 404 PUBLISHED_ARTIFACT_NOT_FOUND", when, got.status, got.body)
 		}
-		s.require(s.call(http.MethodGet, slot+"/artifact", "author", ""), http.StatusNotFound, "PUBLISHED_ARTIFACT_NOT_FOUND")
 	}
 
-	// A slot that points at nothing has no approval to speak of.
+	// A slot that points at nothing has no approval to speak of, and
+	// nothing to serve.
 	if got := read(); got["visibility"] != "EMPTY" || got["approval_problem"] != nil {
 		t.Fatalf("the empty slot reads %v", got)
 	}
+	unserved("before anything is published")
 	old := released.id("release_id")
 	s.require(s.change(slot, "publisher", "ACTIVATE", 0, old, "", "first"), http.StatusOK, "")
 	serving("after the first activation", old, 1, nil)
 
-	// The approval runs out. The slot points where it pointed, and says
-	// what an activation of the release would be told.
+	// The approval runs out. The slot points where it pointed and serves
+	// what it served, and says what an activation of the release would be
+	// told.
 	records, events := s.count("platformoperations.audit_record"), s.count("bento.outbox")
 	if _, err := s.owner.Exec(t.Context(), `UPDATE policyreview.review_conclusion
 SET valid_until = concluded_at + interval '1 millisecond' WHERE review_id = $1`, first); err != nil {
 		t.Fatal(err)
 	}
 	serving("once the approval ran out", old, 1, "APPROVAL_EXPIRED")
-	// Reading a slot leaves no record; the artifact that was not served
-	// left one, as before.
-	if after, sent := s.count("platformoperations.audit_record"), s.count("bento.outbox"); after != records+1 || sent != events ||
+	// Neither read leaves a record: nothing was changed, and nothing was
+	// refused.
+	if after, sent := s.count("platformoperations.audit_record"), s.count("bento.outbox"); after != records || sent != events ||
 		s.on("author", "publication.download", "DENY-03", false) != 1 {
-		t.Errorf("the reads left %d audit records and %d events, want the one of the artifact that was not served", after-records, sent-events)
+		t.Errorf("the reads left %d audit records and %d events, want none besides the one of the empty slot", after-records, sent-events)
 	}
 	s.require(s.prepare(id, first, "1.0.1", "publisher"), http.StatusConflict, "APPROVAL_EXPIRED")
 	// Whoever does not read the slot is not told either.
@@ -127,7 +135,7 @@ WHERE product_id = $1 AND workspace_id = $2 AND principal_subject = 'reviewer'
 	serving("once the reviewer was named again", renewed.id("release_id"), 2, "REVIEWER_AUTH_REVOKED")
 
 	// A block and an approval that does not hold are two things, and the
-	// slot says both.
+	// slot says both. It is the block that takes the artifact down.
 	s.require(s.securityRole("security", "security_admin", "owner"), http.StatusCreated, "")
 	s.require(s.securityRole("clearer", "security_reviewer", "owner"), http.StatusCreated, "")
 	block := s.call(http.MethodPost, target+"/access-blocks", "security", `{"reason":"investigate"}`)
@@ -135,14 +143,16 @@ WHERE product_id = $1 AND workspace_id = $2 AND principal_subject = 'reviewer'
 	if got := read(); got["blocked"] != true || got["approval_problem"] != "REVIEWER_AUTH_REVOKED" {
 		t.Errorf("the blocked slot reads %v, want it blocked and its approval problem named", got)
 	}
+	unserved("under a block")
 
-	// A slot that was withdrawn points at nothing, and says nothing of an
-	// approval.
+	// A slot that was withdrawn points at nothing, serves nothing and says
+	// nothing of an approval.
 	s.require(s.change(slot, "publisher", "WITHDRAW", 2, "", "under investigation", "down"), http.StatusOK, "")
 	if got := read(); got["visibility"] != "WITHDRAWN" || got["approval_problem"] != nil || got["blocked"] != true {
 		t.Errorf("the withdrawn slot reads %v", got)
 	}
 	s.require(s.call(http.MethodPost, block.header.Get("Location")+"/clearance", "clearer", `{"reason":"nothing found"}`), http.StatusOK, "")
+	unserved("once it is withdrawn and the block is cleared")
 
 	// Another reviewer approves the revision again, and what is released
 	// under that approval is served.
@@ -154,14 +164,14 @@ WHERE product_id = $1 AND workspace_id = $2 AND principal_subject = 'reviewer'
 	}
 }
 
-// unapproved is why a read of an artifact answers 404 and nothing else, and
-// what a slot says instead. Only those six reasons: the approval is missing,
-// it ran out, a waiver it depends on ran out, it does not reach the target,
-// its reviewer lost the grant, or the policy and the tools moved on from its
-// check. Each counts as itself, wrapped, or joined with some other error. A
-// read fails in other ways too, and those stay failures rather than reasons
-// the slot would announce.
-func TestUnapprovedIsWhyAReadHidesAnArtifactAndASlotSaysSo(t *testing.T) {
+// unapproved is what a slot says of an approval that does not hold, and of
+// nothing else. Only those six reasons: the approval is missing, it ran
+// out, a waiver it depends on ran out, it does not reach the target, its
+// reviewer lost the grant, or the policy and the tools moved on from its
+// check. Each counts as itself, wrapped, or joined with some other error.
+// The verification fails in other ways too, and those stay failures rather
+// than reasons the slot would announce.
+func TestUnapprovedIsWhatASlotSaysOfAnApprovalThatDoesNotHold(t *testing.T) {
 	other := errors.New("the read failed for another reason")
 	for _, reason := range []error{
 		checks.ErrApprovalExpired,
@@ -196,9 +206,10 @@ func TestUnapprovedIsWhyAReadHidesAnArtifactAndASlotSaysSo(t *testing.T) {
 // A release can rest on an approval that waives a rule. When that waiver
 // runs out the approval no longer holds, though the revision stays approved
 // and the slot still points at the release: the slot says the waiver ran
-// out, the artifact is not served, and another release under that approval
-// is refused. A supplementary review that waives the rule again publishes
-// the same content in its place, and the slot then has nothing to say.
+// out and serves the artifact as it did, and another release under that
+// approval is refused. A supplementary review that waives the rule again
+// publishes the same content in its place, and the slot then has nothing to
+// say.
 func TestASlotSaysWhenTheWaiverOfItsReleaseHasRunOut(t *testing.T) {
 	s := publicationFor(t)
 	s.join(s.product, s.workspace, "owner", "second", "internal_reviewer")
@@ -243,7 +254,7 @@ WHERE w.review_id = c.review_id AND w.review_id = $1`, reviewID)
 	if got.body["active_release_id"] != released.id("release_id") || got.body["approval_problem"] != "WAIVER_EXPIRED" {
 		t.Fatalf("once the waiver ran out the slot reads %v", got.body)
 	}
-	s.require(s.call(http.MethodGet, slot+"/artifact", "author", ""), http.StatusNotFound, "PUBLISHED_ARTIFACT_NOT_FOUND")
+	s.requireArtifact(slot, released.id("artifact_digest"), unnamedSource)
 	s.require(s.prepare(id, reviewID, "1.0.1", "publisher"), http.StatusConflict, "WAIVER_EXPIRED")
 
 	// The revision is approved again, under a waiver that has not run out,

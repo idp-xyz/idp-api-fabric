@@ -109,10 +109,12 @@ func (s *Publication) ListTargets(ctx context.Context, request domain.Request, a
 	return TargetPage{Items: items[:limit], Next: &ports.TargetPosition{At: last.CreatedAt, ID: last.ID}}, nil
 }
 
-// GetSlot reads what a slot points at and what stands between that release
-// and whoever asks for its artifact: an access block, and an approval that
-// does not hold any more. A read of the artifact that is refused for either
-// says nothing of why; whoever may read the slot is told here.
+// GetSlot reads what a slot points at, whether an access block stands
+// between that release and whoever asks for its artifact, and whether the
+// approval the release rests on still holds. A block is why the artifact is
+// not served, and the read that is refused says nothing of it. An approval
+// that does not hold takes nothing down: it is why the release would not be
+// put on the slot today, and whoever may read the slot is told here.
 func (s *Publication) GetSlot(ctx context.Context, request domain.Request) (domain.SlotView, error) {
 	var result domain.SlotView
 	err := s.deps.Transactions.WithinTransaction(ctx, func(tx context.Context) error {
@@ -198,6 +200,14 @@ func (s *Publication) ChangeSlot(ctx context.Context, request domain.Request, ch
 	return result, s.refused(ctx, request, action, "PublicationSlot", err)
 }
 
+// checkActivation decides whether a release is put on a slot. An activation
+// puts it there on an approval that holds for the target now, on a check
+// that compared its revision with what the slot served last. A restoration
+// returns the slot to a release it served before, which is what a publisher
+// falls back to when what is served has to go: the release has to be in the
+// history of the slot, and whether its approval still holds is not asked.
+// Both take a product that admits work, a target that serves, no access
+// block and a publisher who had no part in the revision.
 func (s *Publication) checkActivation(ctx context.Context, request domain.Request, access ports.AssetAccess, target domain.Target, slot domain.Slot, op domain.Operation) error {
 	if !access.Active {
 		return ErrProductSuspended
@@ -213,7 +223,8 @@ func (s *Publication) checkActivation(ctx context.Context, request domain.Reques
 		return ErrBlocked
 	}
 	var baseline string
-	if op.Action == domain.Restore {
+	returning := op.Action == domain.Restore
+	if returning {
 		if slot.ID == "" {
 			return domain.ErrNotInHistory
 		}
@@ -230,8 +241,7 @@ func (s *Publication) checkActivation(ctx context.Context, request domain.Reques
 			return err
 		}
 	}
-	_, err = s.deps.Authority.Material(ctx, request, access.WorkspaceID, target, op.ReleaseID, baseline, false)
-	return err
+	return s.deps.Authority.Admission(ctx, request, access.WorkspaceID, target, op.ReleaseID, baseline, returning)
 }
 
 type OperationPage struct {
@@ -268,7 +278,11 @@ func (s *Publication) ListOperations(ctx context.Context, request domain.Request
 
 // ActiveArtifact serves only through the current pointer. The shared target
 // lock orders this authorization with block changes while the membership and
-// configuration locks order it with revocation.
+// configuration locks order it with revocation. What the pointer names is
+// served for as long as it is neither withdrawn nor blocked: an approval
+// that ran out, lost its reviewer or was overtaken by the policy and the
+// tools since stops the next release from being put there, and takes
+// nothing down. The slot says so to whoever reads it.
 func (s *Publication) ActiveArtifact(ctx context.Context, request domain.Request) (ports.Artifact, error) {
 	var artifact ports.Artifact
 	err := s.deps.Transactions.WithinTransaction(ctx, func(tx context.Context) error {
@@ -303,7 +317,7 @@ func (s *Publication) ActiveArtifact(ctx context.Context, request domain.Request
 		if blocked {
 			return ErrNoVisibleArtifact
 		}
-		artifact, err = s.deps.Authority.Material(tx, request, access.WorkspaceID, target, slot.ActiveReleaseID, "", true)
+		artifact, err = s.deps.Authority.Artifact(tx, request, access.WorkspaceID, slot.ActiveReleaseID)
 		return err
 	})
 	return artifact, s.refused(ctx, request, "publication.download", "PublicationSlot", err)

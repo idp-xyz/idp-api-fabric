@@ -39,18 +39,22 @@ func (s releaseAuthority) ReleaseMembership(ctx context.Context, actor registryd
 }
 
 func (s releaseAuthority) Approval(ctx context.Context, revision registrydomain.Revision, id string, actor registrydomain.Principal) (registrydomain.ApprovalEvidence, error) {
-	evidence, err := s.approval(ctx, revision, id, actor, nil, nil)
+	evidence, err := s.approval(ctx, revision, id, actor, nil, nil, false)
 	if errors.Is(err, checks.ErrPublisherInvolved) {
 		err = errors.Join(err, registry.ErrForbidden)
 	}
 	return evidence, err
 }
 
+// approval verifies the review a release names as the approval of the
+// revision: for the target and against the baseline if there is one, and
+// for a return to a release (restoring) only as far as it was given.
 func (s releaseAuthority) approval(ctx context.Context, revision registrydomain.Revision, id string, actor registrydomain.Principal,
-	target *checkdomain.Target, baseline *checkdomain.ComparisonBaseline) (registrydomain.ApprovalEvidence, error) {
+	target *checkdomain.Target, baseline *checkdomain.ComparisonBaseline, restoring bool) (registrydomain.ApprovalEvidence, error) {
 	approved, err := s.reviews.VerifyReleaseApproval(ctx, checks.ReleaseApproval{
 		Revision: checkRevision(revision), ReviewID: id, InputDigest: revision.RefClosureDigest,
 		Author: checkdomain.Principal(revision.CreatedBy), Publisher: checkdomain.Principal(actor), Target: target, Baseline: baseline,
+		Restoring: restoring,
 	}, func(ctx context.Context, reviewer checkdomain.Principal, approvedAt time.Time) (bool, error) {
 		return s.governance.HoldsApprovalGrant(ctx, governancedomain.Principal(reviewer),
 			governancedomain.ProductID(revision.Asset.ProductID), governancedomain.WorkspaceID(revision.Asset.WorkspaceID), approvedAt)
@@ -170,25 +174,36 @@ func (s publicationAuthority) BlockScope(ctx context.Context, block publicationd
 	return err
 }
 
-func (s publicationAuthority) Material(ctx context.Context, request publicationdomain.Request, workspaceID string,
-	target publicationdomain.Target, releaseID, previousID string, reading bool) (publicationports.Artifact, error) {
-	artifact, err := s.material(ctx, request, workspaceID, target, releaseID, previousID, reading)
-	switch {
-	case errors.Is(err, checks.ErrPublisherInvolved):
-		err = errors.Join(err, publication.ErrForbidden)
-	case reading && unapproved(err):
-		// A read says that there is nothing to serve, and not why.
-		err = publication.ErrNoVisibleArtifact
-	}
+// Artifact reads what a slot serves: the release and its artifact, which is
+// verified against the digest the release names. It does not read the
+// review the release rests on. A release is put on a slot under an approval
+// that holds; once it is there it is served until it is withdrawn or
+// blocked, and what became of the approval since is for the slot to say.
+func (s publicationAuthority) Artifact(ctx context.Context, request publicationdomain.Request, workspaceID, releaseID string) (publicationports.Artifact, error) {
+	_, _, artifact, err := s.release(ctx, assetOf(request, workspaceID), releaseID)
 	return artifact, err
 }
 
-// Approval verifies the approval a release rests on as a read of its
-// artifact does, and answers why it does not hold instead of serving
-// nothing: the slot says what the read keeps to itself.
+// Admission verifies a release for the caller who puts it on a slot of the
+// target. A publisher who had a part in the revision is refused as one who
+// may not publish it, whether the release is new to the slot or returns to
+// it.
+func (s publicationAuthority) Admission(ctx context.Context, request publicationdomain.Request, workspaceID string,
+	target publicationdomain.Target, releaseID, previousID string, returning bool) error {
+	err := s.verify(ctx, assetOf(request, workspaceID), target, releaseID, previousID, registrydomain.Principal(request.Caller), returning)
+	if errors.Is(err, checks.ErrPublisherInvolved) {
+		err = errors.Join(err, publication.ErrForbidden)
+	}
+	return err
+}
+
+// Approval verifies the approval a release rests on as an activation of the
+// release would, the duties of whoever publishes and the comparison with
+// what the slot served aside, and answers why it does not hold. The slot
+// says it, and serves the release all the same.
 func (s publicationAuthority) Approval(ctx context.Context, request publicationdomain.Request, workspaceID string,
 	target publicationdomain.Target, releaseID string) (error, error) {
-	_, err := s.material(ctx, request, workspaceID, target, releaseID, "", true)
+	err := s.verify(ctx, assetOf(request, workspaceID), target, releaseID, "", registrydomain.Principal{}, false)
 	if unapproved(err) {
 		return err, nil
 	}
@@ -198,50 +213,65 @@ func (s publicationAuthority) Approval(ctx context.Context, request publicationd
 // unapproved reports whether err says that the approval a release rests on
 // does not hold now: it is not one, it ran out or a waiver of it did, it
 // does not reach the target, its reviewer lost the grant, or the policy and
-// the tools moved on from its check. These are the reasons for which a
-// published artifact is not served.
+// the tools moved on from its check. These are the reasons a slot names
+// for a release that would not be put on it today.
 func unapproved(err error) bool {
 	return errors.Is(err, checks.ErrApprovalExpired) || errors.Is(err, checks.ErrApprovalRequired) ||
 		errors.Is(err, checks.ErrApprovalScope) || errors.Is(err, checks.ErrWaiverExpired) ||
 		errors.Is(err, checks.ErrReviewerGrantRevoked) || errors.Is(err, checkdomain.ErrCheckStale)
 }
 
-// material reads a release and its artifact and verifies the approval the
-// release rests on, for the target. It hands on what it finds as it is.
-func (s publicationAuthority) material(ctx context.Context, request publicationdomain.Request, workspaceID string,
-	target publicationdomain.Target, releaseID, previousID string, reading bool) (publicationports.Artifact, error) {
-	asset := registrydomain.AssetRef{ProductID: request.ProductID, WorkspaceID: workspaceID, AssetID: request.AssetID}
+// assetOf names the asset of a request in the workspace that owns it.
+func assetOf(request publicationdomain.Request, workspaceID string) registrydomain.AssetRef {
+	return registrydomain.AssetRef{ProductID: request.ProductID, WorkspaceID: workspaceID, AssetID: request.AssetID}
+}
+
+// release reads a release of the asset, the revision it was prepared from
+// and its artifact, verified against the digest of the release. It hands on
+// what it finds as it is.
+func (s publicationAuthority) release(ctx context.Context, asset registrydomain.AssetRef, releaseID string) (
+	registrydomain.Release, registrydomain.Revision, publicationports.Artifact, error) {
 	release, err := s.releases.FindRelease(ctx, asset, releaseID)
 	if err != nil {
-		return publicationports.Artifact{}, err
+		return registrydomain.Release{}, registrydomain.Revision{}, publicationports.Artifact{}, err
 	}
 	revision, payload, err := s.releases.ReleaseMaterial(ctx, release)
 	if err != nil {
-		return publicationports.Artifact{}, err
+		return registrydomain.Release{}, registrydomain.Revision{}, publicationports.Artifact{}, err
+	}
+	return release, revision, publicationports.Artifact{Payload: payload, Digest: release.ArtifactDigest}, nil
+}
+
+// verify reads a release and verifies the approval it rests on for the
+// target: for the publisher, if one is named, and against the release the
+// slot served last, if previousID names one of another revision. returning
+// verifies the approval as it was given and not whether it still holds. It
+// hands on what it finds as it is.
+func (s publicationAuthority) verify(ctx context.Context, asset registrydomain.AssetRef, target publicationdomain.Target,
+	releaseID, previousID string, publisher registrydomain.Principal, returning bool) error {
+	release, revision, _, err := s.release(ctx, asset, releaseID)
+	if err != nil {
+		return err
 	}
 	var baseline *checkdomain.ComparisonBaseline
 	if previousID != "" && previousID != release.ID {
 		previous, err := s.releases.FindRelease(ctx, asset, previousID)
 		if err != nil {
-			return publicationports.Artifact{}, err
+			return err
 		}
 		if previous.RevisionID != release.RevisionID {
 			baseline = &checkdomain.ComparisonBaseline{RevisionID: previous.RevisionID, InputDigest: previous.InputDigest}
 		}
 	}
-	actor := registrydomain.Principal(request.Caller)
-	if reading {
-		actor = registrydomain.Principal{}
-	}
-	evidence, err := s.approval(ctx, revision, release.ReviewID, actor,
-		&checkdomain.Target{Audience: target.Audience, Environment: target.Environment}, baseline)
+	evidence, err := s.approval(ctx, revision, release.ReviewID, publisher,
+		&checkdomain.Target{Audience: target.Audience, Environment: target.Environment}, baseline, returning)
 	if err != nil {
-		return publicationports.Artifact{}, err
+		return err
 	}
 	if release.Approval != evidence {
-		return publicationports.Artifact{}, checkdomain.ErrReviewDamaged
+		return checkdomain.ErrReviewDamaged
 	}
-	return publicationports.Artifact{Payload: payload, Digest: release.ArtifactDigest}, nil
+	return nil
 }
 
 func (a auditTrail) recordPublication(ctx context.Context, entry publicationports.AuditEntry) error {

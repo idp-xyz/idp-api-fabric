@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.32.0
+  version: 0.33.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -2455,9 +2455,9 @@ paths:
         Whoever may read the release may download it: an owner of the product
         or an author, reviewer or publisher of the workspace, including while
         the product is suspended. The download does not look at an access block on a
-        publication target and does not verify the approval of the release
-        again: those belong to the read of an artifact through the slot of a
-        target.
+        publication target, which belongs to the read of an artifact through
+        the slot of a target, and does not verify the approval of the release
+        again, which no read does.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/CheckAssetId'
@@ -2769,12 +2769,13 @@ paths:
         An asset without a slot starts at generation zero. The slot reports the
         database pointer, origin blocking, and the separate delivery status.
         It also says whether the approval the active release rests on still
-        holds for this target. The artifact of a release whose approval does
-        not hold is not served through the slot, and getPublishedArtifact
-        answers 404 without a reason; approval_problem names the reason here,
-        to whoever may read the slot. A revision whose approval does not hold
-        is approved again with a supplementary review, and released and
-        activated under it.
+        holds for this target. An approval that does not hold takes nothing
+        down: the artifact is served through the slot until the slot is
+        withdrawn or blocked. approval_problem names why the release would
+        not be activated today, to whoever may read the slot, and says that
+        the revision is due another review. A revision whose approval does
+        not hold is approved again with a supplementary review, and released
+        and activated under it.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -2842,11 +2843,22 @@ paths:
       operationId: changePublicationSlot
       summary: Activate, withdraw or restore a release with compare-and-swap
       description: >-
-        The publisher names the generation read from the slot. Activation or
-        restoration requires a current approval for this target. A restoration
-        references a release already active on this slot. External audiences
-        need delivery and access adapters. A completed retry returns the
-        original operation.
+        The publisher names the generation read from the slot. An activation
+        puts a release on the slot and requires an approval that holds for
+        this target now: one that covers its audience and environment, whose
+        reviewer still holds the grant, that has not run out and of which no
+        waiver has, on a check of the current policy and tools that compared
+        the revision with the one the slot served last, where that is another
+        revision. A restoration returns the slot to a release that was active
+        on it before and does not ask whether the approval of that release
+        still holds: it is what a publisher falls back to. A release that was
+        active on the slot is activated, rather than restored, as any other
+        release is. Activation and restoration both require a publisher who
+        took no part in the revision, its check or its approval, a product
+        that takes work and a release that no access block covers. A
+        withdrawal requires the publisher role alone. External audiences need
+        delivery and access adapters. A completed retry returns the original
+        operation.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -2902,9 +2914,13 @@ paths:
       description: >-
         The octet stream contains the exact release JSON bytes. The origin
         checks the owner's or member's current read grant, target configuration,
-        the active pointer, approval and effective access blocks on every read. Whoever may read the
-        release downloads the same bytes by its identifier with
-        getContractReleaseArtifact, which looks at no target, block or approval.
+        the active pointer and effective access blocks on every read, and the
+        bytes against the digest of the release. It does not ask whether the
+        approval the release rests on still holds: what a slot points at is
+        served until it is withdrawn or blocked, and getPublicationSlot says
+        what became of the approval. Whoever may read the release downloads
+        the same bytes by its identifier with getContractReleaseArtifact,
+        which looks at no target or block.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -3074,7 +3090,7 @@ paths:
       description: >-
         A separate product security reviewer supplies a reason. Clearing a
         block does not restore a slot. Restore uses a new CAS and revalidates
-        approval and artifact integrity.
+        the publisher's independence and artifact integrity.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -3537,7 +3553,9 @@ components:
             Why the approval the active release rests on does not hold for
             this target now: the error code an activation of that release
             would be refused with. Absent when the approval holds and when
-            no release is active.
+            no release is active. It says that the revision is due another
+            review and takes nothing down: the release stays active and its
+            artifact is served.
           type: string
           enum: [APPROVAL_REQUIRED, APPROVAL_EXPIRED, WAIVER_EXPIRED, REVIEWER_AUTH_REVOKED, APPROVAL_SCOPE_MISMATCH, POLICY_STALE]
         delivery_status:

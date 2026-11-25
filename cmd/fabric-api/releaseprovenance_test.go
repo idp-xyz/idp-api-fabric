@@ -168,8 +168,8 @@ func TestTheProvenanceNamesTheGitOriginOfItsRevisionAndNotTheBranch(t *testing.T
 
 // What a release was prepared on says nothing of whether it still counts.
 // When the reviewer of the approval loses the grant the slot says so, in
-// approval_problem, and refuses to serve; the provenance is what it was, and
-// a new release under that approval is refused.
+// approval_problem, and serves what it served; the provenance is what it
+// was, and a new release under that approval is refused.
 func TestTheProvenanceDoesNotSayWhetherTheApprovalHoldsNow(t *testing.T) {
 	s := publicationFor(t)
 	target, _ := s.target(internalSandbox, "engineering")
@@ -191,7 +191,7 @@ WHERE product_id = $1 AND workspace_id = $2 AND principal_subject = 'reviewer'
 	if got := s.call(http.MethodGet, slot, "publisher", ""); got.body["approval_problem"] != "REVIEWER_AUTH_REVOKED" {
 		t.Fatalf("the slot says %v, want REVIEWER_AUTH_REVOKED", got.body["approval_problem"])
 	}
-	s.require(s.call(http.MethodGet, slot+"/artifact", "author", ""), http.StatusNotFound, "PUBLISHED_ARTIFACT_NOT_FOUND")
+	s.require(s.call(http.MethodGet, slot+"/artifact", "author", ""), http.StatusOK, "")
 	s.require(s.prepare(revision, review, "1.0.1", "publisher"), http.StatusConflict, "REVIEWER_AUTH_REVOKED")
 
 	if after := s.provenanceOf(id); !reflect.DeepEqual(after.body, before.body) {

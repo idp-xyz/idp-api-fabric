@@ -1509,7 +1509,7 @@ type PublicationSlot struct {
 	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 	APIAssetID Identifier `json:"api_asset_id"`
 
-	// ApprovalProblem Why the approval the active release rests on does not hold for this target now: the error code an activation of that release would be refused with. Absent when the approval holds and when no release is active.
+	// ApprovalProblem Why the approval the active release rests on does not hold for this target now: the error code an activation of that release would be refused with. Absent when the approval holds and when no release is active. It says that the revision is due another review and takes nothing down: the release stays active and its artifact is served.
 	ApprovalProblem *PublicationSlotApprovalProblem `json:"approval_problem,omitempty"`
 	Blocked         bool                            `json:"blocked"`
 	DeliveryStatus  PublicationSlotDeliveryStatus   `json:"delivery_status"`
@@ -1523,7 +1523,7 @@ type PublicationSlot struct {
 	Visibility PublicationSlotVisibility `json:"visibility"`
 }
 
-// PublicationSlotApprovalProblem Why the approval the active release rests on does not hold for this target now: the error code an activation of that release would be refused with. Absent when the approval holds and when no release is active.
+// PublicationSlotApprovalProblem Why the approval the active release rests on does not hold for this target now: the error code an activation of that release would be refused with. Absent when the approval holds and when no release is active. It says that the revision is due another review and takes nothing down: the release stays active and its artifact is served.
 type PublicationSlotApprovalProblem string
 
 // PublicationSlotDeliveryStatus defines model for PublicationSlot.DeliveryStatus.

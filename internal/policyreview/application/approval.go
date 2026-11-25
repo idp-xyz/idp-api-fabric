@@ -23,7 +23,8 @@ var (
 
 // ReleaseApproval names the immutable input to authorize. Target is nil
 // while preparing a release. Baseline is required when replacing a release
-// of a different revision. A read supplies no Publisher.
+// of a different revision. A slot that says whether the approval of its
+// release holds supplies no Publisher.
 type ReleaseApproval struct {
 	Revision    domain.RevisionRef
 	ReviewID    string
@@ -32,6 +33,13 @@ type ReleaseApproval struct {
 	Publisher   domain.Principal
 	Target      *domain.Target
 	Baseline    *domain.ComparisonBaseline
+	// Restoring asks what a return to a release that a slot served before
+	// asks of its approval: that the review is the approval of this content
+	// and that the publisher had no part in it. Whether that approval still
+	// holds is not asked: its scope, the grant of its reviewer, the time it
+	// and its waivers last and the policy and tools of today decide what is
+	// put on a slot for the first time, not what a slot falls back to.
+	Restoring bool
 }
 
 type VerifiedApproval struct {
@@ -42,7 +50,9 @@ type VerifiedApproval struct {
 
 // VerifyReleaseApproval verifies the evidence for the registry and
 // publication. The caller resolves the asset and supplies the grant check,
-// which holds the reviewer membership in the same transaction.
+// which holds the reviewer membership in the same transaction. A return to
+// a release (Restoring) is verified as far as the approval was given and no
+// further: the grant is not asked for.
 func (r *Reviews) VerifyReleaseApproval(ctx context.Context, input ReleaseApproval,
 	holdGrant func(context.Context, domain.Principal, time.Time) (bool, error)) (VerifiedApproval, error) {
 	review, found, err := r.deps.Reviews.Find(ctx, input.Revision, input.ReviewID)
@@ -59,7 +69,7 @@ func (r *Reviews) VerifyReleaseApproval(ctx context.Context, input ReleaseApprov
 	if !found || run.InputDigest != input.InputDigest || review.Request.InputDigest != input.InputDigest {
 		return VerifiedApproval{}, fmt.Errorf("review %s: %w", input.ReviewID, domain.ErrReviewDamaged)
 	}
-	if input.Target != nil && !slices.Contains(review.Request.Scope, *input.Target) {
+	if !input.Restoring && input.Target != nil && !slices.Contains(review.Request.Scope, *input.Target) {
 		return VerifiedApproval{}, ErrApprovalScope
 	}
 	decision := *review.Conclusion
@@ -67,6 +77,13 @@ func (r *Reviews) VerifyReleaseApproval(ctx context.Context, input ReleaseApprov
 	if input.Publisher != (domain.Principal{}) &&
 		(input.Publisher == decision.ConcludedBy || slices.Contains(involved, input.Publisher)) {
 		return VerifiedApproval{}, ErrPublisherInvolved
+	}
+	verified := VerifiedApproval{
+		CheckRunID: run.ID, PolicySnapshotID: run.PolicySnapshotID, PolicyDigest: run.PolicyDigest,
+	}
+	if input.Restoring {
+		// Everything below asks whether the approval holds now.
+		return verified, nil
 	}
 	valid, err := holdGrant(ctx, decision.ConcludedBy, decision.ConcludedAt)
 	if err != nil {
@@ -102,9 +119,7 @@ func (r *Reviews) VerifyReleaseApproval(ctx context.Context, input ReleaseApprov
 	if input.Baseline != nil && (run.Compatibility == nil || run.Compatibility.Baseline != *input.Baseline) {
 		return VerifiedApproval{}, ErrBaselineMismatch
 	}
-	return VerifiedApproval{
-		CheckRunID: run.ID, PolicySnapshotID: run.PolicySnapshotID, PolicyDigest: run.PolicyDigest,
-	}, nil
+	return verified, nil
 }
 
 // These rules are enforced outside check runs. The registry and publication

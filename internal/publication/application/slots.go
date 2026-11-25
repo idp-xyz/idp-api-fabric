@@ -12,10 +12,10 @@ import (
 const maxSlotPage = 100
 
 // view is a slot as it is read, whoever reads it and in whichever way: what
-// it points at, and what stands between that release and whoever asks for its
-// artifact, an access block and an approval that does not hold any more.
-// Reading one slot and listing many go through it and through nothing else,
-// so that a slot is the same slot wherever it is read.
+// it points at, whether an access block stands between that release and
+// whoever asks for its artifact, and whether the approval the release rests
+// on still holds. Reading one slot and listing many go through it and
+// through nothing else, so that a slot is the same slot wherever it is read.
 //
 // request names the product and the asset of the slot, and workspaceID is the
 // workspace that owns the asset.
