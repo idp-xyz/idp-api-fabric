@@ -7,7 +7,7 @@
 > **权威输入**：[F01](F01_Product_Requirements.md) · [F02](F02_System_Architecture.md) · [F03](F03_Domain_and_Data_Model.md) · [F04](F04_API_Contract_Governance.md) · [阶段交接约束](README.md)  
 > **上位规范**：IDP-SCG-STD-001《IDP Supply Chain DDD Product Engineering Standard V1.0》；项目 Profile 采用仍待具名批准。  
 > **验证状态**：本地文件结构/矩阵一致性检查可执行；真实 IAM、Gateway、CDN、API Explorer、授权安全、数据恢复与渗透测试全部 `NOT_RUN`。  
-> **变更**：[CR-0001](../decisions/CR-0001.md)（2026-11-26 已决定）取消评审和批准，准备 Release 以检查为准；权限和矩阵的变化见 §6.14。
+> **变更**：[CR-0001](../decisions/CR-0001.md)（2026-11-26 已决定）取消评审和批准，准备 Release 以检查为准；权限和矩阵的变化见 §6.14。[CR-0002](../decisions/CR-0002.md)（2026-11-26 已决定）内部使用从简：按编号下载看这个 Release 的阻断（管理 API 0.38.0），审计如实展示行动人，平台管理员留在部署配置；见 §6.15。
 
 ## 0. 执行摘要与安全架构裁决
 
@@ -304,7 +304,7 @@
 
 **策略和工具版本。** 准备和激活 Release 要求批准依据现行策略和工具版本，否则返回 `POLICY_STALE`。0.37.0 起只有准备 Release 要求现行策略和工具下的检查，激活和恢复不再要求（§6.14）。检查结果可能随工具变化时，更新代码中的工具版本。0.23.0 起，作者可以对已有修订重新检查并提交复审，继续发布同一份内容，见 §6.8。
 
-**阻断是拒绝优先。** 阻断不改槽位，只在读取和激活时拒绝；它覆盖的制品经槽位读对所有人都读不到，包括发布人（0.27.0 起，能读这个 Release 的人仍可以按编号下载，那条路径不看阻断，见 §6.9）。发布人不能建立或解除阻断，安全角色不能发布，也读不到制品。解除阻断不会让任何内容重新可见：必须先撤销，解除之后再由发布人恢复，恢复时重新核对 Release 依据的检查（0.36.0 之前核对批准）。阻断只作用于 Fabric 自己的源站读取；已经被别处缓存或取走的内容不在它的控制之内，`edge_status` 因此是 `UNKNOWN`（§9.2）。
+**阻断是拒绝优先。** 阻断不改槽位，只在读取和激活时拒绝；它覆盖的制品经槽位读对所有人都读不到，包括发布人（0.27.0–0.37.0，能读这个 Release 的人仍可以按编号下载，那条路径不看阻断，见 §6.9；0.38.0 起按 CR-0002，范围是这个 Release 的阻断在任一目标上未解除时，按编号下载也被拒绝，见 §6.15）。发布人不能建立或解除阻断，安全角色不能发布，也读不到制品。解除阻断不会让任何内容重新可见：必须先撤销，解除之后再由发布人恢复，恢复时重新核对 Release 依据的检查（0.36.0 之前核对批准）。阻断只作用于 Fabric 自己的源站读取；已经被别处缓存或取走的内容不在它的控制之内，`edge_status` 因此是 `UNKNOWN`（§9.2）。
 
 **读取不泄露原因。** 制品不可见时一律返回 404 `PUBLISHED_ARTIFACT_NOT_FOUND`，不区分是没有发布、被阻断、产品暂停还是批准已不成立；原因在审计和槽位、阻断各自的读取接口里；0.25.0 起，批准不成立的原因由槽位的 `approval_problem` 说明（§6.8）。例外是目标的受众配置已被移除，这时返回 404 `AUDIENCE_CONFIG_NOT_FOUND`。不知道产品的人得到 404 `PRODUCT_NOT_FOUND`。
 
@@ -353,14 +353,14 @@
 |---|---|---|---|
 | `GET …/publication-targets/{t}/assets` | 调用人现在持有作者、评审人或发布人成员关系的 Workspace 里的资产的槽位 | 知道产品但一个 Workspace 都读不了（负责人、维护者、持有产品角色的人、平台管理员）403；不认识产品 404 `PRODUCT_NOT_FOUND`；能读但目标不存在 404 `PUBLICATION_TARGET_NOT_FOUND`。能读而目标上没有可见的槽位，是 200 和空列表 | 成功不记；拒绝（包括这几种 404）DENY-03、`publication.read`，资源类型 `PublicationSlot` |
 | `GET …/assets/{a}/publications` | 能读这个资产的槽位：资产所属 Workspace 的作者、评审人、发布人，与读单个槽位相同 | 看不到资产（包括平台管理员和别的 Workspace 的读者）404 `API_ASSET_NOT_FOUND`；不认识产品 404 `PRODUCT_NOT_FOUND`；看得到资产但不是这三种人（负责人、维护者）403。没有发布过的资产是 200 和空列表 | 成功不记；拒绝 DENY-03、`publication.read`，资源类型 `PublicationSlot` |
-| `GET …/assets/{a}/releases/{r}/artifact` | 能读这个 Release：资产所属 Workspace 的作者、评审人、发布人；产品暂停时也可以。不看发布目标上的阻断，不重新核对批准 | 看不到资产 404 `API_ASSET_NOT_FOUND`；不认识产品 404 `PRODUCT_NOT_FOUND`；看得到资产但不能读 403（包括负责人和维护者）。Release 编号不属于这个资产（别的资产、别的产品、不存在）404 `RELEASE_NOT_FOUND`，答案相同 | 成功和 `RELEASE_NOT_FOUND` 不记；其余拒绝（包括看不到资产、不认识产品的 404）DENY-03、`release.download`，资源类型 `ContractRelease`，不带资源编号 |
-| `GET …/assets/{a}/releases/{r}/provenance` | 同上 | 同上 | 同上，动作是 `release.read` |
+| `GET …/assets/{a}/releases/{r}/artifact` | 能读这个 Release：资产所属 Workspace 的作者、评审人、发布人；产品暂停时也可以。0.27.0–0.37.0 不看发布目标上的阻断；0.38.0 起（CR-0002）这个 Release 在任一目标上有未解除的阻断时拒绝，目标和资产的阻断不挡（§6.15）。不重新核对批准 | 看不到资产 404 `API_ASSET_NOT_FOUND`；不认识产品 404 `PRODUCT_NOT_FOUND`；看得到资产但不能读 403（包括负责人和维护者）。Release 编号不属于这个资产（别的资产、别的产品、不存在）404 `RELEASE_NOT_FOUND`，答案相同。0.38.0 起能读而被阻断 409 `RELEASE_ACCESS_BLOCKED` | 成功和 `RELEASE_NOT_FOUND` 不记；其余拒绝（包括看不到资产、不认识产品的 404，以及 0.38.0 起被阻断的 409）DENY-03、`release.download`，资源类型 `ContractRelease`，不带资源编号 |
+| `GET …/assets/{a}/releases/{r}/provenance` | 同上；阻断不挡，0.38.0 起也一样 | 同上，没有 409 | 同上，动作是 `release.read` |
 | `GET …/audit-records` | 本产品的审计员：现在持有 `internal_auditor`；产品暂停时仍可读。只读本产品的记录 | 知道产品但不是审计员（负责人、成员、安全角色、平台管理员）403；不认识产品（包括产品不存在、别的产品的审计员）404 `PRODUCT_NOT_FOUND` | 成功不记；拒绝 DENY-03、`audit.search`，资源类型 `AuditRecord`，不带资源编号，记在这个产品名下；产品不存在不记 |
 | 授予、撤销 `internal_auditor`（`POST …/role-assignments`、`DELETE …/role-assignments/{id}`） | 产品负责人，可以授给自己；产品为 ACTIVE 才能授予，暂停时仍可撤销。平台管理员不能授予 | 不是负责人 403（平台管理员授予审计员也是 403）；陌生人 404 `PRODUCT_NOT_FOUND`；暂停的产品授予 409 `PRODUCT_NOT_ACTIVE` | 成功 AC-10、`product_role.grant` 或 `product_role.revoke`，资源类型 `RoleAssignment`；拒绝 DENY-03 |
 
 **列表不泄露看不到的东西。** 槽位列表的限制是查询的条件：调用人读的 Workspace 里的资产的编号写在位置和 `LIMIT` 之前，不是取出一页再丢掉别人的，所以每页除最后一页都是满的，页的大小、页数和空页都说不出别的 Workspace 有什么。目标的列表先判权、后看目标：知道产品但一个 Workspace 都读不了的人得到 403，不管目标存不存在；只有能读的人才被告知目标不存在。令牌只记位置，不记调用人，每页重新读调用人现在的成员关系：撤销之后，旧令牌读下一页得到的是没有这个权限的人的答案；别人的令牌交给负责人是 403，交给陌生人是 404，交给另一个 Workspace 的读者，读到的是那个读者自己能读的槽位；别的列表的令牌是 400 `PAGE_TOKEN_INVALID`。别的产品的目标和资产，对在这里读的人，与不存在的目标和资产答案相同，只差请求的编号；别的产品和别的资产的 Release 编号也一样。读单个槽位锁住发布目标和调用人在 Workspace 的成员关系，放置阻断和撤销成员关系要等这次读完；资产的列表锁成员关系，不锁目标；目标的列表既不锁成员关系，也不锁目标，正在放置阻断时它不等（有测试钉住）。所以目标的列表和同时发生的放置阻断、撤销成员关系之间，没有读单个槽位那样的先后顺序：它读的是读的那一刻的状态。某个槽位的批准核对出了意外（证据或制品损坏）时，整页答 500，与读单个槽位一致。
 
-**按编号下载不看访问阻断，也不重新核对批准（与设计不一致，待裁决；0.37.0 起没有批准可核对，剩下的是不看阻断）。** `GET …/releases/{r}/artifact` 只核对调用人能读这个 Release，然后读出字节并核对摘要。它不看发布目标上的阻断，不重新核对批准（批准或豁免到期、批准人的评审人关系被撤销、策略和工具更新），产品暂停也不挡。代码里下载不调用批准核对；测试钉住的是产品暂停、批准到期、批准人失去评审人关系、整个目标或资产或这个 Release 被阻断、受众配置被移除这几种情况下仍然下载成功。理由是：阻断都挂在某个发布目标下（整个目标、目标上的一个资产，或其中一个 Release），按编号下载不经过任何目标，没有“哪个目标的阻断”可看；能下载的人本来就能读修订的原文，Release 的制品是同一批文件的打包。契约里 `blockPublicationAccess`、`getPublishedArtifact` 和 `getPublicationSlot` 的描述已经写明阻断和批准只管经槽位读，`getContractRelease` 指向了这两个新操作。
+**按编号下载不看访问阻断，也不重新核对批准（0.27.0–0.37.0；当时与设计不一致，待裁决；0.37.0 起没有批准可核对，剩下的是不看阻断；0.38.0 起按 CR-0002 看这个 Release 的阻断，见本节末和 §6.15）。** 0.27.0–0.37.0 中，`GET …/releases/{r}/artifact` 只核对调用人能读这个 Release，然后读出字节并核对摘要。它不看发布目标上的阻断，不重新核对批准（批准或豁免到期、批准人的评审人关系被撤销、策略和工具更新），产品暂停也不挡。代码里下载不调用批准核对；测试钉住的是产品暂停、批准到期、批准人失去评审人关系、整个目标或资产或这个 Release 被阻断、受众配置被移除这几种情况下仍然下载成功。理由是：阻断都挂在某个发布目标下（整个目标、目标上的一个资产，或其中一个 Release），按编号下载不经过任何目标，没有“哪个目标的阻断”可看；能下载的人本来就能读修订的原文，Release 的制品是同一批文件的打包。契约里 `blockPublicationAccess`、`getPublishedArtifact` 和 `getPublicationSlot` 的描述已经写明阻断和批准只管经槽位读，`getContractRelease` 指向了这两个新操作。
 
 设计正文有五处写的是下载要看阻断，原文如下：
 
@@ -372,21 +372,23 @@
 
 F03 INV-09 写的是“有效 deny 阻断内容读取及后续激活”，没有点名下载，不算在这五处里。
 
-这意味着：安全管理员阻断一个 Release、它的资产或它的目标以后，经槽位读它的人读不到制品，`blocked` 为真；但能读这个 Release 的作者、评审人、发布人仍然可以按编号下载同一份字节，批准过期或批准人失去评审人关系以后也一样。所以 §6.7 里“阻断覆盖的制品对所有人都读不到，包括发布人”现在只对经槽位读成立。眼下读槽位的人和能按编号下载的人是同一批人，而且只有 `internal` 受众的目标能发布，所以阻断拦住的和下载放行的是同一批人；受众放开以后要重新看这一点。如果要改成下载也看阻断，先要定哪些阻断算数：阻断都挂在发布目标下，一个 Release 可以在几个目标上有槽位，按编号下载不经过任何目标；是任何一个目标上覆盖它的阻断就拒绝，还是只看它现在生效的那些目标，设计没有说。
+这意味着（0.27.0–0.37.0）：安全管理员阻断一个 Release、它的资产或它的目标以后，经槽位读它的人读不到制品，`blocked` 为真；但能读这个 Release 的作者、评审人、发布人仍然可以按编号下载同一份字节，批准过期或批准人失去评审人关系以后也一样。所以 §6.7 里“阻断覆盖的制品对所有人都读不到，包括发布人”现在只对经槽位读成立。眼下读槽位的人和能按编号下载的人是同一批人，而且只有 `internal` 受众的目标能发布，所以阻断拦住的和下载放行的是同一批人；受众放开以后要重新看这一点。如果要改成下载也看阻断，先要定哪些阻断算数：阻断都挂在发布目标下，一个 Release 可以在几个目标上有槽位，按编号下载不经过任何目标；是任何一个目标上覆盖它的阻断就拒绝，还是只看它现在生效的那些目标，设计没有说。
+
+**CR-0002 的裁决（0.38.0）。** 按 [CR-0002](../decisions/CR-0002.md) 决定 1：产品的任一发布目标上有范围就是这个 Release 的阻断，而且没有解除，按编号下载就拒绝（409 `RELEASE_ACCESS_BLOCKED`），不管这个 Release 在不在那个目标上生效过；解除以后恢复。目标级和资产级的阻断管的是一个目标提供什么，按编号下载不经过目标，仍不看它们；产品暂停仍不挡；来源和元数据照常读。上面五处设计正文对按编号下载按这个范围理解，正文没有改。所以 §6.7 里“阻断覆盖的制品对所有人都读不到”对范围是 Release 的阻断在两条读取路径上都成立。实现、先后顺序和测试见 §6.15。
 
 **审计员。** `internal_auditor` 是产品级角色，由产品负责人授予和撤销，成功记 AC-10；负责人可以授给自己。平台管理员只能任命负责人，授予审计员和授予两个安全角色一样被拒绝（403，DENY-03）：登记产品时填错负责人是管理员要能修的事，读审计不是。它只带来读本产品的审计记录。和其他产品级角色一样，持有它的人知道这个产品，能读产品本身、受众配置和发布目标，列 Workspace 得到空列表；看不到资产、修订、原文、检查、评审、Release、槽位、制品、阻断、角色列表和 Workspace 的详情与成员，也不能写任何东西（测试逐条列出了这些路径的答案）。**负责人不因为是负责人就能读审计**，成员、安全角色和平台管理员也不能；负责人要读，先授予自己审计员，这一步有记录。审计员能读被任命之前的记录；产品暂停时它照常读，授予新的审计员被拒绝（409 `PRODUCT_NOT_ACTIVE`），撤销不受影响。每页重新判权，判权时对调用人的角色行加共享锁，撤销要等这次读完，撤销提交以后旧令牌读不到下一页。被审计的人决定谁来审计他：产品负责人的行为也在审计记录里，而审计员由负责人授予，也可以随时撤销；授予和撤销都有记录，但只有当时的审计员读得到，撤销以后就没有人读得到。设计没有写谁来授予审计员（矩阵 AC-29 的条件是 `auditor.scope`），这一点待裁决。
 
-**审计记录里的主体如实给出（与 F06 的说法不一致，待裁决）。** 记录里的 `actor` 是行动人的 issuer 和 subject，原样给出，不打码。F06 §6 写的是：“审计只能展示脱敏主体和关联 ID，导出需要额外权限，且查询页面不使审计事件可被编辑。”授权矩阵 AC-29 的条件是 `auditor.scope & product.allowed & fields.minimized`。F03 的 OD-09 把审计里的个人信息与删除请求的冲突留给 F05 和法务。设计文档没有定义“脱敏”是什么：打码到哪一位，还是换成不可逆的编号；审计员能不能按主体筛选，打码以后这个筛选怎么办，也没有说（现在可以：`actor_subject` 和 `actor_issuer` 按原值精确匹配）。所以实现没有猜，如实给出主体，`fields.minimized` 没有实现为读取时的脱敏。能说的是记录在写入时就只存引用：没有令牌，没有请求体，没有私有对象的名字（测试用带标记的令牌和请求体检查了表和应答）。
+**审计记录里的主体如实给出（CR-0002 决定 2；此前与 F06 的说法不一致，待裁决）。** 记录里的 `actor` 是行动人的 issuer 和 subject，原样给出，不打码。按 [CR-0002](../decisions/CR-0002.md)，这是内部使用的本意：F06 §6 那一条改为“审计记录如实展示行动人（签发方和主体）和关联 ID”，导出需要额外权限、审计不可编辑不变；授权矩阵 AC-29 的条件去掉 `fields.minimized`，现为 `auditor.scope & product.allowed`（§6.15）。下面是裁决之前的情况：F06 §6 写的是“审计只能展示脱敏主体和关联 ID，导出需要额外权限，且查询页面不使审计事件可被编辑”，AC-29 的条件是 `auditor.scope & product.allowed & fields.minimized`。F03 的 OD-09 把审计里的个人信息与删除请求的冲突留给 F05 和法务。设计文档没有定义“脱敏”是什么：打码到哪一位，还是换成不可逆的编号；审计员能不能按主体筛选，打码以后这个筛选怎么办，也没有说（现在可以：`actor_subject` 和 `actor_issuer` 按原值精确匹配）。所以实现没有猜，如实给出主体，`fields.minimized` 没有实现为读取时的脱敏；CR-0002 认可了这个做法。OD-09 不在这项决定里，仍待 F05 和法务。能说的是记录在写入时就只存引用：没有令牌，没有请求体，没有私有对象的名字（测试用带标记的令牌和请求体检查了表和应答）。
 
 **读审计本身留什么记录。** 成功的读取不记，与别的读取一致。被拒绝的记 DENY-03、`audit.search`、资源类型 `AuditRecord`、不带资源编号，记在那个产品名下，所以审计员读得到谁试过读审计。两种人被拒绝都记：知道产品但不是审计员的（403），和产品存在但不认识它的人（404，包括别的产品的审计员）；产品不存在不记，因为没有产品可记。没带令牌或令牌无效（401），以及参数和令牌格式不对（400），在进入用例之前就被拒绝，不记；时间范围颠倒（422）只对审计员给出，别人得到 403 或 404。拒绝写不进审计表时，调用人仍然被拒绝，服务日志里有一条错误，与其他拒绝相同。这件事的另一面：任何持有效令牌的人，对一个存在的产品反复试，每次被拒绝的请求都在那个产品名下留一条拒绝记录；审计员现在读得到它们。代码里没有限制尝试次数的机制。
 
 **审计表仍然只能追加。** 应用角色在 `platformoperations.audit_record` 上的权限从 `INSERT` 变成 `SELECT`、`INSERT`：能读，仍然没有 `UPDATE`、`DELETE`、`TRUNCATE`，没有任何列上的 `UPDATE`，也不能 `SELECT … FOR UPDATE` 或 `FOR SHARE`。这靠三样东西：权限只在一处声明（`internal/platform/db/migrate/grants.go` 的 `ApplicationPrivileges()`）；一个测试要求审计表恰好是 `INSERT` 和 `SELECT`，另一个测试授权之后逐项查询角色实际持有的权限（包括 `TRUNCATE`、`REFERENCES`、`TRIGGER` 和列上的权限）；进程启动时核对声明里的权限都有，缺一项就拒绝启动。启动检查不查有没有多出来的权限：一个被人手工多授了 `UPDATE` 或 `DELETE` 的角色，它发现不了；`fabric-migrate -grant-to` 也只收回 CR-0001 退役的几项（`RetiredPrivileges()`，§6.14），别的多出来的不收回。表的所有者（迁移用的角色）和数据库管理员仍然能改。这是权限层面的限制，不是防篡改的证明（F05 §14：不能把“数据库不开放普通修改权限”误写成物理不可篡改）。
 
-**授权矩阵怎么对应。** AC-29 `audit.search`（`internal_auditor` 读 `AuditRecord`）现在有了实现。`auditor.scope` 实现为：调用人现在持有本产品的 `internal_auditor`，每页重新读；`product.allowed` 实现为：只读本产品的记录，不认识产品的人得到 404；`fields.minimized` 设计没有定义，所以没有实现为读取时的脱敏（见上）。矩阵里的默认失败是 `DENY`：不是审计员的得到 403 或 404。AC-30 `audit.export`（审计导出）没有做，FR-068 是 V1。AC-15（`contract.history`）和 AC-16（`contract.download`）的角色是 `internal_reader`，这个角色仍然没有实现：Release 的列表、元数据、下载和来源现在由资产所属 Workspace 的作者、评审人、发布人读，没有加 `internal_reader`；AC-16 的 `accessblock.absent` 对按编号下载没有实现（见上）。槽位列表和来源在矩阵里没有对应的行，与读单个槽位一样。矩阵文件没有改。
+**授权矩阵怎么对应。** AC-29 `audit.search`（`internal_auditor` 读 `AuditRecord`）现在有了实现。`auditor.scope` 实现为：调用人现在持有本产品的 `internal_auditor`，每页重新读；`product.allowed` 实现为：只读本产品的记录，不认识产品的人得到 404；`fields.minimized` 设计没有定义，所以没有实现为读取时的脱敏（见上），CR-0002 把它从 AC-29 去掉（`change_ref` 为 `CR-0002`）。矩阵里的默认失败是 `DENY`：不是审计员的得到 403 或 404。AC-30 `audit.export`（审计导出）没有做，FR-068 是 V1。AC-15（`contract.history`）和 AC-16（`contract.download`）的角色是 `internal_reader`，这个角色仍然没有实现：Release 的列表、元数据、下载和来源现在由资产所属 Workspace 的作者、评审人、发布人读，没有加 `internal_reader`；AC-16 的 `accessblock.absent` 对按编号下载在 0.27.0–0.37.0 没有实现（见上），0.38.0 起按 CR-0002 实现为“这个 Release 在任一目标上没有未解除的阻断”，AC-16 的行没有改。槽位列表和来源在矩阵里没有对应的行，与读单个槽位一样。矩阵文件当时没有改（0.38.0 只改了 AC-29，§6.15）。
 
 **上线顺序和新旧版本混跑。** 从 0.25.0 升级要重新授权：先执行 `fabric-migrate -apply -grant-to <application_role>`，应用 `productgovernance/009` 和 `platformoperations/002`，并给应用角色补上审计表的 `SELECT`，再换进程。只迁移不授权，新进程拒绝启动：`db: the application role lacks privileges this build needs; run fabric-migrate -apply -grant-to <role>: missing SELECT on platformoperations.audit_record`；补救是再执行一次带 `-grant-to` 的命令，没有东西要迁移。既没有迁移也没有授权时报的是同一条，因为启动时先核对权限、后核对迁移。旧进程在迁移和授权之后照常运行：它只往审计表里写，多出来的 `SELECT` 不影响它，它的启动检查也不查多出来的权限和迁移。所有进程都升级以后，才授予 `internal_auditor`：旧进程的契约里没有这个取值，授予请求会被它拒绝（400 `REQUEST_INVALID`）；库里一有审计员的分配，旧进程列产品角色、读这条分配就返回 500（契约没有声明的取值不发出去），回滚到旧版本也一样。建索引用的是普通 `CREATE INDEX`，建的时候审计表的写入要等，所以那段时间写操作也会等（F03 §5.12）。0.26.0 和 0.27.0 没有迁移，也不需要授权。
 
-功能回归见 `cmd/fabric-api/` 下的 `slotlists_test.go`、`releasedownload_test.go`、`releaseprovenance_test.go` 和 `auditreading_test.go`，使用真实 PostgreSQL 和本地替代 IdP，其中包括：谁被允许、谁被拒绝，拒绝留下的记录，令牌不带权限，撤销之后读不到下一页，审计员的角色在一次读等待期间被撤销，下载在阻断、批准到期和产品暂停时仍然成功，来源在复审之后不变，记录对不上时答 500 而应答不说原因。用例层的判权和审计见 `internal/platformoperations/application/readaudit_test.go` 和 `internal/productgovernance/application/auditscope_test.go`；权限、迁移和启动检查见 `internal/platform/db/migrate/auditreading_test.go`、`internal/platform/db/auditreading_test.go` 和 `internal/platformoperations/adapters/postgres/audit_test.go`；翻页和筛选的查询见 `internal/platformoperations/adapters/postgres/auditreader_test.go` 和 `internal/publication/adapters/postgres/slots_test.go`。SEC-01…36 的正式安全验收状态为 NOT_RUN。
+功能回归见 `cmd/fabric-api/` 下的 `slotlists_test.go`、`releasedownload_test.go`、`releaseprovenance_test.go` 和 `auditreading_test.go`，使用真实 PostgreSQL 和本地替代 IdP，其中包括：谁被允许、谁被拒绝，拒绝留下的记录，令牌不带权限，撤销之后读不到下一页，审计员的角色在一次读等待期间被撤销，下载在阻断、批准到期和产品暂停时仍然成功（0.38.0 起 Release 的阻断拒绝下载，目标和资产的阻断、产品暂停仍不挡，见 §6.15），来源在复审之后不变，记录对不上时答 500 而应答不说原因。用例层的判权和审计见 `internal/platformoperations/application/readaudit_test.go` 和 `internal/productgovernance/application/auditscope_test.go`；权限、迁移和启动检查见 `internal/platform/db/migrate/auditreading_test.go`、`internal/platform/db/auditreading_test.go` 和 `internal/platformoperations/adapters/postgres/audit_test.go`；翻页和筛选的查询见 `internal/platformoperations/adapters/postgres/auditreader_test.go` 和 `internal/publication/adapters/postgres/slots_test.go`。SEC-01…36 的正式安全验收状态为 NOT_RUN。
 
 ### 6.10 已实现的工作台查询的权限
 
@@ -413,7 +415,7 @@ F03 INV-09 写的是“有效 deny 阻断内容读取及后续激活”，没有
 
 **授权矩阵怎么对应。** 矩阵没有改。AC-52 `review.read`：矩阵的条件是 `workspace.member & product.same & action.role & revision.same`，说的是一个修订的评审；队列读的是整个 Workspace 的评审，没有“这个修订”，所以 `revision.same` 换成了“评审属于这个产品和这个 Workspace”，这是查询里的条件；`action.role` 是作者、评审人，加上 0.24.0 起的发布人（§6.8，矩阵里没有）。实现在这之前没有用过动作名 `review.read`：单读被拒绝记在 `revision.read` 或 `asset.read` 名下（§6.6），队列没有修订可读，所以拒绝记在 `review.read` 名下，资源类型 `Review`。这几处对应关系待裁决。AC-13、AC-14（`internal_reader` 读资产）：这个角色仍然没有，资产由负责人和任一 Workspace 的成员读（§6.4）；概况不属于 `asset.read`，它由读修订的名单决定，对应 AC-02（作者）、AC-53（评审人）和 0.24.0 起的发布人（§6.8，矩阵里没有）；带新筛选的拒绝沿用 `asset.search` 和 DENY-03。AC-02 读修订的条件没有变。“我是谁”在矩阵里没有行：`getCaller` 谁都能调，`getCallerInProduct` 的条件与读产品相同，读产品在矩阵里也没有对应的行。AC-08 的 `platform_admin` 是登记产品的角色（`product.register`），“调用人是不是平台管理员”这一问不对应它的任何条件。`internal_reader` 仍然没有：负责人、维护者和只读角色读修订、检查、评审、Release 的放宽没有做，AC-13…16 的角色还是设计里的。
 
-**平台管理员靠部署配置。** `platform_administrator` 来自部署配置 `IDP_FABRIC_PLATFORM_ADMIN_SUBJECTS`（主体的 JSON 数组，都是受信任的那一个签发方的主体），进程启动时读入，进程内固定：改了要重启，没有接口能增减管理员；没有配置时没有人是管理员，`platform_administrator` 恒为假。几个副本的配置不一致时，同一个人在不同副本上的答案会不同，页面按它显示的东西也会时有时无。应答说的是这个进程现在认定的，不是库里的事实。管理员不在库里，所以没有授予、撤销的审计和事件，这与 §6.1 一致；新的只是页面第一次能知道调用人是不是管理员，以前只能靠试。要不要改成库里的、可撤销且有记录的角色，那要新的迁移和新的规则，待裁决。登录人只有签发方和主体，没有姓名；显示名从哪里来没有定，另存会碰到 F03 的 OD-09 那样的个人信息保留和删除问题，这一点没有做。
+**平台管理员靠部署配置。** `platform_administrator` 来自部署配置 `IDP_FABRIC_PLATFORM_ADMIN_SUBJECTS`（主体的 JSON 数组，都是受信任的那一个签发方的主体），进程启动时读入，进程内固定：改了要重启，没有接口能增减管理员；没有配置时没有人是管理员，`platform_administrator` 恒为假。几个副本的配置不一致时，同一个人在不同副本上的答案会不同，页面按它显示的东西也会时有时无。应答说的是这个进程现在认定的，不是库里的事实。管理员不在库里，所以没有授予、撤销的审计和事件，这与 §6.1 一致；新的只是页面第一次能知道调用人是不是管理员，以前只能靠试。要不要改成库里的、可撤销且有记录的角色，曾待裁决；[CR-0002](../decisions/CR-0002.md) 决定 3 认可部署配置这个做法，不改成库里的角色。运行上的要求：fabric-api 的每个副本带同一份设置；设置的改动走部署自身的变更控制，由部署记录谁在何时为什么改了它，Fabric 不记录也不审计这项改动（§6.15）。登录人只有签发方和主体，没有姓名；显示名从哪里来没有定，另存会碰到 F03 的 OD-09 那样的个人信息保留和删除问题，这一点没有做。
 
 **上线顺序和新旧版本混跑。** 从 0.28.0 升级只需要 `fabric-migrate -apply`，不需要重新授权，先迁移再换进程：它应用 `policyreview/006_review_queue_order`，只建一个索引，不改行，应用角色的权限没有变；没有新角色，没有新配置。0.29.0 和 0.31.0 本身没有迁移，也没有状态；0.30.0 起的构建在没迁移的库上拒绝启动：`db: the database is not migrated for this build; run fabric-migrate -apply first: migration policyreview/006_review_queue_order is not recorded`（迁移测试断言了它是 `ErrNotMigrated`，并点名这一步没有记录）；补救是执行 `fabric-migrate -apply`，带不带 `-grant-to` 都行，没有授权要补。旧进程在迁移之后照常运行：评审的读写语句没有变，启动检查只查它自己计划里的步骤，计划以外的步骤接受（`internal/platform/db/open.go` 的 `checkHistory`）；它没有新的路径，对 `GET /v1/caller`、`GET /v1/products/{product_id}/caller` 和 `GET …/workspaces/{workspace_id}/reviews` 答 404 `ROUTE_NOT_FOUND`；它不认识 `check_status` 和 `release_pending`，对带它们的 `listAssets` 答 400 `REQUEST_INVALID`（未声明的参数），资产的应答里没有 `overview`。所以要用这些接口的页面，等所有进程都升级以后再上。建索引用的是普通 `CREATE INDEX`，建的时候新提交评审的写入要等，读不受影响，没有量过。以后加新的产品角色，仍要等所有进程升级以后才授予：`getCallerInProduct` 遇到契约没有的角色答 500，与列产品角色一致。回滚到旧程序没有数据要回退，多出的索引旧程序不用，留着即可。
 
@@ -486,11 +488,39 @@ DENY-06 此后只用于阻断解除和审计员任命（§6.12）中的独立性
 
 **旧数据。** `internal_reviewer` 的已有成员关系保留，持有人能读原来读得到的修订、检查和评审，不能写。迁移把开着的评审结束为 `WITHDRAWN`，结束人是系统主体 `urn:idp-api-fabric:system`，不是任何人（F03 §5.15）。审计表里引用 AC-03、AC-50、AC-51 和 DENY-06 的已有记录不变。
 
-**仍待裁决。** 发布人、维护者读修订和评审（§6.8、§6.12）这处放宽，在 AC-52、AC-53 里仍没有对应。按编号下载不看阻断（§6.9）不受 CR-0001 影响。
+**仍待裁决。** 发布人、维护者读修订和评审（§6.8、§6.12）这处放宽，在 AC-52、AC-53 里仍没有对应。按编号下载不看阻断（§6.9）不受 CR-0001 影响，已由 CR-0002 裁决（§6.15）。
 
 **数据库权限。** PR #74 的构建仍授予应用角色四张评审表的 `INSERT` 和 `contract_revision` 的 `UPDATE`，供滚动升级期间的旧进程使用；此后的构建收回它们，应用角色对评审表只有 `SELECT`，对修订表只有 `SELECT`、`INSERT`，程序写不了评审，也改不了修订的状态。收回由 `fabric-migrate -apply -grant-to <application_role>` 执行，与授权在同一事务里，只收回 `internal/platform/db/migrate/grants.go` 的 `RetiredPrivileges()` 列出的五项。执行前先停掉所有 0.36.x 及更早的进程，否则它们写评审会被拒绝（42501），重启时也拒绝启动（F03 §5.15）。启动检查仍不查多出来的权限：还持有这几项的角色，0.37.0 的进程照常启动。
 
 功能回归见 `cmd/fabric-api/` 下的 `releases_test.go`、`releaseprovenance_test.go`、`publishedrelease_test.go`、`pastreviews_test.go` 和 `reviewer_test.go`，以及 `internal/policyreview/domain/release_test.go`、`internal/policyreview/application/release_test.go`、迁移测试 `internal/platform/db/migrate/releasefromcheck_test.go` 和收回权限的 `internal/platform/db/migrate/grants_test.go`。SEC-01…36 的正式安全验收状态为 NOT_RUN。
+
+### 6.15 内部使用从简（CR-0002，0.38.0）
+
+本节记录管理 API 0.38.0 的权限，决定见 [CR-0002](../decisions/CR-0002.md)。下表路径以 `/v1/products/{product_id}` 开头。接口见 F04 §11.8、§11.10，数据见 F03 §5.12、§5.13。
+
+| 操作 | 允许范围与状态条件 | 拒绝 | 运行时审计 |
+|---|---|---|---|
+| `GET …/assets/{a}/releases/{r}/artifact` | 能读这个 Release 的人，与 0.37.0 相同；产品的任一发布目标上没有范围是这个 Release、而且没有解除的阻断。目标级和资产级的阻断不挡，产品暂停也不挡 | 与 0.37.0 相同；能读而被阻断 409 `RELEASE_ACCESS_BLOCKED`。不能读的人先因为没有授权被拒绝，得不到阻断的消息 | 成功不记；被阻断记 DENY-03、`release.download`，资源类型 `ContractRelease`，不带资源编号，与没有授权的拒绝相同 |
+| `GET …/assets/{a}/releases/{r}`、`…/provenance` | 不变，阻断不挡 | 不变 | 不变 |
+
+**按编号下载看这个 Release 的阻断。** 安全管理员阻断一个 Release 以后，它的字节在 Fabric 的两条读取路径上都读不到：经槽位读只在阻断所在的目标上读不到（404 `PUBLISHED_ARTIFACT_NOT_FOUND`）；按编号下载不分目标，阻断在这个 Release 从没生效过的目标上也算（409 `RELEASE_ACCESS_BLOCKED`）。阻断解除以后，下载恢复，不需要别的操作。目标级和资产级的阻断管的是一个目标提供什么，按编号下载不经过目标，不受它们影响。
+
+**为什么是新的错误码。** 经槽位读不可见时一律答 404、不说原因，因为它回答的是“这个目标上有没有可提供的制品”。按编号下载的调用人读得到这个 Release 的元数据，也读得到槽位的 `blocked`；答 404 会和 `getContractRelease` 的 200 互相矛盾，所以明说是阻断。已有的 `PUBLICATION_BLOCKED` 是激活和恢复被阻断，`RELEASE_BLOCKED` 是准备 Release 时不可豁免的规则没通过，都不是“一次读取被阻断”的意思，所以新增 409 `RELEASE_ACCESS_BLOCKED`。拒绝的审计沿用经槽位读被阻断时的记法：DENY-03（策略草案里的 DENY-04 在运行时没有使用）。
+
+**和放置、解除阻断的先后。** 一次下载在一个事务里：先判权（对调用人的成员关系和产品角色加共享锁），找到 Release，再对产品的全部发布目标按编号顺序加共享锁，然后另起一条语句读阻断，最后读字节。放置和解除阻断都先对所在目标加排他锁再改，所以一个阻断要么在读阻断之前提交，被读到；要么等这次下载的事务结束才提交：阻断建立的应答返回时，没有漏看它的下载还在判定。另起一条语句是因为一条语句只读到它开始时已提交的行，等锁期间提交的阻断，加锁的那条语句读不到。顺序“先判权、后目标”与经槽位读制品（`ActiveArtifact`）相同；写阻断的事务只锁一个目标，不会与下载互相等待。代价是：放置或解除阻断要等同一产品里正在进行的按编号下载，按编号下载也要等正在放置或解除的阻断。加锁之后才登记的目标，上面不会有下载开始之前就有的阻断。
+
+**审计员看到真实的行动人。** CR-0002 决定 2：审计记录对本产品的审计员如实给出行动人的签发方和主体（§6.9），这是内部使用的本意。AC-29 的条件去掉 `fields.minimized`，现为 `auditor.scope & product.allowed`，`change_ref` 为 `CR-0002`；F06 §6 的那一条改为如实展示。导出需要额外权限（AC-30，FR-068，V1，没有做）、审计不可编辑，不变。审计里的个人信息与删除请求的冲突（F03 OD-09）不在这项决定里，仍待 F05 和法务。
+
+**平台管理员留在部署配置。** CR-0002 决定 3：`IDP_FABRIC_PLATFORM_ADMIN_SUBJECTS` 是内部使用下认可的做法（§6.10），不改成库里的角色。运行上的要求：
+
+- fabric-api 的每个副本带同一份设置，否则同一个人在不同副本上的答案不同；
+- 设置的改动走部署自身的变更控制，由部署记录谁在何时为什么改了它；Fabric 不记录也不审计这项改动，改动在进程重启后生效。
+
+**矩阵。** AC-29 改了条件，`change_ref` 为 `CR-0002`。AC-16 没有改：它的 `accessblock.absent` 对按编号下载按决定 1 理解。矩阵仍是 54 行，状态仍为 PROPOSED。
+
+**升级。** 没有迁移，不需要重新授权，没有新配置。旧进程仍不看阻断，所以全部 fabric-api 进程换完以后，阻断才对每次按编号下载生效。
+
+功能回归见 `cmd/fabric-api/releasedownload_test.go`（任一目标上的 Release 阻断拒绝下载，包括这个 Release 没有生效过的目标，解除后恢复；资产和目标的阻断、产品暂停不挡；拒绝的记录；另一个目标上正在放置这个 Release 的阻断时，下载等待，阻断提交后被拒绝）、`internal/publication/adapters/postgres/releaseblocks_test.go`（哪些阻断算数，读阻断时持有产品的全部目标）、`internal/contractregistry/application/releases_test.go`（先判权、后问阻断，拒绝的记录）和 `internal/transport/http/releaseevidence_test.go`（契约声明的 409 和应答）。SEC-01…36 的正式安全验收状态为 NOT_RUN。
 
 ## 7. 授权策略表达与执行边界
 

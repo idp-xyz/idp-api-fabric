@@ -348,7 +348,12 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 	if err != nil {
 		return nil, err
 	}
-	releaseScope := releaseAuthority{revisionScopes: revisionScope, checks: contractChecks, reviews: contractReviews}
+	publicationStore := publicationdb.NewStore(database.Framework)
+	releaseBlocks, err := publication.NewReleaseBlocks(publicationStore)
+	if err != nil {
+		return nil, err
+	}
+	releaseScope := releaseAuthority{revisionScopes: revisionScope, checks: contractChecks, reviews: contractReviews, blocks: releaseBlocks}
 	contractReleases, err := registry.NewReleases(registry.ReleaseDependencies{
 		Transactions: transactions, Scopes: releaseScope, Revisions: revisions,
 		Releases: registrydb.NewReleases(database.Framework), Audit: audit.recordRevision,
@@ -363,7 +368,7 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 		return nil, err
 	}
 	publications, err := publication.New(publication.Dependencies{
-		Transactions: transactions, Store: publicationdb.NewStore(database.Framework),
+		Transactions: transactions, Store: publicationStore,
 		Authority: authority, Partner: partnerAccess,
 		Audit: audit.recordPublication, Enqueue: publicationoutbox.NewEvents(outbox, identifiers).Enqueue,
 		Clock: clock, IDs: identifiers,

@@ -50,7 +50,7 @@
 <strong>权威输入</strong>：<a href="F01_Product_Requirements.md">F01</a>、<a href="F02_System_Architecture.md">F02</a>、<a href="README.md">阶段交接约束</a>、《IDP Supply Chain DDD Product Engineering Standard V1.0》（IDP-SCG-STD-001）<br/>
 <strong>决策约束</strong>：ADR-0001～0006 均为 <code>Proposed</code>；F03 不以此文宣称架构已批准。<br/>
 <strong>面向后续</strong>：F04 API Contract Governance、F05 Security、F06 Dual Portal UX、F07 Engineering、F08 Acceptance。<br/>
-<strong>变更</strong>：<a href="../decisions/CR-0001.md">CR-0001</a>（2026-11-26 已决定）取消评审和批准，Release 依据检查准备。领域上的变化见 §0、§3.1、§4、§8，实现见 §5.15。</p>
+<strong>变更</strong>：<a href="../decisions/CR-0001.md">CR-0001</a>（2026-11-26 已决定）取消评审和批准，Release 依据检查准备。领域上的变化见 §0、§3.1、§4、§8，实现见 §5.15。<a href="../decisions/CR-0002.md">CR-0002</a>（2026-11-26 已决定）内部使用从简：按编号下载看这个 Release 的阻断（§5.10、§5.12），审计如实给出行动人，平台管理员留在部署配置，暂不建 <code>AssetSearchIndex</code>（§3.3、§5.13）。</p>
 </blockquote>
 <h2 id="section-0">0. 执行摘要与设计结论</h2>
 <p><strong>领域设计采用“统一治理、多产品自治、单一事实权威”的联邦模式</strong>。CargoPai、IDP Parcel、IDP Brant、IDP Prism 的运单、订单、库存等业务事实由原产品持有；Fabric 管理其 API 资产、契约修订、审查证据、不可变 Release、按访问目标生效的 Publication、外部开发者访问关系及运营证据。<strong>七个候选限界上下文属于语义模型，不等于七个微服务、七个数据库或七个 Go Module。</strong></p>
@@ -404,6 +404,9 @@
 </tr>
 </tbody>
 </table></div>
+<blockquote>
+<p>CR-0002（2026-11-26 已决定）：内部 Catalog 列表暂不建 <code>AssetSearchIndex</code>。列表读 <code>api_asset</code> 的索引，资产概况在读的时候算，这是认可的做法；资产数量需要时再建索引（§5.13）。“作业与审计”一行的敏感字段屏蔽不包括审计记录里的行动人：审计员看到签发方和主体的原值（F05 §6.15）。</p>
+</blockquote>
 <h2 id="section-4">4. 核心聚合模型与不变量</h2>
 <p>设计以<strong>最小事务一致性边界</strong>为原则。后续逻辑表不强迫每个实体成为聚合根；一行表也不必然等于一个实体。<code>INV-*</code> 是 F03 正式设计不变量标识，待实现和测试验证。</p>
 <div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
@@ -1416,8 +1419,8 @@
 </table></div>
 <p>应用角色对 <code>operation</code> 只有 <code>SELECT</code> 和 <code>INSERT</code>，对另外三张表多一项 <code>UPDATE</code>，由触发器限定为上面说的那一步。槽位在第一次激活时建立，代次从 0 开始，每次操作加 1（§4.2 的 Slot = Target × APIAsset）。</p>
 <p><strong>CAS 和幂等。</strong> 改变槽位的请求带上它依据的代次和一个幂等键。事务内先对目标加共享锁、对槽位加排他锁；代次不是当前的就拒绝。同一槽位上同一个键再次到达时，调用人、代次、动作、Release 和理由都相同就返回当时的操作，有一样不同就拒绝。<code>RESTORE</code> 只能回到这个槽位上生效过的 Release。槽位、操作记录、审计和 Outbox 事件同事务提交。</p>
-<p><strong>阻断。</strong> 阻断可以覆盖整个目标、目标上的一个资产，或其中一个 Release。它独立于槽位的指针：建立阻断不改变槽位，但被覆盖的制品经槽位读不到（0.27.0 起，按编号下载 Release 不看阻断，见 §5.12），也不能激活或恢复。解除之前，被覆盖的槽位必须已经撤销，所以解除阻断本身不会让任何内容重新可见；恢复是另一次带代次的操作，会重新核对批准。建立和解除各使目标的 <code>block_generation</code> 加 1。</p>
-<p><strong>读取已发布的制品。</strong> 只通过槽位当前的指针读取（0.27.0 起，Release 的制品另可按编号下载，那条路径不做下面的核对，见 §5.12）。每次读取都在事务内重新核对：调用人的成员关系、受众配置仍然有效且与目标登记时一致、指针、阻断和批准；任何一项不满足都不返回制品。读出的字节与制品摘要再核对一次。目前只有 <code>internal</code> 受众的目标可以激活和读取；对外门户的授权和边缘分发尚未接入，所以槽位的交付状态和阻断的边缘状态都如实报告为 <code>UNKNOWN</code>。</p>
+<p><strong>阻断。</strong> 阻断可以覆盖整个目标、目标上的一个资产，或其中一个 Release。它独立于槽位的指针：建立阻断不改变槽位，但被覆盖的制品经槽位读不到（0.27.0–0.37.0，按编号下载 Release 不看阻断；0.38.0 起按 CR-0002，范围是这个 Release 的阻断在任一目标上未解除时，按编号下载也被拒绝；见 §5.12），也不能激活或恢复。解除之前，被覆盖的槽位必须已经撤销，所以解除阻断本身不会让任何内容重新可见；恢复是另一次带代次的操作，会重新核对批准。建立和解除各使目标的 <code>block_generation</code> 加 1。</p>
+<p><strong>读取已发布的制品。</strong> 只通过槽位当前的指针读取（0.27.0 起，Release 的制品另可按编号下载，那条路径不做下面的核对，0.38.0 起只核对这个 Release 在任一目标上的阻断，见 §5.12）。每次读取都在事务内重新核对：调用人的成员关系、受众配置仍然有效且与目标登记时一致、指针、阻断和批准；任何一项不满足都不返回制品。读出的字节与制品摘要再核对一次。目前只有 <code>internal</code> 受众的目标可以激活和读取；对外门户的授权和边缘分发尚未接入，所以槽位的交付状态和阻断的边缘状态都如实报告为 <code>UNKNOWN</code>。</p>
 <p><strong>事件。</strong> <code>fabric.contractregistry.release.prepared</code>，以及 <code>fabric.publication.target.created</code>、<code>slot.activated</code>、<code>slot.withdrawn</code>、<code>slot.restored</code>、<code>access_block.created</code>、<code>access_block.cleared</code>，都是版本 1。载荷是事件编号、时间、关联编号、产品、聚合编号和版本，加上相关的目标、资产、Release 或修订的编号和制品摘要，不含理由和制品内容。</p>
 <p><strong>升级。</strong> 从 0.19.0 升级，执行 <code>fabric-migrate -apply -grant-to &lt;application_role&gt;</code>：应用上述三个迁移，并授予应用角色新表的权限。库没有迁移时，新进程拒绝启动并指出缺少的表；迁移了但没有授权时，拒绝启动并列出缺少的权限。0.19.0 的进程在迁移后的库上能继续读写原有的内容，但它不认识新角色：一个 Workspace 有了发布人，它列这个 Workspace 的成员会返回 500；产品有了安全角色，它列产品角色会返回 500。所以应在所有进程升级之后再授予新角色。</p>
 <p><strong>尚未实现。</strong> <code>internal</code> 以外受众的发布、外部授权和边缘分发及其传播证明；Release 的其余状态和撤销；对象存储（制品目前存在 PostgreSQL 里）；发布目标的修改和停用；紧急撤销的分级（F05 §9.1）；Outbox 的投递。</p>
@@ -1475,6 +1478,7 @@
 <h3 id="section-5-12">5.12 已实现的查询与追溯</h3>
 <blockquote>
 <p>0.37.0 起槽位列表的每一项不再有 <code>approval_problem</code>；依据检查准备的 Release，来源里没有 <code>approval</code>；按编号下载不再要求修订是 <code>APPROVED</code>（§5.15）。</p>
+<p>0.38.0 起（CR-0002）按编号下载看这个 Release 在任一目标上的阻断；审计员读到行动人的原值是认可的做法。见下文“下载读什么”和“尚未实现”两处。</p>
 </blockquote>
 <p>本节记录管理 API 0.26.0–0.28.0 的实现事实，不替代 §5.4 逻辑模型的候选状态。这三个版本补的是读：列出发布过的槽位（0.26.0），按编号下载 Release 并读出它的来源（0.27.0），审计员按产品读审计记录（0.28.0）。权威 DDL 为 <code>migrations/productgovernance/009_auditor_role.sql</code> 和 <code>migrations/platformoperations/002_audit_read_order.sql</code>；0.26.0 和 0.27.0 没有迁移。接口见 F04 §11.8，权限见 F05 §6.9。</p>
 <p><strong>槽位列表（0.26.0）。</strong> 两个列表读的是 §5.10 的 <code>publication.slot</code>，没有新表、新列、新索引，也没有改应用角色的权限。列表项就是读单个槽位得到的那一项，含 <code>blocked</code> 和 <code>approval_problem</code>：读一个槽位和列出槽位走同一个函数（应用层 <code>Publication.view</code>，传输层 <code>showSlot</code>），所以同一个槽位在哪里读都一样。<code>blocked</code> 和 <code>approval_problem</code> 不存库，是读的时候按 §5.10 的核对算的，所以一页里的每个槽位各做一次这样的核对，耗时随页里的槽位数增加。</p>
@@ -1490,7 +1494,7 @@
 <li>为什么复审以后不变。这些记录写入后不变，Release 记的又是编号，所以修订后来又被复审、又有了更新的检查，旧 Release 读出的仍是它准备时依据的那次评审和那次检查；复审的批准是另一条评审记录（§5.11），依据它准备的是另一个 Release。来源也不回答批准现在成不成立：不比时钟，不比评审人现在的授权，不比现行的策略和工具，这些由槽位的 <code>approval_problem</code> 说（§5.11）。豁免只带规则和到期时间，理由和补偿措施的文字不在来源里。</li>
 <li>对不上按存储故障处理。读出的记录要和 Release 记的对得上：评审是一次批准，它依据的检查就是 Release 记的那次，两者读的闭包摘要等于 Release 的输入摘要，检查用的策略快照和摘要等于 Release 记的，修订的闭包摘要也等于 Release 的输入摘要。对不上不是调用人的错，是存储出了问题：答 500 <code>INTERNAL_ERROR</code>，不说哪里不对，原因写进日志，在 <code>correlation_id</code> 下。</li>
 <li>Git 来源。它是提交人导入时声明的，Fabric 不回仓库核对（§5.7）；同一仓库的相同内容后来从别的提交再导入，得到的仍是最先登记的修订，来源里记的仍是最早那次的提交。上传来的修订没有 <code>git_origin</code>。</li>
-<li>下载读什么。按编号下载读的是制品，和读已发布的制品用同一个读取函数 <code>ReleaseMaterial</code>：修订仍是 <code>APPROVED</code>，修订的闭包摘要等于 Release 的输入摘要，制品字节的 SHA-256 等于 Release 的制品摘要。它不读评审和检查，所以评审或检查的记录坏了不影响下载，制品字节坏了也不影响来源。它也不读发布目标，所以不看阻断，不核对批准，产品暂停也不挡；这与设计正文不一致，见 F05 §6.9。</li>
+<li>下载读什么。按编号下载读的是制品，和读已发布的制品用同一个读取函数 <code>ReleaseMaterial</code>：修订仍是 <code>APPROVED</code>，修订的闭包摘要等于 Release 的输入摘要，制品字节的 SHA-256 等于 Release 的制品摘要。它不读评审和检查，所以评审或检查的记录坏了不影响下载，制品字节坏了也不影响来源。它也不读发布目标，所以 0.27.0–0.37.0 不看阻断（当时与设计正文不一致，见 F05 §6.9），不核对批准，产品暂停也不挡。0.38.0 起（CR-0002），读字节之前经端口 <code>ReleaseScopes.ReleaseBlocked</code> 问 Publication：Publication 先对产品的全部发布目标加共享锁，再读 <code>publication.access_block</code> 里有没有范围是这个 Release、没有解除的阻断，有就拒绝（409 <code>RELEASE_ACCESS_BLOCKED</code>）。没有新表、新列和新索引。目标和资产的阻断不算，产品暂停仍不挡，来源不看阻断。加锁的先后见 F05 §6.15。</li>
 </ul>
 <p><strong>审计记录（0.28.0）。</strong> 读的是 <code>platformoperations.audit_record</code>（迁移 <code>platformoperations/001</code>，表没有改）。一行是一次行动尝试的最小事实：<code>audit_id</code>、<code>recorded_at</code>、行动人（<code>actor_issuer</code>、<code>actor_subject</code>）、<code>action</code>、<code>outcome</code>（<code>SUCCEEDED</code> 或 <code>DENIED</code>）、<code>rule_id</code>、<code>product_id</code>、<code>resource_type</code>、<code>resource_id</code> 和 <code>correlation_id</code>。<code>product_id</code> 为空表示平台范围，例如无权的人登记产品被拒绝；<code>resource_id</code> 为空表示这次尝试没有留下资源。表里只存引用：没有令牌，没有请求体，没有私有对象的名字。</p>
 <div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>
@@ -1574,9 +1578,9 @@
 <ul>
 <li>不属于任何产品的审计记录（<code>product_id</code> 为空，例如无权的人登记产品被拒绝）没有读取途径；审计员以外没有人读审计，也没有跨产品的读取。</li>
 <li>F05 §14 列的核心审计事实是 <code>actor_ref</code>、<code>impersonation_ref</code>（如有）、<code>product_id</code>、<code>resource_ref</code>、<code>action</code>、<code>policy_digest</code>、<code>decision_id</code>、<code>before/after generation</code>、<code>timestamp</code>、<code>result</code>、<code>correlation_id</code> 和最小安全标签。表里有行动人（issuer 和 subject）、<code>product_id</code>、资源（类型和编号）、<code>action</code>、<code>recorded_at</code>、<code>outcome</code>、<code>correlation_id</code>，另有 <code>rule_id</code>；没有 <code>impersonation_ref</code>、<code>policy_digest</code>、<code>decision_id</code>（<code>rule_id</code> 是授权矩阵里的规则编号，不是决定的编号）、<code>before/after generation</code> 和安全标签。</li>
-<li>审计里的行动人按原值存，也按原值给出，没有脱敏：设计没有定义怎么脱敏，见 F05 §6.9。F03 OD-09（审计里的个人信息与删除请求的冲突）没有处理：应用角色不能改也不能删，没有去标识化，也没有保留期；审计导出、归档和保留策略（FR-068，V1）都没有。</li>
+<li>审计里的行动人按原值存，也按原值给出，没有脱敏：设计没有定义怎么脱敏，CR-0002 决定 2 认可按原值给出，见 F05 §6.9、§6.15。F03 OD-09（审计里的个人信息与删除请求的冲突）没有处理：应用角色不能改也不能删，没有去标识化，也没有保留期；审计导出、归档和保留策略（FR-068，V1）都没有。</li>
 <li><code>delivery_status</code> 仍然只有 <code>UNKNOWN</code>（§5.10）。</li>
-<li>按编号下载 Release 不看阻断，不核对批准，与设计正文不一致，待裁决，见 F05 §6.9。</li>
+<li>按编号下载 Release 不看阻断，不核对批准（0.27.0–0.37.0），与设计正文不一致：已由 CR-0002 裁决，0.38.0 起看这个 Release 在任一目标上的阻断，目标和资产的阻断不看；批准 0.37.0 起已没有（§5.15）。见 F05 §6.9、§6.15。</li>
 <li>Release 的来源是准备时的记录，Git 提交是声明，不回仓库核对（FR-021，V1）。</li>
 </ul>
 <h3 id="section-5-13">5.13 已实现的工作台查询</h3>
@@ -1717,7 +1721,7 @@
 <p>读的行数受规划器的选择影响：这份数据里 <code>contract_release</code> 只有几十到几百行（2,000 个资产时 40 行，20,000 个资产时 400 行），规划器把它整张读，所以量到的行数里它占了很大一部分（20,000 个资产、不带筛选的一页读 1,129 行，其中 400 行是它）。提交里的计划测试用两万行的大表，数的是读的行数：一组资产在 <code>contract_revision</code>、<code>source_snapshot</code>、<code>contract_release</code>、<code>check_run</code> 里读的行数与这一组的大小成正比，不做全表扫描，规则结果只读留下的检查。</p>
 <ul>
 <li>批量读取和单独读在校验上的差别。批量读取和单独读一样，要求检查的行对得上模型记下的样子（状态等于各规则结果之和），而且检查读的闭包摘要就是修订现在的；行被改坏时，概况和单独读一样答 500，而且对读得了概况的人，这让这个资产的读（<code>getAsset</code> 和列表）整个答 500，不只是少了概况。两处不同：批量读取不去 Contract Registry 查对比检查的基线修订；带 <code>check_status</code> 时，被排除的检查不读规则结果，用的是库里存的状态，不核对它等于规则结果之和。</li>
-<li>没有汇总表。设计阶段比较过两种做法，都没有选。一是触发器维护的汇总表：读的行数不随资产总数涨，但触发器要进到导入、检查、评审、准备 Release 四条核心写路径，它出错就是这些写全部失败；这是仓库里第一次让数据库替应用维护数据，也是第一次在库里跨上下文。二是 Outbox 加 worker 的事件投影（§3.3、§12 设计的做法）：不碰写路径，但概况会落后一小段时间，要新增 worker 和回填，而事件现在只写进库，没有任何消费者。现在的做法与它们的契约和端口相同，以后可以换，换的只是 <code>cmd/fabric-api/overview.go</code> 背后的读取。§3.3 里目录列表的可重建投影 <code>AssetSearchIndex</code> 仍然没有：列表读 <code>api_asset</code> 的索引，概况在读的时候算。资产多到一个产品几万个，或者页面轮询这两个筛选时，要重新看这一点；待裁决。</li>
+<li>没有汇总表。设计阶段比较过两种做法，都没有选。一是触发器维护的汇总表：读的行数不随资产总数涨，但触发器要进到导入、检查、评审、准备 Release 四条核心写路径，它出错就是这些写全部失败；这是仓库里第一次让数据库替应用维护数据，也是第一次在库里跨上下文。二是 Outbox 加 worker 的事件投影（§3.3、§12 设计的做法）：不碰写路径，但概况会落后一小段时间，要新增 worker 和回填，而事件现在只写进库，没有任何消费者。现在的做法与它们的契约和端口相同，以后可以换，换的只是 <code>cmd/fabric-api/overview.go</code> 背后的读取。§3.3 里目录列表的可重建投影 <code>AssetSearchIndex</code> 仍然没有：列表读 <code>api_asset</code> 的索引，概况在读的时候算。资产多到一个产品几万个，或者页面轮询这两个筛选时，要重新看这一点。CR-0002 决定 4：读的时候算是认可的做法，<code>AssetSearchIndex</code> 等资产数量需要时再建。</li>
 </ul>
 <p><strong>升级。</strong> 从 0.28.0 升级只需要 <code>fabric-migrate -apply</code>，不需要重新授权：应用 <code>policyreview/006</code>，只建 <code>review_request_queue_order</code> 一个索引，不改行，应用角色的权限没有变。库没有迁移时，0.30.0 和 0.31.0 的新进程拒绝启动并指出这一步没有记录：<code>db: the database is not migrated for this build; run fabric-migrate -apply first: migration policyreview/006_review_queue_order is not recorded</code>。旧进程在迁移后的库上照常运行：它读评审和写评审用的语句没有变，它的启动检查只查自己计划里的步骤，计划以外的步骤接受（<code>internal/platform/db/open.go</code> 的 <code>checkHistory</code>）。旧进程没有新的路径，对 <code>GET /v1/caller</code>、<code>GET /v1/products/{product_id}/caller</code> 和 <code>GET …/workspaces/{workspace_id}/reviews</code> 答 404 <code>ROUTE_NOT_FOUND</code>；它的 <code>listAssets</code> 不认识 <code>check_status</code> 和 <code>release_pending</code>，答 400 <code>REQUEST_INVALID</code>，资产的应答里没有 <code>overview</code>。建索引用普通 <code>CREATE INDEX</code>，建的时候新提交评审的写入要等，评审越多等得越久，读不受影响。概况没有状态，0.31.0 不需要任何准备，要用新筛选的页面等所有进程升级完再上。</p>
 <p><strong>和 §15 读模型的对应。</strong> 三个读模型现在有的和还缺的（§5.12 的表里的其余几行没有变）：</p>
@@ -1738,7 +1742,7 @@
 <tr>
 <td>AuthorizedCatalogView</td>
 <td>资产列表和详情带概况（最新修订、最近一次检查、最新 Release、<code>release_pending</code>），可按检查结论和待发布筛选，授权过滤和筛选都在分页之前（0.31.0）</td>
-<td>概况只给读得了修订的人，负责人和维护者看不到；概况里没有“当前发布”，要读 <code>listAssetPublications</code>；没有 <code>AssetSearchIndex</code> 投影</td>
+<td>概况只给读得了修订的人，负责人和维护者看不到；概况里没有“当前发布”，要读 <code>listAssetPublications</code>；没有 <code>AssetSearchIndex</code> 投影（CR-0002：资产数量需要时再建）</td>
 </tr>
 <tr>
 <td>ContractReviewView</td>
@@ -1750,11 +1754,11 @@
 <p>F06 的 IN-01（首页的待审核、检查失败、可发布、撤销风险）没有单独的汇总接口，要由页面拼：待审核是 <code>listWorkspaceReviews</code> 加 <code>status=IN_REVIEW</code>，检查失败是 <code>listAssets</code> 加 <code>check_status=FAIL</code>，可发布是 <code>listAssets</code> 加 <code>release_pending=true</code>，撤销风险是 <code>listPublicationSlots</code> 和 <code>listAssetPublications</code>（每项带 <code>approval_problem</code> 和 <code>blocked</code>，不能按它们筛选）。页面先用 <code>getCallerInProduct</code> 看自己的身份，再决定调哪些：没有权限的调用每次都被拒绝，也每次都留下一条审计记录（F05 §6.10）。</p>
 <p><strong>尚未实现，以及与设计不一致的地方。</strong></p>
 <ul>
-<li>“我是谁”只有签发方和主体。显示名从哪里来没有定，另存会碰到个人信息的保留和删除，与 OD-09 同类。平台管理员只来自部署配置：页面能知道调用人是不是管理员，不能增减管理员，几个副本的配置不一致时，同一个人的答案会不同；没有放在库里的、可撤销且有记录的平台管理员角色。</li>
+<li>“我是谁”只有签发方和主体。显示名从哪里来没有定，另存会碰到个人信息的保留和删除，与 OD-09 同类。平台管理员只来自部署配置：页面能知道调用人是不是管理员，不能增减管理员，几个副本的配置不一致时，同一个人的答案会不同；没有放在库里的、可撤销且有记录的平台管理员角色。CR-0002 决定 3 认可部署配置：fabric-api 的每个副本带同一份设置，改动走部署自身的变更控制，Fabric 不审计这项改动（F05 §6.15）。</li>
 <li>没有评审的指派、“只列我能决定的”和待审核的条数：队列不给总数，要精确的数得另开一个操作。评审人点进去批的时候才知道自己批不了（403 <code>REVIEWER_NOT_INDEPENDENT</code>，§5.9）。<code>IN_REVIEW</code> 在评审特别多时读得更多，没有设上界，等量大了再决定要不要加“已结”标记。</li>
 <li>概况里没有“当前发布”（资产现在在哪些目标上生效）：逐个槽位核对批准太重，只看指针又可能与实际不符。要看用 <code>listAssetPublications</code>，撤销风险用 <code>listPublicationSlots</code>。<code>release_pending</code> 不重新核对批准；另给一个把批准是否还成立算进去的“可以发布”筛选，没有做。</li>
 <li><code>check_status</code> 收 <code>PASS</code>、<code>WARN</code>、<code>FAIL</code>、<code>UNKNOWN</code> 四个取值。基线里有规则没有工具，一次检查里就有 <code>NOT_RUN</code> 的规则，检查的总状态目前只会是 <code>FAIL</code> 或 <code>UNKNOWN</code>（§5.8），所以 <code>PASS</code> 和 <code>WARN</code> 今天没有结果。“检查失败”是最新修订最近一次检查是 <code>FAIL</code>，也包括评审时豁免了失败规则并批准的修订，这样的修订同时是 <code>release_pending</code>。</li>
-<li>没有汇总表，没有 <code>AssetSearchIndex</code>，没有事件投影，见上；这是与 §3.3 的设计不一致的地方，待裁决。</li>
+<li>没有汇总表，没有 <code>AssetSearchIndex</code>，没有事件投影，见上；这原是与 §3.3 的设计不一致的地方，CR-0002 决定 4 认可读的时候算，资产数量需要时再建索引。</li>
 <li>设计里首页的 Worklist（F06 IN-01）和目录的 Asset Index（F06 IN-03）都没有做成读模型：首页要由页面拼，目录列表读 <code>api_asset</code>。</li>
 <li>批量读取带回完整的修订行，一个都不符合的 20,000 个资产要收 40,002 行；只选概况用到的列，等有人觉得慢再做。</li>
 <li>0.31 阶段的后续工作包括浏览器登录、会话、评审通知及扩充治理读取权限。当前实现见 §5.14 和 F05 §6.12。</li>
@@ -2840,6 +2844,7 @@ WHERE slot_id = :slot_id
 </tr>
 </tbody>
 </table></div>
+<p>CR-0002（2026-11-26 已决定）裁决了实现与设计不一致的四处，不新增也不关闭上表的条目：按编号下载看这个 Release 的阻断（§5.12）；审计员看到行动人的原值，OD-09 的删除请求冲突仍然开着；平台管理员留在部署配置（§5.13）；<code>AssetSearchIndex</code> 资产数量需要时再建（§3.3、§5.13）。</p>
 <p><strong>设计细化声明</strong>：F03 在原始架构候选阶段显式引入 <code>PublicationSlot</code>、<code>SourceSnapshot</code>、<code>AccessBlock</code>、Approval Evidence Scope 和 Portal DeliveryState 的细化语义；这些是为满足现有 FR 和 AI 不变量提出的领域设计。F02 和 ADR-0004 的候选正文已统一 Slot 粒度；若批准人否决该方案，必须重新启动 F02–F08 的影响分析并更新相应 ADR。当前仅完成文档一致性修订，未取得正式架构批准。</p>
 <h2 id="section-17">17. F04–F08 责任边界与顺序交接</h2>
 <div aria-label="可左右滚动的领域模型与验收表格" class="table-scroll" role="region" tabindex="0"><table>

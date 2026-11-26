@@ -34,6 +34,12 @@ type ReleaseScopes interface {
 	// if it was prepared under one, as they were recorded: it fails for
 	// ones that are not what the release recorded.
 	Evidence(context.Context, domain.Release) (domain.ReleaseEvidence, error)
+	// ReleaseBlocked reports whether an access block that is not cleared
+	// names the release, on any publication target of its product. A block
+	// of a target or of an asset names no release. It is read in the
+	// transaction of the context, ordered with the making and clearing of
+	// blocks as a read through a slot is.
+	ReleaseBlocked(context.Context, domain.Release) (bool, error)
 }
 
 type ReleaseEvents interface {

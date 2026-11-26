@@ -18,7 +18,9 @@ import (
 type releaseDouble struct {
 	*registryDouble
 	publisher, active bool
-	checked           struct {
+	// noMaterial withholds the grant that downloads a release.
+	noMaterial bool
+	checked    struct {
 		evidence domain.CheckEvidence
 		waivers  []domain.Waiver
 		err      error
@@ -26,6 +28,12 @@ type releaseDouble struct {
 	asked    []checkAsked
 	releases []domain.Release
 	prepared int
+	// artifacts are the bytes recorded under their digests. blocked names
+	// the releases an access block names, and blocksAsked the releases
+	// Publication was asked about.
+	artifacts   map[string][]byte
+	blocked     map[string]bool
+	blocksAsked []string
 }
 
 type checkAsked struct {
@@ -35,7 +43,7 @@ type checkAsked struct {
 }
 
 func (d *releaseDouble) ReleaseAccess(context.Context, domain.Principal, domain.AssetRef) (ports.ReleaseAccess, error) {
-	return ports.ReleaseAccess{Metadata: true, Material: true, Publisher: d.publisher, Active: d.active}, nil
+	return ports.ReleaseAccess{Metadata: true, Material: !d.noMaterial, Publisher: d.publisher, Active: d.active}, nil
 }
 
 func (d *releaseDouble) Check(_ context.Context, revision domain.Revision, checkRunID string, waivers []domain.Waiver) (domain.CheckEvidence, []domain.Waiver, error) {
@@ -45,6 +53,11 @@ func (d *releaseDouble) Check(_ context.Context, revision domain.Revision, check
 
 func (d *releaseDouble) Evidence(context.Context, domain.Release) (domain.ReleaseEvidence, error) {
 	return domain.ReleaseEvidence{}, errors.New("a preparation reads no evidence")
+}
+
+func (d *releaseDouble) ReleaseBlocked(_ context.Context, release domain.Release) (bool, error) {
+	d.blocksAsked = append(d.blocksAsked, release.ID)
+	return d.blocked[release.ID], nil
 }
 
 func (d *releaseDouble) Find(_ context.Context, asset domain.AssetRef, id string) (domain.Release, bool, error) {
@@ -69,15 +82,21 @@ func (d *releaseDouble) List(context.Context, domain.AssetRef, *ports.Position, 
 	return d.releases, nil
 }
 
-func (d *releaseDouble) Record(_ context.Context, release domain.Release, _ []byte) (bool, error) {
+func (d *releaseDouble) Record(_ context.Context, release domain.Release, payload []byte) (bool, error) {
 	if _, taken, _ := d.Version(context.Background(), release.Asset, release.Version); taken {
 		return false, nil
 	}
 	d.releases = append(d.releases, release)
+	if d.artifacts == nil {
+		d.artifacts = map[string][]byte{}
+	}
+	d.artifacts[release.ArtifactDigest] = payload
 	return true, nil
 }
 
-func (d *releaseDouble) Artifact(context.Context, string) ([]byte, error) { return nil, nil }
+func (d *releaseDouble) Artifact(_ context.Context, digest string) ([]byte, error) {
+	return d.artifacts[digest], nil
+}
 
 func (d *releaseDouble) Prepared(context.Context, domain.Release, string) error {
 	d.prepared++
@@ -214,5 +233,57 @@ func TestAVersionNamesOneReleaseOfOneRevisionCheckAndWaivers(t *testing.T) {
 	double.releases = append(double.releases, reviewed)
 	if _, err := uses.Prepare(context.Background(), preparing("check", "0.9.0")); !errors.Is(err, application.ErrReleaseConflict) {
 		t.Errorf("the version of a release prepared under a review: %v, want %v", err, application.ErrReleaseConflict)
+	}
+}
+
+// A release that an access block names is not downloaded by its identifier
+// (CR-0002), and the refusal is on record as DENY-03 of the download, as a
+// refusal for want of the grant is. Publication is asked about the release
+// that was found under the asset, once the grant is checked: a caller without
+// the grant is refused for that, and a release that is not there is not
+// asked about. Without the block, the bytes are what the release was
+// prepared with, and a download that is served leaves no record.
+func TestAReleaseThatABlockNamesIsNotDownloadedByItsIdentifier(t *testing.T) {
+	ctx := context.Background()
+	uses, double := releases(t, "DRAFT")
+	prepared, err := uses.Prepare(ctx, preparing("check", "1.0.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, query := prepared.Release.ID, preparing("check", "1.0.0").ScopeQuery
+	double.audited = nil
+
+	download, err := uses.GetReleaseArtifact(ctx, query, id)
+	if err != nil || download.Release.ID != id || len(download.Payload) == 0 ||
+		domain.VerifyArtifact(prepared.Release.ArtifactDigest, download.Payload) != nil {
+		t.Fatalf("the release is downloaded as %+v (%v), want the bytes it was prepared with", download, err)
+	}
+	if len(double.audited) != 0 {
+		t.Errorf("a download that was served left %+v, want no record", double.audited)
+	}
+
+	double.blocked = map[string]bool{id: true}
+	if download, err := uses.GetReleaseArtifact(ctx, query, id); !errors.Is(err, application.ErrReleaseBlocked) || download.Payload != nil {
+		t.Errorf("a blocked release is downloaded as %+v (%v), want %v", download, err, application.ErrReleaseBlocked)
+	}
+	if len(double.audited) != 1 || double.audited[0].Action != "release.download" || double.audited[0].Rule != "DENY-03" ||
+		double.audited[0].Allowed || double.audited[0].Query != query {
+		t.Errorf("the refusal is on record as %+v, want one refusal of release.download under DENY-03", double.audited)
+	}
+	if _, err := uses.GetReleaseArtifact(ctx, query, "c0ffee00-0000-4000-8000-00000000000f"); !errors.Is(err, application.ErrReleaseNotFound) {
+		t.Errorf("a release that is not there: %v, want %v", err, application.ErrReleaseNotFound)
+	}
+	double.noMaterial = true
+	if _, err := uses.GetReleaseArtifact(ctx, query, id); !errors.Is(err, application.ErrForbidden) || errors.Is(err, application.ErrReleaseBlocked) {
+		t.Errorf("a caller without the grant, of a blocked release: %v, want %v alone", err, application.ErrForbidden)
+	}
+	double.noMaterial = false
+	if want := []string{id, id}; !reflect.DeepEqual(double.blocksAsked, want) {
+		t.Errorf("Publication was asked about %v, want %v", double.blocksAsked, want)
+	}
+
+	double.blocked = nil
+	if _, err := uses.GetReleaseArtifact(ctx, query, id); err != nil {
+		t.Errorf("the release once the block is cleared: %v, want it downloaded", err)
 	}
 }

@@ -23,6 +23,7 @@ type releaseAuthority struct {
 	revisionScopes
 	checks  *checks.Checks
 	reviews *checks.Reviews
+	blocks  *publication.ReleaseBlocks
 }
 
 func (s releaseAuthority) Asset(ctx context.Context, query registryports.ScopeQuery) (registryports.AssetScope, error) {
@@ -70,6 +71,15 @@ func (s releaseAuthority) check(ctx context.Context, revision registrydomain.Rev
 		Revision: checkRevision(revision), CheckRunID: checkRunID, InputDigest: revision.RefClosureDigest,
 		Waivers: waivers, Preparing: preparing, Baseline: baseline,
 	})
+}
+
+// ReleaseBlocked asks Publication, which keeps the access blocks, whether one
+// names the release on a target of its product, for the registry to refuse
+// the download of the release by its identifier (CR-0002). The registry has
+// checked the grant of the caller already; Publication holds the targets of
+// the product in the transaction of ctx before it reads their blocks.
+func (s releaseAuthority) ReleaseBlocked(ctx context.Context, release registrydomain.Release) (bool, error) {
+	return s.blocks.Blocked(ctx, release.Asset.ProductID, release.Asset.AssetID, release.ID)
 }
 
 func evidenceOf(verified checks.VerifiedCheck) registrydomain.CheckEvidence {

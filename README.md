@@ -7,7 +7,7 @@
 
 ## 工程实现同步（2026-11-19）
 
-> 下面按版本记录实现。0.17.0–0.36.0 各段写到的评审、批准和 `approval_problem` 已由 0.37.0（[CR-0001](decisions/CR-0001.md)）取消，现状见本节最后两段。
+> 下面按版本记录实现。0.17.0–0.36.0 各段写到的评审、批准和 `approval_problem` 已由 0.37.0（[CR-0001](decisions/CR-0001.md)）取消，现状见本节 0.37.0 的两段；0.38.0（[CR-0002](decisions/CR-0002.md)）见本节最后一段。
 
 PR #6（产品负责人管理）和 #7（四类分页列表）已合入 main。对应领域与物理模型见 F03 §5.5，分页协议见 F04 §3.1.1，权限规则见 F05 §6.1；授权矩阵新增 AC-36…43，仍保留设计候选状态。可复现的本地 HTTP 负载实验及原始数据见 [列表压测记录](tests/performance/README.md)。该实现记录不改变 F01–F08 正式验收和具名批准的状态。
 
@@ -47,13 +47,13 @@ PR #10 和 #11 的实现详见 [F03 §5.6](docs/F03_Domain_and_Data_Model.md#56-
 
 实现详见 [F03 §5.11](docs/F03_Domain_and_Data_Model.md#511-已实现的复审与批准状态的可见性)、[F04 §11.7](docs/F04_API_Contract_Governance.md#117-已实现的复审接口与批准状态) 和 [F05 §6.8](docs/F05_Security_and_Multitenancy.md#68-已实现的复审与批准状态的权限)。授权矩阵没有新增条目。
 
-管理 API 0.26.0–0.28.0 加入查询与追溯：资产所属 Workspace 的作者、评审人和发布人能列出一个发布目标上的槽位，也能列出一个资产发布到了哪些目标，列表里的每一项和单独读到的槽位完全一样，含 `blocked` 和 `approval_problem`（0.26.0）；能按编号下载一个 Release 的制品，已经被替换或撤回的也行，也能读出一个 Release 的来源：它依据的修订（含提交人声明的 Git 来源）、检查和批准，复审之后不变（0.27.0）；产品多了一个角色 `internal_auditor`（审计员），由产品负责人授予，审计员按产品读审计记录，新的在前，可以按时间、动作、结果、行动人、资源和请求编号筛选（0.28.0）。新增 5 个操作，到 0.28.0 共 57 个。按编号下载不看发布目标上的访问阻断，也不重新核对批准；审计记录里的行动人如实给出，没有脱敏。这两处与设计正文不一致，待裁决。
+管理 API 0.26.0–0.28.0 加入查询与追溯：资产所属 Workspace 的作者、评审人和发布人能列出一个发布目标上的槽位，也能列出一个资产发布到了哪些目标，列表里的每一项和单独读到的槽位完全一样，含 `blocked` 和 `approval_problem`（0.26.0）；能按编号下载一个 Release 的制品，已经被替换或撤回的也行，也能读出一个 Release 的来源：它依据的修订（含提交人声明的 Git 来源）、检查和批准，复审之后不变（0.27.0）；产品多了一个角色 `internal_auditor`（审计员），由产品负责人授予，审计员按产品读审计记录，新的在前，可以按时间、动作、结果、行动人、资源和请求编号筛选（0.28.0）。新增 5 个操作，到 0.28.0 共 57 个。按编号下载不看发布目标上的访问阻断，也不重新核对批准；审计记录里的行动人如实给出，没有脱敏。这两处与设计正文不一致，已由 [CR-0002](decisions/CR-0002.md) 裁决：0.38.0 起按编号下载看这个 Release 的阻断，审计如实给出行动人是认可的做法。
 
 从 0.25.0 升级需要重新授权：先执行 `fabric-migrate -apply -grant-to <application_role>`，应用 `productgovernance/009` 和 `platformoperations/002`，并给应用角色补上审计表的 `SELECT`（它仍然没有 `UPDATE` 和 `DELETE`），再换进程。只迁移不授权时，新进程拒绝启动：`db: the application role lacks privileges this build needs; run fabric-migrate -apply -grant-to <role>: missing SELECT on platformoperations.audit_record`。建索引用普通 `CREATE INDEX`，建的时候审计表的写入要等。旧进程在迁移和授权之后照常运行。所有进程升级以后，才授予 `internal_auditor`：旧进程的契约里没有这个角色，会拒绝授予请求；库里有了审计员，它列产品角色会返回 500。0.26.0 和 0.27.0 本身没有迁移，也不需要授权。
 
 实现详见 [F03 §5.12](docs/F03_Domain_and_Data_Model.md#512-已实现的查询与追溯)、[F04 §11.8](docs/F04_API_Contract_Governance.md#118-已实现的查询接口) 和 [F05 §6.9](docs/F05_Security_and_Multitenancy.md#69-已实现的查询与审计读取的权限)。授权矩阵没有新增条目。
 
-管理 API 0.29.0–0.31.0 加入内部工作台要先读的几样东西，都是读：调用人能问自己是谁、是不是平台管理员，也能问自己在一个产品里持有哪些角色、是哪些 Workspace 的成员，不能问别人（0.29.0，平台管理员来自部署配置，不在库里）；资产所属 Workspace 的作者、评审人和发布人能列出一个 Workspace 里的评审，先提交的在前，可以按状态和提交人筛选，读到的是整个 Workspace 的全部评审（0.30.0）；他们读到的资产多一个概况：最新修订、最新修订最近一次检查、最新 Release，以及最新修订已批准而还没做 Release，资产列表可以按检查结论和“可发布”筛选（0.31.0）。概况是读的时候现算的，没有汇总表；负责人和维护者读得到资产，读不到概况。新增 3 个操作，共 60 个。没有读权限的人每调用一次留下一条拒绝记录，页面应当先问身份再决定调不调。没有做汇总表和事件投影，设计里目录列表的可重建投影 `AssetSearchIndex` 仍然没有，这与设计不一致，待裁决；概况只给读得了修订的人，评审队列沿用读评审的名单，也待裁决。
+管理 API 0.29.0–0.31.0 加入内部工作台要先读的几样东西，都是读：调用人能问自己是谁、是不是平台管理员，也能问自己在一个产品里持有哪些角色、是哪些 Workspace 的成员，不能问别人（0.29.0，平台管理员来自部署配置，不在库里）；资产所属 Workspace 的作者、评审人和发布人能列出一个 Workspace 里的评审，先提交的在前，可以按状态和提交人筛选，读到的是整个 Workspace 的全部评审（0.30.0）；他们读到的资产多一个概况：最新修订、最新修订最近一次检查、最新 Release，以及最新修订已批准而还没做 Release，资产列表可以按检查结论和“可发布”筛选（0.31.0）。概况是读的时候现算的，没有汇总表；负责人和维护者读得到资产，读不到概况。新增 3 个操作，共 60 个。没有读权限的人每调用一次留下一条拒绝记录，页面应当先问身份再决定调不调。没有做汇总表和事件投影，设计里目录列表的可重建投影 `AssetSearchIndex` 仍然没有，这与设计不一致，已由 [CR-0002](decisions/CR-0002.md) 裁决：读的时候算是认可的做法，资产数量需要时再建索引；平台管理员留在部署配置也由 CR-0002 认可；概况只给读得了修订的人，评审队列沿用读评审的名单，也待裁决。
 
 从 0.28.0 升级只需要 `fabric-migrate -apply`，不需要重新授权，再换进程：它应用 `policyreview/006`，只建一个索引，不改行，应用角色的权限不变。库没迁移时，0.30.0 起的新进程拒绝启动：`db: the database is not migrated for this build; run fabric-migrate -apply first: migration policyreview/006_review_queue_order is not recorded`。建索引用普通 `CREATE INDEX`，建的时候新提交评审的写入要等，读不受影响。旧进程在迁移之后照常运行，对三个新路径答 404 `ROUTE_NOT_FOUND`，对带 `check_status` 或 `release_pending` 的资产列表答 400 `REQUEST_INVALID`，资产的应答里没有概况，所以用这些接口的页面等所有进程升级完再上。0.29.0 和 0.31.0 本身没有迁移，也没有新角色和新配置。
 
@@ -70,6 +70,8 @@ PR #10 和 #11 的实现详见 [F03 §5.6](docs/F03_Domain_and_Data_Model.md#56-
 管理 API 0.37.0 按 [CR-0001](decisions/CR-0001.md) 取消评审和批准（PR #74）。发布人准备 Release 时指定修订的一次检查（`check_run_id`），检查须在现行策略和工具下完成；结果为 `FAIL` 或 `UNKNOWN` 的可豁免规则逐条写理由豁免（`waivers`），不可豁免的规则没通过时不能准备。同一个人可以导入、检查、准备 Release 并发布；访问阻断仍由另一位安全评审人解除。激活和恢复只核对 Release 记录的检查，策略更新后已有 Release 仍可发布和恢复；`ACTIVATE` 替换另一修订的 Release 时，检查仍须以那个修订为对比基线。提交、撤回和决定评审的三个操作删除，现有 57 个操作；评审只能读取，`internal_reviewer` 不再授予，槽位不再有 `approval_problem`。这是破坏性变更，调用方要改用 `check_run_id` 准备 Release。
 
 升级执行 `fabric-migrate -apply`，不需要重新授权：应用 `contractregistry/005`、`006` 和 `policyreview/007`，仍在评审中的修订改为 `WITHDRAWN`，开着的评审记为撤回，理由引用 CR-0001，已有结论不变。迁移只处理执行时还开着的评审，旧进程应尽快换完。此后的构建（契约不变）收回应用角色对四张评审表的 `INSERT` 和 `contract_revision` 的 `UPDATE`：`fabric-migrate -apply -grant-to <application_role>` 会撤销这五项，所以执行前先停掉所有 0.36.x 及更早的进程，否则它们写评审会被拒绝，重启时也拒绝启动；0.37.0 的进程不受影响。门户随 PR #75 改为“导入 → 检查 → 准备 Release → 发布”。实现详见 [F03 §5.15](docs/F03_Domain_and_Data_Model.md#515-release-依据检查cr-000103700)、[F04 §11.6](docs/F04_API_Contract_Governance.md#116-已实现的-release-与发布接口) 和 [F05 §6.14](docs/F05_Security_and_Multitenancy.md#614-取消评审后的权限cr-000103700)。授权矩阵中 AC-03、AC-35、AC-50、AC-51 退役，编号保留。
+
+管理 API 0.38.0 按 [CR-0002](decisions/CR-0002.md)（内部使用从简）让按编号下载看这个 Release 的阻断：产品的任一发布目标上有范围是这个 Release、而且没有解除的访问阻断时，`getContractReleaseArtifact` 答 409 `RELEASE_ACCESS_BLOCKED`，解除以后恢复；目标和资产的阻断、产品暂停不挡，来源和元数据照常读。拒绝记 DENY-03、`release.download`。读阻断之前先对产品的全部发布目标加共享锁，放置和解除阻断与下载因此有确定的先后。没有迁移，不需要重新授权，操作数仍是 57；全部进程换完以后才对每次下载生效。CR-0002 另有三项只改文档：审计员看到行动人的原值（AC-29 去掉 `fields.minimized`），平台管理员留在部署配置（每个副本同一份设置，改动走部署自身的变更控制，Fabric 不审计），暂不建 `AssetSearchIndex`。实现详见 [F05 §6.15](docs/F05_Security_and_Multitenancy.md#615-内部使用从简cr-000203800)、[F04 §11.8](docs/F04_API_Contract_Governance.md#118-已实现的查询接口) 和 [F03 §5.12](docs/F03_Domain_and_Data_Model.md#512-已实现的查询与追溯)。
 
 ## 阅读入口
 
@@ -154,7 +156,8 @@ idp-api-fabric/
 │   ├── ADR-0006.md
 │   ├── ADR-0007.md
 │   ├── ADR-0008.md
-│   └── CR-0001.md
+│   ├── CR-0001.md
+│   └── CR-0002.md
 ├── portal/prototypes/              # F06-A / F06-B 离线高保真交互原型和共享 CSS
 └── scripts/
     ├── requirements-docs.txt
@@ -221,7 +224,7 @@ python scripts/verify_manifest.py
 
 ## F05 安全设计的可审查资产与界限
 
-- [F05 授权矩阵](governance/policies/F05_Access_Matrix.csv) 收录 54 条候选操作级规则。负责人管理、列表、受众配置和品牌的实现见 F05 §6.1、§6.3，契约评审的实现见 F05 §6.6，评审队列的条目 AC-54 见 F05 §6.13。AC-03、AC-35、AC-50、AC-51 已按 CR-0001 退役（`RETIRED`，编号保留），取消评审后的权限见 F05 §6.14。
+- [F05 授权矩阵](governance/policies/F05_Access_Matrix.csv) 收录 54 条候选操作级规则。负责人管理、列表、受众配置和品牌的实现见 F05 §6.1、§6.3，契约评审的实现见 F05 §6.6，评审队列的条目 AC-54 见 F05 §6.13。AC-03、AC-35、AC-50、AC-51 已按 CR-0001 退役（`RETIRED`，编号保留），取消评审后的权限见 F05 §6.14。AC-29 按 CR-0002 去掉 `fields.minimized`，见 F05 §6.15。
 - [F05 STRIDE 风险登记册](governance/policies/F05_Threat_Register.csv)：29 项威胁及待具名 Owner/残余风险。
 - [F05 授权策略设计 JSON](governance/policies/F05_Authorization_Policy_DRAFT.json)：仅为可读/可检查样例，不是可投入生产的 PDP。
 - [F05 安全测试计划](tests/acceptance/F05_security_scenarios.csv)：36 个场景均为 `NOT_RUN`。
@@ -229,6 +232,7 @@ python scripts/verify_manifest.py
 - [ADR-0007](decisions/ADR-0007.md)：受限访问失败关闭及安全撤销，状态仍为 Proposed。
 - [ADR-0008](decisions/ADR-0008.md)：检查之外执行的 10 条规则如何计入检查结论，状态仍为 Proposed。CR-0001 之后没有评审人读检查结论，开发侧建议不再推进，留待 Governance Owner 关闭。
 - [CR-0001](decisions/CR-0001.md)：内部使用不再设审批，准备 Release 以检查为准，已决定，管理 API 0.37.0 已实现（PR #74）。设计正文已同步：AC-03、AC-35、AC-50、AC-51 退役，AC-04 去掉 `decision.valid`，AC-52–AC-54 只读历史；F04-GOV-016、025 的含义变化只写在 F04 §11.4，规则登记表不改。
+- [CR-0002](decisions/CR-0002.md)：内部使用从简，裁决四处设计与实现不一致，已决定（项目开发负责人，2026-11-26）。按编号下载看这个 Release 的阻断，管理 API 0.38.0 已实现；审计员看到行动人的原值、平台管理员留在部署配置、暂不建 `AssetSearchIndex` 三项只改文档。设计正文、F05 资产和 MANIFEST 已同步。
 
 **注意**：本阶段所谓通过仅指文档、矩阵、脚本与压缩包的静态一致性；不存在真实渗透、安全审计、IAM/Gateway/CDN 联调或生产恢复测试 PASS。F06 双门户设计已完成；下一阶段应依据 `docs/README.md` 的 F07 交接约束开展工程实现与质量设计。
 

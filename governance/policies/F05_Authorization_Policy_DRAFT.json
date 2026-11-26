@@ -443,8 +443,7 @@
       "resource": "AuditRecord",
       "when_all": [
         "auditor.scope",
-        "product.allowed",
-        "fields.minimized"
+        "product.allowed"
       ]
     },
     {

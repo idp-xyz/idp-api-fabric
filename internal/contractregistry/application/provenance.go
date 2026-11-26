@@ -27,12 +27,22 @@ type ReleaseDownload struct {
 // holds a release evidence grant for the asset.
 //
 // The release is read the way GetRelease reads it, so a release of another
-// asset or product is no release here. Its bytes are read and verified as
+// asset or product is no release here. A release that an access block names,
+// on any publication target of the product and whatever the target serves,
+// is not downloaded until the block is cleared (ErrReleaseBlocked, CR-0002):
+// a block of one release is a block of its bytes, wherever they are read.
+// A block of a whole target or of an asset on it does not refuse
+// the download: it is about what the target serves, and a release read by
+// its identifier is served to no target. Its bytes are read and verified as
 // ReleaseMaterial does for a slot: the closure of its revision is the one
-// the release records and the bytes are those of its digest. That is all that
-// is asked of it. The access blocks of a publication target are not looked
-// at: they belong to what a slot serves to a target, and a release read by
-// its identifier is served to no target. A product that is suspended still shows what it has released.
+// the release records and the bytes are those of its digest. A product that
+// is suspended still shows what it has released.
+//
+// The blocks are read after the grants of the caller and in the same
+// transaction, which is the order a read through a slot takes them in: the
+// targets of the product are held as that read holds its target, so a block
+// made or cleared at the same time is ordered with the download (see
+// ReleaseScopes.ReleaseBlocked).
 func (r *Releases) GetReleaseArtifact(ctx context.Context, query ports.ScopeQuery, id string) (ReleaseDownload, error) {
 	var download ReleaseDownload
 	err := r.deps.Transactions.WithinTransaction(ctx, func(tx context.Context) error {
@@ -43,6 +53,13 @@ func (r *Releases) GetReleaseArtifact(ctx context.Context, query ports.ScopeQuer
 		release, err := r.FindRelease(tx, asset, id)
 		if err != nil {
 			return err
+		}
+		blocked, err := r.deps.Scopes.ReleaseBlocked(tx, release)
+		if err != nil {
+			return err
+		}
+		if blocked {
+			return ErrReleaseBlocked
 		}
 		_, payload, err := r.ReleaseMaterial(tx, release)
 		if err != nil {

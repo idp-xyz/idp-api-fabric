@@ -42,7 +42,8 @@ matrix_rows_raw=[
  ('ci_service','ContractRevision','ci.revision.submit','service','token.audience & service.scope & source.allowed & product.same','control-plane','DENY'),
  ('ci_service','CheckRun','ci.check.read','service','token.audience & service.scope & product.same','governance-PEP','DENY'),
  ('worker','ImportJob','job.execute','service','workload.identity & lease.valid & job.scope & egress.restricted','worker-admission','DENY'),
- ('internal_auditor','AuditRecord','audit.search','internal','auditor.scope & product.allowed & fields.minimized','audit-PEP','DENY'),
+ # CR-0002 drops fields.minimized: an auditor of the product reads who acted as recorded.
+ ('internal_auditor','AuditRecord','audit.search','internal','auditor.scope & product.allowed','audit-PEP','DENY'),
  ('auditor_exporter','AuditRecord','audit.export','internal','role.audit_export & purpose.approved & scope.finite & stepup.valid','audit-export-PEP','DENY'),
  ('platform_operator','Connector','connector.status.read','internal','operator.scope & secrets.redacted','connector-PEP','DENY'),
  ('connector_admin','Connector','connector.rotate','internal','role.connector_admin & stepup.valid & purpose.approved','connector-PEP','DENY'),
@@ -81,8 +82,8 @@ matrix_rows_raw=[
 # CR-0001 (decisions/CR-0001.md) retires the review and approval rules. They
 # keep their numbers, which audit records cite, and permit nothing any more.
 retired={'AC-03':'CR-0001','AC-35':'CR-0001','AC-50':'CR-0001','AC-51':'CR-0001'}
-# Rules CR-0001 changed but kept.
-changed={'AC-04':'CR-0001','AC-52':'CR-0001','AC-53':'CR-0001','AC-54':'CR-0001'}
+# Rules a change request changed but kept.
+changed={'AC-04':'CR-0001','AC-29':'CR-0002','AC-52':'CR-0001','AC-53':'CR-0001','AC-54':'CR-0001'}
 m=[]
 for i,(principal,res,action,channel,conditions,pep,fail) in enumerate(matrix_rows_raw,1):
  rid=f'AC-{i:02d}'

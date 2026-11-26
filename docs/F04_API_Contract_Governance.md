@@ -2,7 +2,7 @@
 
 **正式路径**：`docs/F04_API_Contract_Governance.md` 　**文档版本**：V1.0（沿用工程基线）　**日期**：2026-11-09  
 **状态**：完整设计候选，**待具名领域/安全/架构批准**；本稿中规则与示例是候选实施约束，不是已运行生产系统。  
-**变更**：[CR-0001](../decisions/CR-0001.md)（2026-11-26 已决定）取消评审和批准，准备 Release 以检查为准。管理 API 0.37.0 的实现见 §11.5、§11.6、§11.10；F04-GOV-016、025 的含义变化见 §11.4。  
+**变更**：[CR-0001](../decisions/CR-0001.md)（2026-11-26 已决定）取消评审和批准，准备 Release 以检查为准。管理 API 0.37.0 的实现见 §11.5、§11.6、§11.10；F04-GOV-016、025 的含义变化见 §11.4。[CR-0002](../decisions/CR-0002.md)（2026-11-26 已决定）按编号下载看这个 Release 的阻断，管理 API 0.38.0 的实现见 §11.8、§11.10，F04-GOV-015 见 §11.4。  
 **输入**：F01（FR-001–071 / NFR-01–18 / AT-01–12）、F02（AI-01–07、ADR-0001–0006 Proposed）、F03（INV-01–13、DM-01–18、OD-01–10）；上位规范 `IDP-SCG-STD-001`。  
 **范围**：HTTP OpenAPI、异步事件 AsyncAPI、契约来源/制品、兼容性、策略与审批、内外部分发与开发者体验的治理输入。  
 **不在本稿**：不重新定义 F03 聚合，不实现 Gateway/IAM，不伪造 Go 工具兼容结论；F05/F06/F07/F08 各自承担安全实施、双门户高保真、代码与真实验收。
@@ -380,7 +380,7 @@ F04-GOV-014 到 020、025 到 027 这 10 条管的是 Release、发布、评审�
 | 规则 | 在哪里执行 | 见 |
 |---|---|---|
 | F04-GOV-014 摘要链 | 准备 Release 时绑定修订的闭包摘要，制品按 SHA-256 寻址，读出时重新核对 | §11.6、F03 §5.10 |
-| F04-GOV-015 发布范围、CAS 与阻断 | 槽位按目标 × 资产唯一，改变槽位要带 `expected_generation`；经槽位读取时逐次检查阻断。按编号下载不看阻断，与设计不一致，待裁决 | §11.6、F05 §6.9 |
+| F04-GOV-015 发布范围、CAS 与阻断 | 槽位按目标 × 资产唯一，改变槽位要带 `expected_generation`；经槽位读取时逐次检查阻断。按编号下载 0.27.0–0.37.0 不看阻断，与设计不一致；CR-0002 裁决后，0.38.0 起看这个 Release 在任一目标上的阻断，目标和资产的阻断不看 | §11.6、§11.8、F05 §6.9、§6.15 |
 | F04-GOV-016 策略快照与批准 | 准备 Release 时核对检查、现行策略和豁免（CR-0001）。0.36.0 之前在准备 Release、`ACTIVATE` 和 `RESTORE` 时重新核对批准的范围、到期、豁免和现行策略 | §11.6 |
 | F04-GOV-017 渲染清理 | 内部门户不使用 `innerHTML` 这类写入 HTML 的接口；开发者门户用 `html/template` 转义契约文本 | `cmd/fabric-portal`、`cmd/fabric-developer-portal` |
 | F04-GOV-018 工具与输入的来源 | 每次检查都记录 `tool_manifest` 和 `input_digest`，由检查记录本身满足 | 本节“检查全文” |
@@ -601,7 +601,7 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 
 时刻是 RFC 3339，建议用 `Z` 结尾；带偏移的 `+` 在查询里要写成 `%2B`，否则它是一个空格，请求被拒绝（400 `REQUEST_INVALID`）。时刻按微秒记，更细的截到微秒。`recorded_since` 不早于 `recorded_before` 是 422 `REQUEST_UNPROCESSABLE`：这一条只有模型能判断，所以只对审计员给出，不是审计员的人得到的是 403 或 404。其余条件的格式（上表里的长度、字符和 UUID 形式）契约已经声明，不符合的是 400 `REQUEST_INVALID`；契约没有声明的参数同样是 400（§3.1.1）。一页读多少行：不带筛选的一页读的行数和它返回的相当；按动作、结果、行动人和资源筛选没有索引，满足条件的记录很少时，一页要读很多行（F03 §5.12）。
 
-**下载（0.27.0）。** `GET …/releases/{release_id}/artifact` 按 Release 的编号下载它的制品：`application/octet-stream`，字节就是这个 Release 准备时用的字节（§11.6 说的 `fabric-openapi-source/v1` JSON）。`X-Artifact-Digest` 是响应字节的 SHA-256，也就是 Release 的 `artifact_digest`，格式是 `sha256:` 加小写十六进制，客户端可以自己再算一遍。读取之前，服务端核对制品字节的摘要和修订的闭包摘要，与读槽位的制品时一样。与 `getPublishedArtifact` 不同，它不看槽位指向谁：同一个资产的任何 Release 都可以下载，包括已经被别的 Release 替换的和撤回的。谁能读这个 Release 谁就能下载：资产所属 Workspace 的作者、评审人和发布人，产品暂停时也可以。**它不看发布目标上的访问阻断，也不重新核对批准，这与设计正文不一致，待裁决，见 F05 §6.9。** 0.37.0 起没有批准可核对，剩下的不一致是不看访问阻断。 路径里的 `release_id` 必须是 Release 的编号：摘要和版本号不是编号，是 400 `REQUEST_INVALID`。
+**下载（0.27.0）。** `GET …/releases/{release_id}/artifact` 按 Release 的编号下载它的制品：`application/octet-stream`，字节就是这个 Release 准备时用的字节（§11.6 说的 `fabric-openapi-source/v1` JSON）。`X-Artifact-Digest` 是响应字节的 SHA-256，也就是 Release 的 `artifact_digest`，格式是 `sha256:` 加小写十六进制，客户端可以自己再算一遍。读取之前，服务端核对制品字节的摘要和修订的闭包摘要，与读槽位的制品时一样。与 `getPublishedArtifact` 不同，它不看槽位指向谁：同一个资产的任何 Release 都可以下载，包括已经被别的 Release 替换的和撤回的。谁能读这个 Release 谁就能下载：资产所属 Workspace 的作者、评审人和发布人，产品暂停时也可以。0.27.0–0.37.0 中，它不看发布目标上的访问阻断，也不重新核对批准，这与设计正文不一致，当时待裁决（F05 §6.9）；0.37.0 起没有批准可核对。**0.38.0 起（CR-0002），这个 Release 在产品的任一发布目标上有范围是它、而且没有解除的阻断时，下载被拒绝（409 `RELEASE_ACCESS_BLOCKED`），不管它在不在那个目标上生效过；解除以后恢复。** 目标级和资产级的阻断不挡，产品暂停也不挡；来源和元数据不看阻断。不能下载的人先得到 403 或 404，不会知道有阻断。拒绝记 DENY-03、`release.download`（F05 §6.15）。路径里的 `release_id` 必须是 Release 的编号：摘要和版本号不是编号，是 400 `REQUEST_INVALID`。
 
 **来源（0.27.0）。** `GET …/releases/{release_id}/provenance` 一次给出一个 Release 准备时依据的事实，成员是：
 
@@ -617,7 +617,7 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 | 操作 | 状态码和错误码 |
 |---|---|
 | 两个槽位列表 | 400 `REQUEST_INVALID`（参数）和 `PAGE_TOKEN_INVALID`（不是这个列表的令牌）；401；403 `FORBIDDEN`（知道产品，但读不了任何槽位）；404 `PRODUCT_NOT_FOUND`；目标的列表还有 404 `PUBLICATION_TARGET_NOT_FOUND`，资产的列表还有 404 `API_ASSET_NOT_FOUND` |
-| 下载和来源 | 400 `REQUEST_INVALID`（`release_id` 不是编号）；401；403 `FORBIDDEN`；404 `PRODUCT_NOT_FOUND`、`API_ASSET_NOT_FOUND` 和 `RELEASE_NOT_FOUND`；500 `INTERNAL_ERROR`（存储与 Release 所记的对不上） |
+| 下载和来源 | 400 `REQUEST_INVALID`（`release_id` 不是编号）；401；403 `FORBIDDEN`；404 `PRODUCT_NOT_FOUND`、`API_ASSET_NOT_FOUND` 和 `RELEASE_NOT_FOUND`；下载另有 409 `RELEASE_ACCESS_BLOCKED`（0.38.0，这个 Release 的阻断没有解除）；500 `INTERNAL_ERROR`（存储与 Release 所记的对不上） |
 | 审计记录 | 400 `REQUEST_INVALID` 和 `PAGE_TOKEN_INVALID`；401；403 `FORBIDDEN`（知道产品，但不是审计员）；404 `PRODUCT_NOT_FOUND`；422 `REQUEST_UNPROCESSABLE`（时间范围颠倒，只对审计员） |
 
 401 是 `CREDENTIALS_MISSING` 或 `TOKEN_INVALID`。404 的用法和读单个槽位、读 Release 一样：不认识产品的人得到 `PRODUCT_NOT_FOUND`；看不到资产的人（包括平台管理员和别的 Workspace 的读者）得到 `API_ASSET_NOT_FOUND`；别的资产和别的产品的 Release 编号，对读这个资产的人，与不存在的编号答案相同，都是 `RELEASE_NOT_FOUND`；别的产品的目标和资产，也与不存在的答案相同。
@@ -626,7 +626,7 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 
 ### 11.9 已实现的工作台查询接口
 
-本节对应管理 API 0.29.0–0.31.0，当时为 0.31.0（现行契约为 0.37.0，见 §11.10）：0.29.0 加入两个“我是谁”，0.30.0 加入一个 Workspace 里的评审队列，0.31.0 给资产的读取加上概况，并给资产列表加两个筛选。三个版本一共增加 3 个操作，当时是 60 个（0.37.0 起 57 个）。数据模型见 F03 §5.13，访问规则见 F05 §6.10。 [管理 API 契约](../api/openapi.yaml)
+本节对应管理 API 0.29.0–0.31.0，当时为 0.31.0（现行契约为 0.38.0，见 §11.10）：0.29.0 加入两个“我是谁”，0.30.0 加入一个 Workspace 里的评审队列，0.31.0 给资产的读取加上概况，并给资产列表加两个筛选。三个版本一共增加 3 个操作，当时是 60 个（0.37.0 起 57 个）。数据模型见 F03 §5.13，访问规则见 F05 §6.10。 [管理 API 契约](../api/openapi.yaml)
 
 | 方法 | 路径 | operationId | 从哪个版本起 |
 |---|---|---|---|
@@ -713,8 +713,9 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 | 0.35.0 | 角色分配列表支持 `role` 筛选。平台管理员在有权的产品内使用 `role=internal_auditor` 查看审计员 | 分页请求保持相同角色筛选。产品负责人保留查询权限，任命和撤销由独立的平台管理员操作 |
 | 0.36.0 | Workspace 角色枚举增加 `internal_reader`。该角色可查询所属 Workspace 的 Release 列表和元数据。目录、治理材料和发布读取体现维护者及安全角色的作用域 | 先应用迁移 010 并升级所有副本，再授予新角色。只读角色通过槽位读取内部制品并处理阻断后的 404 |
 | 0.37.0 | CR-0001：准备 Release 用 `check_run_id` 和 `waivers` 取代 `review_id`；删除 `requestRevisionReview`、`withdrawRevisionReview`、`decideRevisionReview`；槽位删除 `approval_problem`；`internal_reviewer` 不再授予；激活和恢复不再核对批准和发布人独立（§11.5、§11.6） | 破坏性变更。先执行 `fabric-migrate -apply`（`contractregistry/005`、`006` 和 `policyreview/007`，不需要重新授权），再换全部进程；调用方改用 `check_run_id` 准备 Release |
+| 0.38.0 | CR-0002：`getContractReleaseArtifact` 在这个 Release 的阻断（产品的任一发布目标上，没有解除）存在时答 409 `RELEASE_ACCESS_BLOCKED`，操作声明了 409；目标和资产的阻断、产品暂停不挡；`getPublishedArtifact`、`blockPublicationAccess` 的描述补了文字（§11.8） | 处理新的 409：0.37.0 下载成功的，Release 被阻断时现在被拒绝。没有迁移，不需要重新授权；全部进程换完以后才对每次下载生效 |
 
-0.33.0–0.36.0 沿用 60 个管理操作，0.37.0 删除 3 个评审写操作，现为 57 个。服务端按请求重新判权，列表在分页之前按授予的产品和 Workspace 范围过滤。写操作按各自角色检查。详细作用域与拒绝语义见 [F05 §6.12](F05_Security_and_Multitenancy.md#612-内部发布审计与读取权限033003500360)。
+0.33.0–0.36.0 沿用 60 个管理操作，0.37.0 删除 3 个评审写操作，现为 57 个；0.38.0 不增减操作，也没有新的 schema。服务端按请求重新判权，列表在分页之前按授予的产品和 Workspace 范围过滤。写操作按各自角色检查。详细作用域与拒绝语义见 [F05 §6.12](F05_Security_and_Multitenancy.md#612-内部发布审计与读取权限033003500360)。
 
 ## 12. API Catalog 元数据、文档产物和发布加工
 

@@ -42,6 +42,26 @@ WHERE product_id = $1 AND target_id = $2 AND cleared_at IS NULL
 	return found, err
 }
 
+// ReleaseBlocked takes the holds before it reads the blocks, and in a
+// statement of its own: a statement reads the rows committed when it starts,
+// so a block that was made or cleared while a hold was waited for is read by
+// the second statement and would be missed by one that took the holds too.
+func (s *Store) ReleaseBlocked(ctx context.Context, productID, assetID, releaseID string) (bool, error) {
+	tx, err := s.db.RequireExecutor(ctx)
+	if err != nil {
+		return false, err
+	}
+	const hold = `SELECT target_id FROM publication.target WHERE product_id = $1 ORDER BY target_id FOR SHARE`
+	if _, err := tx.Exec(ctx, hold, productID); err != nil {
+		return false, fmt.Errorf("hold the publication targets of the product: %w", err)
+	}
+	const query = `SELECT EXISTS (SELECT 1 FROM publication.access_block
+WHERE product_id = $1 AND api_asset_id = $2 AND release_id = $3 AND cleared_at IS NULL)`
+	var found bool
+	err = tx.QueryRow(ctx, query, productID, assetID, releaseID).Scan(&found)
+	return found, err
+}
+
 func (s *Store) Block(ctx context.Context, target domain.Target, id string) (domain.AccessBlock, bool, error) {
 	read, err := s.db.ReadExecutor(ctx)
 	if err != nil {
