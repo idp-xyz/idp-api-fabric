@@ -135,6 +135,11 @@ paths:
       '200': {description: Awaiting dispatch}
 `,
 	}
+	return bundleArtifact(t, files)
+}
+
+func bundleArtifact(t *testing.T, files map[string]string) []byte {
+	t.Helper()
 	archive := make([]map[string]any, 0, len(files))
 	for path, content := range files {
 		archive = append(archive, map[string]any{"path": path, "content_base64": []byte(content)})

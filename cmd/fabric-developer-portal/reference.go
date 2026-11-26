@@ -20,17 +20,43 @@ import (
 
 type reference struct {
 	Title, Version, OpenAPI, Description, Query, Digest string
+	Servers                                             []server
 	Operations                                          []operation
 	Notice                                              string
 }
 
+type server struct {
+	URL, Description string
+}
+
 type operation struct {
 	Anchor, Method, Path, Summary, Description string
+	Parameters                                 []parameter
+	RequestBody                                *requestBody
 	Responses                                  []response
+	Samples                                    []sample
+}
+
+type parameter struct {
+	Name, In, Type, Description string
+	Required                    bool
+}
+
+type requestBody struct {
+	Description string
+	Required    bool
+	Contents    []content
 }
 
 type response struct {
 	Code, Description string
+	Contents          []content
+}
+
+type content struct {
+	MediaType string
+	Problem   bool
+	Fields    []field
 }
 
 func readReference(artifact artifact, query string) (reference, error) {
@@ -70,6 +96,11 @@ func readReference(artifact artifact, query string) (reference, error) {
 	}
 	view := reference{Title: doc.Info.Title, Version: doc.Info.Version, OpenAPI: doc.OpenAPI,
 		Description: doc.Info.Description, Query: query, Digest: artifact.digest}
+	for _, s := range doc.Servers {
+		if s != nil {
+			view.Servers = append(view.Servers, server{URL: s.URL, Description: s.Description})
+		}
+	}
 	if doc.Paths == nil {
 		return view, nil
 	}
@@ -88,20 +119,82 @@ func readReference(artifact artifact, query string) (reference, error) {
 			}
 			entry := operation{Anchor: fmt.Sprintf("operation-%d", len(view.Operations)+1),
 				Method: method, Path: path, Summary: op.Summary, Description: op.Description}
+			parameters := operationParameters(item.Parameters, op.Parameters)
+			for _, p := range parameters {
+				entry.Parameters = append(entry.Parameters, parameter{Name: p.Name, In: p.In,
+					Type: parameterType(p), Description: p.Description, Required: p.Required})
+			}
+			if op.RequestBody != nil && op.RequestBody.Value != nil {
+				body := op.RequestBody.Value
+				entry.RequestBody = &requestBody{Description: body.Description, Required: body.Required,
+					Contents: contents(body.Content)}
+			}
 			if op.Responses != nil {
 				responses := op.Responses.Map()
 				for _, code := range slices.Sorted(maps.Keys(responses)) {
-					name := ""
-					if ref := responses[code]; ref != nil && ref.Value != nil && ref.Value.Description != nil {
-						name = *ref.Value.Description
+					next := response{Code: code}
+					if ref := responses[code]; ref != nil && ref.Value != nil {
+						if ref.Value.Description != nil {
+							next.Description = *ref.Value.Description
+						}
+						next.Contents = contents(ref.Value.Content)
 					}
-					entry.Responses = append(entry.Responses, response{Code: code, Description: name})
+					entry.Responses = append(entry.Responses, next)
 				}
 			}
+			entry.Samples = codeSamples(operationRequest(doc, method, path, parameters, op))
 			view.Operations = append(view.Operations, entry)
 		}
 	}
 	return view, nil
+}
+
+// operationParameters lists the path's shared parameters, each replaced by an
+// operation parameter with the same name and location.
+func operationParameters(shared, own openapi3.Parameters) []*openapi3.Parameter {
+	var merged []*openapi3.Parameter
+	for _, list := range []openapi3.Parameters{shared, own} {
+		for _, ref := range list {
+			if ref == nil || ref.Value == nil {
+				continue
+			}
+			p := ref.Value
+			if i := slices.IndexFunc(merged, func(m *openapi3.Parameter) bool { return m.Name == p.Name && m.In == p.In }); i >= 0 {
+				merged[i] = p
+			} else {
+				merged = append(merged, p)
+			}
+		}
+	}
+	return merged
+}
+
+func parameterType(p *openapi3.Parameter) string {
+	if p.Schema != nil && p.Schema.Value != nil {
+		return schemaType(p.Schema.Value)
+	}
+	for _, name := range slices.Sorted(maps.Keys(p.Content)) {
+		if media := p.Content[name]; media != nil && media.Schema != nil && media.Schema.Value != nil {
+			return schemaType(media.Schema.Value)
+		}
+	}
+	return "any"
+}
+
+func contents(mediaTypes openapi3.Content) []content {
+	var listed []content
+	for _, name := range slices.Sorted(maps.Keys(mediaTypes)) {
+		media := mediaTypes[name]
+		if media == nil {
+			continue
+		}
+		base, _, _ := strings.Cut(name, ";")
+		base = strings.ToLower(strings.TrimSpace(base))
+		listed = append(listed, content{MediaType: name,
+			Problem: base == "application/problem+json" || base == "application/problem+xml",
+			Fields:  schemaFieldsOf(media.Schema)})
+	}
+	return listed
 }
 
 func newPortal(address, assetID string) (http.Handler, error) {
