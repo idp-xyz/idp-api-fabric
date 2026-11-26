@@ -27,7 +27,8 @@ type TablePrivileges struct {
 //
 // Every table of a bounded context is listed here, with exactly the
 // statements Fabric runs on it today. A privilege is added with the first
-// statement that needs it, not before.
+// statement that needs it, not before, and leaves with the last one, for
+// RetiredPrivileges.
 func ApplicationPrivileges() []TablePrivileges {
 	return []TablePrivileges{
 		{SchemaBento, "outbox", []string{"SELECT", "INSERT", "UPDATE"}},
@@ -70,12 +71,10 @@ func ApplicationPrivileges() []TablePrivileges {
 		// read the revision. No statement changes or removes one.
 		{"contractregistry", "source_snapshot", []string{"SELECT", "INSERT"}},
 		{"contractregistry", "source_file", []string{"SELECT", "INSERT"}},
-		// The status of a revision moved along its review. The table lets
-		// an UPDATE do that and nothing else, and no statement removes a
-		// revision. This build moves no status (CR-0001); the build before
-		// it does while this one is rolled out, and keeps UPDATE until it is
-		// gone.
-		{"contractregistry", "contract_revision", []string{"SELECT", "INSERT", "UPDATE"}},
+		// A revision is recorded and read back, and no statement changes or
+		// removes one. Its status moved along its review until CR-0001
+		// retired reviews: the statuses of before are read only.
+		{"contractregistry", "contract_revision", []string{"SELECT", "INSERT"}},
 		// A check run is evidence: the policy it was held to, what it
 		// concluded of each rule and what it found are recorded once and
 		// read back. No statement changes or removes any of it.
@@ -83,15 +82,13 @@ func ApplicationPrivileges() []TablePrivileges {
 		{"policyreview", "check_run", []string{"SELECT", "INSERT"}},
 		{"policyreview", "check_rule_outcome", []string{"SELECT", "INSERT"}},
 		{"policyreview", "check_finding", []string{"SELECT", "INSERT"}},
-		// A review was asked for once and concluded once: its request, its
-		// scope, its conclusion and the waivers of an approval are read
-		// back, and no statement changes or removes any of them. This build
-		// records no review (CR-0001); the build before it does while this
-		// one is rolled out, and keeps INSERT until it is gone.
-		{"policyreview", "review_request", []string{"SELECT", "INSERT"}},
-		{"policyreview", "review_scope", []string{"SELECT", "INSERT"}},
-		{"policyreview", "review_conclusion", []string{"SELECT", "INSERT"}},
-		{"policyreview", "review_waiver", []string{"SELECT", "INSERT"}},
+		// CR-0001 retired reviews, and those of before are read only: their
+		// requests, scopes, conclusions and the waivers of approvals are
+		// read back, and no statement writes any of them.
+		{"policyreview", "review_request", []string{"SELECT"}},
+		{"policyreview", "review_scope", []string{"SELECT"}},
+		{"policyreview", "review_conclusion", []string{"SELECT"}},
+		{"policyreview", "review_waiver", []string{"SELECT"}},
 		// Ready releases, artifact bytes and publication operations are append-only.
 		{"contractregistry", "release_artifact", []string{"SELECT", "INSERT"}},
 		{"contractregistry", "contract_release", []string{"SELECT", "INSERT"}},
@@ -102,13 +99,35 @@ func ApplicationPrivileges() []TablePrivileges {
 	}
 }
 
+// RetiredPrivileges returns what builds before this one granted the
+// application role and this build no longer needs. GRANT only adds, so a role
+// an earlier build granted keeps such a privilege until it is revoked: Grant
+// revokes these. A privilege that leaves ApplicationPrivileges is listed
+// here, with why.
+func RetiredPrivileges() []TablePrivileges {
+	return []TablePrivileges{
+		// CR-0001 retired reviews: no statement records one any more.
+		{"policyreview", "review_request", []string{"INSERT"}},
+		{"policyreview", "review_scope", []string{"INSERT"}},
+		{"policyreview", "review_conclusion", []string{"INSERT"}},
+		{"policyreview", "review_waiver", []string{"INSERT"}},
+		// CR-0001 retired reviews, the one thing that moved the status of a revision.
+		{"contractregistry", "contract_revision", []string{"UPDATE"}},
+	}
+}
+
 // Grant gives role the privileges of ApplicationPrivileges: USAGE on their
-// schemas and the listed privileges on each table. Granting twice changes
+// schemas and the listed privileges on each table. It then revokes from role
+// the privileges of RetiredPrivileges, which an earlier build may have
+// granted it. Both happen in one transaction, and granting twice changes
 // nothing.
 //
-// It only adds privileges inside the Fabric schemas. It creates no role, and
-// whether the role may connect to the database is for whoever provisions the
-// server to decide.
+// It revokes nothing else: a privilege somebody granted by hand stays, as the
+// start check of a process does not look for one either. A process of a
+// build that still needs a retired privilege fails once Grant has run, so
+// those processes are stopped first. Grant works inside the Fabric schemas
+// only. It creates no role, and whether the role may connect to the database
+// is for whoever provisions the server to decide.
 func Grant(ctx context.Context, conn *pgx.Conn, role string) (err error) {
 	if role == "" {
 		return errors.New("migrate: the application role is not named")
@@ -139,6 +158,15 @@ func Grant(ctx context.Context, conn *pgx.Conn, role string) (err error) {
 			` ON ` + table.Schema + `.` + table.Table + ` TO ` + grantee
 		if _, err := tx.Exec(ctx, statement); err != nil {
 			return fmt.Errorf("migrate: grant on %s.%s to %s: %w", table.Schema, table.Table, role, err)
+		}
+	}
+	// Revoking what role does not hold does nothing, so this is repeatable
+	// too.
+	for _, table := range RetiredPrivileges() {
+		statement := `REVOKE ` + strings.Join(table.Privileges, ", ") +
+			` ON ` + table.Schema + `.` + table.Table + ` FROM ` + grantee
+		if _, err := tx.Exec(ctx, statement); err != nil {
+			return fmt.Errorf("migrate: revoke on %s.%s from %s: %w", table.Schema, table.Table, role, err)
 		}
 	}
 

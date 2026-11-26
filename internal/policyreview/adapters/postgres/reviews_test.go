@@ -33,9 +33,10 @@ type reviewFixture struct {
 	fabric  *db.Database
 	checks  *postgres.CheckRuns
 	reviews *postgres.Reviews
-	// app is a connection of the role a process connects with, which the
-	// reviews of before are recorded under.
-	app *pgx.Conn
+	// owner is a connection of the role that owns the tables, which the
+	// reviews of before are recorded as: the role a process connects with
+	// may not record one since CR-0001.
+	owner *pgx.Conn
 }
 
 func newReviewFixture(t *testing.T) (*reviewFixture, pgtest.Database) {
@@ -48,7 +49,7 @@ func newReviewFixture(t *testing.T) (*reviewFixture, pgtest.Database) {
 	t.Cleanup(fabric.Close)
 	return &reviewFixture{
 		t: t, fabric: fabric, checks: postgres.NewCheckRuns(fabric.Framework), reviews: postgres.NewReviews(fabric.Framework),
-		app: pgtest.Connect(t, database.Application),
+		owner: pgtest.Connect(t, database.Migrator),
 	}, database
 }
 
@@ -94,7 +95,8 @@ func (f *reviewFixture) check(revision domain.RevisionRef, failed ...string) dom
 
 // No review is asked for or concluded any more (CR-0001), and the adapter
 // only reads them. The reviews these tests read are written as the build
-// before recorded them, with the statements it ran.
+// before recorded them, with the statements it ran, by the owner of the
+// tables: the role a process connects with no longer holds INSERT on them.
 
 // instant is a time as the tables keep it.
 func instant(at time.Time) time.Time { return at.UTC().Truncate(time.Microsecond) }
@@ -147,7 +149,7 @@ func nullable(value string) *string {
 // record stores a request, as the build before did when it was asked for:
 // at the version the status of the revision took, with its scope.
 func (f *reviewFixture) record(request domain.ReviewRequest, version int64) error {
-	tx, err := f.app.Begin(f.t.Context())
+	tx, err := f.owner.Begin(f.t.Context())
 	if err != nil {
 		return err
 	}
@@ -177,7 +179,7 @@ SELECT $1::uuid, * FROM unnest($2::text[], $3::text[])`, request.ID, audiences, 
 // conclude stores a conclusion, with the waivers of an approval, as the build
 // before did when the review ended.
 func (f *reviewFixture) conclude(conclusion domain.Conclusion) error {
-	tx, err := f.app.Begin(f.t.Context())
+	tx, err := f.owner.Begin(f.t.Context())
 	if err != nil {
 		return err
 	}
@@ -311,9 +313,9 @@ func TestAReviewIsReadBackAsItWasRecordedUnderItsRevision(t *testing.T) {
 }
 
 // The tables hold every writer to what a review is: it rests on a check of
-// its own revision, its scope is audiences in environments, and nothing of
-// it is changed or removed by the role a process connects with. A review
-// whose rows are not what the model recorded is not read as one.
+// its own revision, and its scope is audiences in environments. Nothing of
+// it is written, changed or removed by the role a process connects with. A
+// review whose rows are not what the model recorded is not read as one.
 func TestTheTablesHoldAReviewToItsCheckAndItsScope(t *testing.T) {
 	f, database := newReviewFixture(t)
 	revision, other := revisionRef(), revisionRef()
@@ -354,12 +356,13 @@ func TestTheTablesHoldAReviewToItsCheckAndItsScope(t *testing.T) {
 		"remove a conclusion":    `DELETE FROM policyreview.review_conclusion`,
 		"empty the conclusions":  `TRUNCATE policyreview.review_conclusion`,
 		"move a check elsewhere": `UPDATE policyreview.check_run SET revision_id = gen_random_uuid()`,
+		"add to a scope":         `INSERT INTO policyreview.review_scope SELECT review_id, 'public', 'production' FROM policyreview.review_request`,
 	} {
 		if _, err := app.Exec(t.Context(), statement); !strings.HasPrefix(stateOf(err), "42501") {
 			t.Errorf("%s, as the application role: got %v, want it refused for lack of privilege", name, err)
 		}
 	}
-	if _, err := app.Exec(t.Context(), `
+	if _, err := f.owner.Exec(t.Context(), `
 INSERT INTO policyreview.review_conclusion (review_id, outcome, concluded_at, concluded_by_issuer, concluded_by_subject)
 VALUES (gen_random_uuid(), 'WITHDRAWN', now(), 'https://issuer.example', 'carol')`); !strings.HasPrefix(stateOf(err), "23503") {
 		t.Errorf("a conclusion of no review: got %v, want a foreign key violation", err)

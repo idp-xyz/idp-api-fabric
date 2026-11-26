@@ -70,10 +70,9 @@ func TestSupplementaryRequestsShareTheVersionOfTheApprovedRevision(t *testing.T)
 
 	// A build before supplementary reviews named no such column: what it
 	// recorded is a request of the kind there was.
-	app := pgtest.Connect(t, database.Application)
 	other := revisionRef()
 	earlier, id := f.check(other), ids.NewUUID()
-	if _, err := app.Exec(t.Context(), `
+	if _, err := f.owner.Exec(t.Context(), `
 INSERT INTO policyreview.review_request (
     review_id, product_id, workspace_id, api_asset_id, revision_id, revision_status_version, check_run_id,
     input_digest, note, requested_at, requested_by_issuer, requested_by_subject
@@ -81,7 +80,7 @@ INSERT INTO policyreview.review_request (
 		earlier.ID, earlier.InputDigest, nil, asked, carol.Issuer, carol.Subject); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := app.Exec(t.Context(), `INSERT INTO policyreview.review_scope (review_id, audience, environment) VALUES ($1, 'partner', 'sandbox')`, id); err != nil {
+	if _, err := f.owner.Exec(t.Context(), `INSERT INTO policyreview.review_scope (review_id, audience, environment) VALUES ($1, 'partner', 'sandbox')`, id); err != nil {
 		t.Fatal(err)
 	}
 	if got, found, err := f.reviews.Find(t.Context(), other, id); err != nil || !found || got.Request.Supplementary {
@@ -89,6 +88,7 @@ INSERT INTO policyreview.review_request (
 	}
 
 	// What a request is does not change afterwards.
+	app := pgtest.Connect(t, database.Application)
 	for name, statement := range map[string]string{
 		"make a request supplementary":      `UPDATE policyreview.review_request SET supplementary = true`,
 		"make a supplementary request none": `UPDATE policyreview.review_request SET supplementary = false`,
@@ -101,8 +101,9 @@ INSERT INTO policyreview.review_request (
 
 // A request names whether it is supplementary. The column has no reading
 // for NULL, so the table refuses a row that leaves it unset, whoever
-// writes the row. The application role records requests; the owner of the
-// table is not exempt from the column either.
+// writes the row: the owner of the table is not exempt from the column. The
+// application role records no request since CR-0001, and is refused the row
+// for lack of privilege before the column is looked at.
 func TestARequestThatLeavesSupplementaryUnsetIsRefused(t *testing.T) {
 	f, database := newReviewFixture(t)
 	asked := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
@@ -114,15 +115,16 @@ INSERT INTO policyreview.review_request (
 	for _, writer := range []struct {
 		name string
 		conn *pgx.Conn
+		want string
 	}{
-		{"the application role", pgtest.Connect(t, database.Application)},
-		{"the owner of the table", pgtest.Connect(t, database.Migrator)},
+		{"the application role", pgtest.Connect(t, database.Application), "42501"},
+		{"the owner of the table", pgtest.Connect(t, database.Migrator), "23502"},
 	} {
 		revision := revisionRef()
 		run := f.check(revision)
 		if _, err := writer.conn.Exec(t.Context(), insert, ids.NewUUID(), revision.ProductID, revision.WorkspaceID,
-			revision.AssetID, revision.RevisionID, run.ID, run.InputDigest, asked, carol.Issuer, carol.Subject); !strings.HasPrefix(stateOf(err), "23502") {
-			t.Errorf("%s inserting a request with supplementary null: got %v, want it refused (23502)", writer.name, err)
+			revision.AssetID, revision.RevisionID, run.ID, run.InputDigest, asked, carol.Issuer, carol.Subject); !strings.HasPrefix(stateOf(err), writer.want) {
+			t.Errorf("%s inserting a request with supplementary null: got %v, want it refused (%s)", writer.name, err, writer.want)
 		}
 	}
 }

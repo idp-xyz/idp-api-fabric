@@ -203,7 +203,7 @@
 
 **不可信内容。** 导入的文件按 §10 的处理链只做到了前两步的一部分：限定大小、数量和格式，只在提交的文件之内解析引用，不访问文件系统和网络，拒绝远程引用、越界路径、循环和 YAML 别名。原文读取把文件作为 Base64 放在 JSON 里返回，不以文件自身的媒体类型提供，也不渲染。对内容的规则检查见 §6.5，评审见 §6.6。
 
-**原文完整性。** 应用角色对来源快照和文件两张表只有 `SELECT` 和 `INSERT`，不能改写或删除已登记的原文。对修订表，评审加入后多了 `UPDATE`，表上的触发器只允许它改评审状态，修订指向哪份原文不能改（F03 §5.9）。读取时重新计算摘要，可发现存储层丢失或改动了文件；摘要与文件同库，这不是防篡改证明（见 F03 §5.7）。核对失败时不返回文件，响应不透露原因，原因写入运维日志。
+**原文完整性。** 应用角色对来源快照和文件两张表只有 `SELECT` 和 `INSERT`，不能改写或删除已登记的原文。对修订表，评审加入后多了 `UPDATE`，表上的触发器只允许它改评审状态，修订指向哪份原文不能改（F03 §5.9）；CR-0001 之后的构建收回了这项 `UPDATE`（§6.14）。读取时重新计算摘要，可发现存储层丢失或改动了文件；摘要与文件同库，这不是防篡改证明（见 F03 §5.7）。核对失败时不返回文件，响应不透露原因，原因写入运维日志。
 
 功能回归见 `cmd/fabric-api/catalog_test.go`、`registry_test.go`、`revisionhistory_test.go`、`gitorigin_test.go` 和 `revisionsource_test.go`，使用真实 PostgreSQL 和本地替代 IdP。SEC-01…36 的正式安全验收状态为 NOT_RUN。
 
@@ -380,7 +380,7 @@ F03 INV-09 写的是“有效 deny 阻断内容读取及后续激活”，没有
 
 **读审计本身留什么记录。** 成功的读取不记，与别的读取一致。被拒绝的记 DENY-03、`audit.search`、资源类型 `AuditRecord`、不带资源编号，记在那个产品名下，所以审计员读得到谁试过读审计。两种人被拒绝都记：知道产品但不是审计员的（403），和产品存在但不认识它的人（404，包括别的产品的审计员）；产品不存在不记，因为没有产品可记。没带令牌或令牌无效（401），以及参数和令牌格式不对（400），在进入用例之前就被拒绝，不记；时间范围颠倒（422）只对审计员给出，别人得到 403 或 404。拒绝写不进审计表时，调用人仍然被拒绝，服务日志里有一条错误，与其他拒绝相同。这件事的另一面：任何持有效令牌的人，对一个存在的产品反复试，每次被拒绝的请求都在那个产品名下留一条拒绝记录；审计员现在读得到它们。代码里没有限制尝试次数的机制。
 
-**审计表仍然只能追加。** 应用角色在 `platformoperations.audit_record` 上的权限从 `INSERT` 变成 `SELECT`、`INSERT`：能读，仍然没有 `UPDATE`、`DELETE`、`TRUNCATE`，没有任何列上的 `UPDATE`，也不能 `SELECT … FOR UPDATE` 或 `FOR SHARE`。这靠三样东西：权限只在一处声明（`internal/platform/db/migrate/grants.go` 的 `ApplicationPrivileges()`）；一个测试要求审计表恰好是 `INSERT` 和 `SELECT`，另一个测试授权之后逐项查询角色实际持有的权限（包括 `TRUNCATE`、`REFERENCES`、`TRIGGER` 和列上的权限）；进程启动时核对声明里的权限都有，缺一项就拒绝启动。启动检查不查有没有多出来的权限：一个被人手工多授了 `UPDATE` 或 `DELETE` 的角色，它发现不了；`fabric-migrate -grant-to` 也只添加，不收回。表的所有者（迁移用的角色）和数据库管理员仍然能改。这是权限层面的限制，不是防篡改的证明（F05 §14：不能把“数据库不开放普通修改权限”误写成物理不可篡改）。
+**审计表仍然只能追加。** 应用角色在 `platformoperations.audit_record` 上的权限从 `INSERT` 变成 `SELECT`、`INSERT`：能读，仍然没有 `UPDATE`、`DELETE`、`TRUNCATE`，没有任何列上的 `UPDATE`，也不能 `SELECT … FOR UPDATE` 或 `FOR SHARE`。这靠三样东西：权限只在一处声明（`internal/platform/db/migrate/grants.go` 的 `ApplicationPrivileges()`）；一个测试要求审计表恰好是 `INSERT` 和 `SELECT`，另一个测试授权之后逐项查询角色实际持有的权限（包括 `TRUNCATE`、`REFERENCES`、`TRIGGER` 和列上的权限）；进程启动时核对声明里的权限都有，缺一项就拒绝启动。启动检查不查有没有多出来的权限：一个被人手工多授了 `UPDATE` 或 `DELETE` 的角色，它发现不了；`fabric-migrate -grant-to` 也只收回 CR-0001 退役的几项（`RetiredPrivileges()`，§6.14），别的多出来的不收回。表的所有者（迁移用的角色）和数据库管理员仍然能改。这是权限层面的限制，不是防篡改的证明（F05 §14：不能把“数据库不开放普通修改权限”误写成物理不可篡改）。
 
 **授权矩阵怎么对应。** AC-29 `audit.search`（`internal_auditor` 读 `AuditRecord`）现在有了实现。`auditor.scope` 实现为：调用人现在持有本产品的 `internal_auditor`，每页重新读；`product.allowed` 实现为：只读本产品的记录，不认识产品的人得到 404；`fields.minimized` 设计没有定义，所以没有实现为读取时的脱敏（见上）。矩阵里的默认失败是 `DENY`：不是审计员的得到 403 或 404。AC-30 `audit.export`（审计导出）没有做，FR-068 是 V1。AC-15（`contract.history`）和 AC-16（`contract.download`）的角色是 `internal_reader`，这个角色仍然没有实现：Release 的列表、元数据、下载和来源现在由资产所属 Workspace 的作者、评审人、发布人读，没有加 `internal_reader`；AC-16 的 `accessblock.absent` 对按编号下载没有实现（见上）。槽位列表和来源在矩阵里没有对应的行，与读单个槽位一样。矩阵文件没有改。
 
@@ -488,7 +488,9 @@ DENY-06 此后只用于阻断解除和审计员任命（§6.12）中的独立性
 
 **仍待裁决。** 发布人、维护者读修订和评审（§6.8、§6.12）这处放宽，在 AC-52、AC-53 里仍没有对应。按编号下载不看阻断（§6.9）不受 CR-0001 影响。
 
-功能回归见 `cmd/fabric-api/` 下的 `releases_test.go`、`releaseprovenance_test.go`、`publishedrelease_test.go`、`pastreviews_test.go` 和 `reviewer_test.go`，以及 `internal/policyreview/domain/release_test.go`、`internal/policyreview/application/release_test.go` 和迁移测试 `internal/platform/db/migrate/releasefromcheck_test.go`。SEC-01…36 的正式安全验收状态为 NOT_RUN。
+**数据库权限。** PR #74 的构建仍授予应用角色四张评审表的 `INSERT` 和 `contract_revision` 的 `UPDATE`，供滚动升级期间的旧进程使用；此后的构建收回它们，应用角色对评审表只有 `SELECT`，对修订表只有 `SELECT`、`INSERT`，程序写不了评审，也改不了修订的状态。收回由 `fabric-migrate -apply -grant-to <application_role>` 执行，与授权在同一事务里，只收回 `internal/platform/db/migrate/grants.go` 的 `RetiredPrivileges()` 列出的五项。执行前先停掉所有 0.36.x 及更早的进程，否则它们写评审会被拒绝（42501），重启时也拒绝启动（F03 §5.15）。启动检查仍不查多出来的权限：还持有这几项的角色，0.37.0 的进程照常启动。
+
+功能回归见 `cmd/fabric-api/` 下的 `releases_test.go`、`releaseprovenance_test.go`、`publishedrelease_test.go`、`pastreviews_test.go` 和 `reviewer_test.go`，以及 `internal/policyreview/domain/release_test.go`、`internal/policyreview/application/release_test.go`、迁移测试 `internal/platform/db/migrate/releasefromcheck_test.go` 和收回权限的 `internal/platform/db/migrate/grants_test.go`。SEC-01…36 的正式安全验收状态为 NOT_RUN。
 
 ## 7. 授权策略表达与执行边界
 

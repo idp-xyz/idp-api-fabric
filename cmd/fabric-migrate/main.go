@@ -9,7 +9,10 @@
 // record yet and records each one. With -grant-to it then grants the named
 // application role exactly what a Fabric process needs; it creates no role.
 // A build that adds a table also adds privileges, so an upgrade passes both:
-// a process refuses to start as a role that lacks one and names it.
+// a process refuses to start as a role that lacks one and names it. In the
+// same run it revokes what an earlier build granted and this one retired
+// (migrate.RetiredPrivileges), so the processes of a build that still uses
+// such a privilege are stopped before -grant-to is passed.
 //
 // IDP_FABRIC_MIGRATOR_DSN is the connection string of the migrating role, which
 // owns the schemas. It is not the role an application process connects with:
@@ -44,7 +47,7 @@ func main() {
 
 func run(logger *slog.Logger) error {
 	apply := flag.Bool("apply", false, "apply the plan to the database of IDP_FABRIC_MIGRATOR_DSN; without it the plan is only printed")
-	grantTo := flag.String("grant-to", "", "with -apply: also grant this existing role what a Fabric process needs")
+	grantTo := flag.String("grant-to", "", "with -apply: also grant this existing role what a Fabric process needs, and revoke what this build retired")
 	flag.Parse()
 
 	if err := printPlan(); err != nil {

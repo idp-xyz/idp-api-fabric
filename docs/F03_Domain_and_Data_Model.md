@@ -276,7 +276,7 @@ CR-0001 起，`ContractRelease` 必须引用一次检查，豁免随 Release 记
 
 登记资产时，事务内对调用方在目标 Workspace 的成员关系加共享锁，再写入资产、成功审计和 Outbox 事件 `fabric.apicatalog.asset.registered`（版本 1），三者一起提交。事件载荷是事件编号、时间、关联编号、产品、Workspace、资产编号和聚合版本，不含 key 和名称。逻辑模型中的 `AssetOwnership`、`AssetLifecycleTransition` 尚未实现。
 
-**来源快照和修订。** 三张表的内容都只增不改，应用角色没有 `DELETE`。评审加入之后（§5.9），应用角色对 `contract_revision` 多了 `UPDATE`，但表上的触发器只允许改修订的评审状态，其余各列和另外两张表仍然不能改。0.37.0 起程序不再改评审状态，`UPDATE` 只为滚动升级时的旧进程保留（§5.15）。
+**来源快照和修订。** 三张表的内容都只增不改，应用角色没有 `DELETE`。评审加入之后（§5.9），应用角色对 `contract_revision` 多了 `UPDATE`，但表上的触发器只允许改修订的评审状态，其余各列和另外两张表仍然不能改。0.37.0 起程序不再改评审状态，此后的构建在授权时收回这项 `UPDATE`，修订只登记和读取（§5.15）。
 
 | 表 | 内容 | 关键约束 |
 |---|---|---|
@@ -681,7 +681,9 @@ F06 的 IN-01（首页的待审核、检查失败、可发布、撤销风险）�
 
 **概况。** `release_pending` 改为：最新修订有检查，而且还没有从它准备出 Release。它不说明这次检查能否通过门禁：检查可能失败，策略和工具也可能已经更新。
 
-**升级。** 从 0.36.0 升级，执行 `fabric-migrate -apply`，应用上述三个迁移；不需要重新授权。应用角色仍保留评审表的 `INSERT` 和 `contract_revision` 的 `UPDATE`，供滚动升级期间的旧进程使用，旧进程全部下线后可以收回。两个撤回迁移只处理执行时还开着的评审，旧进程在迁移之后仍提供评审的写接口，所以应尽快换完进程。调用方要改用 `check_run_id` 和 `waivers` 准备 Release（F04 §11.6）。
+**升级。** 从 0.36.0 升级，执行 `fabric-migrate -apply`，应用上述三个迁移；新进程不需要新的权限。两个撤回迁移只处理执行时还开着的评审，旧进程在迁移之后仍提供评审的写接口，所以应尽快换完进程。调用方要改用 `check_run_id` 和 `waivers` 准备 Release（F04 §11.6）。
+
+**收回评审的写权限。** PR #74 的构建仍授予应用角色四张评审表的 `INSERT` 和 `contract_revision` 的 `UPDATE`，供滚动升级期间的旧进程使用。此后的构建（契约仍是 0.37.0）不再授予：`ApplicationPrivileges()` 里四张评审表只有 `SELECT`，`contract_revision` 只有 `SELECT`、`INSERT`，因为程序不再写评审，也不再改修订，此前的评审和修订状态只读。`GRANT` 只会添加，所以 `fabric-migrate -apply -grant-to <application_role>` 在授权的同一事务里按 `RetiredPrivileges()` 收回这五项，重复执行结果不变；列表以外的权限，包括手工多授的，不收回。执行带 `-grant-to` 的命令之前，先停掉所有 0.36.x 及更早的进程：收回之后，它们提交、撤回和决定评审会被数据库拒绝（42501），重启时也因缺少权限拒绝启动。0.37.0 的进程不用这五项，收回前后都能启动；启动检查不查多出来的权限，所以只执行 `-apply`、暂不带 `-grant-to` 时，旧进程照常写评审，新进程也照常启动。
 
 **与逻辑模型的对应。** §5.4 的 `ContractRelease` 引用 `check_run_id`；`ReleaseWaiver` 没有单独的表，是 `contract_release.waivers` 的数组元素。`ReviewDecision` 和 `WaiverRef` 的物理表（§5.9）只读。
 

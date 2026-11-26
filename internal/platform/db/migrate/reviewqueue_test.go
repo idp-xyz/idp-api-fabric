@@ -81,9 +81,7 @@ func TestRunIndexesTheReviewRequestsForTheQueueAndLeavesTheReviewsAsTheyAre(t *t
 	if err := migrate.Apply(t.Context(), conn, quiet, before); err != nil {
 		t.Fatalf("migrate as the build before: %v", err)
 	}
-	if err := migrate.Grant(t.Context(), conn, database.ApplicationRole); err != nil {
-		t.Fatalf("grant as the build before: %v", err)
-	}
+	grantOnWhatIsThere(t, conn, database.ApplicationRole)
 
 	const (
 		cargopai = "1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6"

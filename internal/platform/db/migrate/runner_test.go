@@ -215,15 +215,16 @@ func TestRunUpgradesTheReviewBuildForPublication(t *testing.T) {
 // identifier, and never changed it.
 const roleAssignmentRevocation = "productgovernance/003_role_assignment_revocation"
 
-// grantOnWhatIsThere grants role what ApplicationPrivileges says of the
-// tables the database holds, as a build before this one granted them: a
-// table that came after it is not there, and that build granted nothing on
-// it.
+// grantOnWhatIsThere grants role what ApplicationPrivileges and
+// RetiredPrivileges say of the tables the database holds, as a build before
+// this one granted them: a table that came after it is not there, and that
+// build granted nothing on it; a privilege this build retired was one it
+// granted.
 func grantOnWhatIsThere(t *testing.T, conn *pgx.Conn, role string) {
 	t.Helper()
 
 	grantee := pgx.Identifier{role}.Sanitize()
-	for _, table := range migrate.ApplicationPrivileges() {
+	for _, table := range slices.Concat(migrate.ApplicationPrivileges(), migrate.RetiredPrivileges()) {
 		if !exists(t, conn, table.Schema+"."+table.Table) {
 			continue
 		}
@@ -805,8 +806,10 @@ const (
 // up to date with what it holds. Every revision stays the draft it is, at
 // version 1 of its status, and what that build still records while this one
 // is rolled out is a draft like the others. A process of this build does not
-// start until the database is migrated and its role may move a status and
-// keep reviews: one run of fabric-migrate -apply -grant-to gives it both.
+// start until the database is migrated and its role may read reviews: one run
+// of fabric-migrate -apply -grant-to gives it both. Since CR-0001 the role
+// is not granted UPDATE on revisions, as no process moves a status; a draft
+// of that build is still one the table lets move.
 func TestRunLeavesTheRevisionsOfTheBuildBeforeReviewsTheDraftsTheyAre(t *testing.T) {
 	database := pgtest.FreshDatabase(t)
 	conn := pgtest.Connect(t, database.Migrator)
@@ -891,8 +894,8 @@ func TestRunLeavesTheRevisionsOfTheBuildBeforeReviewsTheDraftsTheyAre(t *testing
 	if !slices.Equal(applied, planned) {
 		t.Errorf("the history records\n %+v\nwant every step of the plan, each once\n %+v", applied, planned)
 	}
-	// Migrated, its role still may not move a status, and it says so.
-	refused("once it is migrated, before the grant", db.ErrNotGranted, "UPDATE on contractregistry.contract_revision")
+	// Migrated, its role still may not read reviews, and it says so.
+	refused("once it is migrated, before the grant", db.ErrNotGranted, "SELECT on policyreview.review_request")
 	if _, err := app.Exec(t.Context(), submit, first); sqlState(err) != insufficientPrivilege {
 		t.Errorf("a submission by the role as that build granted it: got %v, want it refused for lack of privilege", err)
 	}
@@ -933,10 +936,14 @@ func TestRunLeavesTheRevisionsOfTheBuildBeforeReviewsTheDraftsTheyAre(t *testing
 	if got, want := read(), []revision{{1, "DRAFT", 1}, {2, "DRAFT", 1}}; !slices.Equal(got, want) {
 		t.Errorf("the revisions are %+v, want the drafts they were recorded as, at version 1 of their status: %+v", got, want)
 	}
-	// Granted, the role moves a status, and the revision of that build is
-	// one that can be submitted.
-	if _, err := app.Exec(t.Context(), submit, first); err != nil {
-		t.Errorf("a submission once the role is granted: %v", err)
+	// Granted, the role still moves no status. The revision of that build is
+	// one that can be submitted: the owner of the table submits it, as the
+	// table lets any writer.
+	if _, err := app.Exec(t.Context(), submit, first); sqlState(err) != insufficientPrivilege {
+		t.Errorf("a submission once the role is granted: got %v, want it refused for lack of privilege", err)
+	}
+	if _, err := conn.Exec(t.Context(), submit, first); err != nil {
+		t.Errorf("a submission of the revision of that build: %v", err)
 	}
 	if got, want := read(), []revision{{1, "IN_REVIEW", 2}, {2, "DRAFT", 1}}; !slices.Equal(got, want) {
 		t.Errorf("the revisions are %+v, want %+v", got, want)
@@ -951,8 +958,10 @@ const reviewDecision = "policyreview/004_review_decision"
 // brought up to date with what it holds. Every review that was withdrawn is
 // the withdrawal it was, and what that build still concludes while this one
 // is rolled out is a withdrawal like the others. A process of this build
-// does not start until the database is migrated and its role may keep
-// waivers: one run of fabric-migrate -apply -grant-to gives it both.
+// does not start until the database is migrated and its role may read
+// waivers: one run of fabric-migrate -apply -grant-to gives it both. Since
+// CR-0001 that run also takes back what the role needed to record a review,
+// and the tables still take a decision as that build wrote one.
 func TestRunLetsAReviewBeDecidedAndLeavesTheWithdrawalsOfTheBuildBeforeWhatTheyAre(t *testing.T) {
 	database := pgtest.FreshDatabase(t)
 	conn := pgtest.Connect(t, database.Migrator)
@@ -1115,19 +1124,24 @@ func TestRunLetsAReviewBeDecidedAndLeavesTheWithdrawalsOfTheBuildBeforeWhatTheyA
 	}
 	opened.Close()
 
-	// Granted, the role records a decision: an approval with what it
-	// waives, and a rejection. What is no decision is still refused.
-	if _, err := app.Exec(t.Context(), decide, reviews[5], "APPROVED", nil, "2027-02-17T10:00:00Z"); err != nil {
-		t.Errorf("an approval once the role is granted: %v", err)
+	// Granted, the role records no decision. The tables still take one as
+	// the build of decisions wrote it, here from their owner: an approval
+	// with what it waives, and a rejection. What is no decision is still
+	// refused.
+	if _, err := app.Exec(t.Context(), decide, reviews[5], "APPROVED", nil, "2027-02-17T10:00:00Z"); sqlState(err) != insufficientPrivilege {
+		t.Errorf("an approval once the role is granted: got %v, want it refused for lack of privilege", err)
 	}
-	if _, err := app.Exec(t.Context(), waive, reviews[5]); err != nil {
-		t.Errorf("a waiver once the role is granted: %v", err)
+	if _, err := conn.Exec(t.Context(), decide, reviews[5], "APPROVED", nil, "2027-02-17T10:00:00Z"); err != nil {
+		t.Errorf("an approval: %v", err)
 	}
-	if _, err := app.Exec(t.Context(), decide, reviews[6], "REJECTED", nil, nil); sqlState(err) != checkViolation {
+	if _, err := conn.Exec(t.Context(), waive, reviews[5]); err != nil {
+		t.Errorf("a waiver: %v", err)
+	}
+	if _, err := conn.Exec(t.Context(), decide, reviews[6], "REJECTED", nil, nil); sqlState(err) != checkViolation {
 		t.Errorf("a rejection without a reason: got %v, want a check violation", err)
 	}
-	if _, err := app.Exec(t.Context(), decide, reviews[6], "REJECTED", "the partner team asked for paging first", nil); err != nil {
-		t.Errorf("a rejection once the role is granted: %v", err)
+	if _, err := conn.Exec(t.Context(), decide, reviews[6], "REJECTED", "the partner team asked for paging first", nil); err != nil {
+		t.Errorf("a rejection: %v", err)
 	}
 
 	type conclusion struct {
@@ -1193,9 +1207,7 @@ func TestRunLetsAnApprovedRevisionBeReviewedAgainAndLeavesTheRequestsOfTheBuildB
 	if err := migrate.Apply(t.Context(), conn, quiet, before); err != nil {
 		t.Fatalf("migrate as the build before: %v", err)
 	}
-	if err := migrate.Grant(t.Context(), conn, database.ApplicationRole); err != nil {
-		t.Fatalf("grant as the build before: %v", err)
-	}
+	grantOnWhatIsThere(t, conn, database.ApplicationRole)
 
 	const (
 		cargopai = "1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6"
