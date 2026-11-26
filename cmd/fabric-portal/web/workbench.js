@@ -11,11 +11,89 @@ export function node(tag, text, className) {
   return item;
 }
 
-export function badge(state) {
-  const item = node("span", statuses[state] || state, "badge");
+// badge names a state in words; its colour, set by the state, only repeats
+// what the words say.
+export function badge(state, label = statuses[state] || state) {
+  const item = node("span", label, "badge");
   item.dataset.state = state;
   return item;
 }
+
+const icons = {
+  refresh: ["M20 11.5A8 8 0 0 0 5.6 7.2L4 9", "M4 4.5V9h4.5", "M4 12.5a8 8 0 0 0 14.4 4.3L20 15", "M20 19.5V15h-4.5"],
+  back: ["M19 12H5", "m11 18-6-6 6-6"],
+  open: ["m9 6 6 6-6 6"],
+  search: ["M10.8 18.1a7.3 7.3 0 1 0 0-14.6 7.3 7.3 0 0 0 0 14.6Z", "m20.5 20.5-4.4-4.4"],
+  done: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z", "m8.2 12.4 2.6 2.6 5-5.4"],
+  alert: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z", "M12 7.5v5.5", "M12 16.5h.01"],
+  pending: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z", "M12 7v5l3.2 2"],
+  asset: ["M12 3 3.5 7.5 12 12l8.5-4.5L12 3Z", "M3.5 7.5v9L12 21l8.5-4.5v-9", "M12 12v9"],
+  lock: ["M7 11V7.5a5 5 0 0 1 10 0V11", "M5.5 11h13a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1Z"],
+  publish: ["M12 15.5V4", "m7 9 5-5 5 5", "M5 20h14"],
+  check: ["M9 5H6.5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H15", "M9 3.5h6v3H9z", "m9 14 2 2 4-4.5"],
+  compare: ["M7 4v16", "M17 4v16", "m4 8 3-4 3 4", "m14 16 3 4 3-4"],
+  release: ["M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z", "M7.5 7.5h.01"],
+  history: ["M3.5 12a8.5 8.5 0 1 0 2.5-6", "M3.5 4v4.5H8", "M12 8v4.5l3 1.8"],
+  revision: ["M6 3.5v11", "M18 9.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z", "M6 20.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z", "M18 9.5a9 9 0 0 1-9 9"],
+  shield: ["M12 3 19 6v5.5c0 4.3-2.9 8-7 9.5-4.1-1.5-7-5.2-7-9.5V6l7-3Z"],
+  filter: ["M3.5 5h17l-6.5 8v6l-4 1.5V13L3.5 5Z"],
+};
+
+// icon draws one of a few line icons. It is decoration only: the text next
+// to it says what it stands for.
+export function icon(name, className = "icon") {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  for (const [key, value] of [["viewBox", "0 0 24 24"], ["fill", "none"], ["stroke", "currentColor"], ["stroke-width", "1.8"],
+    ["stroke-linecap", "round"], ["stroke-linejoin", "round"], ["aria-hidden", "true"], ["focusable", "false"], ["class", className]]) {
+    svg.setAttribute(key, value);
+  }
+  for (const d of icons[name] || []) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  }
+  return svg;
+}
+
+// button makes a button that does not submit, with an optional icon before
+// its text.
+export function button(text, className = "", iconName = "") {
+  const item = node("button", "", className);
+  item.type = "button";
+  if (iconName) item.append(icon(iconName));
+  if (text) item.append(node("span", text));
+  return item;
+}
+
+// facts lists label and value pairs. A value may be text or a node.
+export function facts(fields, className = "facts") {
+  const items = node("dl", "", className);
+  for (const [label, value] of fields) {
+    const pair = node("div");
+    const description = node("dd");
+    description.append(value ?? "—");
+    pair.append(node("dt", label), description);
+    items.append(pair);
+  }
+  return items;
+}
+
+// card is a titled box of the page. Its heading names the section for
+// assistive technology too.
+export function card(title, { level = "h3", iconName = "", className = "", actions = [] } = {}) {
+  const box = node("section", "", "card" + (className ? " " + className : ""));
+  const head = node("div", "", "card-head");
+  const heading = node(level, "", "card-title");
+  if (iconName) heading.append(icon(iconName));
+  heading.append(node("span", title));
+  head.append(heading, ...actions);
+  box.append(head);
+  return box;
+}
+
+export const empty = text => node("p", text, "empty");
+
+export const loading = text => node("p", text, "loading");
 
 function describeError(status, code, trace) {
   const messages = {
@@ -123,13 +201,11 @@ export function confirmChange(title, values, action, signal, guidance = "") {
     heading.id = "operation-confirm-title";
     dialog.setAttribute("aria-labelledby", heading.id);
     dialog.append(heading);
-    if (guidance) dialog.append(node("p", guidance));
-    const facts = node("dl", "", "facts");
-    for (const [label, value] of values) facts.append(node("dt", label), node("dd", value));
-    dialog.append(facts);
+    if (guidance) dialog.append(node("p", guidance, "notice"));
+    dialog.append(facts(values, "facts compact"));
     const controls = node("form", "", "dialog-actions");
     controls.method = "dialog";
-    const cancel = node("button", "取消");
+    const cancel = node("button", "取消", "secondary");
     cancel.value = "cancel";
     cancel.autofocus = true;
     const confirm = node("button", action, "primary");
