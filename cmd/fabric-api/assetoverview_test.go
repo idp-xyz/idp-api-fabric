@@ -102,42 +102,49 @@ func (w *slotsWorld) walk(filter, subject string, size int) [][]string {
 }
 
 // stateFacts are the states an asset is put in, and what the overview of one must
-// say: the status of its last check, and whether a release is pending.
+// say: the status of its last check, and whether a release is pending. A
+// release is pending for a last revision that was checked and that no release
+// was prepared from, whatever its check concluded and whatever a review of
+// before said of it.
 var stateFacts = map[string]struct {
 	check   string
 	pending bool
 }{
-	"plain":           {"", false},
-	"draft-unchecked": {"", false},
-	"draft-unknown":   {"UNKNOWN", false},
-	"draft-fail":      {"FAIL", false},
-	"pending-unknown": {"UNKNOWN", true},
-	"pending-fail":    {"FAIL", true},
-	"released":        {"UNKNOWN", false},
+	"plain":            {"", false},
+	"draft-unchecked":  {"", false},
+	"pending-unknown":  {"UNKNOWN", true},
+	"pending-fail":     {"FAIL", true},
+	"rejected-unknown": {"UNKNOWN", true},
+	"released":         {"UNKNOWN", false},
+	"released-fail":    {"FAIL", false},
 }
 
 // putInState brings the asset, which has no revision, to the state. A state
-// that is approved returns the revision and the review it rests on.
-func (w *slotsWorld) putInState(asset *releaseFixture, state string) (revision, review string) {
+// whose last revision was checked returns the revision and that check.
+func (w *slotsWorld) putInState(asset *releaseFixture, state string) (revision, check string) {
 	w.t.Helper()
 
-	until := time.Now().UTC().Add(90 * 24 * time.Hour).Truncate(time.Second)
 	switch state {
 	case "plain":
 	case "draft-unchecked":
 		w.require(w.call(http.MethodPost, asset.revisions, "author", uploadRevision("openapi.yaml", revisionSource)), http.StatusCreated, "")
-	case "draft-unknown":
-		asset.checked(revisionSource)
-	case "draft-fail":
-		asset.checked(unnamedSource)
 	case "pending-unknown":
-		return asset.approve(revisionSource, "", internalSandbox)
+		return asset.checkedRevision(revisionSource, "")
 	case "pending-fail":
-		return asset.approveFrom(uploadRevision("openapi.yaml", unnamedSource),
-			deciding("APPROVED", "", until, waiving("F04-GOV-003", until.Add(-time.Hour))), internalSandbox)
+		return asset.checkedRevision(unnamedSource, "")
+	case "rejected-unknown":
+		// A review of before rejected the revision: that is no matter of
+		// a release.
+		revision, check = asset.checkedRevision(revisionSource, "")
+		asset.concluded(asset.asked(asset.pathOf(revision), check, "author", internalSandbox), "reviewer", "REJECTED", "not ready")
+		return revision, check
 	case "released":
-		revision, review, _ = asset.released(revisionSource, "", "1.0.0")
-		return revision, review
+		revision, check, _ = asset.released(revisionSource, "", "1.0.0")
+		return revision, check
+	case "released-fail":
+		revision, check = asset.checkedRevision(unnamedSource, "")
+		w.require(asset.prepare(revision, check, "1.0.0", "publisher", noted), http.StatusCreated, "")
+		return revision, check
 	default:
 		w.t.Fatalf("there is no state %q", state)
 	}
@@ -200,7 +207,8 @@ func (c *climb) imported(source string) string {
 	return c.of.revisions + "/" + got.id("revision_id")
 }
 
-// checked checks the revision, which was not checked, as the author.
+// checked checks the revision, which was not checked, as the author. A
+// release is pending for the last revision once it is checked.
 func (c *climb) checked(revision, status string) {
 	c.w.t.Helper()
 
@@ -211,51 +219,28 @@ func (c *climb) checked(revision, status string) {
 		c.w.t.Fatalf("the check of %s concluded %v, want %s", revision, run["status"], status)
 	}
 	if revision == c.lastRevision() {
-		c.check = run
+		c.check, c.pending = run, true
 	}
 }
 
-// asked asks for a review of the last revision on the check of today, as the
-// author, and returns where the review is read. An approved revision stays
-// approved.
-func (c *climb) asked() string {
+// reviewed records that a review of before was asked for the last revision
+// and ended as the outcome says, which is the status the revision is left at.
+// A status moves nothing of whether a release is pending.
+func (c *climb) reviewed(outcome string) {
 	c.w.t.Helper()
 
-	revision := c.lastRevision()
-	got := c.w.call(http.MethodPost, revision+"/reviews", "author", asking(c.w.checkOf(revision), internalSandbox))
-	c.w.require(got, http.StatusCreated, "")
-	if c.status != "APPROVED" {
-		c.status = "IN_REVIEW"
-	}
-	return got.header.Get("Location")
+	review := c.of.asked(c.lastRevision(), c.check["check_run_id"].(string), "author", internalSandbox)
+	c.of.concluded(review, "reviewer", outcome, "the baseline was the wrong one")
+	c.status = outcome
 }
 
-func (c *climb) withdrawn(review string) {
-	c.w.t.Helper()
-
-	c.w.require(c.w.call(http.MethodPost, review+"/withdrawal", "author", `{"reason":"the baseline was the wrong one"}`), http.StatusOK, "")
-	c.status = "WITHDRAWN"
-}
-
-// decided has the reviewer decide the review of the last revision. A revision
-// that is approved has no release yet, which a release from it ends.
-func (c *climb) decided(review, reviewer, body, status string) {
-	c.w.t.Helper()
-
-	c.w.require(c.w.call(http.MethodPost, review+"/decision", reviewer, body), http.StatusOK, "")
-	if status != "APPROVED" || c.status != "APPROVED" {
-		c.status = status
-	}
-	c.pending = status == "APPROVED"
-}
-
-// released prepares a release of the revision under the review, as the
+// released prepares a release of the revision on the check, as the
 // publisher. It is the release prepared last, and ends what was pending for
 // the revision if it is the last.
-func (c *climb) released(revision, review, version string) {
+func (c *climb) released(revision, check, version string, waivers ...waiver) {
 	c.w.t.Helper()
 
-	got := c.of.prepare(revision, review, version, "publisher")
+	got := c.of.prepare(revision, check, version, "publisher", waivers...)
 	c.w.require(got, http.StatusCreated, "")
 	c.release = got.body
 	if revision == c.revision["revision_id"] {
@@ -295,14 +280,14 @@ func (c *climb) separately() map[string]any {
 			"revision_id": single.body["revision_id"], "revision_sequence": single.body["revision_sequence"],
 			"status": single.body["status"], "created_at": single.body["created_at"],
 		}
-		pending = single.body["status"] == "APPROVED" &&
-			!slices.ContainsFunc(releases, func(release map[string]any) bool { return release["revision_id"] == id })
 		var latest map[string]any
 		for _, check := range read(c.of.revisions + "/" + id + "/check-runs") {
 			if latest == nil || after(check, latest, "completed_at", "check_run_id") {
 				latest = check
 			}
 		}
+		pending = latest != nil &&
+			!slices.ContainsFunc(releases, func(release map[string]any) bool { return release["revision_id"] == id })
 		if latest != nil {
 			standing["latest_check"] = map[string]any{
 				"check_run_id": latest["check_run_id"], "status": latest["status"], "completed_at": latest["completed_at"],
@@ -366,16 +351,14 @@ func (c *climb) now(when string) {
 // a release, and it says at every step what the reads of the revisions, the
 // checks and the releases of the asset say, member for member. Every step
 // that moves the asset moves it: a revision imported, one that is not the
-// last checked, the last one checked, a check that is later, a review asked
-// and withdrawn and asked again and rejected, a revision approved, the same
-// reviewed again, a release, a second release, a newer revision, a release of
-// a revision that is not the last. Everything is the same whoever reads it,
-// alone or in the list.
+// last checked, the last one checked, a check that is later, a release, a
+// second release, a newer revision, a release of a revision that is not the
+// last. Where a review of before left a revision moves its status and
+// nothing else. Everything is the same whoever reads it, alone or in the
+// list.
 func TestWhereAnAssetStandsIsWhatTheReadsOfItsRevisionsChecksAndReleasesSay(t *testing.T) {
 	w := slotsFor(t)
 	c := &climb{w: w, of: w.releaseFixture}
-	until := time.Now().UTC().Add(90 * 24 * time.Hour).Truncate(time.Second)
-	approval := func() string { return deciding("APPROVED", "", time.Now().Add(time.Hour)) }
 
 	c.now("before there is a revision")
 	if got := c.want(); !reflect.DeepEqual(got, map[string]any{"release_pending": false}) {
@@ -394,7 +377,7 @@ func TestWhereAnAssetStandsIsWhatTheReadsOfItsRevisionsChecksAndReleasesSay(t *t
 	c.checked(first, "UNKNOWN")
 	c.now("the first revision is checked: the last has no check")
 	c.checked(second, "FAIL")
-	c.now("the second revision is checked and fails")
+	c.now("the second revision is checked and fails: a release is pending all the same")
 	revision := checkdomain.RevisionRef{
 		ProductID: w.product, WorkspaceID: w.workspace, AssetID: w.identifier(), RevisionID: c.revision["revision_id"].(string),
 	}
@@ -407,54 +390,37 @@ func TestWhereAnAssetStandsIsWhatTheReadsOfItsRevisionsChecksAndReleasesSay(t *t
 	c.check = recorded.body["check_run"].(map[string]any)
 	c.now("a check is recorded after it, by a newer tool: the last check is the one that concluded last")
 
-	// A review is asked for, withdrawn, asked for again and rejected.
-	review := c.asked()
-	c.now("a review is asked for")
-	c.withdrawn(review)
-	c.now("the review is withdrawn")
-	review = c.asked()
-	c.now("the review is asked for again")
-	c.decided(review, "reviewer", deciding("REJECTED", "not ready", time.Time{}), "REJECTED")
-	c.now("the review is rejected")
+	// A review of before was withdrawn, and the next one rejected the
+	// revision.
+	c.reviewed("WITHDRAWN")
+	c.now("a review of before was withdrawn")
+	c.reviewed("REJECTED")
+	c.now("a review of before rejected the revision: a release is pending still")
 
-	// A third revision is approved: a release is pending for it. That it is
-	// reviewed again, twice, changes nothing of where it stands.
+	// A third revision is checked: a release is pending for it.
 	c.imported(variant(revisionSource, 3))
 	c.now("a third revision is imported")
 	c.checked(c.lastRevision(), "UNKNOWN")
-	c.now("the third revision is checked")
-	reviewed := c.asked()
-	c.now("the third revision is submitted for review")
-	c.decided(reviewed, "reviewer", approval(), "APPROVED")
-	c.now("the third revision is approved: a release is pending")
-	again := c.asked()
-	c.now("it is submitted for review again, and stays approved")
-	c.decided(again, "eng-reviewer", approval(), "APPROVED")
-	c.now("it is approved again")
-	thrice := c.asked()
-	c.decided(thrice, "reviewer", approval(), "APPROVED")
-	c.now("it is approved a third time")
+	c.now("the third revision is checked: a release is pending")
+	checkedThird := c.check["check_run_id"].(string)
 
 	// Two releases of it: the one prepared later is the last.
-	approved := c.revision["revision_id"].(string)
-	c.released(approved, last(reviewed), "1.0.0")
+	third := c.revision["revision_id"].(string)
+	c.released(third, checkedThird, "1.0.0")
 	c.now("a release is prepared of the third revision, and none is pending")
-	c.released(approved, last(again), "1.0.1")
+	c.released(third, checkedThird, "1.0.1")
 	c.now("another is prepared of it: the one prepared later is the last release")
 
 	// A fourth revision is the last, and has no release, whatever the asset has.
 	c.imported(variant(unnamedSource, 4))
 	c.now("a fourth revision is imported: the asset has releases, its last revision has none")
 	c.checked(c.lastRevision(), "FAIL")
-	c.now("the fourth revision is checked and fails")
-	waived := c.asked()
-	c.decided(waived, "reviewer", deciding("APPROVED", "", until, waiving("F04-GOV-003", until.Add(-time.Hour))), "APPROVED")
-	c.now("it is approved with a waiver for what failed: its check failed, and a release is pending")
+	c.now("the fourth revision is checked and fails: a release is pending")
 
-	// A release of the third revision, which is approved still, is the last
-	// release. The last revision has none: a release is pending still.
-	c.released(approved, last(thrice), "1.0.2")
+	// A release of the third revision is the last release. The last
+	// revision has none: a release is pending still.
+	c.released(third, checkedThird, "1.0.2")
 	c.now("a release is prepared of an earlier revision: none is prepared of the last")
-	c.released(c.revision["revision_id"].(string), last(waived), "1.1.0")
-	c.now("a release is prepared of the last revision")
+	c.released(c.revision["revision_id"].(string), c.check["check_run_id"].(string), "1.1.0", noted)
+	c.now("a release is prepared of the last revision, with the waiver of what failed")
 }

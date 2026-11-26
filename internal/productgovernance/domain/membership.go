@@ -19,19 +19,22 @@ const (
 	// RoleInternalAuthor is the role that writes and reads the contract
 	// revisions of the workspace (F05 §6, AC-01, AC-02).
 	RoleInternalAuthor Role = "internal_author"
-	// RoleInternalReviewer is the role that reads the contract revisions of
+	// RoleInternalReviewer is the role that read the contract revisions of
 	// the workspace and what was checked of them, to decide on a review
-	// (F05 §6, AC-03). It writes no revision and runs no check: whoever
-	// reviews is not whoever wrote (F05 §6.2).
+	// (F05 §6, AC-03). No review is decided any more (CR-0001), so the role
+	// is no longer granted. A membership that grants it still reads what it
+	// read, the reviews of before among them, and writes nothing.
 	RoleInternalReviewer Role = "internal_reviewer"
-	// RoleInternalPublisher prepares and publishes approved releases for the workspace.
+	// RoleInternalPublisher prepares releases of the checked revisions of
+	// the workspace and publishes them.
 	RoleInternalPublisher Role = "internal_publisher"
 	// RoleInternalReader reads the catalog and published contracts of the workspace.
 	RoleInternalReader Role = "internal_reader"
 )
 
-// WorkspaceRoles returns the roles a membership can grant. The contract of
-// the API states the same roles, and a test holds the two together.
+// WorkspaceRoles returns the roles a membership can hold. The contract of
+// the API states the same roles, and a test holds the two together. A
+// membership is granted in any of them but RoleInternalReviewer.
 func WorkspaceRoles() []Role {
 	return []Role{RoleWorkspaceMaintainer, RoleInternalAuthor, RoleInternalReviewer, RoleInternalPublisher, RoleInternalReader}
 }
@@ -85,6 +88,9 @@ func GrantMembership(id MembershipID, product Product, workspace Workspace, memb
 	}
 	if !slices.Contains(WorkspaceRoles(), role) {
 		return Membership{}, invalid("a membership grants one of the roles of a workspace")
+	}
+	if role == RoleInternalReviewer {
+		return Membership{}, invalid("internal_reviewer is no longer granted: no review is decided")
 	}
 	if err := by.Validate(); err != nil {
 		return Membership{}, err

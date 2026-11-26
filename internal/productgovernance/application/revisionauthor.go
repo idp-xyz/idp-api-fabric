@@ -15,10 +15,11 @@ var revisionReaders = []domain.Role{
 
 // RevisionReader reports whether actor may read the contract revisions of
 // the workspace now: it owns the product or holds a governance reading role
-// there. A reviewer reads what it is to decide on, and a publisher
-// what it is to release: the revision, its checks and the reviews that
-// approved it, which a release names. Neither writes a revision. A read
-// takes no lock: the grant is read again with every request.
+// there. A publisher reads what it is to release: the revision, its checks
+// and the reviews that approved it, which a release prepared under one
+// names. A reviewer of before still reads what it read. Neither writes a
+// revision. A read takes no lock: the grant is read again with every
+// request.
 func (s *ProductGovernance) RevisionReader(ctx context.Context, actor domain.Principal,
 	productID domain.ProductID, workspaceID domain.WorkspaceID) (bool, error) {
 	roles, err := s.deps.Roles.RolesOf(ctx, productID, actor)
@@ -39,15 +40,6 @@ func (s *ProductGovernance) RevisionReader(ctx context.Context, actor domain.Pri
 	return slices.ContainsFunc(memberships, func(membership domain.Membership) bool {
 		return membership.WorkspaceID == workspaceID && slices.Contains(revisionReaders, membership.Role)
 	}), nil
-}
-
-// RevisionReviewer holds the current reviewer grant in the asset's workspace
-// while a decision on a review is recorded: the membership is locked and the
-// status of the product is read in the transaction of the decision, so that
-// a revocation and a decision take effect in the order they commit.
-func (s *ProductGovernance) RevisionReviewer(ctx context.Context, actor domain.Principal,
-	productID domain.ProductID, workspaceID domain.WorkspaceID) (reviewer, productActive bool, err error) {
-	return s.lockedRole(ctx, actor, productID, workspaceID, domain.RoleInternalReviewer, true)
 }
 
 // RevisionAuthor holds the current author grant in the asset's workspace.

@@ -78,12 +78,13 @@ func newReleaseReadService(t *testing.T, fake *releaseReads) *service {
 
 // preparedOn is a release of the revision, prepared under a review that
 // rita concluded for the sandbox of the internal audience, which waived a
-// rule, on a check of the baseline that the tool of its rules made.
+// rule, on a check of the baseline that the tool of its rules made: a release
+// of before releases were prepared on a check alone.
 func preparedOn(revision registrydomain.Revision) registrydomain.ReleaseProvenance {
 	return registrydomain.ReleaseProvenance{
 		Release: registrydomain.Release{
 			ID: releaseID, Asset: revision.Asset, RevisionID: revision.ID, ReviewID: reviewID,
-			Approval: registrydomain.ApprovalEvidence{
+			Evidence: registrydomain.CheckEvidence{
 				CheckRunID: checkRunID, PolicySnapshotID: policySnapshotID, PolicyDigest: "sha256:" + fmt.Sprintf("%064x", 3),
 			},
 			Version: "1.0.0", InputDigest: revision.RefClosureDigest, ArtifactDigest: "sha256:" + fmt.Sprintf("%064x", 4),
@@ -97,7 +98,7 @@ func preparedOn(revision registrydomain.Revision) registrydomain.ReleaseProvenan
 				Status: "FAIL", CompletedAt: createdAt.Add(time.Hour),
 				Summary: registrydomain.CheckSummary{Pass: 11, Fail: 1, NotRun: 10, Findings: 2},
 			},
-			Approval: registrydomain.ReleaseApproval{
+			Approval: &registrydomain.ReleaseApproval{
 				ReviewID: reviewID, Supplementary: true,
 				Scope:       []registrydomain.ReviewTarget{{Audience: "internal", Environment: "sandbox"}},
 				ConcludedBy: registrydomain.Principal{Issuer: issuer, Subject: "rita"}, ConcludedAt: createdAt.Add(2 * time.Hour),
@@ -106,6 +107,17 @@ func preparedOn(revision registrydomain.Revision) registrydomain.ReleaseProvenan
 			},
 		},
 	}
+}
+
+// preparedOnCheck is a release of the revision prepared on its check alone:
+// it names no review, has no approval, and waives the rule that failed in
+// the check itself, for the reason whoever prepared it gave.
+func preparedOnCheck(revision registrydomain.Revision) registrydomain.ReleaseProvenance {
+	provenance := preparedOn(revision)
+	provenance.Release.ReviewID = ""
+	provenance.Release.Waivers = []registrydomain.Waiver{{RuleID: "F04-GOV-003", Reason: "generated clients are not used yet"}}
+	provenance.Evidence.Approval = nil
+	return provenance
 }
 
 // The contract states what a release was prepared on as it is answered. What
@@ -171,7 +183,6 @@ func TestTheContractStatesTheProvenanceOfAReleaseAsItIsAnswered(t *testing.T) {
 		"no release":                             without(top, "release"),
 		"no revision":                            without(top, "revision"),
 		"no check":                               without(top, "check"),
-		"no approval":                            without(top, "approval"),
 
 		"where the revision stands in its review": set(revision, "status", "APPROVED"),
 		"a revision without its identifier":       without(revision, "revision_id"),
@@ -228,8 +239,10 @@ func TestTheContractStatesTheProvenanceOfAReleaseAsItIsAnswered(t *testing.T) {
 		})
 	}
 	// And it takes as many as an approval can hold: every target there is,
-	// a waiver for every rule of a policy.
+	// a waiver for every rule of a policy. A release prepared on its check
+	// alone has no approval at all.
 	for name, change := range map[string]func(map[string]any){
+		"no approval": without(top, "approval"),
 		"an approval for each audience in each environment": func(body map[string]any) {
 			var scope []any
 			for _, audience := range []string{"public", "partner", "internal"} {
@@ -401,7 +414,7 @@ func TestTheContractStatesTheReadsOfAReleaseAsTheyAreAnswered(t *testing.T) {
 // given.
 func TestAProvenanceShowsTheCheckAndTheApprovalAsTheyWereRecorded(t *testing.T) {
 	provenance := preparedOn(fromGit())
-	check, approval := &provenance.Evidence.Check, &provenance.Evidence.Approval
+	check, approval := &provenance.Evidence.Check, provenance.Evidence.Approval
 	// No two counts are alike, so that none can be taken for another.
 	check.Summary = registrydomain.CheckSummary{Pass: 11, Warn: 2, Fail: 3, Unknown: 4, NotRun: 5, Findings: 17}
 	check.Tools = []registrydomain.CheckTool{{Name: "fabric-openapi-rules", Version: "3"}, {Name: "fabric-compatibility", Version: "1"}}
@@ -451,6 +464,38 @@ func TestAProvenanceShowsTheCheckAndTheApprovalAsTheyWereRecorded(t *testing.T) 
 	}
 }
 
+// A release prepared on its check alone has a provenance without an
+// approval: it names no review, and the rules it let stand are the waivers of
+// the release, each with the reason whoever prepared it gave. What the
+// contract declares takes it as it is.
+func TestTheProvenanceOfAReleasePreparedOnItsCheckHasNoApproval(t *testing.T) {
+	contract, err := loadContract()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &releaseReads{provenance: preparedOnCheck(fromGit())}
+	recorder := newReleaseReadService(t, fake).do(t, call{Method: http.MethodGet, Target: releaseProvenancePath, Token: alice.Subject})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200: %s", recorder.Code, recorder.Body)
+	}
+	shown := members(t, recorder)
+	if err := contract.Components.Schemas["ContractReleaseProvenance"].Value.VisitJSON(shown); err != nil {
+		t.Fatalf("the contract refuses the provenance of a release prepared on its check: %v", err)
+	}
+	if _, approved := shown["approval"]; approved {
+		t.Errorf("the provenance names an approval: %v", shown["approval"])
+	}
+	release, _ := shown["release"].(map[string]any)
+	if _, named := release["review_id"]; named || !reflect.DeepEqual(release["waivers"], []any{
+		map[string]any{"rule_id": "F04-GOV-003", "reason": "generated clients are not used yet"},
+	}) {
+		t.Errorf("the release of the provenance is %v, want its waivers and no review", release)
+	}
+	if check, _ := shown["check"].(map[string]any); check["check_run_id"] != checkRunID {
+		t.Errorf("the provenance names the check %v, want %s", check["check_run_id"], checkRunID)
+	}
+}
+
 // A release shows the origin of its revision exactly when the revision has
 // one, member for member as it was declared, and not where the revision
 // stands. One whose kind and origin disagree is a failure of the service and
@@ -475,7 +520,7 @@ func TestAReleaseShowsTheOriginOfItsRevisionExactlyWhenItHasOne(t *testing.T) {
 	for name, c := range shown {
 		t.Run(name, func(t *testing.T) {
 			revision := c.revision
-			revision.Status = registrydomain.RevisionApproved
+			revision.Status = "APPROVED"
 			fake := &releaseReads{provenance: preparedOn(revision)}
 			recorder := newReleaseReadService(t, fake).do(t, call{Method: http.MethodGet, Target: releaseProvenancePath, Token: alice.Subject})
 			if recorder.Code != http.StatusOK {

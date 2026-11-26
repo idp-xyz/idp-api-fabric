@@ -82,7 +82,7 @@ func integrity(id, description, evaluator, mode string) Rule {
 	}
 }
 
-// quality states a rule a reviewer may waive for a reason and a time.
+// quality states a rule whoever prepares a release may waive for a reason.
 func quality(id, description string, severity Severity, evaluator, mode string) Rule {
 	return Rule{
 		ID: id, Description: description, Category: CategoryQuality, Severity: severity, Waivable: true,

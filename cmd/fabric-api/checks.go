@@ -83,41 +83,9 @@ func (r checkRevisions) LockAuthor(ctx context.Context, caller checkdomain.Princ
 	}, true)
 }
 
-func (r checkRevisions) LockReviewer(ctx context.Context, caller checkdomain.Principal, revision checkdomain.RevisionRef) (bool, bool, error) {
-	return r.scopes.governance.RevisionReviewer(ctx, governancedomain.Principal(caller),
-		governancedomain.ProductID(revision.ProductID), governancedomain.WorkspaceID(revision.WorkspaceID))
-}
-
-// Recorder is who recorded the revision, for whoever may read it.
-func (r checkRevisions) Recorder(ctx context.Context, target checkports.Target) (checkdomain.Principal, error) {
-	revision, err := r.registry.GetRevision(ctx, checkScope(target), target.RevisionID)
-	if err != nil {
-		return checkdomain.Principal{}, err
-	}
-	return checkdomain.Principal(revision.CreatedBy), nil
-}
-
-// Move changes the status the registry keeps of the revision, in the
-// transaction of the review that asks for it.
-func (r checkRevisions) Move(ctx context.Context, revision checkdomain.RevisionRef, to string) (int64, error) {
-	moved, err := r.registry.MoveRevision(ctx, registrydomain.AssetRef{
-		ProductID: revision.ProductID, WorkspaceID: revision.WorkspaceID, AssetID: revision.AssetID,
-	}, revision.RevisionID, to)
-	return moved.StatusVersion, err
-}
-
-// Hold keeps the revision at the status the registry has of it until the
-// transaction of the review ends, and says what that status is.
-func (r checkRevisions) Hold(ctx context.Context, revision checkdomain.RevisionRef) (string, int64, error) {
-	held, err := r.registry.HoldRevision(ctx, registrydomain.AssetRef{
-		ProductID: revision.ProductID, WorkspaceID: revision.WorkspaceID, AssetID: revision.AssetID,
-	}, revision.RevisionID)
-	return held.Status, held.StatusVersion, err
-}
-
 // policyReview is the use cases of Policy & Review as the transport reaches
-// them: those of a check, those of a review and the queue of the reviews of a
-// workspace.
+// them: those of a check, the reads of a review and the queue of the reviews
+// of a workspace.
 type policyReview struct {
 	*checks.Checks
 	*checks.Reviews
@@ -126,8 +94,9 @@ type policyReview struct {
 
 func (a auditTrail) recordCheck(ctx context.Context, entry checkports.AuditEntry) error {
 	resource, id := "CheckRun", entry.CheckRunID
-	if entry.ReviewID != "" || strings.HasPrefix(entry.Action, "review.") {
-		resource, id = "Review", entry.ReviewID
+	if strings.HasPrefix(entry.Action, "review.") {
+		// A refusal to read the reviews of a workspace names no review.
+		resource, id = "Review", ""
 	}
 	return a.Record(ctx, governanceports.AuditEntry{
 		Actor: governancedomain.Principal(entry.Target.Caller), ProductID: governancedomain.ProductID(entry.Target.ProductID),

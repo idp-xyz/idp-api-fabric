@@ -6,12 +6,41 @@ import (
 	"testing"
 )
 
-// A reviewer of a workspace reads what it is to decide on: the revisions of
-// the assets of the workspace, their files, their checks and how two of them
-// compare, answer for answer as an author reads them. It writes no revision
-// and runs no check, and the grant counts in the workspace it was made in
-// and in no other.
-func TestAReviewerReadsTheRevisionsAndChecksOfItsWorkspaceAndWritesNone(t *testing.T) {
+// Nobody is made a reviewer any more (CR-0001): no review is decided. Asking
+// for the role is refused as a membership that grants no role of a
+// workspace is, by an owner as by anyone, and nothing is recorded of it. The
+// other roles are granted as before.
+func TestNobodyIsMadeAReviewerAnyMore(t *testing.T) {
+	s := start(t, "platform-admin")
+	product := s.register("platform-admin", "cargopai", "owner")
+	workspace := s.createWorkspace(product, "owner", "engineering")
+	memberships := "/v1/products/" + product + "/workspaces/" + workspace + "/memberships"
+	records, events, held := s.count("platformoperations.audit_record"), s.count("bento.outbox"), s.count("productgovernance.workspace_membership")
+
+	got := s.call(http.MethodPost, memberships, "owner", s.membership("reviewer", "internal_reviewer"))
+	if got.status != http.StatusUnprocessableEntity || got.code() != "REQUEST_UNPROCESSABLE" {
+		t.Fatalf("an owner makes somebody a reviewer: %d %v, want 422 REQUEST_UNPROCESSABLE", got.status, got.body)
+	}
+	if s.count("productgovernance.workspace_membership") != held || s.count("platformoperations.audit_record") != records || s.count("bento.outbox") != events {
+		t.Errorf("the refusal left %d memberships, %d audit records and %d events behind",
+			s.count("productgovernance.workspace_membership")-held, s.count("platformoperations.audit_record")-records, s.count("bento.outbox")-events)
+	}
+	if items, _ := s.page(memberships, "owner"); len(items) != 0 {
+		t.Errorf("the workspace lists the members %v, want none", items)
+	}
+	for _, role := range []string{"workspace_maintainer", "internal_author", "internal_publisher", "internal_reader"} {
+		if got := s.call(http.MethodPost, memberships, "owner", s.membership("member", role)); got.status != http.StatusCreated {
+			t.Errorf("an owner grants %s: %d %v", role, got.status, got.body)
+		}
+	}
+}
+
+// A reviewer made before reviewers stopped being made reads what it read:
+// the revisions of the assets of the workspace, their files, their checks,
+// how two of them compare and the reviews of before, answer for answer as an
+// author reads them. It writes no revision and runs no check, and the grant
+// counts in the workspace it was made in and in no other.
+func TestAReviewerOfBeforeReadsTheRevisionsChecksAndReviewsOfItsWorkspaceAndWritesNone(t *testing.T) {
 	s := start(t, "platform-admin")
 	product := s.register("platform-admin", "cargopai", "owner")
 	workspace := s.createWorkspace(product, "owner", "engineering")
@@ -35,9 +64,13 @@ func TestAReviewerReadsTheRevisionsAndChecksOfItsWorkspaceAndWritesNone(t *testi
 	if checked.status != http.StatusCreated {
 		t.Fatalf("the check: %d %v", checked.status, checked.body)
 	}
+	history := &reviewFixture{stack: s, product: product, workspace: workspace, revisions: path}
+	review := history.asked(revision, checked.body["check_run"].(map[string]any)["check_run_id"].(string), "author", partnerSandbox)
+	history.concluded(review, "reviewer", "APPROVED", "")
 	reads := []string{
 		path, revision, revision + "/source", revision + "/check-runs", checked.header.Get("Location"),
 		path + "/" + second.id("revision_id") + "/compatibility?baseline_revision_id=" + first.id("revision_id"),
+		revision + "/reviews", review,
 	}
 
 	records, events := s.count("platformoperations.audit_record"), s.count("bento.outbox")

@@ -3,7 +3,6 @@ package http
 import (
 	"bytes"
 	"context"
-	"fmt"
 
 	governanceports "go.idp.xyz/idp-api-fabric/internal/productgovernance/ports"
 	publication "go.idp.xyz/idp-api-fabric/internal/publication/application"
@@ -109,44 +108,18 @@ func (o operations) GetPublicationSlot(ctx context.Context, request GetPublicati
 	if err != nil {
 		return nil, err
 	}
-	body, err := showSlot(slot)
-	if err != nil {
-		return nil, err
-	}
-	return GetPublicationSlot200JSONResponse{Body: body, Headers: GetPublicationSlot200ResponseHeaders{CacheControl: noStore}}, nil
+	return GetPublicationSlot200JSONResponse{Body: showSlot(slot), Headers: GetPublicationSlot200ResponseHeaders{CacheControl: noStore}}, nil
 }
 
 // showSlot is a slot as the contract shows it. The read of one slot and the
 // lists of slots show every slot through it, so that a slot reads the same
 // wherever it is read.
-func showSlot(slot domain.SlotView) (PublicationSlot, error) {
-	body := PublicationSlot{
+func showSlot(slot domain.SlotView) PublicationSlot {
+	return PublicationSlot{
 		SlotID: optionalString(slot.ID), PublicationTargetID: slot.TargetID, APIAssetID: slot.AssetID,
 		ActiveReleaseID: optionalString(slot.ActiveReleaseID), Generation: slot.Generation,
 		Visibility: PublicationSlotVisibility(slot.Visibility()), Blocked: slot.Blocked, DeliveryStatus: "UNKNOWN",
 	}
-	if slot.Unapproved != nil {
-		code, err := approvalProblem(slot.Unapproved)
-		if err != nil {
-			return PublicationSlot{}, err
-		}
-		body.ApprovalProblem = &code
-	}
-	return body, nil
-}
-
-// approvalProblem names why an approval does not hold in the words an
-// activation is refused with: the code of the problem that refusal is
-// answered as. So a slot and an activation say the same of the same cause.
-// A cause the contract has no word for on a slot is a failure of the
-// service and not an answer: it is not handed on as the refusal it would be
-// elsewhere.
-func approvalProblem(unapproved error) (PublicationSlotApprovalProblem, error) {
-	found, known := problemOf(unapproved)
-	if code := PublicationSlotApprovalProblem(found.ErrorCode); known && code.Valid() {
-		return code, nil
-	}
-	return "", fmt.Errorf("the slot cannot say why the approval of its release does not hold: %v", unapproved)
 }
 
 func (o operations) ChangePublicationSlot(ctx context.Context, request ChangePublicationSlotRequestObject) (ChangePublicationSlotResponseObject, error) {

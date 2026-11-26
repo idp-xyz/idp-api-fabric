@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"slices"
 	"testing"
-	"time"
 )
 
 // otherProduct is a second product, staffed as the first one is, with a
@@ -44,7 +43,7 @@ func TestTheOverviewIsShownToWhoReadsTheRevisionsOfTheWorkspaceAndToNoOneElse(t 
 	w.join(w.product, w.workspace, "owner", "double", "internal_publisher")
 
 	// The asset of engineering was released, and the one of operations is
-	// approved: a release is pending for it. Both were last checked as UNKNOWN.
+	// checked: a release is pending for it. Both were last checked as UNKNOWN.
 	engineering, operations := w.releaseFixture, w.assetIn(w.product, w.operations, "ops-api")
 	w.putInState(engineering, "released")
 	w.putInState(operations, "pending-unknown")
@@ -178,25 +177,25 @@ func TestTheOverviewIsShownToWhoReadsTheRevisionsOfTheWorkspaceAndToNoOneElse(t 
 // of its workspace, and nothing of it reaches the pages of such a caller:
 // what happens to the assets of a workspace the caller reads no overview of
 // changes none of their pages, filtered or not, nor the tokens of them. The
-// asset is imported, checked, approved and released there, and the caller
+// asset is imported, checked and released there, and the caller
 // that reads only the other workspace, or reads published material of this one, reads the same
 // pages as before.
 func TestWhatHappensToAnAssetInAWorkspaceTheCallerReadsNoOverviewOfChangesNoPageOfTheirs(t *testing.T) {
 	w := slotsFor(t)
 	w.join(w.product, w.workspace, "owner", "mixed", "internal_author")
 	w.join(w.product, w.operations, "owner", "mixed", "internal_reader")
-	asset := func(workspace, key, state string) (fixture *releaseFixture, revision, review string) {
+	asset := func(workspace, key, state string) (fixture *releaseFixture, revision, check string) {
 		fixture = w.assetIn(w.product, workspace, key)
-		revision, review = w.putInState(fixture, state)
-		return fixture, revision, review
+		revision, check = w.putInState(fixture, state)
+		return fixture, revision, check
 	}
 	asset(w.workspace, "e1", "pending-unknown")
 	asset(w.workspace, "e2", "released")
-	asset(w.workspace, "e3", "draft-fail")
+	asset(w.workspace, "e3", "released-fail")
 	asset(w.workspace, "e4", "pending-fail")
-	o1, revision, review := asset(w.operations, "o1", "pending-unknown")
+	o1, revision, check := asset(w.operations, "o1", "pending-unknown")
 	o2, _, _ := asset(w.operations, "o2", "plain")
-	o3, _, _ := asset(w.operations, "o3", "draft-fail")
+	o3, _, _ := asset(w.operations, "o3", "released-fail")
 	asset(w.operations, "o4", "released")
 	w.join(w.product, w.workspace, "owner", "metadata-reader", "internal_reader")
 	w.join(w.product, w.operations, "owner", "metadata-reader", "internal_reader")
@@ -224,12 +223,11 @@ func TestWhatHappensToAnAssetInAWorkspaceTheCallerReadsNoOverviewOfChangesNoPage
 	}
 	before, pendingBefore := read(), pendingOfAuthor()
 
-	// Operations changes: one asset is released, one is approved, and the
-	// last revision of another is one that is approved with a waiver.
-	w.require(o1.prepare(revision, review, "1.0.0", "publisher"), http.StatusCreated, "")
+	// Operations changes: one asset is released, one is checked, and the
+	// last revision of another is a newer one that is checked and fails.
+	w.require(o1.prepare(revision, check, "1.0.0", "publisher"), http.StatusCreated, "")
 	w.putInState(o2, "pending-unknown")
-	decision := deciding("APPROVED", "", time.Now().UTC().Add(90*24*time.Hour), waiving("F04-GOV-003", time.Now().UTC().Add(24*time.Hour)))
-	o3.approveFrom(uploadRevision("openapi.yaml", variant(unnamedSource, 2)), decision, internalSandbox)
+	o3.checkedRevision(variant(unnamedSource, 2), "")
 
 	if pendingAfter := pendingOfAuthor(); slices.Equal(pendingAfter, pendingBefore) || len(pendingAfter) != len(pendingBefore)+1 {
 		t.Fatalf("the author of both workspaces reads %v pending after the changes of operations, and read %v before: they changed nothing", pendingAfter, pendingBefore)

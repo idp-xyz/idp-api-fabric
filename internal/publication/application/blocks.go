@@ -94,7 +94,7 @@ func (s *Publication) ClearBlock(ctx context.Context, request domain.Request, id
 			return ErrNotIndependent
 		}
 		// Clearing a deny cannot make a hidden release visible as a side
-		// effect. Restore is a separate CAS command with a fresh approval check.
+		// effect. Restore is a separate CAS command with checks of its own.
 		active, err := s.deps.Store.HasActiveRelease(tx, block)
 		if err != nil {
 			return err

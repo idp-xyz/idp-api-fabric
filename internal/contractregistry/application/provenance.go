@@ -31,9 +31,8 @@ type ReleaseDownload struct {
 // ReleaseMaterial does for a slot: the closure of its revision is the one
 // the release records and the bytes are those of its digest. That is all that
 // is asked of it. The access blocks of a publication target are not looked
-// at, and the approval is not verified again: both belong to what a slot
-// serves to a target, and a release read by its identifier is served to no
-// target. A product that is suspended still shows what it has released.
+// at: they belong to what a slot serves to a target, and a release read by
+// its identifier is served to no target. A product that is suspended still shows what it has released.
 func (r *Releases) GetReleaseArtifact(ctx context.Context, query ports.ScopeQuery, id string) (ReleaseDownload, error) {
 	var download ReleaseDownload
 	err := r.deps.Transactions.WithinTransaction(ctx, func(tx context.Context) error {
@@ -59,13 +58,14 @@ func (r *Releases) GetReleaseArtifact(ctx context.Context, query ports.ScopeQuer
 }
 
 // GetReleaseProvenance returns the release, revision, check and approval it
-// names when the caller holds a release evidence grant for the asset.
+// names when the caller holds a release evidence grant for the asset. A
+// release prepared on its check alone names no approval.
 //
 // Every part is read by what the release recorded when it was prepared: the
-// revision, the review and the check it names. None of it is the latest of
-// anything, so the answer is the same after the revision is reviewed again
-// or its repository moves on. The approval is not verified: whether it holds
-// now is for a slot to say.
+// revision, the check and the review it names. None of it is the latest of
+// anything, so the answer is the same after the revision is checked again
+// or its repository moves on. Nothing is verified against the policy of
+// today.
 //
 // A release whose revision or evidence is not what it recorded is a failure
 // of the storage and is answered as one, without saying what is wrong.

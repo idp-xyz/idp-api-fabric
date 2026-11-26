@@ -19,21 +19,11 @@ import (
 	"go.idp.xyz/idp-api-fabric/internal/platform/ids"
 )
 
-// approved records a revision of the asset and moves it through its review.
-func (f *statusFixture) approved() domain.Revision {
-	f.t.Helper()
-	revision := f.record()
-	f.move(f.asset, revision.ID, domain.RevisionInReview)
-	moved, _, err := f.move(f.asset, revision.ID, domain.RevisionApproved)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	return moved
-}
-
 // release is a release of the revision under the version, prepared at the
-// time, and the bytes of its artifact.
-func (f *statusFixture) release(revision domain.Revision, version string, at time.Time) (domain.Release, []byte) {
+// time on a check of it with the waivers, and the bytes of its artifact. A
+// release is prepared from a revision whatever its status, so the revisions
+// of these tests are the drafts they were recorded as.
+func (f *statusFixture) release(revision domain.Revision, version string, at time.Time, waivers ...domain.Waiver) (domain.Release, []byte) {
 	f.t.Helper()
 	files, err := f.store.Files(f.t.Context(), f.asset, revision.ID)
 	if err != nil {
@@ -44,10 +34,11 @@ func (f *statusFixture) release(revision domain.Revision, version string, at tim
 		f.t.Fatal(err)
 	}
 	return domain.Release{
-		ID: ids.NewUUID(), Asset: f.asset, RevisionID: revision.ID, ReviewID: ids.NewUUID(),
-		Approval: domain.ApprovalEvidence{
+		ID: ids.NewUUID(), Asset: f.asset, RevisionID: revision.ID,
+		Evidence: domain.CheckEvidence{
 			CheckRunID: ids.NewUUID(), PolicySnapshotID: ids.NewUUID(), PolicyDigest: "sha256:" + strings.Repeat("a", 64),
 		},
+		Waivers: waivers,
 		Version: version, InputDigest: revision.RefClosureDigest, ArtifactDigest: digest,
 		PreparedAt: at, PreparedBy: domain.Principal{Issuer: "https://issuer.example", Subject: "publisher"},
 	}, payload
@@ -87,7 +78,7 @@ func TestAReleaseIsRecordedOnceUnderItsVersionAndReadUnderItsAsset(t *testing.T)
 		}
 		return rows
 	}
-	revision, next := f.approved(), f.approved()
+	revision, next := f.record(), f.record()
 	morning := time.Date(2026, 11, 20, 8, 0, 0, 0, time.UTC)
 
 	first, payload := f.release(revision, "1.0.0", morning)
@@ -98,10 +89,8 @@ func TestAReleaseIsRecordedOnceUnderItsVersionAndReadUnderItsAsset(t *testing.T)
 		"by its identifier": func() (domain.Release, bool, error) { return releases.Find(t.Context(), f.asset, first.ID) },
 		"by its version":    func() (domain.Release, bool, error) { return releases.Version(t.Context(), f.asset, "1.0.0") },
 	} {
-		if got, found, err := read(); err != nil || !found || !got.PreparedAt.Equal(morning) {
-			t.Errorf("read %s: %+v found %t, %v", name, got, found, err)
-		} else if got.PreparedAt = first.PreparedAt; got != first {
-			t.Errorf("read %s: %+v, want %+v", name, got, first)
+		if got, found, err := read(); err != nil || !found || !sameRelease(got, first) {
+			t.Errorf("read %s: %+v found %t, want %+v: %v", name, got, found, first, err)
 		}
 	}
 	if stored, err := releases.Artifact(t.Context(), first.ArtifactDigest); err != nil || !bytes.Equal(stored, payload) {
@@ -196,7 +185,7 @@ func TestAReleaseIsRecordedOnceUnderItsVersionAndReadUnderItsAsset(t *testing.T)
 func TestTheTablesKeepAReleaseAndItsArtifactAsTheyWereRecorded(t *testing.T) {
 	f, database := newStatusFixture(t)
 	releases := postgres.NewReleases(f.fabric.Framework)
-	first, payload := f.release(f.approved(), "1.0.0", time.Date(2026, 11, 20, 8, 0, 0, 0, time.UTC))
+	first, payload := f.release(f.record(), "1.0.0", time.Date(2026, 11, 20, 8, 0, 0, 0, time.UTC))
 	if created, err := f.keep(releases, first, payload); err != nil || !created {
 		t.Fatalf("the release: recorded %t, %v", created, err)
 	}
@@ -205,6 +194,7 @@ func TestTheTablesKeepAReleaseAndItsArtifactAsTheyWereRecorded(t *testing.T) {
 		uniqueViolation       = "23505"
 		foreignKeyViolation   = "23503"
 		checkViolation        = "23514"
+		notNullViolation      = "23502"
 		insufficientPrivilege = "42501"
 	)
 	// another is a copy of the release under a new identifier, with the
@@ -213,7 +203,7 @@ func TestTheTablesKeepAReleaseAndItsArtifactAsTheyWereRecorded(t *testing.T) {
 		columns := []string{
 			"release_id", "product_id", "workspace_id", "api_asset_id", "revision_id", "review_id", "check_run_id",
 			"policy_snapshot_id", "policy_digest", "input_digest", "artifact_digest", "release_version",
-			"prepared_at", "prepared_by_issuer", "prepared_by_subject",
+			"prepared_at", "prepared_by_issuer", "prepared_by_subject", "waivers",
 		}
 		values := slices.Clone(columns)
 		values[0] = "gen_random_uuid()"
@@ -247,6 +237,12 @@ func TestTheTablesKeepAReleaseAndItsArtifactAsTheyWereRecorded(t *testing.T) {
 		{"a release of an artifact nobody stored", another(map[string]string{"release_version": `'2'`, "artifact_digest": `'sha256:' || repeat('0', 64)`}), foreignKeyViolation},
 		{"a policy digest that is none", another(map[string]string{"release_version": `'2'`, "policy_digest": `'md5:0123'`}), checkViolation},
 		{"an input digest that is none", another(map[string]string{"release_version": `'2'`, "input_digest": `repeat('a', 64)`}), checkViolation},
+		{"waivers that are no list", another(map[string]string{"release_version": `'2'`, "waivers": `'{"rule_id": "F04-GOV-003"}'::jsonb`}), checkViolation},
+		{"no waivers at all", another(map[string]string{"release_version": `'2'`, "waivers": `NULL`}), notNullViolation},
+		{"waivers of a release prepared under a review", another(map[string]string{
+			"release_version": `'2'`, "review_id": "gen_random_uuid()",
+			"waivers": `'[{"rule_id": "F04-GOV-003", "reason": "accepted"}]'::jsonb`,
+		}), checkViolation},
 		{"bytes that are not those of the digest", artifact(`'sha256:' || repeat('0', 64)`, zeros(8)), checkViolation},
 		{"an artifact of no bytes", artifact(digestOfBytes, `''::bytea`), checkViolation},
 		{"an artifact a byte over the bound", artifact(digestOfBytes, zeros(domain.MaxArtifactBytes+1)), checkViolation},
@@ -286,13 +282,88 @@ func TestTheTablesKeepAReleaseAndItsArtifactAsTheyWereRecorded(t *testing.T) {
 	}
 
 	// What the model writes is what the tables take, by hand as well: an
-	// artifact of exactly the bound, and another version of the revision.
+	// artifact of exactly the bound, another version of the revision with a
+	// waiver, and a release under a review as a build before this one
+	// records it, which names no waivers.
 	for name, statement := range map[string]string{
 		"an artifact of the largest size": artifact(digestOfBytes, zeros(domain.MaxArtifactBytes)),
-		"another version of the revision": another(map[string]string{"release_version": `'1.0.1'`}),
+		"another version of the revision with a waiver": another(map[string]string{
+			"release_version": `'1.0.1'`, "waivers": `'[{"rule_id": "F04-GOV-003", "reason": "accepted"}]'::jsonb`,
+		}),
+		"a release under a review, as the build before records it": fmt.Sprintf(`
+INSERT INTO contractregistry.contract_release (release_id, product_id, workspace_id, api_asset_id, revision_id, review_id,
+    check_run_id, policy_snapshot_id, policy_digest, input_digest, artifact_digest, release_version, prepared_at,
+    prepared_by_issuer, prepared_by_subject)
+SELECT gen_random_uuid(), product_id, workspace_id, api_asset_id, revision_id, gen_random_uuid(), check_run_id,
+       policy_snapshot_id, policy_digest, input_digest, artifact_digest, '1.0.2', prepared_at, prepared_by_issuer, prepared_by_subject
+FROM contractregistry.contract_release WHERE release_id = '%s'`, first.ID),
 	} {
 		if _, err := app.Exec(t.Context(), statement); err != nil {
 			t.Errorf("%s, as the application role: %v", name, err)
 		}
+	}
+}
+
+// A release prepared on a check names no review and keeps the waivers it was
+// prepared with, rule and reason, in the order it was given them, however it
+// is read. One that waives nothing reads no waivers. A release a build before
+// this one prepared under a review is read with its review and no waivers of
+// its own: those are the review's.
+func TestAReleaseKeepsItsWaiversAndTheReviewOfBefore(t *testing.T) {
+	f, database := newStatusFixture(t)
+	releases := postgres.NewReleases(f.fabric.Framework)
+	owner := pgtest.Connect(t, database.Migrator)
+	revision := f.record()
+	morning := time.Date(2026, 11, 20, 8, 0, 0, 0, time.UTC)
+
+	waived, payload := f.release(revision, "1.0.0", morning,
+		domain.Waiver{RuleID: "F04-GOV-002", Reason: "the summary follows in 1.1"},
+		domain.Waiver{RuleID: "F04-GOV-003", Reason: "operationIds are named by the gateway, \"as agreed\""})
+	plain, _ := f.release(revision, "1.0.1", morning.Add(time.Minute))
+	for _, release := range []domain.Release{waived, plain} {
+		if created, err := f.keep(releases, release, payload); err != nil || !created {
+			t.Fatalf("release %s: recorded %t, %v", release.Version, created, err)
+		}
+	}
+	listed, err := releases.List(t.Context(), f.asset, nil, 10)
+	if err != nil || len(listed) != 2 {
+		t.Fatalf("listed %+v: %v", listed, err)
+	}
+	for i, want := range []domain.Release{waived, plain} {
+		byID, _, err := releases.Find(t.Context(), f.asset, want.ID)
+		byVersion, _, versionErr := releases.Version(t.Context(), f.asset, want.Version)
+		if err != nil || versionErr != nil || !sameRelease(byID, want) || !sameRelease(byVersion, want) || !sameRelease(listed[i], want) {
+			t.Errorf("release %s reads %+v by identifier, %+v by version and %+v in the list, want %+v (%v, %v)",
+				want.Version, byID, byVersion, listed[i], want, err, versionErr)
+		}
+	}
+	if plain.Waivers != nil || listed[1].Waivers != nil || listed[1].ReviewID != "" {
+		t.Errorf("a release that waives nothing reads waivers %v and review %q, want none", listed[1].Waivers, listed[1].ReviewID)
+	}
+	// The table says the same: no review, and the waivers as a list.
+	var review *string
+	var stored string
+	if err := owner.QueryRow(t.Context(), `SELECT review_id::text, waivers::text FROM contractregistry.contract_release
+WHERE release_id = $1`, plain.ID).Scan(&review, &stored); err != nil || review != nil || stored != "[]" {
+		t.Errorf("the release that waives nothing is stored with review %v and waivers %s, want NULL and []: %v", review, stored, err)
+	}
+
+	// A release of before: the build before this one names its review and
+	// nothing of waivers.
+	before, reviewID := ids.NewUUID(), ids.NewUUID()
+	if _, err := owner.Exec(t.Context(), `
+INSERT INTO contractregistry.contract_release (release_id, product_id, workspace_id, api_asset_id, revision_id, review_id,
+    check_run_id, policy_snapshot_id, policy_digest, input_digest, artifact_digest, release_version, prepared_at,
+    prepared_by_issuer, prepared_by_subject)
+SELECT $1, product_id, workspace_id, api_asset_id, revision_id, $2, check_run_id, policy_snapshot_id, policy_digest,
+       input_digest, artifact_digest, '0.9.0', prepared_at, prepared_by_issuer, prepared_by_subject
+FROM contractregistry.contract_release WHERE release_id = $3`, before, reviewID, plain.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, found, err := releases.Find(t.Context(), f.asset, before)
+	want := plain
+	want.ID, want.ReviewID, want.Version = before, reviewID, "0.9.0"
+	if err != nil || !found || !sameRelease(got, want) {
+		t.Errorf("the release of before reads %+v (found %t), want %+v: %v", got, found, want, err)
 	}
 }

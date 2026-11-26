@@ -41,10 +41,18 @@ func (f fixture) scene(t *testing.T) scene {
 func membership(t *testing.T, of domain.Product, in domain.Workspace, member domain.Principal, role domain.Role) domain.Membership {
 	t.Helper()
 
-	granted, err := domain.GrantMembership(domain.MembershipID(ids.NewUUID()), of, in, member, role, alice, created)
+	// internal_reviewer is no longer granted (CR-0001), and the memberships
+	// granted in it before are still in the table: such a membership is
+	// built as one of another role that then holds the reviewer's.
+	granting := role
+	if role == domain.RoleInternalReviewer {
+		granting = domain.RoleInternalAuthor
+	}
+	granted, err := domain.GrantMembership(domain.MembershipID(ids.NewUUID()), of, in, member, granting, alice, created)
 	if err != nil {
 		t.Fatalf("build the membership: %v", err)
 	}
+	granted.Role = role
 	return granted
 }
 

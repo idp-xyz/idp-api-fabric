@@ -46,14 +46,16 @@ func (o assetOverviews) Of(ctx context.Context, product catalogdomain.ProductID,
 	}
 
 	// The checks are read for the assets the registry alone has not ruled
-	// out: those a release is not pending for are not asked about when the
-	// filter wants one that is.
+	// out: those whose last revision was released are not asked about when
+	// the filter wants a release that is pending.
 	var expected []checks.Expected
+	released := make(map[catalogdomain.AssetID]bool, len(heads))
 	for _, head := range heads {
-		overview := overviewOfHead(head)
-		if filter.ReleasePending && !overview.ReleasePending {
+		if filter.ReleasePending && head.Released {
 			continue
 		}
+		overview := overviewOfHead(head)
+		released[catalogdomain.AssetID(head.Revision.Asset.AssetID)] = head.Released
 		overviews[catalogdomain.AssetID(head.Revision.Asset.AssetID)] = overview
 		expected = append(expected, checks.Expected{
 			Revision: checkdomain.RevisionRef{
@@ -76,9 +78,14 @@ func (o assetOverviews) Of(ctx context.Context, product catalogdomain.ProductID,
 	for asset, overview := range overviews {
 		if check, found := checked[asset]; found {
 			overview.LatestCheck = &check
+			// A release is pending for a revision that was checked and
+			// that no release was prepared from. Whether the check lets a
+			// release be prepared is for the preparation to say.
+			overview.ReleasePending = !released[asset]
 			overviews[asset] = overview
-		} else if filter.CheckStatus != "" {
-			// Asked for a status, only the assets whose last check has it are kept.
+		} else if filter.CheckStatus != "" || filter.ReleasePending {
+			// Asked for a status, only the assets whose last check has it
+			// are kept; asked for a pending release, only those checked.
 			delete(overviews, asset)
 		}
 	}
@@ -87,14 +94,14 @@ func (o assetOverviews) Of(ctx context.Context, product catalogdomain.ProductID,
 
 // overviewOfHead puts what the registry says of an asset in the words of the
 // Catalog: the members are those of the revision and of the release as the
-// registry gives them.
+// registry gives them. Whether a release is pending takes the check of the
+// revision as well, which the registry does not know.
 func overviewOfHead(head registryports.Head) catalogdomain.Overview {
 	revision := head.Revision
 	overview := catalogdomain.Overview{
 		LatestRevision: &catalogdomain.OverviewRevision{
 			ID: revision.ID, Sequence: revision.Sequence, Status: revision.Status, CreatedAt: revision.CreatedAt,
 		},
-		ReleasePending: revision.Status == registrydomain.RevisionApproved && !head.Released,
 	}
 	if release := head.Release; release != nil {
 		overview.LatestRelease = &catalogdomain.OverviewRelease{

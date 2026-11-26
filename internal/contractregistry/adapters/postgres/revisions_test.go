@@ -172,17 +172,15 @@ func TestARevisionSaysWhoRecordedItWhoeverSubmitsItsContentAgain(t *testing.T) {
 	if again.Created || again.Revision.ID != first.Revision.ID || again.Revision.CreatedBy != author {
 		t.Errorf("the same content submitted by someone else: %+v, want the revision %s that %+v recorded", again, first.Revision.ID, author)
 	}
-	var moved domain.Revision
-	if err := fabric.WithinTransaction(t.Context(), func(ctx context.Context) error {
-		var err error
-		moved, _, err = store.Move(ctx, asset, first.Revision.ID, domain.RevisionInReview)
-		return err
-	}); err != nil || moved.CreatedBy != author {
-		t.Errorf("the revision once it is submitted: recorded by %+v, want %+v: %v", moved.CreatedBy, author, err)
+	// A status that moved, as a review of before moved it, does not change
+	// who recorded the revision.
+	if _, err := pgtest.Connect(t, database.Migrator).Exec(t.Context(), `UPDATE contractregistry.contract_revision
+SET status = 'IN_REVIEW', status_version = 2 WHERE revision_id = $1`, first.Revision.ID); err != nil {
+		t.Fatal(err)
 	}
 	found, _, err := store.Find(t.Context(), asset, first.Revision.ID)
-	if err != nil || found.CreatedBy != author {
-		t.Errorf("the revision as it is found: recorded by %+v, want %+v: %v", found.CreatedBy, author, err)
+	if err != nil || found.CreatedBy != author || found.Status != "IN_REVIEW" {
+		t.Errorf("the revision as it is found once it moved: %+v, want it recorded by %+v: %v", found, author, err)
 	}
 	listed, err := store.List(t.Context(), asset, nil, 10)
 	if err != nil || len(listed) != 1 || listed[0].CreatedBy != author {

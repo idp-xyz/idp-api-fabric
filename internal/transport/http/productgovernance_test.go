@@ -206,6 +206,21 @@ func TestTheMembershipOperationsHandTheirRequestsToTheirUseCases(t *testing.T) {
 	}
 }
 
+// internal_reviewer is no longer granted (CR-0001), and is still a role a
+// membership holds: the contract names it, so a grant of it reaches the use
+// case, and the model refuses it as a membership it does not grant, which is
+// answered as any value the model refuses.
+func TestAGrantOfTheReviewerRoleIsRefusedByTheModel(t *testing.T) {
+	s := newService(t)
+	s.governance.err = fmt.Errorf("%w: internal_reviewer is no longer granted: no review is decided", domain.ErrInvalid)
+	body := `{"member":{"issuer":"` + issuer + `","subject":"rita"},"role":"internal_reviewer"}`
+	wantProblem(t, s.do(t, call{Method: http.MethodPost, Target: memberships, Token: "alice", Body: body}),
+		http.StatusUnprocessableEntity, CodeRequestUnprocessable, "")
+	if g := s.governance; len(g.granted) != 1 || g.granted[0].Role != string(domain.RoleInternalReviewer) {
+		t.Errorf("the use case was asked %+v, want one grant of internal_reviewer", g.granted)
+	}
+}
+
 func TestTheRoleOperationsHandTheirRequestsToTheirUseCases(t *testing.T) {
 	s := newService(t)
 	assignment := roleAssignments + "/" + roleAssignmentID

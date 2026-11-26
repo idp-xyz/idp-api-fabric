@@ -55,7 +55,7 @@ func sameRevision(a, b domain.Revision) bool {
 func sameRelease(a, b domain.Release) bool {
 	same := a.PreparedAt.Equal(b.PreparedAt)
 	a.PreparedAt, b.PreparedAt = time.Time{}, time.Time{}
-	return same && a == b
+	return same && reflect.DeepEqual(a, b)
 }
 
 // The head of an asset is the revision of the greatest sequence, as a read of
@@ -74,30 +74,31 @@ func TestTheHeadOfEachAssetOfASetIsItsOwnLastRevisionAndItsOwnLastRelease(t *tes
 		return f.forAsset(domain.AssetRef{ProductID: product, WorkspaceID: workspace, AssetID: ids.NewUUID()})
 	}
 	morning := time.Date(2026, 11, 20, 8, 0, 0, 0, time.UTC)
-	prepare := func(g *statusFixture, revision domain.Revision, version string, at time.Time) domain.Release {
+	prepare := func(g *statusFixture, revision domain.Revision, version string, at time.Time, waivers ...domain.Waiver) domain.Release {
 		t.Helper()
-		release, payload := g.release(revision, version, at)
+		release, payload := g.release(revision, version, at, waivers...)
 		if created, err := g.keep(releases, release, payload); err != nil || !created {
 			t.Fatalf("release %s: recorded %t, %v", version, created, err)
 		}
 		return release
 	}
 
-	// A draft that follows two revisions that were approved and released.
+	// A draft that follows two revisions that were released, the last of
+	// them with a waiver, which the head reads as the list does.
 	grown := newAsset()
-	first, second := grown.approved(), grown.approved()
+	first, second := grown.record(), grown.record()
 	prepare(grown, first, "1.0.0", morning)
-	prepare(grown, second, "2.0.0", morning.Add(time.Hour))
+	prepare(grown, second, "2.0.0", morning.Add(time.Hour), domain.Waiver{RuleID: "F04-GOV-003", Reason: "named in the next revision"})
 	third := grown.record()
-	// One revision, approved and released; one approved and not released.
+	// One revision, released; one that is not released.
 	released, waiting := newAsset(), newAsset()
-	onlyRevision := released.approved()
+	onlyRevision := released.record()
 	prepare(released, onlyRevision, "1.0.0", morning)
-	waiting.approved()
+	waiting.record()
 	// Two revisions released, and the older of them released again, later:
 	// the last release was prepared from the revision that is not the last.
 	older := newAsset()
-	one, two := older.approved(), older.approved()
+	one, two := older.record(), older.record()
 	prepare(older, two, "2.0.0", morning)
 	prepare(older, one, "1.0.1", morning.Add(2*time.Hour))
 	// An asset that has no revision.
@@ -185,7 +186,7 @@ func TestTheHeadOfAnAssetIsReadUnderItsProductAndItsWorkspace(t *testing.T) {
 	elsewhere := f.forAsset(domain.AssetRef{ProductID: ids.NewUUID(), WorkspaceID: mine.WorkspaceID, AssetID: mine.AssetID})
 	beside := f.forAsset(domain.AssetRef{ProductID: mine.ProductID, WorkspaceID: ids.NewUUID(), AssetID: mine.AssetID})
 	beside.count = 10
-	inMine, inElsewhere, inBeside := f.approved(), elsewhere.approved(), beside.approved()
+	inMine, inElsewhere, inBeside := f.record(), elsewhere.record(), beside.record()
 	// Each of the three has a release, and the two that are not mine were
 	// prepared later: whichever of them a read took for the last release of
 	// this asset would show.
@@ -207,7 +208,7 @@ func TestTheHeadOfAnAssetIsReadUnderItsProductAndItsWorkspace(t *testing.T) {
 		t.Errorf("the head of the asset of this product is %+v, want the revision %s released by %s", got, inMine.ID, released[f].ID)
 	}
 	if got := headsOf(t, heads, elsewhere.asset.ProductID, elsewhere.asset); len(got) != 1 ||
-		got[mine.AssetID].Revision.ID != inElsewhere.ID || got[mine.AssetID].Revision.Status != domain.RevisionApproved ||
+		got[mine.AssetID].Revision.ID != inElsewhere.ID || got[mine.AssetID].Revision.Status != domain.RevisionDraft ||
 		got[mine.AssetID].Release == nil || got[mine.AssetID].Release.ID != released[elsewhere].ID {
 		t.Errorf("the head of the asset of the other product is %+v, want the revision %s released by %s", got, inElsewhere.ID, released[elsewhere].ID)
 	}
@@ -241,7 +242,7 @@ func TestTheHeadOfAnAssetIsReadUnderItsProductAndItsWorkspace(t *testing.T) {
 func TestTheLastReleaseOfTwoPreparedAtTheSameInstantIsTheOneOfTheGreaterIdentifier(t *testing.T) {
 	f, _ := newStatusFixture(t)
 	releases, heads := postgres.NewReleases(f.fabric.Framework), postgres.NewHeads(f.fabric.Framework)
-	revision := f.approved()
+	revision := f.record()
 	at := time.Date(2026, 11, 20, 8, 0, 0, 0, time.UTC)
 	names := []string{ids.NewUUID(), ids.NewUUID()}
 	slices.Sort(names)
@@ -430,11 +431,15 @@ func (r savedRow) Scan(destinations ...any) error {
 // joins a release whole or none. A row that has some of them is a row the
 // registry cannot have made, and it is not made into a head with a release
 // that lacks a member; one that has none is the head of an asset without a
-// release.
+// release. The review is the one member a whole release may lack: a release
+// prepared on its check alone names none.
 func TestARowWithAReleaseThatIsNotWholeIsNoHead(t *testing.T) {
 	text := func(value string) *string { return &value }
 	instant := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
-	const releaseColumns = 12
+	const (
+		releaseColumns = 13
+		reviewColumn   = 2
+	)
 	row := func(release []any, released bool) savedRow {
 		values := []any{
 			"6d7e8f90-a1b2-4c3d-8e4f-5a6b7c8d9e0f", "8f90a1b2-c3d4-4e5f-a6b7-c8d9e0f1a2b3", "1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6",
@@ -449,19 +454,30 @@ func TestARowWithAReleaseThatIsNotWholeIsNoHead(t *testing.T) {
 			text("6f708192-a3b4-4c5d-9e6f-7a8b9c0d1e2f"), text("6d7e8f90-a1b2-4c3d-8e4f-5a6b7c8d9e0f"), text("9a0b1c2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d"),
 			text("7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f"), text("5e6f7081-92a3-4b4c-8d5e-6f708192a3b4"), text("sha256:" + fmt.Sprintf("%064x", 3)),
 			text("sha256:" + fmt.Sprintf("%064x", 2)), text("sha256:" + fmt.Sprintf("%064x", 4)), text("1.0.0"), &instant, text("https://issuer.example"), text("publisher"),
+			[]byte(`[{"rule_id": "F04-GOV-003", "reason": "accepted"}]`),
 		}
 	}
 
 	head, err := postgres.ScanHeadForTest(row(whole(), true))
 	if err != nil || head.Release == nil || head.Release.ID != "6f708192-a3b4-4c5d-9e6f-7a8b9c0d1e2f" || head.Release.Version != "1.0.0" ||
 		head.Release.RevisionID != "6d7e8f90-a1b2-4c3d-8e4f-5a6b7c8d9e0f" || !head.Release.PreparedAt.Equal(instant) || !head.Released ||
-		head.Revision.Sequence != 3 || head.Release.Asset != head.Revision.Asset {
+		head.Revision.Sequence != 3 || head.Release.Asset != head.Revision.Asset ||
+		head.Release.ReviewID != "9a0b1c2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d" ||
+		!reflect.DeepEqual(head.Release.Waivers, []domain.Waiver{{RuleID: "F04-GOV-003", Reason: "accepted"}}) {
 		t.Fatalf("a row with a whole release is the head %+v (%v)", head, err)
+	}
+	unreviewed := whole()
+	unreviewed[reviewColumn] = nil
+	if head, err := postgres.ScanHeadForTest(row(unreviewed, true)); err != nil || head.Release == nil || head.Release.ReviewID != "" {
+		t.Errorf("a row with a release that names no review is the head %+v (%v), want the release without a review", head, err)
 	}
 	if head, err = postgres.ScanHeadForTest(row(make([]any, releaseColumns), false)); err != nil || head.Release != nil || head.Released {
 		t.Errorf("a row with no release is the head %+v (%v), want one that has none", head, err)
 	}
 	for index := 1; index < releaseColumns; index++ {
+		if index == reviewColumn {
+			continue
+		}
 		release := whole()
 		release[index] = nil
 		if head, err := postgres.ScanHeadForTest(row(release, false)); err == nil || head.Release != nil || !strings.Contains(err.Error(), "not whole") {

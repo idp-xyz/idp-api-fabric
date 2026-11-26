@@ -89,6 +89,12 @@ func told(items []map[string]any, member string) []string {
 func (s *stack) join(productID, workspaceID, owner, subject, role string) string {
 	s.t.Helper()
 
+	// Nobody is made a reviewer any more (CR-0001). A reviewer of a test is
+	// one made before that, as the tables hold it.
+	if role == "internal_reviewer" {
+		return s.reviewerBefore(productID, workspaceID, owner, subject)
+	}
+
 	got := s.call(http.MethodPost, "/v1/products/"+productID+"/workspaces/"+workspaceID+"/memberships", owner, s.membership(subject, role))
 	if got.status != http.StatusCreated {
 		s.t.Fatalf("make %s a member: status %d %v", subject, got.status, got.body)

@@ -63,7 +63,9 @@ func TestAMembershipIsGrantedInForceAtVersionOne(t *testing.T) {
 }
 
 // A membership grants a role of a workspace. The role that owns a product is
-// not one, and neither is a role nobody defined.
+// not one, and neither is a role nobody defined. internal_reviewer is still a
+// role a membership holds, those granted before CR-0001, and no longer one a
+// membership is granted in: nobody decides on a review any more.
 func TestAMembershipGrantsOneOfTheRolesOfAWorkspace(t *testing.T) {
 	product, workspace := engineering(t)
 
@@ -71,6 +73,9 @@ func TestAMembershipGrantsOneOfTheRolesOfAWorkspace(t *testing.T) {
 		t.Fatalf("the roles of a workspace are %v, want %v", WorkspaceRoles(), want)
 	}
 	for _, role := range WorkspaceRoles() {
+		if role == RoleInternalReviewer {
+			continue
+		}
 		if _, err := GrantMembership(membershipID, product, workspace, bob, role, alice, created); err != nil {
 			t.Errorf("the role %s was refused: %v", role, err)
 		}
@@ -83,6 +88,7 @@ func TestAMembershipGrantsOneOfTheRolesOfAWorkspace(t *testing.T) {
 		"a role nobody defined":           "superuser",
 		"a role of a workspace, in upper": "WORKSPACE_MAINTAINER",
 		"a role with a space after it":    "internal_author ",
+		"the reviewer's, no longer given": RoleInternalReviewer,
 	}
 	for name, role := range refused {
 		t.Run(name, func(t *testing.T) {

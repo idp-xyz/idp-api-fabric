@@ -55,7 +55,7 @@ func showProvenance(provenance registrydomain.ReleaseProvenance) (ContractReleas
 	if err != nil {
 		return ContractReleaseProvenance{}, err
 	}
-	check, approval := provenance.Evidence.Check, provenance.Evidence.Approval
+	check := provenance.Evidence.Check
 
 	status := CheckRunStatus(check.Status)
 	if !status.Valid() {
@@ -65,20 +65,10 @@ func showProvenance(provenance registrydomain.ReleaseProvenance) (ContractReleas
 	for _, tool := range check.Tools {
 		tools = append(tools, CheckRunTool{Name: tool.Name, Version: tool.Version})
 	}
-	scope := make([]ReviewTarget, 0, len(approval.Scope))
-	for _, target := range approval.Scope {
-		audience, environment := Audience(target.Audience), Environment(target.Environment)
-		if !audience.Valid() || !environment.Valid() {
-			return ContractReleaseProvenance{}, fmt.Errorf("the review %s approved for %q in %q, which the contract does not declare",
-				approval.ReviewID, target.Audience, target.Environment)
-		}
-		scope = append(scope, ReviewTarget{Audience: audience, Environment: environment})
+	approval, err := showApproval(provenance.Evidence.Approval)
+	if err != nil {
+		return ContractReleaseProvenance{}, err
 	}
-	waivers := make([]ReleaseProvenanceWaiver, 0, len(approval.Waivers))
-	for _, waiver := range approval.Waivers {
-		waivers = append(waivers, ReleaseProvenanceWaiver{RuleID: waiver.RuleID, ExpiresAt: waiver.ExpiresAt})
-	}
-
 	summary := check.Summary
 	return ContractReleaseProvenance{
 		Release: showRelease(provenance.Release),
@@ -95,10 +85,33 @@ func showProvenance(provenance registrydomain.ReleaseProvenance) (ContractReleas
 				NotRun: summary.NotRun, FindingCount: summary.Findings,
 			},
 		},
-		Approval: ReleaseProvenanceApproval{
-			ReviewID: approval.ReviewID, Supplementary: approval.Supplementary, Scope: scope,
-			ConcludedBy: Principal(approval.ConcludedBy), ConcludedAt: approval.ConcludedAt,
-			ValidUntil: approval.ValidUntil, Waivers: waivers,
-		},
+		Approval: approval,
+	}, nil
+}
+
+// showApproval shows the approval a release was prepared under, and nothing
+// for a release prepared on its check alone.
+func showApproval(approval *registrydomain.ReleaseApproval) (*ReleaseProvenanceApproval, error) {
+	if approval == nil {
+		return nil, nil
+	}
+	scope := make([]ReviewTarget, 0, len(approval.Scope))
+	for _, target := range approval.Scope {
+		audience, environment := Audience(target.Audience), Environment(target.Environment)
+		if !audience.Valid() || !environment.Valid() {
+			return nil, fmt.Errorf("the review %s approved for %q in %q, which the contract does not declare",
+				approval.ReviewID, target.Audience, target.Environment)
+		}
+		scope = append(scope, ReviewTarget{Audience: audience, Environment: environment})
+	}
+	waivers := make([]ReleaseProvenanceWaiver, 0, len(approval.Waivers))
+	for _, waiver := range approval.Waivers {
+		waivers = append(waivers, ReleaseProvenanceWaiver{RuleID: waiver.RuleID, ExpiresAt: waiver.ExpiresAt})
+	}
+
+	return &ReleaseProvenanceApproval{
+		ReviewID: approval.ReviewID, Supplementary: approval.Supplementary, Scope: scope,
+		ConcludedBy: Principal(approval.ConcludedBy), ConcludedAt: approval.ConcludedAt,
+		ValidUntil: approval.ValidUntil, Waivers: waivers,
 	}, nil
 }

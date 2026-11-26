@@ -33,14 +33,19 @@ func ValidateReleaseVersion(version string) error {
 	return nil
 }
 
-// Release is a READY artifact bound to the immutable approval and check
-// evidence for its revision. This record does not change with publication.
+// Release is a READY artifact bound to the immutable check evidence for its
+// revision, and to the waivers it was prepared with. This record does not
+// change with publication.
 type Release struct {
-	ID             string
-	Asset          AssetRef
-	RevisionID     string
+	ID         string
+	Asset      AssetRef
+	RevisionID string
+	// ReviewID names the review that approved the revision, for a release
+	// prepared under one. A release prepared since reviews are no longer
+	// decided (CR-0001) rests on its check alone and names none.
 	ReviewID       string
-	Approval       ApprovalEvidence
+	Evidence       CheckEvidence
+	Waivers        []Waiver
 	Version        string
 	InputDigest    string
 	ArtifactDigest string
@@ -48,10 +53,20 @@ type Release struct {
 	PreparedBy     Principal
 }
 
-type ApprovalEvidence struct {
+// CheckEvidence is the check a release rests on and the policy it was held
+// to.
+type CheckEvidence struct {
 	CheckRunID       string
 	PolicySnapshotID string
 	PolicyDigest     string
+}
+
+// Waiver is a rule that did not pass in the check of a release and that
+// whoever prepared the release let stand, and why. The waivers of a release
+// are in the order of their rules.
+type Waiver struct {
+	RuleID string
+	Reason string
 }
 
 type artifactFile struct {

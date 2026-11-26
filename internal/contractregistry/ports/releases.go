@@ -26,10 +26,13 @@ type ReleaseAccess struct {
 type ReleaseScopes interface {
 	Asset(context.Context, ScopeQuery) (AssetScope, error)
 	ReleaseAccess(context.Context, domain.Principal, domain.AssetRef) (ReleaseAccess, error)
-	Approval(context.Context, domain.Revision, string, domain.Principal) (domain.ApprovalEvidence, error)
-	// Evidence reads the check and the approval a release names, as they
-	// were recorded: it fails for ones that are not what the release
-	// recorded, and says nothing of whether the approval holds now.
+	// Check verifies the check a release of the revision is prepared on,
+	// with the waivers whoever prepares it gives, and returns what the
+	// release records of them.
+	Check(ctx context.Context, revision domain.Revision, checkRunID string, waivers []domain.Waiver) (domain.CheckEvidence, []domain.Waiver, error)
+	// Evidence reads the check a release names, and the approval it names
+	// if it was prepared under one, as they were recorded: it fails for
+	// ones that are not what the release recorded.
 	Evidence(context.Context, domain.Release) (domain.ReleaseEvidence, error)
 }
 

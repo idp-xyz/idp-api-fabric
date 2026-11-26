@@ -55,7 +55,7 @@ func headsOver(t *testing.T, store ports.Heads) *application.Heads {
 // What the storage says of the assets of a product is what is answered, and a
 // failure of the storage is the failure of the read.
 func TestTheHeadsOfAssetsAreWhatTheStorageSaysOfTheProductAndTheAssetsNamed(t *testing.T) {
-	said := []ports.Head{{Revision: domain.Revision{ID: "r1", Sequence: 2, Status: domain.RevisionApproved}, Released: true}}
+	said := []ports.Head{{Revision: domain.Revision{ID: "r1", Sequence: 2, Status: "APPROVED"}, Released: true}}
 	store := &headStore{heads: said}
 	assets := []domain.AssetRef{assetOf(someProduct, 1), assetOf(someProduct, 2)}
 

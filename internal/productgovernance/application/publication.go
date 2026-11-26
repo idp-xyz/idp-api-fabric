@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"slices"
-	"time"
 
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/domain"
 )
@@ -63,16 +62,6 @@ func (s *ProductGovernance) ActiveProductKey(ctx context.Context, id domain.Prod
 		return "", err
 	}
 	return product.Key, nil
-}
-
-// HoldsApprovalGrant checks that the grant under which a reviewer approved
-// is still in force. A later regrant does not revive that approval.
-func (s *ProductGovernance) HoldsApprovalGrant(ctx context.Context, reviewer domain.Principal,
-	product domain.ProductID, workspace domain.WorkspaceID, approvedAt time.Time) (bool, error) {
-	members, err := s.deps.Memberships.LockHeldInWorkspace(ctx, product, workspace, reviewer)
-	return slices.ContainsFunc(members, func(m domain.Membership) bool {
-		return m.Role == domain.RoleInternalReviewer && !m.GrantedAt.After(approvedAt)
-	}), err
 }
 
 // RequirePublicationRole holds the specific product grant for a target or

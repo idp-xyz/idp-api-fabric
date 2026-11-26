@@ -337,16 +337,9 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 		return nil, err
 	}
 	contractReviews, err := checks.NewReviews(checks.ReviewDependencies{
-		Transactions: transactions,
-		Revisions:    checkedRevisions,
-		Checks:       checkRuns,
-		Reviews:      checkdb.NewReviews(database.Framework),
-		Evaluator:    checkopenapi.Evaluator{},
-		Comparator:   checkopenapi.Comparator{},
-		Audit:        audit.recordCheck,
-		Events:       checkEvents,
-		Clock:        clock,
-		Identifiers:  identifiers,
+		Revisions: checkedRevisions,
+		Checks:    checkRuns,
+		Reviews:   checkdb.NewReviews(database.Framework),
 	})
 	if err != nil {
 		return nil, err
@@ -355,7 +348,7 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 	if err != nil {
 		return nil, err
 	}
-	releaseScope := releaseAuthority{revisionScopes: revisionScope, reviews: contractReviews}
+	releaseScope := releaseAuthority{revisionScopes: revisionScope, checks: contractChecks, reviews: contractReviews}
 	contractReleases, err := registry.NewReleases(registry.ReleaseDependencies{
 		Transactions: transactions, Scopes: releaseScope, Revisions: revisions,
 		Releases: registrydb.NewReleases(database.Framework), Audit: audit.recordRevision,

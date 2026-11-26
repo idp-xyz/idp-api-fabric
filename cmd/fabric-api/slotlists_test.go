@@ -54,19 +54,18 @@ func (s *stack) assetIn(product, workspace, key string) *releaseFixture {
 }
 
 // publishing is what publishing an asset on a target made: where its slot is
-// read, and the revision, the review and the release the slot rests on.
-type publishing struct{ slot, revision, review, release string }
+// read, and the revision, the check and the release the slot rests on.
+type publishing struct{ slot, revision, check, release string }
 
-// publishedOn approves a revision of the asset for the internal sandbox,
-// releases it and puts the release on the slot of the asset on the target,
-// which is made with that.
+// publishedOn checks a revision of the asset, releases it and puts the
+// release on the slot of the asset on the target, which is made with that.
 func (s *releaseFixture) publishedOn(target string) publishing {
 	s.t.Helper()
 
-	revision, review, release := s.released(revisionSource, "", "1.0.0")
+	revision, check, release := s.released(revisionSource, "", "1.0.0")
 	slot := assetSlot(target, s.asset)
 	s.require(s.change(slot, "publisher", "ACTIVATE", 0, release, "", "first"), http.StatusOK, "")
-	return publishing{slot, revision, review, release}
+	return publishing{slot, revision, check, release}
 }
 
 // identifier is the identifier of the asset of the fixture.
@@ -167,7 +166,7 @@ func TestTheSlotsOfATargetAreThoseOfTheWorkspacesTheCallerReads(t *testing.T) {
 	// Each slot of the target has its own pointer and generation: another
 	// release for the first asset of engineering changes that slot and no other.
 	before := listed(w.whole(listing, "publisher", 100))
-	second := e1.prepare(made[e1].revision, made[e1].review, "1.0.1", "publisher")
+	second := e1.prepare(made[e1].revision, made[e1].check, "1.0.1", "publisher")
 	w.require(second, http.StatusCreated, "")
 	w.require(w.change(made[e1].slot, "publisher", "ACTIVATE", 1, second.id("release_id"), "", "replace"), http.StatusOK, "")
 	after := listed(w.whole(listing, "publisher", 100))
@@ -189,10 +188,10 @@ func TestTheSlotsOfATargetAreThoseOfTheWorkspacesTheCallerReads(t *testing.T) {
 
 // A slot says what stands between its release and whoever asks for the
 // artifact, and says it to whoever reads it, alone and in every list it is
-// in: an access block of the target, of the asset or of the release, an
-// approval that ran out, the reviewer who lost the grant, a slot withdrawn.
-// What a list says of a slot is what the read of that slot says, member for
-// member.
+// in: an access block of the target, of the asset or of the release, a slot
+// withdrawn. A release on a check the tools have moved on from has nothing
+// standing in its way. What a list says of a slot is what the read of that
+// slot says, member for member.
 func TestAListedSlotIsTheSlotAsItIsRead(t *testing.T) {
 	w := slotsFor(t)
 	first, configPath := w.target(internalSandbox, "engineering")
@@ -202,23 +201,22 @@ func TestAListedSlotIsTheSlotAsItIsRead(t *testing.T) {
 	w.require(preview, http.StatusCreated, "")
 	second := preview.header.Get("Location")
 	w.require(w.securityRole("security", "security_admin", "owner"), http.StatusCreated, "")
-	grant := w.join(w.product, w.workspace, "owner", "second", "internal_reviewer")
 
 	asset := func(key string) *releaseFixture { return w.assetIn(w.product, w.workspace, key) }
 	plain, assetBlocked, releaseBlocked := asset("plain"), asset("asset-blocked"), asset("release-blocked")
-	expired, revoked, withdrawn := asset("expired"), asset("revoked"), asset("withdrawn")
+	earlier, withdrawn := asset("earlier"), asset("withdrawn")
 
 	// The first asset is on both targets, and the second target is blocked
 	// as a whole.
 	onFirst := plain.publishedOn(first)
 	onSecond := assetSlot(second, plain.asset)
 	w.require(plain.change(onSecond, "publisher", "ACTIVATE", 0, onFirst.release, "", "second"), http.StatusOK, "")
-	blockedAsset, blockedRelease, ranOut := assetBlocked.publishedOn(first), releaseBlocked.publishedOn(first), expired.publishedOn(first)
-	// One rests on an approval of a reviewer who has lost the grant since.
-	revision, _, _ := revoked.released(revisionSource, "", "1.0.0")
-	again := revoked.reviewedAgain(revision, "second", "1.0.0-r2")
-	revokedSlot := assetSlot(first, revoked.asset)
-	w.require(revoked.change(revokedSlot, "publisher", "ACTIVATE", 0, again.id("release_id"), "", "under-second"), http.StatusOK, "")
+	blockedAsset, blockedRelease := assetBlocked.publishedOn(first), releaseBlocked.publishedOn(first)
+	// One rests on a check the tools have moved on from since.
+	revision, check, current := earlier.released(revisionSource, "", "1.0.0")
+	later := recordAnotherCheck(t, checkFixture{stack: w.stack}, checkRef(earlier, revision), check)
+	earlierSlot := assetSlot(first, earlier.asset)
+	w.require(earlier.change(earlierSlot, "publisher", "ACTIVATE", 0, earlier.preparedOn(current, later, "0.9.0"), "", "earlier"), http.StatusOK, "")
 	taken := withdrawn.publishedOn(first)
 	w.require(withdrawn.change(taken.slot, "publisher", "WITHDRAW", 1, "", "taken down", "down"), http.StatusOK, "")
 
@@ -229,38 +227,30 @@ func TestAListedSlotIsTheSlotAsItIsRead(t *testing.T) {
 	block(second, map[string]string{"reason": "investigate the preview"})
 	block(first, map[string]string{"api_asset_id": assetBlocked.identifier(), "reason": "investigate the asset"})
 	block(first, map[string]string{"api_asset_id": releaseBlocked.identifier(), "release_id": blockedRelease.release, "reason": "investigate the release"})
-	if _, err := w.owner.Exec(t.Context(), `UPDATE policyreview.review_conclusion
-SET valid_until = concluded_at + interval '1 millisecond' WHERE review_id = $1`, ranOut.review); err != nil {
-		t.Fatal(err)
-	}
-	w.revoke(grant, "owner")
 
 	states := []struct {
 		name, slot string
 		visibility string
 		blocked    bool
-		problem    any
 	}{
-		{"a release that is served", onFirst.slot, "ACTIVE", false, nil},
-		{"the same release on a target that is blocked as a whole", onSecond, "ACTIVE", true, nil},
-		{"an asset that is blocked", blockedAsset.slot, "ACTIVE", true, nil},
-		{"a release that is blocked", blockedRelease.slot, "ACTIVE", true, nil},
-		{"an approval that ran out", ranOut.slot, "ACTIVE", false, "APPROVAL_EXPIRED"},
-		{"a reviewer who lost the grant", revokedSlot, "ACTIVE", false, "REVIEWER_AUTH_REVOKED"},
-		{"a slot that was withdrawn", taken.slot, "WITHDRAWN", false, nil},
+		{"a release that is served", onFirst.slot, "ACTIVE", false},
+		{"the same release on a target that is blocked as a whole", onSecond, "ACTIVE", true},
+		{"an asset that is blocked", blockedAsset.slot, "ACTIVE", true},
+		{"a release that is blocked", blockedRelease.slot, "ACTIVE", true},
+		{"a release on a check the tools have moved on from", earlierSlot, "ACTIVE", false},
+		{"a slot that was withdrawn", taken.slot, "WITHDRAWN", false},
 	}
 	assets := "/v1/products/" + w.product + "/assets/"
 	for _, reader := range []string{"publisher", "eng-reader"} {
 		onFirstTarget, onPreview := listed(w.whole(first+"/assets", reader, 100)), listed(w.whole(second+"/assets", reader, 100))
-		if len(onFirstTarget) != 6 || len(onPreview) != 1 {
-			t.Fatalf("%s lists %d slots of the first target and %d of the second, want 6 and 1", reader, len(onFirstTarget), len(onPreview))
+		if len(onFirstTarget) != 5 || len(onPreview) != 1 {
+			t.Fatalf("%s lists %d slots of the first target and %d of the second, want 5 and 1", reader, len(onFirstTarget), len(onPreview))
 		}
 		for _, state := range states {
 			single := w.call(http.MethodGet, state.slot, reader, "")
-			if single.status != http.StatusOK || single.body["visibility"] != state.visibility || single.body["blocked"] != state.blocked ||
-				single.body["approval_problem"] != state.problem {
-				t.Fatalf("%s reads %s as %d %v, want %s, blocked %t, approval problem %v", reader, state.name, single.status, single.body,
-					state.visibility, state.blocked, state.problem)
+			if single.status != http.StatusOK || single.body["visibility"] != state.visibility || single.body["blocked"] != state.blocked {
+				t.Fatalf("%s reads %s as %d %v, want %s, blocked %t", reader, state.name, single.status, single.body,
+					state.visibility, state.blocked)
 			}
 			assetID, targetID := single.id("api_asset_id"), single.id("publication_target_id")
 			inTarget := slotAmong(onFirstTarget, assetID)
@@ -583,8 +573,8 @@ func TestAnAssetIsListedOnTheTargetsItWasPublishedTo(t *testing.T) {
 	// From the slot to what it rests on: the release it points at, and the
 	// revision of the release.
 	release := w.call(http.MethodGet, shipped.asset+"/releases/"+got[1]["active_release_id"].(string), "publisher", "")
-	if release.status != http.StatusOK || release.id("revision_id") != onFirst.revision || release.id("review_id") != onFirst.review {
-		t.Fatalf("the release of the slot reads %d %v, want the revision %s and the review %s", release.status, release.body, onFirst.revision, onFirst.review)
+	if release.status != http.StatusOK || release.id("revision_id") != onFirst.revision || release.id("check_run_id") != onFirst.check {
+		t.Fatalf("the release of the slot reads %d %v, want the revision %s and the check %s", release.status, release.body, onFirst.revision, onFirst.check)
 	}
 	if revision := w.call(http.MethodGet, shipped.asset+"/revisions/"+release.id("revision_id"), "publisher", ""); revision.status != http.StatusOK {
 		t.Errorf("the revision of the release reads %d %v", revision.status, revision.body)

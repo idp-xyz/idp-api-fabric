@@ -36,11 +36,11 @@ func TestAFilteredListIsCutIntoPagesAfterItIsFiltered(t *testing.T) {
 	}
 	// The other product has assets that satisfy every filter, which no list
 	// of this product holds.
-	elsewhere := []string{"pending-unknown", "pending-fail", "released", "draft-fail"}
+	elsewhere := []string{"pending-unknown", "pending-fail", "released", "released-fail"}
 	for index, spec := range [][2]string{
 		{"engineering", "pending-unknown"}, {"operations", "pending-unknown"}, {"engineering", "plain"}, {"engineering", "released"},
-		{"operations", "draft-fail"}, {"engineering", "pending-fail"}, {"operations", "plain"}, {"engineering", "draft-unknown"},
-		{"operations", "pending-fail"}, {"engineering", "pending-unknown"}, {"engineering", "draft-fail"}, {"operations", "released"},
+		{"operations", "released-fail"}, {"engineering", "pending-fail"}, {"operations", "plain"}, {"engineering", "rejected-unknown"},
+		{"operations", "pending-fail"}, {"engineering", "pending-unknown"}, {"engineering", "released-fail"}, {"operations", "released"},
 		{"engineering", "draft-unchecked"}, {"engineering", "pending-unknown"}, {"operations", "pending-unknown"}, {"engineering", "plain"},
 	} {
 		create(spec[0], spec[1])
@@ -95,17 +95,17 @@ func TestAFilteredListIsCutIntoPagesAfterItIsFiltered(t *testing.T) {
 // the page is not looked at again.
 func TestAFilteredListReadWhileTheAssetsChangeListsNoAssetTwice(t *testing.T) {
 	w := slotsFor(t)
-	asset := func(key, state string) (fixture *releaseFixture, revision, review string) {
+	asset := func(key, state string) (fixture *releaseFixture, revision, check string) {
 		fixture = w.assetIn(w.product, w.workspace, key)
-		revision, review = w.putInState(fixture, state)
-		return fixture, revision, review
+		revision, check = w.putInState(fixture, state)
+		return fixture, revision, check
 	}
 	// The asset the world starts with comes first, and has no revision.
-	p1, revision1, review1 := asset("p1", "pending-unknown")
+	p1, revision1, check1 := asset("p1", "pending-unknown")
 	p2, _, _ := asset("p2", "pending-unknown")
 	q, _, _ := asset("q-plain", "plain")
 	p3, _, _ := asset("p3", "pending-unknown")
-	p4, revision4, review4 := asset("p4", "pending-unknown")
+	p4, revision4, check4 := asset("p4", "pending-unknown")
 	p5, _, _ := asset("p5", "pending-unknown")
 
 	filter := w.assets() + "?release_pending=true&page_size=2"
@@ -117,8 +117,8 @@ func TestAFilteredListReadWhileTheAssetsChangeListsNoAssetTwice(t *testing.T) {
 
 	// Behind the page: one is released, one comes to be pending. Ahead of it,
 	// where it was: one is released and one comes to be pending.
-	w.require(p1.prepare(revision1, review1, "1.0.0", "publisher"), http.StatusCreated, "")
-	w.require(p4.prepare(revision4, review4, "1.0.0", "publisher"), http.StatusCreated, "")
+	w.require(p1.prepare(revision1, check1, "1.0.0", "publisher"), http.StatusCreated, "")
+	w.require(p4.prepare(revision4, check4, "1.0.0", "publisher"), http.StatusCreated, "")
 	w.putInState(q, "pending-unknown")
 	w.putInState(w.releaseFixture, "pending-unknown")
 

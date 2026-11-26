@@ -29,11 +29,7 @@ func (o operations) ListPublicationSlots(ctx context.Context, request ListPublic
 	if err != nil {
 		return nil, err
 	}
-	body, err := showSlots(list, page)
-	if err != nil {
-		return nil, err
-	}
-	return ListPublicationSlots200JSONResponse{Body: body, Headers: ListPublicationSlots200ResponseHeaders{CacheControl: noStore}}, nil
+	return ListPublicationSlots200JSONResponse{Body: showSlots(list, page), Headers: ListPublicationSlots200ResponseHeaders{CacheControl: noStore}}, nil
 }
 
 func (o operations) ListAssetPublications(ctx context.Context, request ListAssetPublicationsRequestObject) (ListAssetPublicationsResponseObject, error) {
@@ -53,11 +49,7 @@ func (o operations) ListAssetPublications(ctx context.Context, request ListAsset
 	if err != nil {
 		return nil, err
 	}
-	body, err := showSlots(list, page)
-	if err != nil {
-		return nil, err
-	}
-	return ListAssetPublications200JSONResponse{Body: body, Headers: ListAssetPublications200ResponseHeaders{CacheControl: noStore}}, nil
+	return ListAssetPublications200JSONResponse{Body: showSlots(list, page), Headers: ListAssetPublications200ResponseHeaders{CacheControl: noStore}}, nil
 }
 
 // slotPosition is the position a page token names, as the use case reads it.
@@ -71,14 +63,14 @@ func slotPosition(position *governanceports.Position) *ports.SlotPosition {
 // showSlots is a page of slots as the contract shows it: each slot as the
 // read of one shows it, and the token of the page that follows for as long as
 // one does. A page without slots is an empty list, never a missing one.
-func showSlots(list string, page publication.SlotPage) (PublicationSlotList, error) {
-	items, err := listed(page.Items, showSlot)
-	if err != nil {
-		return PublicationSlotList{}, err
+func showSlots(list string, page publication.SlotPage) PublicationSlotList {
+	items := make([]PublicationSlot, 0, len(page.Items))
+	for _, slot := range page.Items {
+		items = append(items, showSlot(slot))
 	}
 	var next *NextPageToken
 	if page.Next != nil {
 		next = nextPageToken(list, &governanceports.Position{At: page.Next.At, ID: page.Next.ID})
 	}
-	return PublicationSlotList{Items: items, NextPageToken: next}, nil
+	return PublicationSlotList{Items: items, NextPageToken: next}
 }

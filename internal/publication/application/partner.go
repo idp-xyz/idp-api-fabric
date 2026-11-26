@@ -9,13 +9,14 @@ import (
 )
 
 // PartnerAccess binds one partner target to a live grant authority and an
-// artifact reader that rechecks the product, current approval and scope.
+// artifact reader that rechecks the product, the configuration of the target
+// and the release it serves.
 type PartnerAccess struct {
 	ProductID     string
 	TargetID      string
 	ProductActive func(ctx context.Context, productID string) (bool, error)
 	Allowed       func(context.Context, ports.PartnerGrantRequest) (bool, error)
-	ReadApproved  func(ctx context.Context, request domain.Request, target domain.Target, releaseID string) (ports.Artifact, error)
+	Read          func(ctx context.Context, request domain.Request, target domain.Target, releaseID string) (ports.Artifact, error)
 }
 
 func (p *PartnerAccess) matches(target domain.Target) bool {
@@ -24,8 +25,8 @@ func (p *PartnerAccess) matches(target domain.Target) bool {
 
 // PartnerArtifact reads an asset at the configured site. The grant check
 // runs outside the database transaction. A second target read orders the
-// artifact read against AccessBlock while ReadApproved holds the current
-// audience configuration.
+// artifact read against AccessBlock while Read holds the current audience
+// configuration.
 func (s *Publication) PartnerArtifact(ctx context.Context, caller domain.Principal, assetID, correlationID string) (ports.Artifact, error) {
 	partner := s.deps.Partner
 	if partner == nil {
@@ -80,7 +81,7 @@ func (s *Publication) PartnerArtifact(ctx context.Context, caller domain.Princip
 		if blocked {
 			return ErrNoVisibleArtifact
 		}
-		artifact, err = partner.ReadApproved(tx, request, current, slot.ActiveReleaseID)
+		artifact, err = partner.Read(tx, request, current, slot.ActiveReleaseID)
 		return err
 	})
 	return artifact, s.refusePartnerRead(ctx, request, err)

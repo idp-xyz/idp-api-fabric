@@ -129,10 +129,9 @@ func TestTheWordsAndTheMembersOfAnOverviewAreThoseTheContractDeclares(t *testing
 	if got := statuses(schemaOf(t, "CheckRunStatus")); !slices.Equal(got, checks) {
 		t.Errorf("a check concludes %v, the Catalog filters by %v", got, checks)
 	}
-	revisions := []string{
-		registrydomain.RevisionDraft, registrydomain.RevisionInReview, registrydomain.RevisionApproved,
-		registrydomain.RevisionRejected, registrydomain.RevisionWithdrawn,
-	}
+	// A revision is recorded as the draft the registry records, and the
+	// other statuses are where the revisions reviewed before stand.
+	revisions := []string{registrydomain.RevisionDraft, "IN_REVIEW", "APPROVED", "REJECTED", "WITHDRAWN"}
 	if got := statuses(memberOf(t, "OverviewRevision", "status").Value); !slices.Equal(got, revisions) {
 		t.Errorf("an overview shows the status of a revision as %v, a revision has %v", got, revisions)
 	}
@@ -290,12 +289,13 @@ func stamp(after time.Duration) string {
 	return createdAt.Add(after * time.Minute).Format(time.RFC3339Nano)
 }
 
-// everything is an overview with every member: the last revision approved, and
-// checked and failed, and a release prepared from an earlier revision.
+// everything is an overview with every member: the last revision approved
+// before reviews were retired, and checked and failed, and a release prepared
+// from an earlier revision.
 func everything() catalogdomain.Overview {
 	return catalogdomain.Overview{
 		LatestRevision: &catalogdomain.OverviewRevision{
-			ID: revisionID, Sequence: 3, Status: registrydomain.RevisionApproved, CreatedAt: createdAt.Add(10 * time.Minute),
+			ID: revisionID, Sequence: 3, Status: "APPROVED", CreatedAt: createdAt.Add(10 * time.Minute),
 		},
 		LatestCheck: &catalogdomain.OverviewCheck{ID: checkRunID, Status: catalogdomain.CheckFail, CompletedAt: createdAt.Add(20 * time.Minute)},
 		LatestRelease: &catalogdomain.OverviewRelease{

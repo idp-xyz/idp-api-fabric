@@ -108,7 +108,7 @@ type Authority interface {
 	Asset(ctx context.Context, request domain.Request) (AssetAccess, error)
 	// ReadableAssets are the assets of the product whose slots the caller
 	// reads now, as Asset says of one of them: those of the workspaces where
-	// it holds the author, the reviewer or the publisher grant. A caller who
+	// it holds a grant that reads them. A caller who
 	// cannot know the product is refused as for a product that is missing,
 	// and one who holds none of the grants in any workspace of it is
 	// refused. One who reads workspaces that own no asset is answered with
@@ -119,25 +119,16 @@ type Authority interface {
 	BlockScope(ctx context.Context, block domain.AccessBlock) error
 	// Artifact reads the artifact of a release of the asset, for a slot
 	// that points at it to serve, and verifies it against the digest the
-	// release names. It asks nothing of the approval the release rests on:
-	// an approval decides what is put on a slot, and what is on a slot is
-	// served until it is withdrawn or blocked.
+	// release names. It asks nothing of the check the release rests on:
+	// what is on a slot is served until it is withdrawn or blocked.
 	Artifact(ctx context.Context, request domain.Request, workspaceID, releaseID string) (Artifact, error)
-	// Admission verifies that the caller may put the release on a slot of
-	// the target: the release and its artifact are what was recorded, and
-	// the caller had no part in the revision, its check or its approval.
-	// A release that the slot is to take for the first time is admitted on
-	// an approval that holds for the target now, on a check that compared
-	// the revision with the one of previousID where that is another one.
-	// returning admits a release the slot served before without asking
-	// whether its approval still holds.
-	Admission(ctx context.Context, request domain.Request, workspaceID string, target domain.Target, releaseID, previousID string, returning bool) error
-	// Approval verifies that the approval a release rests on holds for
-	// the target now. unapproved is why it does not: the refusal an
-	// activation of the release would meet. It is nil when the approval
-	// holds. Anything else that goes wrong, a release or evidence that is
-	// not what was recorded, is err.
-	Approval(ctx context.Context, request domain.Request, workspaceID string, target domain.Target, releaseID string) (unapproved, err error)
+	// Admission verifies a release that is put on a slot: the release and
+	// its artifact are what was recorded, and its check is the one it was
+	// prepared on. Where previousID names a release of another revision,
+	// the check compared the revision with that one. Whether the check
+	// would be made the same way under the policy and the tools of today
+	// is not asked.
+	Admission(ctx context.Context, request domain.Request, workspaceID, releaseID, previousID string) error
 }
 
 type AuditEntry struct {

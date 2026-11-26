@@ -6,7 +6,6 @@ import (
 
 	catalog "go.idp.xyz/idp-api-fabric/internal/apicatalog/application"
 	catalogdomain "go.idp.xyz/idp-api-fabric/internal/apicatalog/domain"
-	registrydomain "go.idp.xyz/idp-api-fabric/internal/contractregistry/domain"
 	"go.idp.xyz/idp-api-fabric/internal/platform/identity"
 	governance "go.idp.xyz/idp-api-fabric/internal/productgovernance/application"
 	governancedomain "go.idp.xyz/idp-api-fabric/internal/productgovernance/domain"
@@ -60,7 +59,7 @@ func (p *partnerSettings) bind(internalIssuer string, authority publicationAutho
 	}
 	return &publication.PartnerAccess{
 		ProductID: p.productID, TargetID: p.targetID, ProductActive: authority.cargopaiActive,
-		Allowed: grants.Allowed, ReadApproved: authority.readApprovedPartnerArtifact,
+		Allowed: grants.Allowed, Read: authority.readPartnerArtifact,
 	}, verifier, nil
 }
 
@@ -69,7 +68,11 @@ func (s publicationAuthority) cargopaiActive(ctx context.Context, productID stri
 	return key == "cargopai", err
 }
 
-func (s publicationAuthority) readApprovedPartnerArtifact(ctx context.Context, request publicationdomain.Request,
+// readPartnerArtifact reads what the partner slot points at, for a product
+// that serves its partners and a target whose configuration is in force. A
+// release is served on the check it was prepared on, as the internal origin
+// serves it: what became of the policy and the tools since is not asked.
+func (s publicationAuthority) readPartnerArtifact(ctx context.Context, request publicationdomain.Request,
 	target publicationdomain.Target, releaseID string) (publicationports.Artifact, error) {
 	active, err := s.cargopaiActive(ctx, request.ProductID)
 	if err != nil {
@@ -94,9 +97,5 @@ func (s publicationAuthority) readApprovedPartnerArtifact(ctx context.Context, r
 	if err != nil {
 		return publicationports.Artifact{}, err
 	}
-	artifact, err := s.verify(ctx, assetOf(request, string(asset.WorkspaceID)), target, releaseID, "", registrydomain.Principal{}, false)
-	if unapproved(err) {
-		return publicationports.Artifact{}, publication.ErrNoVisibleArtifact
-	}
-	return artifact, err
+	return s.verify(ctx, assetOf(request, string(asset.WorkspaceID)), releaseID, "")
 }

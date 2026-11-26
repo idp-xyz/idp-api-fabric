@@ -84,11 +84,11 @@ var composedAt = time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
 
 // composed is six assets of a workspace and where each stands, as the
 // registry and Policy & Review keep it: none has a revision; one has a draft
-// that was not checked; one has an approved revision that was checked and
-// could not be judged; one has an approved revision that failed and was
-// released; one has an approved revision that failed and has no release,
-// though an earlier revision of it has; and one has a revision that was
-// rejected and passed.
+// that was not checked; one has a draft that was checked and could not be
+// judged; one has a revision that an approval of before let through, that
+// failed and was released; one has a draft that failed and has no release,
+// though an earlier revision of it has; and one has a revision that a review
+// of before rejected and that passed.
 type composed struct {
 	heads  *savedHeads
 	checks *savedChecks
@@ -125,10 +125,10 @@ func composedFor(t *testing.T) *composed {
 		}
 	}
 	head(2, registrydomain.RevisionDraft, "", false, nil)
-	head(3, registrydomain.RevisionApproved, checkdomain.StatusUnknown, false, nil)
-	head(4, registrydomain.RevisionApproved, checkdomain.StatusFail, true, release(4, composedID(4, 4)))
-	head(5, registrydomain.RevisionApproved, checkdomain.StatusFail, false, release(5, composedID(4, 99)))
-	head(6, registrydomain.RevisionRejected, checkdomain.StatusPass, false, nil)
+	head(3, registrydomain.RevisionDraft, checkdomain.StatusUnknown, false, nil)
+	head(4, "APPROVED", checkdomain.StatusFail, true, release(4, composedID(4, 4)))
+	head(5, registrydomain.RevisionDraft, checkdomain.StatusFail, false, release(5, composedID(4, 99)))
+	head(6, "REJECTED", checkdomain.StatusPass, false, nil)
 
 	heads, err := registry.NewHeads(c.heads)
 	if err != nil {
@@ -182,13 +182,15 @@ func (c *composed) standing(n int, check string, pending bool, release string) c
 	return overview
 }
 
-// What is put together is what each context says of its own: the revision,
-// the release and whether a release is pending from the registry, the check
-// from Policy & Review. Without a filter every asset has an overview, the
-// one without a revision an empty one; with one only the assets that satisfy
-// it, and Policy & Review is asked about what the registry has not ruled out
-// already: the revisions of the heads, or only those a release is pending
-// for when the filter says so, and for the status the filter names.
+// What is put together is what each context says of its own: the revision
+// and the release from the registry, the check from Policy & Review, and
+// whether a release is pending from both: the last revision has a check and
+// no release was prepared from it, whatever its status. Without a filter
+// every asset has an overview, the one without a revision an empty one; with
+// one only the assets that satisfy it, and Policy & Review is asked about
+// what the registry has not ruled out already: the revisions of the heads, or
+// only those no release was prepared from when the filter asks for a pending
+// release, and for the status the filter names.
 func TestTheOverviewsPutTogetherWhatTheRegistryAndPolicyReviewSay(t *testing.T) {
 	for name, c := range map[string]struct {
 		filter catalogports.OverviewFilter
@@ -202,7 +204,7 @@ func TestTheOverviewsPutTogetherWhatTheRegistryAndPolicyReviewSay(t *testing.T) 
 			func(c *composed) map[int]catalogdomain.Overview {
 				return map[int]catalogdomain.Overview{
 					1: c.standing(1, "", false, ""), 2: c.standing(2, "", false, ""), 3: c.standing(3, "UNKNOWN", true, ""),
-					4: c.standing(4, "FAIL", false, "release"), 5: c.standing(5, "FAIL", true, "release"), 6: c.standing(6, "PASS", false, ""),
+					4: c.standing(4, "FAIL", false, "release"), 5: c.standing(5, "FAIL", true, "release"), 6: c.standing(6, "PASS", true, ""),
 				}
 			},
 			[]int{2, 3, 4, 5, 6},
@@ -210,9 +212,11 @@ func TestTheOverviewsPutTogetherWhatTheRegistryAndPolicyReviewSay(t *testing.T) 
 		"a release pending": {
 			catalogports.OverviewFilter{ReleasePending: true},
 			func(c *composed) map[int]catalogdomain.Overview {
-				return map[int]catalogdomain.Overview{3: c.standing(3, "UNKNOWN", true, ""), 5: c.standing(5, "FAIL", true, "release")}
+				return map[int]catalogdomain.Overview{
+					3: c.standing(3, "UNKNOWN", true, ""), 5: c.standing(5, "FAIL", true, "release"), 6: c.standing(6, "PASS", true, ""),
+				}
 			},
-			[]int{3, 5},
+			[]int{2, 3, 5, 6},
 		},
 		"a check that failed": {
 			catalogports.OverviewFilter{CheckStatus: catalogdomain.CheckFail},
@@ -226,12 +230,12 @@ func TestTheOverviewsPutTogetherWhatTheRegistryAndPolicyReviewSay(t *testing.T) 
 			func(c *composed) map[int]catalogdomain.Overview {
 				return map[int]catalogdomain.Overview{5: c.standing(5, "FAIL", true, "release")}
 			},
-			[]int{3, 5},
+			[]int{2, 3, 5, 6},
 		},
 		"a check that passed, of a revision that was rejected": {
 			catalogports.OverviewFilter{CheckStatus: catalogdomain.CheckPass},
 			func(c *composed) map[int]catalogdomain.Overview {
-				return map[int]catalogdomain.Overview{6: c.standing(6, "PASS", false, "")}
+				return map[int]catalogdomain.Overview{6: c.standing(6, "PASS", true, "")}
 			},
 			[]int{2, 3, 4, 5, 6},
 		},
@@ -240,7 +244,7 @@ func TestTheOverviewsPutTogetherWhatTheRegistryAndPolicyReviewSay(t *testing.T) 
 			func(c *composed) map[int]catalogdomain.Overview {
 				return map[int]catalogdomain.Overview{3: c.standing(3, "UNKNOWN", true, "")}
 			},
-			[]int{3, 5},
+			[]int{2, 3, 5, 6},
 		},
 		"a check that warned": {
 			catalogports.OverviewFilter{CheckStatus: catalogdomain.CheckWarn},

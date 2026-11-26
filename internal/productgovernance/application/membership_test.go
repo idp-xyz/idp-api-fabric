@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"errors"
 	"maps"
 	"slices"
@@ -21,9 +22,29 @@ const missingID = "00000000-0000-4000-8000-999999999999"
 
 // joined makes member hold the role in the workspace, as an owner of its
 // product.
+//
+// internal_reviewer is no longer granted (CR-0001), and the memberships
+// granted in it before still hold it: such a member is put in the store as
+// it was granted then, with nothing recorded or announced of it today.
 func joined(t *testing.T, service *ProductGovernance, workspace domain.Workspace, owner, member domain.Principal, role domain.Role) domain.Membership {
 	t.Helper()
 
+	if role == domain.RoleInternalReviewer {
+		id, err := domain.ParseMembershipID(service.deps.Identifiers.NewID())
+		if err != nil {
+			t.Fatal(err)
+		}
+		before := domain.Membership{
+			ID: id, ProductID: workspace.ProductID, WorkspaceID: workspace.ID, Principal: member, Role: role,
+			Version: 1, GrantedAt: service.deps.Clock.Now().UTC(), GrantedBy: owner,
+		}
+		if err := service.deps.Transactor.WithinTransaction(ctx, func(ctx context.Context) error {
+			return service.deps.Memberships.Add(ctx, before)
+		}); err != nil {
+			t.Fatalf("make %s a reviewer of %s as before: %v", member.Subject, workspace.Key, err)
+		}
+		return before
+	}
 	membership, err := service.GrantMembership(ctx, GrantMembership{
 		Caller: owner, CorrelationID: "correlation-m", ProductID: string(workspace.ProductID), WorkspaceID: string(workspace.ID),
 		Member: member, Role: string(role),
@@ -262,6 +283,35 @@ func TestGrantMembershipRefusesWhatCannotBeAMembership(t *testing.T) {
 	}
 	if len(s.w.memberships) != len(before)+len(accepted) {
 		t.Errorf("there are %d memberships, want %d more than the %d there were", len(s.w.memberships), len(accepted), len(before))
+	}
+}
+
+// internal_reviewer is no longer granted: nobody decides on a review any more
+// (CR-0001). An owner that asks for it is refused as for a role a membership
+// does not grant, and nothing is stored, recorded or announced. Whoever was
+// granted it before keeps the membership, which still reads what it read.
+func TestGrantMembershipRefusesTheReviewerRoleAndKeepsTheReviewersOfBefore(t *testing.T) {
+	s := newTeam(t)
+	reviewer := joined(t, s.service, s.engineering, alice, mallory, domain.RoleInternalReviewer)
+	s.w.quiet()
+	before := maps.Clone(s.w.memberships)
+
+	_, err := s.service.GrantMembership(ctx, GrantMembership{
+		Caller: alice, CorrelationID: "correlation-r", ProductID: string(s.cargopai.ID), WorkspaceID: string(s.engineering.ID),
+		Member: carol, Role: string(domain.RoleInternalReviewer),
+	})
+	if !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("granting internal_reviewer: %v, want %v", err, domain.ErrInvalid)
+	}
+	if !maps.Equal(s.w.memberships, before) || len(s.w.audited) != 0 || len(s.w.events) != 0 {
+		t.Errorf("the refused grant left memberships %+v, audit %+v, events %v", s.w.memberships, s.w.audited, s.w.events)
+	}
+	if kept, found := s.w.memberships[reviewer.ID]; !found || !kept.InForce() || kept.Role != domain.RoleInternalReviewer {
+		t.Errorf("the reviewer of before is %+v (found %t), want its membership in force", kept, found)
+	}
+	readers, err := s.service.RevisionReader(ctx, mallory, s.cargopai.ID, s.engineering.ID)
+	if err != nil || !readers {
+		t.Errorf("the reviewer of before reads the revisions of its workspace: %t, %v; want it to", readers, err)
 	}
 }
 

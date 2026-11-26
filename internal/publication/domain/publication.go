@@ -46,19 +46,12 @@ type Slot struct {
 }
 
 // SlotView is a slot as it is read: with what stands between the release it
-// points at and whoever asks for the artifact, and with what became of the
-// approval that put the release there.
+// points at and whoever asks for the artifact.
 type SlotView struct {
 	Slot
 	// Blocked says that an access block covers what the slot points at.
 	// The artifact is not served for as long as it does.
 	Blocked bool
-	// Unapproved is why the approval the active release rests on does not
-	// hold for the target now: the refusal an activation of that release
-	// would meet. It is nil when the approval holds, and for a slot that
-	// points at no release. The slot keeps its pointer. The partner origin
-	// requires a current approval to serve an artifact.
-	Unapproved error
 }
 
 func (s Slot) Visibility() string {

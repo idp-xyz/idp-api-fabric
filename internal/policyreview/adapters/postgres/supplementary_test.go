@@ -1,7 +1,6 @@
 package postgres_test
 
 import (
-	"context"
 	"reflect"
 	"strings"
 	"testing"
@@ -14,11 +13,10 @@ import (
 	"go.idp.xyz/idp-api-fabric/internal/policyreview/domain"
 )
 
-// A supplementary request is stored as one and read back as one. It records
-// the version the status of the approved revision has, which no review
-// changes, so the requests of an approved revision share it; a request that
-// puts a revision in review is still the only one at its version. Whether a
-// review of the revision is open is read from what has no conclusion.
+// A supplementary request of before is read back as one. It recorded the
+// version the status of the approved revision had, which no review changed,
+// so the requests of an approved revision share it; the table held a request
+// that put a revision in review to being the only one at its version.
 func TestSupplementaryRequestsShareTheVersionOfTheApprovedRevision(t *testing.T) {
 	f, database := newReviewFixture(t)
 	revision := revisionRef()
@@ -26,101 +24,42 @@ func TestSupplementaryRequestsShareTheVersionOfTheApprovedRevision(t *testing.T)
 	asked := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
 	sandbox := domain.Target{Audience: "partner", Environment: "sandbox"}
 	production := domain.Target{Audience: "partner", Environment: "production"}
-	store := func(request domain.ReviewRequest, version int64) error {
-		return f.within(func(ctx context.Context) error { return f.reviews.Request(ctx, request, version) })
-	}
-	open := func(of domain.RevisionRef) bool {
-		t.Helper()
-		found, err := f.reviews.Open(t.Context(), of)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return found
-	}
 	supplementary := func(at time.Time) domain.ReviewRequest {
 		request := f.ask(run, at, production)
 		request.Supplementary = true
 		return request
 	}
 
-	if open(revision) {
-		t.Fatal("a revision nobody asked a review of has one open")
-	}
-	// The review that approves the revision: asked at version 2 of its
-	// status, and decided, which leaves the revision approved at version 3.
-	first := domain.Review{Request: f.ask(run, asked, sandbox)}
-	if err := store(first.Request, 2); err != nil {
-		t.Fatal(err)
-	}
-	if !open(revision) {
-		t.Error("the review that was asked for is not open")
-	}
-	approval := f.decide(first, run, domain.Decision{Outcome: domain.ReviewApproved, ValidUntil: asked.Add(48 * time.Hour)}, asked.Add(time.Hour))
-	first.Conclusion = &approval
-	if open(revision) {
-		t.Error("a review is open after the only one was decided")
-	}
+	// The review that approved the revision: asked at version 2 of its
+	// status, and decided, which left the revision approved at version 3.
+	first := f.asked(f.ask(run, asked, sandbox), 2)
+	first = f.concluded(first, approval(first, "", asked.Add(time.Hour), asked.Add(48*time.Hour)))
 
-	// Another review of the approved revision, at the version it has.
-	second := domain.Review{Request: supplementary(asked.Add(2 * time.Hour))}
-	if err := store(second.Request, 3); err != nil {
-		t.Fatal(err)
-	}
+	// Other reviews of the approved revision, at the version it has: one
+	// withdrawn, and two more, one taken while the other is open. That a
+	// revision was under one review at a time was, for these, for the use
+	// case to see to behind a hold of the revision.
+	second := f.asked(supplementary(asked.Add(2*time.Hour)), 3)
 	if got, found, err := f.reviews.Find(t.Context(), revision, second.Request.ID); err != nil || !found || !reflect.DeepEqual(got, second) || !got.Request.Supplementary {
 		t.Fatalf("read back %+v found %t, want %+v: %v", got, found, second, err)
 	}
 	if got, _, err := f.reviews.Find(t.Context(), revision, first.Request.ID); err != nil || !reflect.DeepEqual(got, first) || got.Request.Supplementary {
 		t.Fatalf("the first review reads %+v, want %+v: %v", got, first, err)
 	}
-	if !open(revision) {
-		t.Error("the supplementary review that was asked for is not open")
-	}
-	// A review is open under its revision and no other.
-	for name, other := range map[string]domain.RevisionRef{
-		"another revision":  {ProductID: revision.ProductID, WorkspaceID: revision.WorkspaceID, AssetID: revision.AssetID, RevisionID: ids.NewUUID()},
-		"another asset":     {ProductID: revision.ProductID, WorkspaceID: revision.WorkspaceID, AssetID: ids.NewUUID(), RevisionID: revision.RevisionID},
-		"another workspace": {ProductID: revision.ProductID, WorkspaceID: ids.NewUUID(), AssetID: revision.AssetID, RevisionID: revision.RevisionID},
-		"another product":   {ProductID: ids.NewUUID(), WorkspaceID: revision.WorkspaceID, AssetID: revision.AssetID, RevisionID: revision.RevisionID},
-	} {
-		if open(other) {
-			t.Errorf("under %s a review is open", name)
-		}
-	}
-	withdrawal, err := domain.Withdraw(second, carol, "the wrong scope", asked.Add(3*time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := f.within(func(ctx context.Context) error { return f.reviews.Conclude(ctx, withdrawal) }); err != nil {
-		t.Fatal(err)
-	}
-	second.Conclusion = &withdrawal
-	if open(revision) {
-		t.Error("a review is open after the supplementary one was withdrawn")
-	}
-
-	// The next one records the same version: the revision did not move.
-	third := domain.Review{Request: supplementary(asked.Add(4 * time.Hour))}
-	if err := store(third.Request, 3); err != nil {
-		t.Fatalf("a second supplementary request at the version of the approved revision: %v", err)
-	}
-	// The table takes one more while that one is open. That a revision is
-	// under one review at a time is, for these, for the use case to see to
-	// behind a hold of the revision.
-	fourth := domain.Review{Request: supplementary(asked.Add(5 * time.Hour))}
-	if err := store(fourth.Request, 3); err != nil {
-		t.Errorf("a supplementary request while another is open: %v, want the table to take it", err)
-	}
+	second = f.concluded(second, withdrawal(second, carol, "the wrong scope", asked.Add(3*time.Hour)))
+	third := f.asked(supplementary(asked.Add(4*time.Hour)), 3)
+	fourth := f.asked(supplementary(asked.Add(5*time.Hour)), 3)
 
 	// A request that puts a revision in review is the only one at its
 	// version, whatever supplementary requests share it.
 	entering := f.ask(run, asked.Add(6*time.Hour), sandbox)
-	if err := store(entering, 2); stateOf(err) != "23505 review_request_once_key" {
+	if err := f.record(entering, 2); stateOf(err) != "23505 review_request_once_key" {
 		t.Errorf("a second request at the version the first one put the revision in review at: got %v, want it refused by review_request_once_key", err)
 	}
-	if err := store(entering, 3); err != nil {
+	if err := f.record(entering, 3); err != nil {
 		t.Errorf("a request at a version only supplementary requests have: %v", err)
 	}
-	if err := store(f.ask(run, asked.Add(7*time.Hour), sandbox), 3); stateOf(err) != "23505 review_request_once_key" {
+	if err := f.record(f.ask(run, asked.Add(7*time.Hour), sandbox), 3); stateOf(err) != "23505 review_request_once_key" {
 		t.Errorf("a second request of its kind at that version: got %v, want it refused by review_request_once_key", err)
 	}
 
@@ -129,8 +68,8 @@ func TestSupplementaryRequestsShareTheVersionOfTheApprovedRevision(t *testing.T)
 		t.Fatalf("the history is %+v, want %+v: %v", listed, history, err)
 	}
 
-	// A build before this one names no such column: what it records is a
-	// request of the kind there was.
+	// A build before supplementary reviews named no such column: what it
+	// recorded is a request of the kind there was.
 	app := pgtest.Connect(t, database.Application)
 	other := revisionRef()
 	earlier, id := f.check(other), ids.NewUUID()

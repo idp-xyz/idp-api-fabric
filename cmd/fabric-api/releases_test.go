@@ -10,72 +10,81 @@ import (
 	"testing"
 
 	"go.idp.xyz/idp-api-fabric/internal/platform/db/pgtest"
+	"go.idp.xyz/idp-api-fabric/internal/policyreview/domain"
 )
 
-// A publisher of the workspace makes an approved revision a release: the
-// files as they were recorded, under a version of the asset, bound to the
-// review that approved them and the check that review rests on. The release
-// is written once. Asking again for the same version of the same revision
-// and review answers the release that is there, and the version names no
-// other one. Whoever wrote, checked, submitted or approved the revision
-// does not release it.
-func TestAPublisherPreparesAnImmutableReleaseOfAnApprovedRevision(t *testing.T) {
+// preparing is the body a release is asked for with: a revision, a check of
+// it and a version, and the waivers if there are any.
+func preparing(revision, check, version string, waivers ...map[string]string) string {
+	body := map[string]any{"revision_id": revision, "check_run_id": check, "version": version}
+	if waivers != nil {
+		body["waivers"] = waivers
+	}
+	return jsonBody(body)
+}
+
+func waived(rule, reason string) map[string]string {
+	return map[string]string{"rule_id": rule, "reason": reason}
+}
+
+// A publisher of the workspace makes a checked revision a release: the files
+// as they were recorded, under a version of the asset, bound to the check it
+// rests on. Nobody approves it first, and whatever status the revision has is
+// not asked. The release is written once. Asking again for the same version
+// of the same revision on the same check answers the release that is there,
+// and the version names no other one. Whoever imported and checked the
+// revision releases it once it is a publisher.
+func TestAPublisherPreparesAnImmutableReleaseOfACheckedRevision(t *testing.T) {
 	s := publicationFor(t)
 	releases := s.asset + "/releases"
-	revision, review := s.approve(revisionSource, "", internalSandbox)
-	other, otherReview := s.approve(revisionSource+"# next\n", "", internalSandbox)
-	draft := s.call(http.MethodPost, s.revisions, "author", uploadRevision("openapi.yaml", revisionSource+"# a draft\n"))
-	s.require(draft, http.StatusCreated, "")
-	asking := func(revision, review, version string) string {
-		return jsonBody(map[string]string{"revision_id": revision, "review_id": review, "version": version})
-	}
+	revision, check := s.checkedRevision(revisionSource, "")
+	other, otherCheck := s.checkedRevision(revisionSource+"# next\n", "")
 
 	// Reading the revision is not releasing it, and neither is owning the
 	// product or maintaining the workspace.
 	for _, caller := range []string{"author", "reviewer", "owner", "maintainer"} {
-		s.require(s.prepare(revision, review, "1.0.0", caller), http.StatusForbidden, "FORBIDDEN")
-	}
-	// Whoever took part in the revision does not release it, publisher or not.
-	s.join(s.product, s.workspace, "owner", "author", "internal_publisher")
-	s.join(s.product, s.workspace, "owner", "reviewer", "internal_publisher")
-	for _, caller := range []string{"author", "reviewer"} {
-		s.require(s.prepare(revision, review, "1.0.0", caller), http.StatusForbidden, "PUBLISHER_NOT_INDEPENDENT")
+		s.require(s.prepare(revision, check, "1.0.0", caller), http.StatusForbidden, "FORBIDDEN")
 	}
 	if rows := s.count("contractregistry.contract_release") + s.count("contractregistry.release_artifact"); rows != 0 {
 		t.Fatalf("the refusals left %d rows of releases and artifacts", rows)
 	}
 
-	first := s.prepare(revision, review, "1.0.0", "publisher")
+	first := s.prepare(revision, check, "1.0.0", "publisher")
 	s.require(first, http.StatusCreated, "")
 	id := first.id("release_id")
 	imported := s.call(http.MethodGet, s.revisions+"/"+revision, "author", "")
+	if imported.body["status"] != "DRAFT" {
+		t.Fatalf("the released revision is %v, want the draft it was recorded as", imported.body["status"])
+	}
 	if first.body["status"] != "READY" || first.body["version"] != "1.0.0" || first.body["revision_id"] != revision ||
-		first.body["review_id"] != review || first.body["artifact_format"] != "fabric-openapi-source/v1" ||
-		first.body["ref_closure_digest"] != imported.body["ref_closure_digest"] ||
+		first.body["check_run_id"] != check || first.body["review_id"] != nil || !reflect.DeepEqual(first.body["waivers"], []any{}) ||
+		first.body["artifact_format"] != "fabric-openapi-source/v1" || first.body["ref_closure_digest"] != imported.body["ref_closure_digest"] ||
 		first.body["prepared_by"].(map[string]any)["subject"] != "publisher" ||
 		first.header.Get("Location") != releases+"/"+id || first.header.Get("Cache-Control") != "no-store" {
 		t.Fatalf("the release: %v %v", first.body, first.header)
 	}
-	again := s.prepare(revision, review, "1.0.0", "publisher")
+	again := s.prepare(revision, check, "1.0.0", "publisher")
 	if again.status != http.StatusOK || !reflect.DeepEqual(again.body, first.body) || again.header.Get("Location") != "" {
 		t.Fatalf("the same release asked again: %d %v, want 200 and the release as it was answered", again.status, again.body)
 	}
 	s.expect("a version names one release", "publisher", []exchange{
-		{http.MethodPost, releases, asking(other, otherReview, "1.0.0"), http.StatusConflict, "RELEASE_VERSION_CONFLICT"},
-		{http.MethodPost, releases, asking(revision, otherReview, "1.0.0"), http.StatusConflict, "RELEASE_VERSION_CONFLICT"},
-		{http.MethodPost, releases, asking(other, review, "1.0.0"), http.StatusConflict, "RELEASE_VERSION_CONFLICT"},
+		{http.MethodPost, releases, preparing(other, otherCheck, "1.0.0"), http.StatusConflict, "RELEASE_VERSION_CONFLICT"},
+		{http.MethodPost, releases, preparing(revision, otherCheck, "1.0.0"), http.StatusConflict, "RELEASE_VERSION_CONFLICT"},
+		{http.MethodPost, releases, preparing(other, check, "1.0.0"), http.StatusConflict, "RELEASE_VERSION_CONFLICT"},
+		{http.MethodPost, releases, preparing(revision, check, "1.0.0", waived("F04-GOV-003", "not asked for")), http.StatusConflict, "RELEASE_VERSION_CONFLICT"},
 	})
-	s.expect("a release is of an approved revision, under the review that approved it", "publisher", []exchange{
-		{http.MethodPost, releases, asking(draft.id("revision_id"), review, "2.0.0"), http.StatusConflict, "REVISION_NOT_APPROVED"},
-		{http.MethodPost, releases, asking("00000000-0000-4000-8000-000000000000", review, "2.0.0"), http.StatusNotFound, "REVISION_NOT_FOUND"},
-		{http.MethodPost, releases, asking(other, review, "2.0.0"), http.StatusConflict, "APPROVAL_REQUIRED"},
-		{http.MethodPost, releases, asking(revision, review, "two point zero"), http.StatusBadRequest, "REQUEST_INVALID"},
-		{http.MethodPost, releases, asking(revision, review, ""), http.StatusBadRequest, "REQUEST_INVALID"},
+	s.expect("a release rests on a recorded check of its revision", "publisher", []exchange{
+		{http.MethodPost, releases, preparing(other, check, "2.0.0"), http.StatusNotFound, "CHECK_RUN_NOT_FOUND"},
+		{http.MethodPost, releases, preparing(revision, "00000000-0000-4000-8000-000000000000", "2.0.0"), http.StatusNotFound, "CHECK_RUN_NOT_FOUND"},
+		{http.MethodPost, releases, preparing("00000000-0000-4000-8000-000000000000", check, "2.0.0"), http.StatusNotFound, "REVISION_NOT_FOUND"},
+		{http.MethodPost, releases, preparing(revision, check, "two point zero"), http.StatusBadRequest, "REQUEST_INVALID"},
+		{http.MethodPost, releases, preparing(revision, check, ""), http.StatusBadRequest, "REQUEST_INVALID"},
+		{http.MethodPost, releases, jsonBody(map[string]string{"revision_id": revision, "review_id": check, "version": "2.0.0"}), http.StatusBadRequest, "REQUEST_INVALID"},
 	})
 
 	// The same files under another version are another release of the same
 	// bytes: the artifact is kept once.
-	second := s.prepare(revision, review, "1.0.1", "publisher")
+	second := s.prepare(revision, check, "1.0.1", "publisher")
 	s.require(second, http.StatusCreated, "")
 	if second.id("release_id") == id || second.body["artifact_digest"] != first.body["artifact_digest"] ||
 		s.count("contractregistry.contract_release") != 2 || s.count("contractregistry.release_artifact") != 1 {
@@ -107,6 +116,15 @@ func TestAPublisherPreparesAnImmutableReleaseOfAnApprovedRevision(t *testing.T) 
 		{http.MethodGet, releases, "", http.StatusOK, ""},
 	})
 
+	// Whoever imported and checked a revision releases it once it is a
+	// publisher: nobody has to be independent of what is released.
+	s.join(s.product, s.workspace, "owner", "author", "internal_publisher")
+	own := s.prepare(other, otherCheck, "2.0.0", "author")
+	s.require(own, http.StatusCreated, "")
+	if own.body["prepared_by"].(map[string]any)["subject"] != "author" {
+		t.Errorf("the release of the author: %v", own.body)
+	}
+
 	// The artifact is the files as they were recorded, under its digest.
 	var payload []byte
 	digest, _ := first.body["artifact_digest"].(string)
@@ -132,6 +150,7 @@ func TestAPublisherPreparesAnImmutableReleaseOfAnApprovedRevision(t *testing.T) 
 	app := pgtest.Connect(t, s.database.Application)
 	for _, statement := range []string{
 		`UPDATE contractregistry.contract_release SET release_version = 'other'`,
+		`UPDATE contractregistry.contract_release SET waivers = '[]'`,
 		`DELETE FROM contractregistry.contract_release`,
 		`UPDATE contractregistry.release_artifact SET payload = 'x'`,
 		`DELETE FROM contractregistry.release_artifact`,
@@ -146,7 +165,7 @@ func TestAPublisherPreparesAnImmutableReleaseOfAnApprovedRevision(t *testing.T) 
 	// the right to release is on record as one.
 	recorded := occurrences(s.recorded(func(row audited) bool {
 		return row.Action == "release.prepare" && row.Outcome == "SUCCEEDED" && row.Rule == "AC-04" &&
-			row.Subject == "publisher" && row.ResourceType == "ContractRelease" && row.ResourceID != ""
+			(row.Subject == "publisher" || row.Subject == "author") && row.ResourceType == "ContractRelease" && row.ResourceID != ""
 	}))
 	refused := occurrences(s.recorded(func(row audited) bool {
 		return row.Action == "release.prepare" && row.Outcome != "SUCCEEDED" && row.Rule == "DENY-03"
@@ -156,20 +175,92 @@ func TestAPublisherPreparesAnImmutableReleaseOfAnApprovedRevision(t *testing.T) 
 WHERE event_type = 'fabric.contractregistry.release.prepared' AND scope = $1`, s.product).Scan(&events); err != nil {
 		t.Fatal(err)
 	}
-	if recorded != 2 || refused != 6 || events != 2 {
-		t.Errorf("%d releases and %d refusals are on record and %d events were written, want 2, 6 and 2: %v", recorded, refused, events,
+	if recorded != 3 || refused != 4 || events != 3 {
+		t.Errorf("%d releases and %d refusals are on record and %d events were written, want 3, 4 and 3: %v", recorded, refused, events,
 			s.recorded(func(row audited) bool { return strings.HasPrefix(row.Action, "release.") }))
 	}
 }
 
-// A release is prepared under an approval that still holds, in a product
-// that takes new work, and wholly or not at all.
-func TestAReleaseNeedsAnApprovalThatStillHoldsAndIsRecordedWhollyOrNotAtAll(t *testing.T) {
+// A release rests on a check of today: one made under the policy and by the
+// tools a check is made with now. Every rule that failed or could not be
+// judged in it is waived by name, for a reason, by whoever prepares the
+// release, and nothing else is: not a rule that passed, not one the policy
+// does not have, not one twice, and never a rule that nothing waives, which
+// keeps any release from being prepared when it did not pass. The waivers are
+// part of the release and are read with it.
+func TestAReleaseRestsOnACurrentCheckWithEveryRuleThatDidNotPassWaived(t *testing.T) {
 	s := publicationFor(t)
 	releases := s.asset + "/releases"
-	// The reviewer maintains the workspace besides, from before it approves.
-	s.join(s.product, s.workspace, "owner", "reviewer", "workspace_maintainer")
-	revision, review := s.approve(revisionSource, "", internalSandbox)
+	clean, cleanCheck := s.checkedRevision(revisionSource, "")
+	// The same revision as a later version of the tool checked it.
+	stale := recordAnotherCheck(t, checkFixture{stack: s.stack}, domain.RevisionRef{
+		ProductID: s.product, WorkspaceID: s.workspace, AssetID: last(s.asset), RevisionID: clean,
+	}, cleanCheck)
+	// A contract whose operation has no operationId, a rule that can be
+	// waived; and one that states no security either, a rule that cannot.
+	unnamed, unnamedCheck := s.checkedRevision(unnamedSource, "")
+	flawed, flawedCheck := s.checkedRevision(checkSource, "")
+	because := waived("F04-GOV-003", "generated clients are not used yet")
+
+	s.expect("a check a release cannot rest on", "publisher", []exchange{
+		{http.MethodPost, releases, preparing(clean, stale, "1.0.0"), http.StatusConflict, "POLICY_STALE"},
+		{http.MethodPost, releases, preparing(flawed, flawedCheck, "1.0.0"), http.StatusConflict, "RELEASE_BLOCKED"},
+		{http.MethodPost, releases, preparing(flawed, flawedCheck, "1.0.0", because), http.StatusConflict, "RELEASE_BLOCKED"},
+		{http.MethodPost, releases, preparing(flawed, flawedCheck, "1.0.0", because, waived("F04-GOV-006", "security comes later")), http.StatusUnprocessableEntity, "WAIVER_FORBIDDEN"},
+	})
+	s.expect("waivers that do not cover what did not pass, exactly", "publisher", []exchange{
+		{http.MethodPost, releases, preparing(unnamed, unnamedCheck, "1.0.0"), http.StatusConflict, "WAIVER_REQUIRED"},
+		{http.MethodPost, releases, preparing(unnamed, unnamedCheck, "1.0.0", []map[string]string{}...), http.StatusConflict, "WAIVER_REQUIRED"},
+		{http.MethodPost, releases, preparing(unnamed, unnamedCheck, "1.0.0", because, waived("F04-GOV-002", "it passed")), http.StatusUnprocessableEntity, "REQUEST_UNPROCESSABLE"},
+		{http.MethodPost, releases, preparing(unnamed, unnamedCheck, "1.0.0", because, waived("F04-GOV-999", "no such rule")), http.StatusUnprocessableEntity, "REQUEST_UNPROCESSABLE"},
+		{http.MethodPost, releases, preparing(unnamed, unnamedCheck, "1.0.0", because, because), http.StatusUnprocessableEntity, "REQUEST_UNPROCESSABLE"},
+		{http.MethodPost, releases, preparing(unnamed, unnamedCheck, "1.0.0", waived("F04-GOV-003", " padded ")), http.StatusUnprocessableEntity, "REQUEST_UNPROCESSABLE"},
+		{http.MethodPost, releases, preparing(unnamed, unnamedCheck, "1.0.0", because, waived("F04-GOV-006", "it passed")), http.StatusUnprocessableEntity, "WAIVER_FORBIDDEN"},
+		{http.MethodPost, releases, preparing(unnamed, unnamedCheck, "1.0.0", waived("F04-GOV-003", "two\nlines")), http.StatusBadRequest, "REQUEST_INVALID"},
+		{http.MethodPost, releases, preparing(unnamed, unnamedCheck, "1.0.0", map[string]string{"rule_id": "F04-GOV-003"}), http.StatusBadRequest, "REQUEST_INVALID"},
+		{http.MethodPost, releases, preparing(clean, cleanCheck, "1.0.0", because), http.StatusUnprocessableEntity, "REQUEST_UNPROCESSABLE"},
+	})
+	if got := s.count("contractregistry.contract_release"); got != 0 {
+		t.Fatalf("the refusals left %d releases", got)
+	}
+
+	released := s.prepare(unnamed, unnamedCheck, "1.0.0", "publisher", waiver{"F04-GOV-003", "generated clients are not used yet"})
+	s.require(released, http.StatusCreated, "")
+	want := []any{map[string]any{"rule_id": "F04-GOV-003", "reason": "generated clients are not used yet"}}
+	if !reflect.DeepEqual(released.body["waivers"], want) || released.body["check_run_id"] != unnamedCheck || released.body["review_id"] != nil {
+		t.Fatalf("the release with its waiver: %v", released.body)
+	}
+	read := s.call(http.MethodGet, released.header.Get("Location"), "author", "")
+	listed, _ := s.page(releases, "reviewer")
+	if read.status != http.StatusOK || !reflect.DeepEqual(read.body, released.body) || len(listed) != 1 || !reflect.DeepEqual(listed[0], released.body) {
+		t.Errorf("the release is read as %d %v and listed as %v, want it as it was answered", read.status, read.body, listed)
+	}
+	var stored string
+	if err := s.owner.QueryRow(t.Context(), `SELECT waivers::text FROM contractregistry.contract_release WHERE release_id = $1`,
+		released.id("release_id")).Scan(&stored); err != nil || stored != `[{"reason": "generated clients are not used yet", "rule_id": "F04-GOV-003"}]` {
+		t.Errorf("the table holds the waivers %s (%v)", stored, err)
+	}
+	// The same release is asked for again with the same waivers, and with
+	// others it is another release, which the version does not name.
+	again := s.prepare(unnamed, unnamedCheck, "1.0.0", "publisher", waiver{"F04-GOV-003", "generated clients are not used yet"})
+	if again.status != http.StatusOK || !reflect.DeepEqual(again.body, released.body) {
+		t.Errorf("the release asked again with its waivers: %d %v", again.status, again.body)
+	}
+	s.expect("another waiver under the version", "publisher", []exchange{
+		{http.MethodPost, releases, preparing(unnamed, unnamedCheck, "1.0.0", waived("F04-GOV-003", "another reason")), http.StatusConflict, "RELEASE_VERSION_CONFLICT"},
+		{http.MethodPost, releases, preparing(unnamed, unnamedCheck, "1.0.0"), http.StatusConflict, "RELEASE_VERSION_CONFLICT"},
+	})
+	if got := s.count("contractregistry.contract_release"); got != 1 {
+		t.Errorf("%d releases are recorded, want the one", got)
+	}
+}
+
+// A release is prepared in a product that takes new work, and wholly or not
+// at all.
+func TestAReleaseIsRecordedWhollyOrNotAtAll(t *testing.T) {
+	s := publicationFor(t)
+	releases := s.asset + "/releases"
+	revision, check := s.checkedRevision(revisionSource, "")
 
 	// Nothing is left of a release whose event could not be written.
 	if _, err := s.owner.Exec(t.Context(), `ALTER TABLE bento.outbox ADD CONSTRAINT test_reject_release
@@ -177,7 +268,7 @@ CHECK (event_type <> 'fabric.contractregistry.release.prepared')`); err != nil {
 		t.Fatal(err)
 	}
 	records := s.count("platformoperations.audit_record")
-	s.require(s.prepare(revision, review, "1.0.0", "publisher"), http.StatusInternalServerError, "INTERNAL_ERROR")
+	s.require(s.prepare(revision, check, "1.0.0", "publisher"), http.StatusInternalServerError, "INTERNAL_ERROR")
 	if s.count("contractregistry.contract_release") != 0 || s.count("contractregistry.release_artifact") != 0 ||
 		s.count("platformoperations.audit_record") != records {
 		t.Fatal("the release that failed left a release, an artifact or an audit record")
@@ -187,35 +278,14 @@ CHECK (event_type <> 'fabric.contractregistry.release.prepared')`); err != nil {
 	}
 
 	// A suspended product takes no release and still shows the ones it has.
-	first := s.prepare(revision, review, "1.0.0", "publisher")
+	first := s.prepare(revision, check, "1.0.0", "publisher")
 	s.require(first, http.StatusCreated, "")
-	if _, err := s.owner.Exec(t.Context(), `UPDATE productgovernance.product SET status = 'SUSPENDED' WHERE product_id = $1`, s.product); err != nil {
-		t.Fatal(err)
-	}
-	s.require(s.prepare(revision, review, "1.0.1", "publisher"), http.StatusConflict, "PRODUCT_NOT_ACTIVE")
+	s.suspend("SUSPENDED")
+	s.require(s.prepare(revision, check, "1.0.1", "publisher"), http.StatusConflict, "PRODUCT_NOT_ACTIVE")
 	s.require(s.call(http.MethodGet, releases+"/"+first.id("release_id"), "author", ""), http.StatusOK, "")
-	if _, err := s.owner.Exec(t.Context(), `UPDATE productgovernance.product SET status = 'ACTIVE' WHERE product_id = $1`, s.product); err != nil {
-		t.Fatal(err)
-	}
-
-	// The approval counts while the grant it was given under is in force:
-	// the grant of a reviewer, not whatever else its holder is in the
-	// workspace. A reviewer who is named again approves again; what was
-	// approved before is not approved by that.
-	var membership string
-	if err := s.owner.QueryRow(t.Context(), `SELECT membership_id FROM productgovernance.workspace_membership
-WHERE product_id = $1 AND workspace_id = $2 AND principal_subject = 'reviewer'
-  AND role = 'internal_reviewer' AND revoked_at IS NULL`, s.product, s.workspace).Scan(&membership); err != nil {
-		t.Fatal(err)
-	}
-	s.revoke("/v1/products/"+s.product+"/workspaces/"+s.workspace+"/memberships/"+membership, "owner")
-	s.require(s.prepare(revision, review, "1.0.1", "publisher"), http.StatusConflict, "REVIEWER_AUTH_REVOKED")
-	s.join(s.product, s.workspace, "owner", "reviewer", "internal_reviewer")
-	s.require(s.prepare(revision, review, "1.0.1", "publisher"), http.StatusConflict, "REVIEWER_AUTH_REVOKED")
-	// The release that was prepared before stays what it is.
-	s.require(s.call(http.MethodGet, releases+"/"+first.id("release_id"), "publisher", ""), http.StatusOK, "")
-	s.require(s.prepare(revision, review, "1.0.0", "publisher"), http.StatusOK, "")
-	if s.count("contractregistry.contract_release") != 1 {
-		t.Fatalf("%d releases are recorded, want the one", s.count("contractregistry.contract_release"))
+	s.suspend("ACTIVE")
+	s.require(s.prepare(revision, check, "1.0.1", "publisher"), http.StatusCreated, "")
+	if s.count("contractregistry.contract_release") != 2 {
+		t.Fatalf("%d releases are recorded, want the two", s.count("contractregistry.contract_release"))
 	}
 }

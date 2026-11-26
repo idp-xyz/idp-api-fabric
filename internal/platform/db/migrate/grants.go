@@ -70,9 +70,11 @@ func ApplicationPrivileges() []TablePrivileges {
 		// read the revision. No statement changes or removes one.
 		{"contractregistry", "source_snapshot", []string{"SELECT", "INSERT"}},
 		{"contractregistry", "source_file", []string{"SELECT", "INSERT"}},
-		// The status of a revision moves along its review. The table lets
+		// The status of a revision moved along its review. The table lets
 		// an UPDATE do that and nothing else, and no statement removes a
-		// revision.
+		// revision. This build moves no status (CR-0001); the build before
+		// it does while this one is rolled out, and keeps UPDATE until it is
+		// gone.
 		{"contractregistry", "contract_revision", []string{"SELECT", "INSERT", "UPDATE"}},
 		// A check run is evidence: the policy it was held to, what it
 		// concluded of each rule and what it found are recorded once and
@@ -81,9 +83,11 @@ func ApplicationPrivileges() []TablePrivileges {
 		{"policyreview", "check_run", []string{"SELECT", "INSERT"}},
 		{"policyreview", "check_rule_outcome", []string{"SELECT", "INSERT"}},
 		{"policyreview", "check_finding", []string{"SELECT", "INSERT"}},
-		// A review is asked for once and concluded once: its request, its
-		// scope, its conclusion and the waivers of an approval are recorded
-		// and read back, and no statement changes or removes any of them.
+		// A review was asked for once and concluded once: its request, its
+		// scope, its conclusion and the waivers of an approval are read
+		// back, and no statement changes or removes any of them. This build
+		// records no review (CR-0001); the build before it does while this
+		// one is rolled out, and keeps INSERT until it is gone.
 		{"policyreview", "review_request", []string{"SELECT", "INSERT"}},
 		{"policyreview", "review_scope", []string{"SELECT", "INSERT"}},
 		{"policyreview", "review_conclusion", []string{"SELECT", "INSERT"}},

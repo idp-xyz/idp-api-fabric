@@ -32,8 +32,6 @@ const (
 var (
 	caller = domain.Principal{Issuer: "https://issuer.example", Subject: "alice"}
 	noon   = time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
-	// ranOut is why the approval of a release does not hold.
-	ranOut = errors.New("the approval ran out")
 )
 
 // inTransaction marks the context of a transaction with its number.
@@ -59,10 +57,8 @@ type listing struct {
 	// as many of them as a page takes.
 	rows []ports.PlacedSlot
 	// blocked says of an asset and a release, as "asset/release", that an
-	// access block covers them, and unapproved why the approval of a release
-	// does not hold.
-	blocked    map[string]bool
-	unapproved map[string]error
+	// access block covers them.
+	blocked map[string]bool
 
 	opened   int
 	asked    []string
@@ -132,11 +128,6 @@ func (l *listing) Asset(ctx context.Context, request domain.Request) (ports.Asse
 	return l.access, l.refusal
 }
 
-func (l *listing) Approval(ctx context.Context, request domain.Request, workspace string, target domain.Target, release string) (unapproved, err error) {
-	l.did(ctx, "Approval of %s of the asset %s in %s on %s", release, request.AssetID, workspace, target.ID)
-	return l.unapproved[release], nil
-}
-
 func (l *listing) record(ctx context.Context, entry ports.AuditEntry) error {
 	number, _ := ctx.Value(inTransaction{}).(int)
 	l.audited = append(l.audited, audit{entry, number})
@@ -191,7 +182,7 @@ func ofTarget() *listing {
 			place("e0000000-0000-4000-8000-000000000003", thirdAsset, target, "", 3),
 			place("e0000000-0000-4000-8000-000000000004", fourthAsset, target, firstRelease, 4),
 		},
-		blocked: map[string]bool{}, unapproved: map[string]error{},
+		blocked: map[string]bool{},
 	}
 }
 
@@ -211,7 +202,7 @@ func ofAsset() *listing {
 			place("e0000000-0000-4000-8000-000000000003", firstAsset, targets[2], "", 3),
 			place("e0000000-0000-4000-8000-000000000004", firstAsset, targets[3], firstRelease, 4),
 		},
-		blocked: map[string]bool{}, unapproved: map[string]error{},
+		blocked: map[string]bool{},
 	}
 }
 
@@ -227,8 +218,6 @@ type listOfSlots struct {
 	before func(limit int, after string) []string
 	// judgement is the one call of the authority that decides who reads.
 	judgement string
-	// workspace is the workspace each slot of the list is read in.
-	workspace func(asset string) string
 }
 
 func listsOfSlots() []listOfSlots {
@@ -244,9 +233,6 @@ func listsOfSlots() []listOfSlots {
 				}
 			},
 			judgement: "1 ReadableAssets of " + listedProduct,
-			workspace: func(asset string) string {
-				return map[string]string{firstAsset: engineering, secondAsset: operations, thirdAsset: engineering, fourthAsset: operations}[asset]
-			},
 		},
 		{
 			name: "the publications of an asset", world: ofAsset, read: (*Publication).ListAssetPublications,
@@ -258,7 +244,6 @@ func listsOfSlots() []listOfSlots {
 				}
 			},
 			judgement: "1 Asset " + firstAsset + " of " + listedProduct,
-			workspace: func(string) string { return engineering },
 		},
 	}
 }
@@ -275,16 +260,13 @@ func (list listOfSlots) reading(service *Publication, after *ports.SlotPosition,
 }
 
 // viewed is what a read asks for each of the slots it reads: whether an
-// access block covers it, and, if it points at a release, whether the approval
-// of that release holds.
-func (list listOfSlots) viewed(rows []ports.PlacedSlot) []string {
+// access block covers it. Nothing is asked of the check of the release it
+// points at: a release is put on a slot on its check, and a slot says
+// nothing more of it.
+func viewed(rows []ports.PlacedSlot) []string {
 	var asked []string
 	for _, row := range rows {
 		asked = append(asked, fmt.Sprintf("1 HasBlock %s/%s on %s", row.Slot.AssetID, row.Slot.ActiveReleaseID, row.Target.ID))
-		if row.Slot.ActiveReleaseID != "" {
-			asked = append(asked, fmt.Sprintf("1 Approval of %s of the asset %s in %s on %s",
-				row.Slot.ActiveReleaseID, row.Slot.AssetID, list.workspace(row.Slot.AssetID), row.Target.ID))
-		}
 	}
 	return asked
 }
@@ -357,7 +339,7 @@ func TestAPageHoldsWhatItWasAskedForAndTheSlotBehindItOnlySaysThatAnotherFollows
 				} else if page.Next != nil {
 					t.Errorf("a page of %d takes every slot there is and says that %+v follows", limit, page.Next)
 				}
-				asked := append(list.before(limit, "from the start"), list.viewed(rows[:held])...)
+				asked := append(list.before(limit, "from the start"), viewed(rows[:held])...)
 				if !slices.Equal(w.asked, asked) {
 					t.Errorf("a page of %d asked\n %v\nwant\n %v", limit, w.asked, asked)
 				}
@@ -389,21 +371,16 @@ func TestAPageHoldsWhatItWasAskedForAndTheSlotBehindItOnlySaysThatAnotherFollows
 }
 
 // A slot is read as the read of one slot reads it: whether an access block
-// covers it, as the store says of the asset and of the release it points at,
-// and, only if it points at a release, why the approval of that release does
-// not hold, in the workspace that owns the asset. A slot that points at none
-// is asked about no approval.
+// covers it, as the store says of the asset and of the release it points at.
 func TestASlotOfAListIsReadAsTheReadOfOneSlotIs(t *testing.T) {
 	for _, list := range listsOfSlots() {
 		t.Run(list.name, func(t *testing.T) {
 			w := list.world()
 			// A block covers the first release of the first asset, and the third
-			// asset and the first asset as a whole; the approval of the second
-			// release ran out.
+			// asset and the first asset as a whole.
 			w.blocked[firstAsset+"/"+firstRelease] = true
 			w.blocked[thirdAsset+"/"] = true
 			w.blocked[firstAsset+"/"] = true
-			w.unapproved[secondRelease] = ranOut
 			rows := slices.Clone(w.rows)
 
 			page, err := list.reading(w.service(t), nil, 4)
@@ -412,19 +389,15 @@ func TestASlotOfAListIsReadAsTheReadOfOneSlotIs(t *testing.T) {
 			}
 			var want []domain.SlotView
 			for _, row := range rows {
-				view := domain.SlotView{Slot: row.Slot, Blocked: w.blocked[row.Slot.AssetID+"/"+row.Slot.ActiveReleaseID]}
-				if row.Slot.ActiveReleaseID != "" {
-					view.Unapproved = w.unapproved[row.Slot.ActiveReleaseID]
-				}
-				want = append(want, view)
+				want = append(want, domain.SlotView{Slot: row.Slot, Blocked: w.blocked[row.Slot.AssetID+"/"+row.Slot.ActiveReleaseID]})
 			}
 			if !reflect.DeepEqual(page.Items, want) {
 				t.Errorf("the slots read as\n %+v\nwant\n %+v", page.Items, want)
 			}
-			if !page.Items[0].Blocked || page.Items[1].Unapproved != ranOut || !page.Items[2].Blocked || page.Items[2].Unapproved != nil {
-				t.Errorf("the first slot is blocked, the second says why its approval does not hold and the third, which points at none, is blocked and says nothing of an approval: %+v", page.Items)
+			if !page.Items[0].Blocked || page.Items[1].Blocked || !page.Items[2].Blocked {
+				t.Errorf("the first slot and the third, which points at none, are blocked and the second is not: %+v", page.Items)
 			}
-			if asked := append(list.before(4, "from the start"), list.viewed(rows)...); !slices.Equal(w.asked, asked) {
+			if asked := append(list.before(4, "from the start"), viewed(rows)...); !slices.Equal(w.asked, asked) {
 				t.Errorf("a page asked\n %v\nwant\n %v", w.asked, asked)
 			}
 		})
@@ -447,8 +420,8 @@ func TestAPageThatHoldsASlotOfAnAssetTheCallerDoesNotReadFailsAsAWhole(t *testin
 		t.Errorf("a failure of the service left %d records of a refusal", len(w.audited))
 	}
 	for _, line := range w.asked {
-		if strings.HasPrefix(line, fmt.Sprintf("1 Approval of %s of the asset %s", secondRelease, secondAsset)) {
-			t.Errorf("the slot of the asset the caller does not read was asked about its approval: %s", line)
+		if strings.HasPrefix(line, fmt.Sprintf("1 HasBlock %s/", secondAsset)) {
+			t.Errorf("the slot of the asset the caller does not read was read: %s", line)
 		}
 	}
 }

@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 
@@ -71,12 +70,11 @@ func activeSlot() domain.SlotView {
 	}}
 }
 
-// A slot says why the approval of the release it points at does not hold, in
-// the words an activation of that release is refused with: the same cause
-// has the same code in both. A slot whose release is approved says nothing
-// of it, and a cause the contract has no word for on a slot is a failure of
-// the service.
-func TestASlotSaysWhyTheApprovalOfItsReleaseDoesNotHoldAsAnActivationWould(t *testing.T) {
+// A slot is read as the contract states it: what it points at and whether it
+// is blocked. What became of the policy and the tools since its release was
+// prepared is nothing a slot says, because nothing that is put on a slot is
+// asked again for it: the contract declares no member for it.
+func TestASlotIsReadAsTheContractStatesIt(t *testing.T) {
 	shown := map[string]any{
 		"slot_id": publicationSlotID, "publication_target_id": publicationTargetID, "api_asset_id": apiAssetID,
 		"active_release_id": releaseID, "generation": float64(3), "visibility": "ACTIVE", "blocked": false,
@@ -88,7 +86,7 @@ func TestASlotSaysWhyTheApprovalOfItsReleaseDoesNotHoldAsAnActivationWould(t *te
 	recorder := newPublicationService(t, fake).do(t, read)
 	if got := members(t, recorder); recorder.Code != http.StatusOK || !reflect.DeepEqual(got, shown) ||
 		recorder.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("a slot whose release is approved: %d\n %v\nwant 200\n %v", recorder.Code, got, shown)
+		t.Fatalf("a slot with an active release: %d\n %v\nwant 200\n %v", recorder.Code, got, shown)
 	}
 	if len(fake.read) != 1 || fake.read[0].CorrelationID == "" {
 		t.Fatalf("the use case was asked %+v, want one read under the identifier of the request", fake.read)
@@ -101,76 +99,45 @@ func TestASlotSaysWhyTheApprovalOfItsReleaseDoesNotHoldAsAnActivationWould(t *te
 		t.Errorf("the use case was asked for %+v, want %+v", asked, want)
 	}
 
-	causes := map[string]struct {
-		err  error
-		code string
-	}{
-		"no approval":                          {checks.ErrApprovalRequired, "APPROVAL_REQUIRED"},
-		"an approval that ran out":             {checks.ErrApprovalExpired, "APPROVAL_EXPIRED"},
-		"a waiver that ran out":                {checks.ErrWaiverExpired, "WAIVER_EXPIRED"},
-		"a reviewer who lost the grant":        {checks.ErrReviewerGrantRevoked, "REVIEWER_AUTH_REVOKED"},
-		"a target the approval does not name":  {checks.ErrApprovalScope, "APPROVAL_SCOPE_MISMATCH"},
-		"a check the tools have moved on from": {fmt.Errorf("review %s: %w", reviewID, reviewdomain.ErrCheckStale), "POLICY_STALE"},
+	contract, err := loadContract()
+	if err != nil {
+		t.Fatal(err)
 	}
+	slot := contract.Components.Schemas["PublicationSlot"].Value
+	if err := slot.VisitJSON(members(t, recorder)); err != nil {
+		t.Errorf("the contract refuses the slot that is answered: %v", err)
+	}
+	if _, declared := slot.Properties["approval_problem"]; declared {
+		t.Error("the contract still declares approval_problem on a slot")
+	}
+}
+
+// What an activation is refused for is answered with the code of its cause.
+// A release that replaces one of another revision is put on the slot only on
+// a check that compared the two, and a check or release that is not what was
+// recorded is a failure of the service.
+func TestARefusedActivationIsAProblemOfItsOwnCode(t *testing.T) {
 	activate := call{
 		Method: http.MethodPost, Target: publicationSlot + "/operations", Token: alice.Subject,
 		Body:   `{"action":"ACTIVATE","expected_generation":3,"release_id":"` + releaseID + `"}`,
 		Header: map[string]string{"Idempotency-Key": "again"},
 	}
-	var said []any
-	for name, c := range causes {
-		t.Run(name, func(t *testing.T) {
-			slot := activeSlot()
-			slot.Unapproved = c.err
-			recorder := newPublicationService(t, &publications{slot: slot}).do(t, read)
-			want := map[string]any{"approval_problem": c.code}
-			for member, value := range shown {
-				want[member] = value
-			}
-			if got := members(t, recorder); recorder.Code != http.StatusOK || !reflect.DeepEqual(got, want) {
-				t.Fatalf("the slot: %d\n %v\nwant 200\n %v", recorder.Code, got, want)
-			}
-			// An activation that is refused for the same cause is
-			// answered with the same code.
-			refused := &publications{err: c.err}
-			wantRefusal(t, newPublicationService(t, refused).do(t, activate), http.StatusConflict, c.code)
-			if len(refused.changed) != 1 {
-				t.Errorf("the use case was asked for %d changes, want the one", len(refused.changed))
-			}
-		})
-		said = append(said, c.code)
-	}
-
-	// The contract states the causes a slot can name, and no other.
-	contract, err := loadContract()
-	if err != nil {
-		t.Fatal(err)
-	}
-	declared := slices.Clone(contract.Components.Schemas["PublicationSlot"].Value.Properties["approval_problem"].Value.Enum)
-	byName := func(a, b any) int { return strings.Compare(a.(string), b.(string)) }
-	slices.SortFunc(declared, byName)
-	slices.SortFunc(said, byName)
-	if !reflect.DeepEqual(declared, said) {
-		t.Errorf("the contract states the causes %v, a slot names %v", declared, said)
-	}
-
-	// What an activation is refused for besides is no word about the
-	// approval of what is active, and a slot does not answer with it.
-	for name, cause := range map[string]error{
-		"a publisher who had a part in the revision": checks.ErrPublisherInvolved,
-		"a check that compared with something else":  checks.ErrBaselineMismatch,
-		"a check that left a rule out":               fmt.Errorf("%w: F04-GOV-004", checks.ErrReleaseCheckMissing),
-		"a review that is not what was recorded":     fmt.Errorf("review %s: %w", reviewID, reviewdomain.ErrReviewDamaged),
-		"anything else":                              errors.New("the connection is gone"),
+	for name, c := range map[string]struct {
+		err    error
+		status int
+		code   string
+	}{
+		"a check that compared with something else": {checks.ErrBaselineMismatch, http.StatusConflict, "COMPATIBILITY_BASELINE_MISMATCH"},
+		"a check that is not what was recorded": {
+			fmt.Errorf("check run %s: %w", checkRunID, reviewdomain.ErrCheckRunDamaged), http.StatusInternalServerError, CodeInternalError,
+		},
+		"anything else": {errors.New("the connection is gone"), http.StatusInternalServerError, CodeInternalError},
 	} {
 		t.Run(name, func(t *testing.T) {
-			slot := activeSlot()
-			slot.Unapproved = cause
-			s := newPublicationService(t, &publications{slot: slot})
-			wantProblem(t, s.do(t, read), http.StatusInternalServerError, CodeInternalError, "")
-			if logged := s.log.String(); !strings.Contains(logged, "the slot cannot say why the approval of its release does not hold") ||
-				!strings.Contains(logged, cause.Error()) {
-				t.Errorf("the log does not say what the slot could not name: %s", logged)
+			refused := &publications{err: c.err}
+			wantRefusal(t, newPublicationService(t, refused).do(t, activate), c.status, c.code)
+			if len(refused.changed) != 1 {
+				t.Errorf("the use case was asked for %d changes, want the one", len(refused.changed))
 			}
 		})
 	}
@@ -232,13 +199,18 @@ func TestTheContractStatesPublicationAsTheModelDoes(t *testing.T) {
 	}
 }
 
-func TestContractDescribesApprovalByAudience(t *testing.T) {
+// The contract says that a release goes out on the check it was prepared
+// on: a slot takes it, gives it back and serves it whatever policy and tools
+// a check is made with since, and nobody is held to having had no part in
+// it. None of it speaks of an approval any more.
+func TestTheContractPublishesAReleaseOnTheCheckItWasPreparedOn(t *testing.T) {
 	contract, err := loadContract()
 	if err != nil {
 		t.Fatal(err)
 	}
 	const slot = "/v1/products/{product_id}/publication-targets/{publication_target_id}/assets/{api_asset_id}"
 	const clearance = "/v1/products/{product_id}/publication-targets/{publication_target_id}/access-blocks/{access_block_id}/clearance"
+	unsaid := []string{"approval", "approve", "independen", "took no part"}
 	for name, c := range map[string]struct {
 		text      string
 		says, not []string
@@ -246,46 +218,41 @@ func TestContractDescribesApprovalByAudience(t *testing.T) {
 		"getPublicationSlot": {
 			text: contract.Paths.Find(slot).Get.Description,
 			says: []string{
-				"The slot keeps its pointer when an approval stops holding",
-				"The internal origin serves the artifact until the slot is withdrawn or blocked",
-				"The partner origin requires a current approval",
-				"approval_problem names why the release would not be activated today",
+				"The internal and the partner origin serve the artifact of the active release until the slot is withdrawn or blocked",
 			},
-			not: []string{"is not served", "answers 404"},
+			not: append([]string{"approval_problem"}, unsaid...),
 		},
 		"changePublicationSlot": {
 			text: contract.Paths.Find(slot + "/operations").Post.Description,
 			says: []string{
-				"An activation puts a release on the slot and requires an approval that holds for this target now",
+				"An activation puts a release on the slot on the check it was prepared on",
+				"COMPATIBILITY_BASELINE_MISMATCH",
 				"A restoration returns the slot to a release it served before",
-				"Internal restoration verifies the approval as it was given",
-				"Partner restoration also requires the approval to hold now",
-				"An activation of a previously served release uses the same checks as any activation",
-				"Activation and restoration both require a publisher who took no part in the revision",
+				"Neither asks whether the check would pass under the policy and the tools of today",
+				"the publisher may be whoever imported, checked or prepared the revision",
 				"A withdrawal requires the publisher role alone",
 			},
+			not: unsaid,
 		},
 		"getPublishedArtifact": {
 			text: contract.Paths.Find(slot + "/artifact").Get.Description,
-			says: []string{"It does not ask whether the approval the release rests on still holds", "is served until it is withdrawn or blocked"},
-			not:  []string{"approval and effective access blocks"},
+			says: []string{"is served until it is withdrawn or blocked"},
+			not:  unsaid,
 		},
 		"clearPublicationAccessBlock": {
 			text: contract.Paths.Find(clearance).Post.Description,
-			says: []string{
-				"revalidates the publisher's independence and artifact integrity",
-				"Partner restoration also checks the current approval",
-			},
-			not: []string{"revalidates approval"},
+			says: []string{"Restore uses a new CAS and revalidates artifact integrity"},
+			not:  unsaid,
 		},
-		"the approval_problem of a slot": {
-			text: contract.Components.Schemas["PublicationSlot"].Value.Properties["approval_problem"].Value.Description,
+		"prepareContractRelease": {
+			text: contract.Paths.Find("/v1/products/{product_id}/assets/{api_asset_id}/releases").Post.Description,
 			says: []string{
-				"the error code an activation of that release would be refused with",
-				"The slot retains the release pointer",
-				"The internal origin can still serve the artifact",
-				"The partner origin requires a current approval to serve that release",
+				"No review or approval is asked for",
+				"409 POLICY_STALE", "409 RELEASE_BLOCKED", "409 WAIVER_REQUIRED", "422 WAIVER_FORBIDDEN",
+				"422 REQUEST_UNPROCESSABLE", "409 RELEASE_CHECK_INCOMPLETE", "404 CHECK_RUN_NOT_FOUND",
+				"409 RELEASE_VERSION_CONFLICT",
 			},
+			not: []string{"PUBLISHER_NOT_INDEPENDENT", "APPROVAL_", "REVIEWER_", "WAIVER_EXPIRED"},
 		},
 	} {
 		// A description is read as one line, however the contract breaks it.
