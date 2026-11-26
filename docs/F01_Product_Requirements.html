@@ -90,7 +90,8 @@
 <strong>日期</strong>：2026-11-09<br/>
 <strong>文档状态</strong>：正文内容定稿，等待具名角色按上位规范签收；不是已采用、已研发或已执行验收版本<br/>
 <strong>上位规范</strong>：IDP Supply Chain DDD Product Engineering Standard V1.0（IDP-SCG-STD-001，1.0.0；上位规范采用仍需具名批准）<br/>
-<strong>后续承接文档</strong>：F02–F08；本文件不代替架构详细设计、数据模型或安全威胁建模。</p>
+<strong>后续承接文档</strong>：F02–F08；本文件不代替架构详细设计、数据模型或安全威胁建模。<br/>
+<strong>变更</strong>：<a href="../decisions/CR-0001.md">CR-0001</a>（2026-11-26 已决定）内部使用不再设审批，准备 Release 以检查为准。FR/NFR 文本和编号不变，受影响的需求在所在章节后注明实现方式的变化。</p>
 </blockquote>
 <h2 id="section-0">0. 执行摘要与决策状态</h2>
 <p><strong>产品定义。</strong> IDP API Fabric 是面向 IDP 多供应链产品的统一 API 契约、资产目录、治理与开发者体验平台。它为 CargoPai、IDP Parcel、IDP Brant、IDP Prism 等产品提供共享的标准和治理能力，并保持各产品 API 契约、数据与授权、发布生命周期和对外品牌体验的独立性。</p>
@@ -496,7 +497,7 @@
 </tr>
 </tbody>
 </table></div>
-<p><strong>职责分离。</strong> 契约提交者不得单独批准自身负责的高影响外部发布。按照上位规范 R1/R2/R3 风险等级建立独立复核策略；每一类风险的判定条件及批准权限由 F04/F05 联合决定，不能将“具备管理员角色”等同于有权绕过强制安全控制。</p>
+<p><strong>职责分离。</strong> 契约提交者不得单独批准自身负责的高影响外部发布。（CR-0001：内部使用不再设评审和审批，同一人可以检查、准备 Release 并发布；检查门禁不可绕过，访问阻断的解除仍须另一位安全评审人。）按照上位规范 R1/R2/R3 风险等级建立独立复核策略；每一类风险的判定条件及批准权限由 F04/F05 联合决定，不能将“具备管理员角色”等同于有权绕过强制安全控制。</p>
 <div aria-label="可横向滚动的需求及规范表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
 <tr>
@@ -624,6 +625,9 @@
 </table></div>
 <h3 id="section-5-1">5.1 内部 Portal 的首要闭环</h3>
 <p>提交契约 → 执行规范与兼容性检查 → 查看差异 → 提交审批 → 生成不可变 Release → 发布至指定受众 → 查看发布状态与审计；每个步骤必须明确用户可见状态、出错提示与恢复入口。</p>
+<blockquote>
+<p>CR-0001 起内部门户的流程是“导入 → 检查 → 准备 Release → 发布”，不再提交审批；没通过的可豁免规则在准备 Release 时逐条豁免。</p>
+</blockquote>
 <h3 id="section-5-2">5.2 外部 Portal 的首要闭环</h3>
 <p>发现产品 API → 快速入门 → 查找认证及环境要求 → 浏览 API Reference → 获取受控沙箱访问 → 执行首次调用 → 查看错误诊断与后续集成步骤。<strong>MVP 仅需提供准确的接入指南与环境说明，不验收真实沙箱首调</strong>；真实凭证、应用登记和实际沙箱调用属于 V1 的 BG-03/AT-07 验收，允许由现有 IAM/Gateway 执行。不得以静态示例、Mock 或测试桩响应冒充真实调用。</p>
 <h2 id="section-6">6. 产品能力地图与功能需求</h2>
@@ -778,6 +782,9 @@
 </tr>
 </tbody>
 </table></div>
+<blockquote>
+<p>CR-0001：FR-017 的“批准证据”现由 Release 依据的检查及准备时的豁免承担；CR-0001 之前准备的 Release 仍保留其批准证据。</p>
+</blockquote>
 <h3 id="section-6-4">6.4 CAP-04 Contract Governance</h3>
 <div aria-label="可横向滚动的需求及规范表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
@@ -830,6 +837,9 @@
 </tr>
 </tbody>
 </table></div>
+<blockquote>
+<p>CR-0001：不再设审查人。FR-027 记录的审查人、审查结论和例外有效期，现由检查版本、豁免理由和准备 Release 的人承担，豁免没有有效期；此前的评审记录只读保留。FR-028 不变：不可豁免的规则没通过时不能准备 Release。</p>
+</blockquote>
 <h3 id="section-6-5">6.5 CAP-05 发布、生命周期与变更</h3>
 <div aria-label="可横向滚动的需求及规范表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
@@ -887,6 +897,9 @@
 </tr>
 </tbody>
 </table></div>
+<blockquote>
+<p>CR-0001：FR-031 中的 Draft/Review/Approved 不再流转，修订保持 Draft，Review/Approved 只是此前评审留下的状态。FR-034 的“已批准”现指通过检查门禁准备出的 Release。</p>
+</blockquote>
 <h3 id="section-6-6">6.6 CAP-06 内部工程门户（IDP Engineering Portal）</h3>
 <div aria-label="可横向滚动的需求及规范表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
@@ -934,6 +947,9 @@
 </tr>
 </tbody>
 </table></div>
+<blockquote>
+<p>CR-0001：FR-043 的“提交审核、审批结果”现由检查结论、准备 Release 和只读的历史评审承担。</p>
+</blockquote>
 <h3 id="section-6-7">6.7 CAP-07 外部开发者门户（Product Developer Portal）</h3>
 <div aria-label="可横向滚动的需求及规范表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
@@ -1278,6 +1294,9 @@
 </tr>
 </tbody>
 </table></div>
+<blockquote>
+<p>CR-0001：NFR-12 的“破坏性变更审批”现由检查门禁承担：兼容性规则 F04-GOV-013 判为破坏性或无法判断时，准备 Release 须逐条豁免并写明理由。</p>
+</blockquote>
 <h2 id="section-9">9. 业务规则与状态语义（产品层约束）</h2>
 <figure aria-label="修订、发行、发布与生命周期的对象关系" class="figure"><div class="fig-title">Lifecycle distinction · 不同对象，独立状态</div><div class="life-grid"><div class="life-row"><span>01 · Revision</span><strong>Draft → Review → Approved / Rejected</strong><small>源修订可迭代；审核并不意味着外部可见</small></div><div class="life-row"><span>02 · Release</span><strong>Immutable Artifact + Digest</strong><small>批准后形成不可变制品；历史永不覆盖</small></div><div class="life-row"><span>03 · Publication</span><strong>Target → Live / Revoked / Replaced</strong><small>绑定产品、受众、环境及门户，撤销更改发布关系</small></div><div class="life-row"><span>04 · API Lifecycle</span><strong>Experimental → Stable → Deprecated → Retired</strong><small>面向消费者的生命周期，独立于单次发布动作</small></div></div><div class="rule-flag">安全恢复分支：错误公开发布 → 授权撤销 → 先阻断无权可见 → 恢复上一有效版本或安全不可见 → 审计及独立复核</div><figcaption>以上是 F01 的产品层状态语义示意，精确状态机、并发竞争与补偿逻辑由 F03/F04 定义。</figcaption></figure>
 <ol>

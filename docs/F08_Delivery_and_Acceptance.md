@@ -8,7 +8,7 @@
 
 ## 0. 执行摘要与实施裁决
 
-F08 是**第八份且最后一份核心设计文档**。它不增加产品能力、不重画 F02 的 Go 架构、不修改 F03 聚合、不改变 F01 已分配的 MVP/V1 范围，而是把设计转换为有序开发工作包、依赖矩阵、职责与资源计划、可复现真实测试、证据包和六道上位标准门禁。第一条工程主线始终为：**CargoPai 受控 Contract Source → Revision → CheckRun / ReviewDecision → Immutable Release → `(target_id, api_asset_id)` PublicationSlot CAS → 外部门户授权读取 → AccessBlock 立即阻断、撤销、回退与恢复**。同步以 Parcel 未授权访问、恶意 Schema、并发与失败恢复作为负向对照。
+F08 是**第八份且最后一份核心设计文档**。它不增加产品能力、不重画 F02 的 Go 架构、不修改 F03 聚合、不改变 F01 已分配的 MVP/V1 范围，而是把设计转换为有序开发工作包、依赖矩阵、职责与资源计划、可复现真实测试、证据包和六道上位标准门禁。第一条工程主线始终为：**CargoPai 受控 Contract Source → Revision → CheckRun（及准备 Release 时的豁免；CR-0001 起不再有 ReviewDecision） → Immutable Release → `(target_id, api_asset_id)` PublicationSlot CAS → 外部门户授权读取 → AccessBlock 立即阻断、撤销、回退与恢复**。同步以 Parcel 未授权访问、恶意 Schema、并发与失败恢复作为负向对照。
 
 | 评审对象 | 设计结论 | 当前状态 |
 |---|---|---|
@@ -36,6 +36,14 @@ F08 是**第八份且最后一份核心设计文档**。它不增加产品能力
 
 需求新增或 MVP/V1 调整必须形成 `ChangeRequest`：触发源、上游 FR/NFR、受影响领域/契约/安全/UX、成本与进度影响、兼容性、证据重跑集、审批人及决定；更新批准前，旧范围和原发布范围仍生效。ADR `Proposed` 不是已批准决策；高风险变更须独立复核。不得直接篡改历史验收证据。
 
+**已批准的范围变更。**
+
+| 变更 | 内容 | 审批人及决定 | 影响与证据重跑 |
+|---|---|---|---|
+| [CR-0001](../decisions/CR-0001.md) 内部使用不再设审批 | 准备 Release 以检查为准，豁免在准备时逐条填写；不再要求发布人独立；旧评审保留、只读；策略更新后已有 Release 仍可发布和恢复；`internal_reviewer` 不再授予 | 决定 1、2：老板（姓名待填写），2026-11-26；决定 3–6：经老板授权由开发侧决定，2026-11-26 | 管理 API 0.37.0（PR #74），门户（PR #75），F01–F05、F07、F08 正文同步，F06 只改页面清单。重跑集：`make check`；F03–F06、F08 校验、一致性校验和 MANIFEST；在隔离环境重跑门户联调（导入 → 检查 → 准备 Release（含豁免）→ 发布 → 撤销、恢复、阻断）。联调结果 `NOT_RUN` |
+
+依赖独立评审或批准的工作包、里程碑和验收用例按 CR-0001 标为已取代或部分取代，编号和 `NOT_RUN` 状态保留：WP-05、WP-07，MS-03、MS-05，AC-04、AC-05、AC-15、AC-19，DC-013、DC-016、DC-023、DC-024、DC-032、DC-033。检查门禁的验收按 CR-0001 的重跑集另行记录；新的验收编号由 F08 责任人分配。历史验收记录不改。
+
 ### 1.3 当前上游成熟度
 
 现有 71 项 FR + 18 项 NFR 可追溯至设计资产；F04 自定义规则子集、F06 本地 Mock 和 Markdown/HTML/ZIP 结构验证曾实际执行，但 **Go 后端、真实 PostgreSQL、IAM、Object Store、CDN、Gateway、真实用户、性能与 DR 均尚未执行验收**。F08 中所有真实运行项初始化 `NOT_RUN`，不得写为 PASS。
@@ -44,7 +52,7 @@ F08 是**第八份且最后一份核心设计文档**。它不增加产品能力
 
 不按页面、数据库表或七个语义上下文单独“做完一片”后再尝试集成；采用**从最低可验证纵切逐步扩展**的路径。每一批都产出同一 Source/Revision/Release/Slot/Block 语义的真实接口、测试和证据，逐层引入产品及外部适配器。首批设计及实现使用真实可解析的 **DESIGN_EXAMPLE CargoPai 契约**；如尚无真正的 CargoPai 生产 API，必须在证据中标示 `synthetic_contract=true`、环境为非生产，不得冒充真实客户运营事实。
 
-<figure class="architecture-figure"><div class="fig-label">FIGURE 02 · 单一 CargoPai 纵向主线与必须并行的反例</div><div class="fig-stack"><div class="fig-grid cols-3"><div class="fig-box"><b>1 · Source</b><small>Git / 受控上传 · digest</small></div><div class="fig-box"><b>2 · Governance</b><small>Parse → Diff → Scan → Review</small></div><div class="fig-box"><b>3 · Release</b><small>Immutable artifact / manifest</small></div></div><div class="fig-arrow">↓ 同一 APIAsset、同一 Target×Asset Slot、generation CAS</div><div class="fig-grid cols-3"><div class="fig-box tone-green"><b>4 · Publish</b><small>审计 / Outbox / 可对账</small></div><div class="fig-box tone-green"><b>5 · Portal Read</b><small>Role / Product / Grant / Block</small></div><div class="fig-box fig-primary"><b>6 · Revoke</b><small>源站拒绝 → 缓存传播状态</small></div></div><div class="fig-separator">同步负向验证：Parcel 越权拒绝 · CAS 冲突 · 审批/Policy 过期 · Poison Ref · Worker 重投 · Storage/CDN UNKNOWN</div></div><figcaption>整条纵切由 F01/F03/F04/F05/F07 承接；任何一步 FAIL 都不能因为 UI 看起来完整而跳过。</figcaption></figure>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 02 · 单一 CargoPai 纵向主线与必须并行的反例</div><div class="fig-stack"><div class="fig-grid cols-3"><div class="fig-box"><b>1 · Source</b><small>Git / 受控上传 · digest</small></div><div class="fig-box"><b>2 · Governance</b><small>Parse → Diff → Scan → Gate</small></div><div class="fig-box"><b>3 · Release</b><small>Immutable artifact / manifest</small></div></div><div class="fig-arrow">↓ 同一 APIAsset、同一 Target×Asset Slot、generation CAS</div><div class="fig-grid cols-3"><div class="fig-box tone-green"><b>4 · Publish</b><small>审计 / Outbox / 可对账</small></div><div class="fig-box tone-green"><b>5 · Portal Read</b><small>Role / Product / Grant / Block</small></div><div class="fig-box fig-primary"><b>6 · Revoke</b><small>源站拒绝 → 缓存传播状态</small></div></div><div class="fig-separator">同步负向验证：Parcel 越权拒绝 · CAS 冲突 · 审批/Policy 过期 · Poison Ref · Worker 重投 · Storage/CDN UNKNOWN</div></div><figcaption>整条纵切由 F01/F03/F04/F05/F07 承接；任何一步 FAIL 都不能因为 UI 看起来完整而跳过。</figcaption></figure>
 
 ## 3. 工作分解结构 WBS 与实施顺序
 
@@ -56,7 +64,7 @@ F08 是**第八份且最后一份核心设计文档**。它不增加产品能力
 | WP-02 | CI/仓库、Go 依赖边界、生成器 PoC、版本锁定、可复现构建 | WP-01 关键决策 | MVP | Engineering |
 | WP-03 | Product/Workspace/APIAsset、服务端多维授权与审计 | WP-02 | MVP | Platform+Security |
 | WP-04 | Git/受控导入、闭包 Digest、Revision、元数据与 Blob | WP-03 | MVP | Registry |
-| WP-05 | OAS3.1 验证、版本 Diff、敏感扫描、CheckRun/Review | WP-04 | MVP | Governance |
+| WP-05 | OAS3.1 验证、版本 Diff、敏感扫描、CheckRun/Review（Review 由 CR-0001 取代，改为准备 Release 时的检查门禁） | WP-04 | MVP | Governance |
 | WP-06 | Immutable Release、Slot CAS、AccessBlock、历史与 Outbox | WP-05 | MVP | Publication+Security |
 | WP-07 | Internal Portal 真实工作台与 F06-A 关键流程 | WP-03,WP-06 | MVP | UX+Engineering |
 | WP-08 | CargoPai 外部只读 Portal、私有授权读取及误发布撤销 | WP-06,WP-07 的服务能力 | MVP | Developer Experience+Security |
@@ -80,7 +88,7 @@ F08 是**第八份且最后一份核心设计文档**。它不增加产品能力
 | MS-00 采用与裁决 | WP-01 | 有效 Project Manifest、Risk/Profile、全部阻断 ADR 裁决 | `BLOCKED`，不能启动受影响实现 |
 | MS-01 工程基座 | WP-02 | Go/CI/生成/依赖可复现，工具 PoC 有具体支持矩阵 | `BLOCKED` 或有权受限范围批准 |
 | MS-02 身份与基本事实 | WP-03 | Product/Workspace/ACL、审计、隔离负例真实 E2 | 拒绝外部功能启用 |
-| MS-03 契约治理 | WP-04,05 | Digest/Revision/Schema/Review 端到端，错误输入拒绝 | Release 不得 READY |
+| MS-03 契约治理 | WP-04,05 | Digest/Revision/Schema/检查门禁端到端（Review 由 CR-0001 取代），错误输入拒绝 | Release 不得 READY |
 | MS-04 发布与恢复 | WP-06 | CAS、Outbox、AccessBlock、故障恢复 E2/E3 | Public Publication 不得启用 |
 | MS-05 内部门户 | WP-07 | F06-A 角色真实联动、拒绝与错误反馈 | 不开放管理能力 |
 | MS-06 外部门户 MVP | WP-08,09 | CargoPai 只读门户、跨产品拒绝、撤销恢复、MVP AT | MVP 不能签收 |
@@ -124,7 +132,7 @@ F08 是**第八份且最后一份核心设计文档**。它不增加产品能力
 | 备份、容量、恢复指标 | Operations Owner | SRE/DBA | Security/Product | TBD |
 | 最终生产 Go/No-Go | Release Authority | Release Manager | Product/Security/Operations/QA | TBD |
 
-**SoD**：作者不得独立批准本人高风险发布；检查执行者不能替代业务/安全验收；Waiver 需具名、有范围、有期限、有理由和证据引用。R1/R2/R3 独立复核按照上位规范风险映射执行，不在 F08 擅自统一成一个级别。
+**SoD**：作者不得独立批准本人高风险发布（CR-0001 起内部使用不设审批，这一条由检查门禁、按角色授权和审计取代；访问阻断的解除仍须另一位安全评审人）；检查执行者不能替代业务/安全验收；Waiver 需具名、有范围、有期限、有理由和证据引用。R1/R2/R3 独立复核按照上位规范风险映射执行，不在 F08 擅自统一成一个级别。
 
 ### 6.1 正式基线冻结所需的具名批准（非执行事实）
 
@@ -160,7 +168,7 @@ F08 是**第八份且最后一份核心设计文档**。它不增加产品能力
 | 并发/可靠性 | CAS、幂等、Outbox、Worker 崩溃和恢复 | E3 |
 | 安全/隔离 | 多产品、多组织、直链/搜索、撤销与 Edge 缓存 | E3，生产观察另需 E4 |
 | 契约 | OAS3.1 正/负、Diff、Go 类型、AsyncAPI 版本 | E2–E3 |
-| 双门户 | 内部独立审核、外部只读、异常体验、无障碍 | E2–E3，真实任务 |
+| 双门户 | 内部检查与准备 Release（CR-0001 起没有独立审核）、外部只读、异常体验、无障碍 | E2–E3，真实任务 |
 | 运维 | 恢复点、索引重建、SLO、部署回退、事件响应 | E3 / 上线后 E4 |
 
 **覆盖规则**：每一首批 MVP `FR` / `NFR` 至少有**明确验收承接**；后续 V1/V2 的需求以 `DEFERRED` 标示，不能假装 MVP 已实现，也不能把 89 条需求全部强制绑定同一测试。完整 89 行映射见 `tests/acceptance/F08_delivery_trace.csv`，其中 `delivery_status=NOT_IMPLEMENTED` 为设计时保守事实；未来按真实交付证据更新，不凭设计引用自动变更。
@@ -180,7 +188,7 @@ F08 是**第八份且最后一份核心设计文档**。它不增加产品能力
 1. 静态/领域：Go build/lint、DDD import guards、单元与属性测试、生成代码重复构建一致性。
 2. 契约/解析：OAS/AsyncAPI 正负样例、版本 Diff、Schema/引用闭包限制及 Golden 输出。
 3. 数据/集成：真 PostgreSQL CAS/隔离/迁移；Blob 不可变性与原子引用；IAM 服务端鉴权。
-4. 安全/韧性：跨产品拒绝、SSRF/XSS、审批绕过、故障注入、Outbox at-least-once、发出未知传播状态。
+4. 安全/韧性：跨产品拒绝、SSRF/XSS、检查门禁绕过（CR-0001 之前为审批绕过）、故障注入、Outbox at-least-once、发出未知传播状态。
 5. UX/业务旅程：两个真实后端门户、键盘与读屏、真实用户角色、沙箱首调（仅 V1）。
 6. 性能与 DR：基于批准容量模型采样 p95、成功率、索引滞后、恢复时间及 RPO/RTO，保留完整执行记录。
 
@@ -195,7 +203,7 @@ IAM/Gateway/CDN 未提供测试接口时，记录 `BLOCKED` + 依赖 Owner + 替
 - 并发发布：同 Slot 两提交只能一方成功；授权撤销与发布交错时阻断优先；旧工作流不得因重试覆盖新 generation。
 - 来源安全：外部 `$ref` SSRF、目录逃逸、循环膨胀、恶意 Markdown、XSS、SDK 样例中的密钥不得进入公开站点。
 - 故障补偿：Release Blob 写入成功但 DB 失败，孤儿可对账；DB 成功但 Blob 缺失不得公开；Worker 重投不重复生效；Poison 消息可人工修复并保留审计。
-- 紧急撤销：先同步阻断源站，再校验缓存/Edge 传播；传播不可证明为 `UNKNOWN/AT_RISK`；回退需有新批准和审计，禁止修改旧 Release。
+- 紧急撤销：先同步阻断源站，再校验缓存/Edge 传播；传播不可证明为 `UNKNOWN/AT_RISK`；回退由发布人按槽位历史执行并留审计（CR-0001 起不需要新批准），禁止修改旧 Release。
 
 <figure class="architecture-figure"><div class="fig-label">FIGURE 06 · 撤销与恢复的安全状态图（验收导向）</div><div class="fig-grid cols-3"><div class="fig-box"><b>Incident</b><small>错误公开 / 权限异常</small></div><div class="fig-box fig-primary"><b>AccessBlock COMMIT</b><small>服务端立即拒绝读取</small></div><div class="fig-box"><b>Propagation</b><small>CDN / Proxy / Index</small></div></div><div class="fig-arrow">↓ 只允许用真实探测证据细化外部传播结果</div><div class="fig-grid cols-2"><div class="fig-box"><b>UNKNOWN / AT_RISK</b><small>传播未证实，不可宣传撤销完成</small></div><div class="fig-box tone-green"><b>VERIFIED_BLOCKED</b><small>已测试受控范围内一致拒绝</small></div></div><div class="fig-separator">如需恢复发布：修复根因 → 重新审批 → 校验旧 Blob/新 Slot 目标 → CAS/解除阻断 → 新一轮传播/审计验证</div><figcaption>Block 之后的公网缓存是否完全失效属于外部系统可见事实；不允许用数据库提交成功直接推断。</figcaption></figure>
 
@@ -229,7 +237,7 @@ Build 阶段应绑定 Git Commit、Go/Node/CLI Toolchain、SBOM、签名/摘要�
 
 | 动作 | 本质 | 证据与责任 |
 |---|---|---|
-| Publication Revert | 同一 Slot CAS 指回经过批准的旧不可变 Release | Source/目标 generation、审批、Portal 可见性、审计 |
+| Publication Revert | 同一 Slot CAS 指回曾生效的旧不可变 Release | Source/目标 generation、Release 依据的检查（CR-0001 之前为审批）、Portal 可见性、审计 |
 | Emergency AccessBlock | 首先阻断对敏感文档的服务端访问 | 安全 Owner、外部缓存风险与撤销探测 |
 | Software Rollback | 回退当前应用可执行制品/配置 | 兼容迁移状态、构建摘要、观察与快速验证 |
 | Database Restore | PITR/快照恢复元数据与审计/Blob 对账 | RPO/RTO 实测、业务事件重放、索引重建 |

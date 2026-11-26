@@ -6,7 +6,8 @@
 > **状态**：领域与逻辑数据设计待具名评审，Product Governance 实现见 §5.5–5.6。架构 PoC、正式标准门禁和业务验收待执行。\
 > **权威输入**：[F01](F01_Product_Requirements.md)、[F02](F02_System_Architecture.md)、[阶段交接约束](README.md)、《IDP Supply Chain DDD Product Engineering Standard V1.0》（IDP-SCG-STD-001）  
 > **决策约束**：ADR-0001～0006 均为 `Proposed`；F03 不以此文宣称架构已批准。  
-> **面向后续**：F04 API Contract Governance、F05 Security、F06 Dual Portal UX、F07 Engineering、F08 Acceptance。
+> **面向后续**：F04 API Contract Governance、F05 Security、F06 Dual Portal UX、F07 Engineering、F08 Acceptance。  
+> **变更**：[CR-0001](../decisions/CR-0001.md)（2026-11-26 已决定）取消评审和批准，Release 依据检查准备。领域上的变化见 §0、§3.1、§4、§8，实现见 §5.15。
 
 ## 0. 执行摘要与设计结论
 
@@ -16,18 +17,18 @@
 
 1. **事实权威分离**：`SourceSnapshot` / `ContractRevision` / `ContractRelease` / `PublicationSlot` / `PublicationOperation` / `PortalProjection` 均为不同业务概念。
 2. **发布粒度精确**：`PublicationTarget` 指明产品、受众、环境和门户；`PublicationSlot = Target × APIAsset` 管理具体 API 的版本指针，允许一个门户同时展示多个 API。F02 与 ADR-0004 已同步统一此定义；ADR 仍 Proposed，需具名批准。
-3. **审核证据绑定输入**：决策引用修订内容摘要、检查运行、策略快照、目标授权范围和角色证明；目标、策略或内容变化不能隐式沿用旧批准。
+3. **检查证据绑定输入**：Release 依据修订的一次检查，检查引用修订内容摘要、策略快照和工具版本；没通过的可豁免规则在准备 Release 时逐条豁免，理由随 Release 记录。内容或策略变化后，准备新的 Release 要重新检查。CR-0001 起不再有人工批准，原先的审核证据（目标授权范围、审批人）作为只读历史保留。
 4. **撤销先阻断**：公开错误发布先进行目标级禁止访问（deny）及服务端可见性拒绝，再在主库以 CAS 撤销/恢复并对账。无法将已经被第三方保存的内容“召回”。
 5. **跨产品默认拒绝**：组织与用户的相同名称不构成授权；Product、Workspace、Principal、Audience、Environment 和外部 Consumer Application 的关系必须显式成立。
 6. **事务只保证局部原子性**：数据库事务、对象存储、门户和外部 IAM/Gateway 之间不宣称分布式 Exactly-Once；通过持久作业、事务 Outbox、幂等与对账达到可恢复效果。
 
-<figure class="architecture-figure"><div class="fig-label">FIGURE 01 · 七个候选领域与核心事实权威</div><div class="fig-head"><strong>IDP API Fabric · DDD Context Landscape</strong><small>各域拥有自己的业务事实 · 外部依赖通过 Ports / ACL 隔离</small></div><div class="fig-grid cols-3"><div class="fig-box tone-light"><b>Product Governance</b><small>Product / Workspace / Membership</small></div><div class="fig-box tone-light"><b>API Catalog</b><small>APIAsset / Owner / Lifecycle</small></div><div class="fig-box tone-light"><b>Contract Registry</b><small>Source / Revision / Release</small></div><div class="fig-box"><b>Policy & Review</b><small>PolicySnapshot / CheckRun / Decision</small></div><div class="fig-box fig-primary"><b>Publication</b><small>Target / Slot / Operation / Block</small></div><div class="fig-box"><b>Developer Access</b><small>DeveloperOrg / Application / Grant</small></div></div><div class="fig-arrow">↓ 统一审计关联、事务 Outbox、幂等消费者、可重建查询投影</div><div class="fig-grid cols-2"><div class="fig-box tone-green"><b>Platform Operations</b><small>Job / Outbox / Audit / Reconcile</small></div><div class="fig-box tone-green"><b>External Systems（非 Fabric 事实权威）</b><small>Git · IAM · Gateway · Product Runtime</small></div></div><figcaption>箭头表示业务协作，不表示共享写入或单事务跨越所有限界上下文。关系、所有权和契约见 §3。</figcaption></figure>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 01 · 七个候选领域与核心事实权威</div><div class="fig-head"><strong>IDP API Fabric · DDD Context Landscape</strong><small>各域拥有自己的业务事实 · 外部依赖通过 Ports / ACL 隔离</small></div><div class="fig-grid cols-3"><div class="fig-box tone-light"><b>Product Governance</b><small>Product / Workspace / Membership</small></div><div class="fig-box tone-light"><b>API Catalog</b><small>APIAsset / Owner / Lifecycle</small></div><div class="fig-box tone-light"><b>Contract Registry</b><small>Source / Revision / Release</small></div><div class="fig-box"><b>Policy & Review</b><small>PolicySnapshot / CheckRun / 历史评审</small></div><div class="fig-box fig-primary"><b>Publication</b><small>Target / Slot / Operation / Block</small></div><div class="fig-box"><b>Developer Access</b><small>DeveloperOrg / Application / Grant</small></div></div><div class="fig-arrow">↓ 统一审计关联、事务 Outbox、幂等消费者、可重建查询投影</div><div class="fig-grid cols-2"><div class="fig-box tone-green"><b>Platform Operations</b><small>Job / Outbox / Audit / Reconcile</small></div><div class="fig-box tone-green"><b>External Systems（非 Fabric 事实权威）</b><small>Git · IAM · Gateway · Product Runtime</small></div></div><figcaption>箭头表示业务协作，不表示共享写入或单事务跨越所有限界上下文。关系、所有权和契约见 §3。</figcaption></figure>
 
 | 关键要求 | F03 设计对象 | 上游依据 | 后续归属 |
 |---|---|---|---|
 | 产品自治与隔离 | Product、Workspace、Membership、Scoped Reference | F01 FR-001–006、FR-063；F02 AI-01/03 | F05、F07 |
 | 可追溯契约 | SourceSnapshot、Revision、Release、ArtifactManifest | FR-013–020；AI-02/05 | F04、F07 |
-| 审查、例外及策略 | CheckRun、PolicySnapshot、ReviewDecision、WaiverRef | FR-023–028 | F04、F05 |
+| 审查、例外及策略 | CheckRun、PolicySnapshot、Release 的豁免；ReviewDecision、WaiverRef 只读历史（CR-0001） | FR-023–028 | F04、F05 |
 | 多 API 目标发布 | PublicationTarget、Slot、Operation、AccessBlock | FR-031–036；AI-04 | F04、F05、F07 |
 | 双门户授权体验 | DeveloperOrg、ConsumerApp、GrantRef、PortalProjection | FR-040–055；AI-03/07 | F05、F06 |
 | 可恢复运营 | Job、Outbox、Audit、Reconciliation | FR-061–066；AI-06 | F07、F08 |
@@ -51,7 +52,7 @@
 - 所有持久身份采用稳定的不可复用 ID；人类名称、仓库地址、URL、`latest` 不充当实体身份。数据类型、UUID/ULID 的具体选型留 F07。
 - 所有有业务时效的事实区分 `occurred_at`、`recorded_at`、`effective_at`、`expires_at`，以 UTC 时间戳存储，门户本地化显示；时间解释与过期判定不依赖客户端时钟。
 - `product_id` 与拥有的 `workspace_id` 是控制平面隔离作用域；可记录外部 `tenant_ref`，但不自动等同 `product_id` 或 `developer_org_id`。
-- 所有审核证据、正式制品、已执行发布历史为**追加式不可变事实**；修订审核**状态**可以受控转移，但修订的内容快照不能原地覆盖。
+- 所有检查和审核证据、正式制品、已执行发布历史为**追加式不可变事实**；修订的内容快照不能原地覆盖。修订的审核**状态**原先可以受控转移，CR-0001 起不再转移，已有状态只是历史。
 
 ## 2. 统一语言及领域概念辞典
 
@@ -70,11 +71,11 @@
 | APIAsset | 产品内有稳定身份的 HTTP / Event API 资产，含所有者和生命周期 | `api_asset_id`；API Catalog | 某次版本内容或门户页面 |
 | ContractSource | Git 仓库受控定位或上传源的来源配置 | `source_id`；Contract Registry | 可变 Git 分支即不可变制品 |
 | SourceSnapshot | 本次导入的单一来源快照和证据 | `source_snapshot_id`、`source_digest`；Contract Registry | 一个覆盖旧文件的共享 mutable path |
-| ContractRevision | 绑定 SourceSnapshot 的不可变契约内容快照，具独立审核状态 | `revision_id`，`source_digest`；Contract Registry | Release、运行中的 API 部署 |
-| PolicySnapshot | 本次检查和审批适用的规则配置及摘要 | `policy_snapshot_id`、`policy_digest`；Policy & Review | 下一次默认可沿用的策略 |
-| CheckRun | 在固定 Revision、规则、工具版本上的一次检查执行证据 | `check_run_id`；Policy & Review | 人工审批或生产运行证明 |
-| ReviewDecision | 针对固定输入/受众/环境范围的审批事实 | `decision_id`；Policy & Review | Release 生效或 Gateway 授权 |
-| ContractRelease | 由批准 Revision 和固定 Build Manifest 导出的不可变正式制品 | `release_id`、`artifact_digest`；Contract Registry | `latest` 或当前 Publication |
+| ContractRevision | 绑定 SourceSnapshot 的不可变契约内容快照；审核状态只记录 CR-0001 之前的评审 | `revision_id`，`source_digest`；Contract Registry | Release、运行中的 API 部署 |
+| PolicySnapshot | 本次检查适用的规则配置及摘要；准备 Release 时要求检查用的是现行策略 | `policy_snapshot_id`、`policy_digest`；Policy & Review | 下一次默认可沿用的策略 |
+| CheckRun | 在固定 Revision、规则、工具版本上的一次检查执行证据；Release 依据它准备（CR-0001） | `check_run_id`；Policy & Review | 人工审批或生产运行证明 |
+| ReviewDecision | 针对固定输入/受众/环境范围的审批事实；CR-0001 起不再产生，已有记录只读 | `decision_id`；Policy & Review | Release 生效或 Gateway 授权 |
+| ContractRelease | 由 Revision 的一次检查（含准备时的豁免）和固定 Build Manifest 导出的不可变正式制品；CR-0001 之前的 Release 引用批准 | `release_id`、`artifact_digest`；Contract Registry | `latest` 或当前 Publication |
 | PublicationTarget | 产品、受众、环境、门户组成的受控发布分发目标 | `target_id`；Publication | 单个 API 的当前版本 |
 | PublicationSlot | 指定 Target 中某一个 APIAsset 的**唯一逻辑生效槽位** | `slot_id`，唯一 `(target_id,api_asset_id)`；Publication | 具体历史操作或门户索引 |
 | PublicationOperation | 针对 Slot 的一次 Publish/Withdraw/Restore 命令及结果 | `operation_id`、idempotency；Publication | 实际 CDN/Edge 同步完成 |
@@ -88,15 +89,15 @@
 
 ### 3.1 上下文边界和公开语言
 
-<figure class="architecture-figure"><div class="fig-label">FIGURE 02 · DDD Context Map / 领域协作方向</div><div class="fig-grid cols-3"><div class="fig-box tone-light"><b>Product Governance</b><small>ProductScope & Membership</small></div><div class="fig-box tone-light"><b>API Catalog</b><small>APIAssetRef / Lifecycle</small></div><div class="fig-box tone-light"><b>Contract Registry</b><small>RevisionRef / ReleaseRef</small></div></div><div class="fig-arrow">↓ 显式引用、命令 API 与领域事件（不共享写入）</div><div class="fig-grid cols-2"><div class="fig-box"><b>Policy & Review</b><small>DecisionRef (policy+input+scope)</small></div><div class="fig-box fig-primary"><b>Publication</b><small>Target / Slot / CAS / Block</small></div></div><div class="fig-arrow">↓ 有条件可见的只读投影；审计/投递用 Outbox</div><div class="fig-grid cols-2"><div class="fig-box tone-green"><b>Developer Access</b><small>Org / App / GrantRef (V1)</small></div><div class="fig-box tone-green"><b>Platform Operations</b><small>Job / Audit / Delivery</small></div></div><div class="fig-separator">ACL = Anti-Corruption Layer / 防腐层 · 真实身份、Gateway、Git 和供应链业务在 Fabric 之外</div><figcaption>Published Language 是带稳定 ID 与契约版本的少量跨上下文引用；不直接共享 ORM Entity、不允许其他 BC 修改所属聚合。边界仍需由领域评审确认。</figcaption></figure>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 02 · DDD Context Map / 领域协作方向</div><div class="fig-grid cols-3"><div class="fig-box tone-light"><b>Product Governance</b><small>ProductScope & Membership</small></div><div class="fig-box tone-light"><b>API Catalog</b><small>APIAssetRef / Lifecycle</small></div><div class="fig-box tone-light"><b>Contract Registry</b><small>RevisionRef / ReleaseRef</small></div></div><div class="fig-arrow">↓ 显式引用、命令 API 与领域事件（不共享写入）</div><div class="fig-grid cols-2"><div class="fig-box"><b>Policy & Review</b><small>CheckRunRef (policy+input+tools)</small></div><div class="fig-box fig-primary"><b>Publication</b><small>Target / Slot / CAS / Block</small></div></div><div class="fig-arrow">↓ 有条件可见的只读投影；审计/投递用 Outbox</div><div class="fig-grid cols-2"><div class="fig-box tone-green"><b>Developer Access</b><small>Org / App / GrantRef (V1)</small></div><div class="fig-box tone-green"><b>Platform Operations</b><small>Job / Audit / Delivery</small></div></div><div class="fig-separator">ACL = Anti-Corruption Layer / 防腐层 · 真实身份、Gateway、Git 和供应链业务在 Fabric 之外</div><figcaption>Published Language 是带稳定 ID 与契约版本的少量跨上下文引用；不直接共享 ORM Entity、不允许其他 BC 修改所属聚合。边界仍需由领域评审确认。</figcaption></figure>
 
 | BC | 独占的业务事实 | 上游依赖与关系 | 对外发布的语言 / 事件 | 禁止的越界操作 |
 |---|---|---|---|---|
 | Product Governance | Product、Workspace、Membership、ProductAudienceConfig | 外部 IAM 的身份引用经 ACL 映射 | ProductScopeRef、MembershipChanged | 为外部 IAM 签发令牌 |
 | API Catalog | APIAsset、AssetOwnership、LifecycleTransition | ProductScopeRef，产品所有者声明 | APIAssetRef、AssetLifecycleChanged | 改写 Release/Publication |
 | Contract Registry | SourceSnapshot、Revision、Release、ArtifactManifest | APIAssetRef、Source provider 证据 | RevisionRegistered、ReleasePrepared | 自行决定公网目标是否生效 |
-| Policy & Review | PolicySnapshot、CheckRun、ReviewDecision、WaiverRef | RevisionRef、TargetScope、Product policy | ReviewDecisionRecorded、CheckCompleted | 假定 PASS 检查即可部署 |
-| Publication | Target、Slot、Operation、AccessBlock、PublicationHistory | Product/Asset/Release/Decision 的只读验证 | PublicationActivated、Withdrawn、Blocked | 修改 Release 内容、修改 IAM 授权 |
+| Policy & Review | PolicySnapshot、CheckRun、准备 Release 的检查门禁；ReviewDecision、WaiverRef 只读历史（CR-0001） | RevisionRef、Product policy | CheckCompleted；ReviewDecisionRecorded 不再产生 | 绕过检查门禁准备 Release：门禁取代人工批准，内容见 CR-0001 决定 1 |
+| Publication | Target、Slot、Operation、AccessBlock、PublicationHistory | Product/Asset/Release/CheckRun 的只读验证 | PublicationActivated、Withdrawn、Blocked | 修改 Release 内容、修改 IAM 授权 |
 | Developer Access | DeveloperOrganization、ConsumerApplication、GrantRef | 外部 IAM/Gateway 经 ACL 验证状态 | AccessGrantChanged（V1） | 存储 Client Secret 或替代网关授权 |
 | Platform Operations | Job、AuditRecord、Outbox、Reconciliation | 通过稳定来源引用接收事件 | DeliveryRecorded、ReconciliationCompleted | 把任务状态当成 API 发布权威 |
 
@@ -128,9 +129,9 @@
 | `Workspace` / Governance | WorkspaceMembership、RoleAssignmentRef | INV-02：每个 Workspace 仅属一个 Product；成员授权按 Product×Workspace×Principal×Role×有效区间显式授予 | membership version、排他有效记录 |
 | `APIAsset` / Catalog | AssetOwnerRef、LifecycleRecord、ApiType | INV-03：一个资产仅属一个 Product/Workspace；生命周期转移可审计，不与 Release 生效状态混淆 | aggregate_version |
 | `ContractRevision` / Registry | SourceSnapshotRef、RefClosureManifest、RevisionState | INV-04：Revision 内容与 SHA-256 不变；修改必创建新 Revision | 唯一 ID、来源去重、状态 CAS |
-| `ContractRelease` / Registry | ArtifactManifest、ApprovalEvidenceRef、ReleaseState | INV-05：只有绑定有效审核证据、内容可读取且摘要通过才可 READY；READY 后有效内容不能改变 | 创建幂等指纹 + 唯一制品摘要 |
+| `ContractRelease` / Registry | ArtifactManifest、CheckRunRef、ReleaseWaiver、ReleaseState | INV-05：只有绑定通过门禁的检查证据（CR-0001 之前为有效审核证据）、内容可读取且摘要通过才可 READY；READY 后有效内容不能改变 | 创建幂等指纹 + 唯一制品摘要 |
 | `PolicySnapshot` / Policy | PolicyRuleRef、PolicyDigest、Scope | INV-06：检查/决定始终引用固定策略快照，不能改写历史规则结果 | immutable record |
-| `ReviewDecision` / Policy | CheckRunRef、SubjectScope、DecisionOutcome | INV-07：批准仅对匹配内容、策略、审核范围/目标和有效期有效；豁免不得覆盖不可豁免规则 | append-only decision、审批权限校验 |
+| Release 门禁 / Policy（`ReviewDecision` 只读历史） | CheckRunRef、ReleaseWaiver；SubjectScope、DecisionOutcome 只在历史评审中 | INV-07：Release 仅依据匹配内容、现行策略下的检查及其豁免；豁免不得覆盖不可豁免规则（CR-0001 修改；原文为“批准仅对匹配内容、策略、审核范围/目标和有效期有效”） | 准备 Release 的事务内判定；检查和评审记录只增不改 |
 | `PublicationSlot` / Publication | ActiveReleaseRef、Generation、VisibilityState、OperationHistoryRef | INV-08：一个 Slot 同一代数只有一个当前 Release 或无；条件更新必须携带 expected generation | DB CAS + unique slot key |
 | `AccessBlock` / Publication | TargetScope、Reason、BlockGeneration、PropagationState | INV-09：有效 deny 阻断内容读取及后续激活；只允许显式具权威动作解除 | 单调 block_generation |
 | `DeveloperOrganization` / Access (V1) | ApplicationRef、MembershipRef | INV-10：消费者成员和应用归属不能自动穿透产品；敏感 OAuth Client Secret 不落库 | 组织成员版本、有效授权 |
@@ -140,7 +141,7 @@
 
 ### 4.1 不变量不应被数据库约束替代
 
-外键可防止孤立引用，却不能证明 Release 的审批匹配目标、Edge deny 已传播或用户有权限。发布前必须由应用层领域政策判断，再由 DB CAS 和唯一约束兜底；安全检查归 F05/F07 验证。`AggregateVersion`（用于乐观并发）与 API 业务版本、Revision 次序、发布指针 `generation` 互相独立。
+外键可防止孤立引用，却不能证明 Release 依据的检查匹配内容和策略、Edge deny 已传播或用户有权限。发布前必须由应用层领域政策判断，再由 DB CAS 和唯一约束兜底；安全检查归 F05/F07 验证。`AggregateVersion`（用于乐观并发）与 API 业务版本、Revision 次序、发布指针 `generation` 互相独立。
 
 ### 4.2 发布 Slot 的必要精化（待 ADR-0004 批准时确认）
 
@@ -152,7 +153,7 @@ F02 提出的 `PublicationTarget = Product × Audience × Environment × Portal`
 
 ### 5.1 核心逻辑 ERD（不是已执行数据库 DDL）
 
-<figure class="architecture-figure"><div class="fig-label">FIGURE 04 · 逻辑 ERD / 最小核心关系</div><div class="fig-grid cols-3"><div class="fig-lane"><strong>Product Governance</strong><span>Product (PK product_id)</span><div class="fig-mini">1 → N Workspace</div><div class="fig-mini">1 → N PublicationTarget（跨 BC 引用）</div><div class="fig-mini">Workspace 1 → N Membership</div></div><div class="fig-lane"><strong>Catalog & Registry</strong><span>Product 1 → N APIAsset</span><div class="fig-mini">APIAsset 1 → N ContractRevision</div><div class="fig-mini">Revision 1 → N CheckRun / Decisions</div><div class="fig-mini">Revision 1 → N ContractRelease</div></div><div class="fig-lane"><strong>Publication</strong><span>Product 1 → N Target</span><div class="fig-mini">Target 1 → N Slot</div><div class="fig-mini">APIAsset 1 → N Slot（跨目标）</div><div class="fig-mini">Slot 1 → N Operation / History</div></div></div><div class="fig-arrow">↓ 跨域 Ref ID + 受控服务校验；ReleaseRef / DecisionRef 不支持越界更新</div><div class="fig-grid cols-2"><div class="fig-box tone-light"><b>Slot 0..1 → Active Release</b><small>Release 必属相同 APIAsset；主库 CAS generation 为权威</small></div><div class="fig-box tone-light"><b>Target 0..N → AccessBlock</b><small>阻断范围可针对 Target / Slot / Artifact URL；有效 deny 优先</small></div></div><figcaption>本图是逻辑 ERD 关系摘要。完整键、基数、属性和唯一约束见下面数据字典及 `docs/F03_Logical_Model.csv`，不代表物理分表已锁定。</figcaption></figure>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 04 · 逻辑 ERD / 最小核心关系</div><div class="fig-grid cols-3"><div class="fig-lane"><strong>Product Governance</strong><span>Product (PK product_id)</span><div class="fig-mini">1 → N Workspace</div><div class="fig-mini">1 → N PublicationTarget（跨 BC 引用）</div><div class="fig-mini">Workspace 1 → N Membership</div></div><div class="fig-lane"><strong>Catalog & Registry</strong><span>Product 1 → N APIAsset</span><div class="fig-mini">APIAsset 1 → N ContractRevision</div><div class="fig-mini">Revision 1 → N CheckRun（Decisions 为历史）</div><div class="fig-mini">Revision 1 → N ContractRelease</div></div><div class="fig-lane"><strong>Publication</strong><span>Product 1 → N Target</span><div class="fig-mini">Target 1 → N Slot</div><div class="fig-mini">APIAsset 1 → N Slot（跨目标）</div><div class="fig-mini">Slot 1 → N Operation / History</div></div></div><div class="fig-arrow">↓ 跨域 Ref ID + 受控服务校验；ReleaseRef / CheckRunRef 不支持越界更新</div><div class="fig-grid cols-2"><div class="fig-box tone-light"><b>Slot 0..1 → Active Release</b><small>Release 必属相同 APIAsset；主库 CAS generation 为权威</small></div><div class="fig-box tone-light"><b>Target 0..N → AccessBlock</b><small>阻断范围可针对 Target / Slot / Artifact URL；有效 deny 优先</small></div></div><figcaption>本图是逻辑 ERD 关系摘要。完整键、基数、属性和唯一约束见下面数据字典及 `docs/F03_Logical_Model.csv`，不代表物理分表已锁定。</figcaption></figure>
 
 ### 5.2 主数据关系及完整性规则
 
@@ -163,10 +164,10 @@ F02 提出的 `PublicationTarget = Product × Audience × Environment × Portal`
 | Product → APIAsset | 1:N；APIAsset 属于唯一 Product | `UNIQUE(product_id, asset_key)`，`owner_workspace_id` 必属同 Product |
 | APIAsset → Revision | 1:N；Revision 必属一 Asset | `UNIQUE(asset_id, revision_sequence)`；每 Revision 固定 source_snapshot_id |
 | Revision → CheckRun | 1:N；每次运行绑定输入与工具 | `UNIQUE(check_run_id)`；不得因重跑覆盖已有结果 |
-| Revision → Release | 1:N（允许同修订针对不同发布构建） | `UNIQUE(asset_id, release_label)`（若使用展示标签）；另以固定构建指纹做幂等 |
+| Revision → Release | 1:N（允许同修订针对不同发布构建） | `UNIQUE(asset_id, release_label)`（若使用展示标签）；另以固定构建指纹做幂等；每个 Release 绑定一次检查及其豁免（CR-0001） |
 | Product → PublicationTarget | 1:N；Target 属于唯一 Product | `UNIQUE(product_id,audience_key,environment_key,portal_key)` |
 | PublicationTarget × APIAsset → Slot | N:1 + 1:N；同 Product 才能建立 | `UNIQUE(target_id,api_asset_id)`；必须校验 Target.Product = Asset.Product |
-| Slot → ActiveRelease | 0..1；仅同 APIAsset 的 READY Release | 对 `slot_id` 加 CAS `generation`；外键不代替审批与安全验证 |
+| Slot → ActiveRelease | 0..1；仅同 APIAsset 的 READY Release | 对 `slot_id` 加 CAS `generation`；外键不代替检查门禁与安全验证 |
 | Slot → PublicationOperation | 1:N 历史命令；operation_id 稳定 | 对 `(principal,product,operation_type,idempotency_key)` 在保留期内唯一；异内容冲突 |
 | Target / Slot → AccessBlock | 1:N；拒绝范围显式 | 有效阻断读侧优先；Scope 与 block_generation 独立于 Slot generation |
 | DeveloperOrg → ConsumerApp | 1:N（V1）；应用属单一 DeveloperOrg | OAuth client_ref 仅外部引用；唯一由 IdP 语义决定 |
@@ -204,7 +205,7 @@ F02 提出的 `PublicationTarget = Product × Audience × Environment × Portal`
 | ContractRegistry | ContractRevision | SourceSnapshot | source_snapshot_id | source_id+source_digest | immutable source fingerprint | N per Source | HIST | MVP |
 | ContractRegistry | ContractRevision | ContractRevision | revision_id | api_asset_id+source_snapshot_id | api_asset_id+revision_sequence | N per Asset | HIST | MVP |
 | ContractRegistry | ContractRevision | RefClosureManifest | ref_manifest_id | revision_id+closure_digest | revision_id+closure_digest | 1 per registered Revision | HIST | MVP |
-| ContractRegistry | ContractRelease | ContractRelease | release_id | api_asset_id+revision_id+decision_ref | api_asset_id+release_label | N per Revision | HIST | MVP |
+| ContractRegistry | ContractRelease | ContractRelease | release_id | api_asset_id+revision_id+check_run_id | api_asset_id+release_label | N per Revision | HIST | MVP |
 | ContractRegistry | ContractRelease | ArtifactManifest | artifact_manifest_id | release_id+artifact_digest | release_id+manifest_digest | 1 per READY Release | HIST | MVP |
 | ContractRegistry | ContractRelease | IntegrityIncident | integrity_incident_id | release_id+detected_at | incident_id | N per Release | HIST | V1 |
 | PolicyReview | PolicySnapshot | PolicySnapshot | policy_snapshot_id | product_id+policy_digest | policy_snapshot_id | N per Product | HIST | MVP |
@@ -229,6 +230,8 @@ F02 提出的 `PublicationTarget = Product × Audience × Environment × Portal`
 | PlatformOperations | Audit | AuditRecord | audit_id | actor_ref+scope_ref+correlation_id | audit_id | N per Scope | HIST | MVP |
 | PlatformOperations | Reconciliation | Reconciliation | reconciliation_id | target_ref+source_generation | reconciliation_id | N per Target | HIST | MVP |
 | PlatformOperations | Reconciliation | ProjectionCheckpoint | projection_checkpoint_id | projection_name+scope_ref | projection_name+scope_ref | 1 current per Scope | DERIVED | MVP |
+
+CR-0001 起，`ContractRelease` 必须引用一次检查，豁免随 Release 记录；只有 CR-0001 之前准备的 Release 才有 `decision_ref`。`ReviewDecision` 和 `WaiverRef` 两行保留，对应只读的历史评审。物理实现见 §5.15。
 
 
 ### 5.5 Product Governance 已实现的物理模型（PR #6 / #7，2026-11-17 同步）
@@ -273,7 +276,7 @@ F02 提出的 `PublicationTarget = Product × Audience × Environment × Portal`
 
 登记资产时，事务内对调用方在目标 Workspace 的成员关系加共享锁，再写入资产、成功审计和 Outbox 事件 `fabric.apicatalog.asset.registered`（版本 1），三者一起提交。事件载荷是事件编号、时间、关联编号、产品、Workspace、资产编号和聚合版本，不含 key 和名称。逻辑模型中的 `AssetOwnership`、`AssetLifecycleTransition` 尚未实现。
 
-**来源快照和修订。** 三张表的内容都只增不改，应用角色没有 `DELETE`。评审加入之后（§5.9），应用角色对 `contract_revision` 多了 `UPDATE`，但表上的触发器只允许改修订的评审状态，其余各列和另外两张表仍然不能改。
+**来源快照和修订。** 三张表的内容都只增不改，应用角色没有 `DELETE`。评审加入之后（§5.9），应用角色对 `contract_revision` 多了 `UPDATE`，但表上的触发器只允许改修订的评审状态，其余各列和另外两张表仍然不能改。0.37.0 起程序不再改评审状态，`UPDATE` 只为滚动升级时的旧进程保留（§5.15）。
 
 | 表 | 内容 | 关键约束 |
 |---|---|---|
@@ -301,13 +304,13 @@ Git 来源是提交者的声明：仓库的 https 网址（至多 300 个字符�
 
 **升级。** 从 0.7.0 之后升级，执行 `fabric-migrate -apply -grant-to <application_role>`：应用上述迁移，并授予应用角色这四张表的权限。读取原文需要 `source_file` 的 `SELECT`，这项授权没有对应的迁移步骤，缺少时新进程拒绝启动并指出缺少的权限。迁移 002 把已有的快照保留为 `UPLOAD`。旧进程在迁移后的库上仍能登记上传，但它不认识 Git 来源，按内容查重时也不区分来源；过渡期内，一次与某个 Git 修订内容相同的上传可能得到那个 Git 修订。应在所有进程升级之后再开始带 Git 来源导入。
 
-**尚未实现。** 来源登记（每个资产允许的仓库和引用策略）、CI 服务身份、由 Fabric 读取 Git（FR-021，V1）、按提交查找修订，以及记录相同内容在后续提交中的出现。检查见 §5.8，修订的状态流转和评审见 §5.9。
+**尚未实现。** 来源登记（每个资产允许的仓库和引用策略）、CI 服务身份、由 Fabric 读取 Git（FR-021，V1）、按提交查找修订，以及记录相同内容在后续提交中的出现。检查见 §5.8，修订的状态流转和评审见 §5.9；0.37.0 起修订不再流转，见 §5.15。
 
 ### 5.8 已实现的契约检查
 
 本节记录 PR #22–#33（管理 API 0.13.0–0.16.0）的实现事实，不替代 §5.4 逻辑模型的候选状态。权威 DDL 为 `migrations/policyreview/001_check_run.sql` 和 `002_check_compatibility.sql`。接口见 F04 §11.4，权限见 F05 §6.5。
 
-一次检查（CheckRun）记下读了什么、按哪份策略、由哪些工具、对每条规则得出什么结论。它写入一次，之后不变；再检查一次是另一条记录。提交评审和批准都以一次检查为依据（§5.9）：检查不是按现行策略和工具版本做的，或者其中有不可豁免的规则没有通过，提交和批准会被拒绝。Policy & Review 的表只通过 Contract Registry 和 API Catalog 签发的编号指向修订和资产，不设跨 schema 外键。
+一次检查（CheckRun）记下读了什么、按哪份策略、由哪些工具、对每条规则得出什么结论。它写入一次，之后不变；再检查一次是另一条记录。0.36.0 之前，提交评审和批准都以一次检查为依据（§5.9）：检查不是按现行策略和工具版本做的，或者其中有不可豁免的规则没有通过，提交和批准会被拒绝。0.37.0 起 Release 直接依据一次检查准备，同样的要求在准备 Release 时核对（§5.15）。Policy & Review 的表只通过 Contract Registry 和 API Catalog 签发的编号指向修订和资产，不设跨 schema 外键。
 
 | 表 | 内容 | 关键约束 |
 |---|---|---|
@@ -338,9 +341,11 @@ Git 来源是提交者的声明：仓库的 https 网址（至多 300 个字符�
 
 **升级。** 从 0.12.0 升级，执行 `fabric-migrate -apply -grant-to <application_role>`：应用上述两个迁移，并授予应用角色 `policyreview` 的 `USAGE` 和四张表的 `SELECT`、`INSERT`。库没有迁移时，新进程拒绝启动并指出缺少的表；迁移了但没有授权时，拒绝启动并列出缺少的权限。0.12.0 的进程在迁移后的库上照常运行，只是没有检查接口。迁移 002 的唯一约束用到 `NULLS NOT DISTINCT`，需要 PostgreSQL 15 或更高版本。
 
-**尚未实现。** 产品级策略（FR-026）、其余 10 条规则的工具、导入后自动检查、由 Worker 异步执行、检查与受众和环境的绑定，以及 CI 服务身份读取检查。评审和豁免见 §5.9。
+**尚未实现。** 产品级策略（FR-026）、其余 10 条规则的工具、导入后自动检查、由 Worker 异步执行、检查与受众和环境的绑定，以及 CI 服务身份读取检查。评审和豁免见 §5.9，0.37.0 起的豁免见 §5.15。
 
 ### 5.9 已实现的契约评审
+
+> 0.37.0 起（CR-0001）不再提交、撤回和决定评审，`internal_reviewer` 不再授予，修订的状态不再转移。本节保留为 0.17.0–0.36.0 的记录，现状见 §5.15。
 
 本节记录管理 API 0.17.0–0.19.0 的实现事实，不替代 §5.4 逻辑模型的候选状态。权威 DDL 为 `migrations/productgovernance/007_reviewer_role.sql`、`migrations/contractregistry/003_revision_review_state.sql`、`migrations/policyreview/003_review.sql` 和 `004_review_decision.sql`。接口见 F04 §11.5，权限见 F05 §6.6。
 
@@ -419,6 +424,8 @@ Git 来源是提交者的声明：仓库的 https 网址（至多 300 个字符�
 
 ### 5.10 已实现的 Release 与发布
 
+> 0.37.0 起 Release 依据检查准备，激活和恢复不再核对批准，也不要求发布人独立（CR-0001），见 §5.15。下文关于批准的内容是 0.20.0–0.36.0 的记录。
+
 本节记录管理 API 0.20.0–0.22.0 的实现事实，不替代 §5.4 逻辑模型的候选状态。0.33.0 之后的内部制品读取和槽位恢复见 §5.14。权威 DDL 为 `migrations/productgovernance/008_publication_roles.sql`、`migrations/contractregistry/004_immutable_release.sql` 和 `migrations/publication/001_targets_and_slots.sql`。接口见 F04 §11.6，权限见 F05 §6.7。
 
 **角色。** 迁移 008 让成员关系可以取 `internal_publisher`（Workspace 的发布人），让产品角色可以取 `security_admin` 和 `security_reviewer`。三种角色都由产品负责人授予；平台管理员仍然只能任命负责人。
@@ -458,6 +465,8 @@ Git 来源是提交者的声明：仓库的 https 网址（至多 300 个字符�
 **尚未实现。** `internal` 以外受众的发布、外部授权和边缘分发及其传播证明；Release 的其余状态和撤销；对象存储（制品目前存在 PostgreSQL 里）；发布目标的修改和停用；紧急撤销的分级（F05 §9.1）；Outbox 的投递。
 
 ### 5.11 已实现的复审与批准状态的可见性
+
+> 0.37.0 起没有复审，槽位不再有 `approval_problem`（CR-0001，§5.15）。本节保留为 0.23.0–0.36.0 的记录。
 
 本节记录管理 API 0.23.0–0.25.0 的实现事实，不替代 §5.4 逻辑模型的候选状态。权威 DDL 为 `migrations/policyreview/005_supplementary_review.sql`。接口见 F04 §11.7，权限见 F05 §6.8。
 
@@ -502,6 +511,8 @@ Git 来源是提交者的声明：仓库的 https 网址（至多 300 个字符�
 **尚未实现。** 具名治理员撤回、指派评审人和产品级策略（同 §5.9）；让旧 Release 沿用新批准；列出某个产品下批准已失效的槽位（0.26.0 起可以列出一个目标上的槽位，每项带 `approval_problem`，但不能按它筛选，也没有按产品列出，见 §5.12），以及在批准将要到期时提醒；复审“同时只有一个”的表级约束。
 
 ### 5.12 已实现的查询与追溯
+
+> 0.37.0 起槽位列表的每一项不再有 `approval_problem`；依据检查准备的 Release，来源里没有 `approval`；按编号下载不再要求修订是 `APPROVED`（§5.15）。
 
 本节记录管理 API 0.26.0–0.28.0 的实现事实，不替代 §5.4 逻辑模型的候选状态。这三个版本补的是读：列出发布过的槽位（0.26.0），按编号下载 Release 并读出它的来源（0.27.0），审计员按产品读审计记录（0.28.0）。权威 DDL 为 `migrations/productgovernance/009_auditor_role.sql` 和 `migrations/platformoperations/002_audit_read_order.sql`；0.26.0 和 0.27.0 没有迁移。接口见 F04 §11.8，权限见 F05 §6.9。
 
@@ -559,6 +570,8 @@ Git 来源是提交者的声明：仓库的 https 网址（至多 300 个字符�
 - Release 的来源是准备时的记录，Git 提交是声明，不回仓库核对（FR-021，V1）。
 
 ### 5.13 已实现的工作台查询
+
+> 0.37.0 起 `release_pending` 改为“最新修订有检查，而且还没有从它准备出 Release”，评审队列只读历史，不再增长（§5.15）。
 
 本节记录管理 API 0.29.0–0.31.0 的实现事实，不替代 §5.4 逻辑模型的候选状态。这三个版本补的是内部工作台要先读的几样东西，都是读，不写业务数据：调用人是谁、在一个产品里持有什么（0.29.0），一个 Workspace 里的评审队列（0.30.0），资产列表和详情里每个资产走到了哪一步（0.31.0）。权威 DDL 只有一个：`migrations/policyreview/006_review_queue_order.sql`，只建一个索引；0.29.0 和 0.31.0 没有迁移。三个版本都没有新表、新列、新角色和新枚举取值，应用角色的权限也没有变（`ApplicationPrivileges()` 没有改）。接口见 F04 §11.9，权限见 F05 §6.10。
 
@@ -641,14 +654,40 @@ F06 的 IN-01（首页的待审核、检查失败、可发布、撤销风险）�
 
 ### 5.14 内部发布事实、审计员和读取范围
 
-- `PublicationSlot` 保留已经生效的 Release 指针。批准失效后，`approval_problem` 说明无法再次激活的原因。内部源站根据当前读取权限、槽位指针、有效受众配置、制品摘要和 AccessBlock 决定是否提供制品。内部恢复使用该槽位的历史和原批准证据，保留独立发布人与 CAS。
+- `PublicationSlot` 保留已经生效的 Release 指针。内部源站根据当前读取权限、槽位指针、有效受众配置、制品摘要和 AccessBlock 决定是否提供制品。0.33.0–0.36.0 中，批准失效时 `approval_problem` 说明无法再次激活的原因，内部恢复使用该槽位的历史和原批准证据，并要求独立发布人与 CAS；0.37.0 起恢复核对槽位历史、Release 记录的检查、阻断和 CAS（§5.15）。
 - 审计员仍保存在 `productgovernance.product_role_assignment`。0.35.0 由满足职责分离的平台管理员任命和撤销，已有行与授权历史保留。角色筛选在排序和分页之前应用。
 - 0.36.0 在 `productgovernance.workspace_membership` 增加 `internal_reader` 枚举值。迁移 010 只替换角色约束，沿用现有记录、索引和应用角色权限。主体、Product、Workspace 与当前成员关系仍决定单读和分页范围。
 - 产品级安全角色读取本产品的资产和发布元数据，Workspace 维护者读取所属 Workspace 的治理资料。`internal_reader` 读取所属 Workspace 的 Release 元数据，通过当前槽位读取受阻断校验的已发布制品。制品仍保存于 Release，发布操作和阻断仍由 Publication 负责。
 
+### 5.15 Release 依据检查（CR-0001，0.37.0）
+
+本节记录管理 API 0.37.0 的实现事实（PR #74），不替代 §5.4 逻辑模型的候选状态。决定见 [CR-0001](../decisions/CR-0001.md)。权威 DDL 为 `migrations/contractregistry/005_release_from_check.sql`、`006_open_reviews_withdrawn.sql` 和 `migrations/policyreview/007_open_reviews_withdrawn.sql`。接口见 F04 §11.5、§11.6，权限见 F05 §6.14。
+
+**准备 Release 的门禁。** 准备 Release 时指定修订的一次检查，并给出豁免。Policy & Review 按 `domain.GateRelease` 判定，不再有人批准：
+
+- 检查须是这个修订的、读的就是修订现在的内容，并且在现行策略和工具下完成，否则 `POLICY_STALE`。
+- 结果为 `FAIL` 或 `UNKNOWN` 的规则，不分阻断级和警告级：有一条不可豁免，就不能准备（`RELEASE_BLOCKED`）；可豁免的逐条豁免，各写一行理由。豁免恰好覆盖这些规则，不多不少。
+- 阻断级规则为 `NOT_RUN` 时，只接受 `outsideContractChecks` 列出的规则，即在检查之外执行的 10 条，以及没有选对比基线时的 F04-GOV-013；其余拒绝（`RELEASE_CHECK_INCOMPLETE`）。
+
+修订的状态不再参与判断。这就是 §4 的 INV-07。原先由批准范围限定的受众和环境不再绑定在 Release 上：能发布到哪个目标，由发布人的角色和目标本身决定。
+
+**表的变化。** 迁移 `contractregistry/005` 把 `contract_release.review_id` 改为可空，增加 `waivers`：JSON 数组，每项是 `rule_id` 和 `reason`，按规则编号排列，默认空数组。表约束要求 `waivers` 是数组，并且 `review_id` 不为空时 `waivers` 为空：依据批准准备的旧 Release 保留它的 `review_id`，豁免在那次批准里；依据检查准备的 Release 不引用评审。表仍只增不改，应用角色的权限没有变。同一版本号再次提交，修订、检查和豁免（不计顺序）都相同时返回已有的 Release，否则拒绝；依据批准准备的旧 Release 不会被新的请求复用。
+
+**激活和恢复。** 只核对 Release 依据的检查就是它记录的那次，检查读的内容与 Release 的输入摘要相同。不再核对现行策略和工具、批准、豁免的期限和发布人是否独立，所以策略更新后，已有 Release 仍可激活和恢复（CR-0001 决定 5）。`ACTIVATE` 用另一个修订的 Release 替换槽位上最近生效的 Release 时，检查仍须以那个修订为对比基线。合作方源站按槽位指针提供制品，不再核对批准。槽位不再计算 `approval_problem`。按编号下载和来源读取不再要求修订是 `APPROVED`；来源只对依据批准准备的旧 Release 给出 `approval`。
+
+**评审成为历史。** 不再产生评审，也不再产生三种评审事件。迁移 `contractregistry/006` 把仍为 `IN_REVIEW` 的修订改为 `WITHDRAWN`，状态版本加 1。迁移 `policyreview/007` 给每条还没有结论的评审补一条 `WITHDRAWN` 结论，复审也一样（复审的修订仍是 `APPROVED`）。结论的理由引用 CR-0001，结束人是系统主体 `urn:idp-api-fabric:system` / `migration/policyreview/007_open_reviews_withdrawn`，不是任何人；结束时间不早于申请时间。已有的结论不变。此后修订登记为 `DRAFT` 后不再转移，`APPROVED`、`REJECTED`、`WITHDRAWN` 是此前评审留下的状态。评审的读取保留，记录不变。
+
+**角色。** `internal_reviewer` 不再授予（422 `REQUEST_UNPROCESSABLE`）。已有的成员关系保留，持有人仍能读原来读得到的修订、检查和评审，没有写权限。
+
+**概况。** `release_pending` 改为：最新修订有检查，而且还没有从它准备出 Release。它不说明这次检查能否通过门禁：检查可能失败，策略和工具也可能已经更新。
+
+**升级。** 从 0.36.0 升级，执行 `fabric-migrate -apply`，应用上述三个迁移；不需要重新授权。应用角色仍保留评审表的 `INSERT` 和 `contract_revision` 的 `UPDATE`，供滚动升级期间的旧进程使用，旧进程全部下线后可以收回。两个撤回迁移只处理执行时还开着的评审，旧进程在迁移之后仍提供评审的写接口，所以应尽快换完进程。调用方要改用 `check_run_id` 和 `waivers` 准备 Release（F04 §11.6）。
+
+**与逻辑模型的对应。** §5.4 的 `ContractRelease` 引用 `check_run_id`；`ReleaseWaiver` 没有单独的表，是 `contract_release.waivers` 的数组元素。`ReviewDecision` 和 `WaiverRef` 的物理表（§5.9）只读。
+
 ## 6. 数据权威、制品摘要与可追溯发布链
 
-<figure class="architecture-figure"><div class="fig-label">FIGURE 05 · 单一事实权威与来源追踪 / Import → Release → Portal</div><div class="fig-grid cols-5"><div class="fig-box"><b>SourceSnapshot</b><small>Git Commit/Upload · 原文 digest</small></div><div class="fig-box"><b>Revision</b><small>Immutable content · ref closure</small></div><div class="fig-box"><b>Check + Decision</b><small>Policy digest · scope · review evidence</small></div><div class="fig-box"><b>Release</b><small>READY · immutable artifact manifest</small></div><div class="fig-box fig-primary"><b>PublicationSlot</b><small>CAS pointer · target audience/env</small></div></div><div class="fig-arrow">↓ 主库目标版本权威 → Outbox/Worker → PortalProjection；读时再次按当前策略判定</div><div class="fig-grid cols-3"><div class="fig-box tone-green"><b>Git / Upload</b><small>来源事实</small></div><div class="fig-box tone-green"><b>Registry / Object Store</b><small>正式内容/摘要事实</small></div><div class="fig-box tone-green"><b>Publication DB</b><small>当前生效和阻断事实</small></div></div><figcaption>不允许把门户索引、CDN 或 `latest` 当成权威；完整 digest 链可核验来源、引用闭包、构建工具及最终制品。</figcaption></figure>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 05 · 单一事实权威与来源追踪 / Import → Release → Portal</div><div class="fig-grid cols-5"><div class="fig-box"><b>SourceSnapshot</b><small>Git Commit/Upload · 原文 digest</small></div><div class="fig-box"><b>Revision</b><small>Immutable content · ref closure</small></div><div class="fig-box"><b>Check + Waivers</b><small>Policy digest · tools · 准备时的豁免</small></div><div class="fig-box"><b>Release</b><small>READY · immutable artifact manifest</small></div><div class="fig-box fig-primary"><b>PublicationSlot</b><small>CAS pointer · target audience/env</small></div></div><div class="fig-arrow">↓ 主库目标版本权威 → Outbox/Worker → PortalProjection；读时再次按当前策略判定</div><div class="fig-grid cols-3"><div class="fig-box tone-green"><b>Git / Upload</b><small>来源事实</small></div><div class="fig-box tone-green"><b>Registry / Object Store</b><small>正式内容/摘要事实</small></div><div class="fig-box tone-green"><b>Publication DB</b><small>当前生效和阻断事实</small></div></div><figcaption>不允许把门户索引、CDN 或 `latest` 当成权威；完整 digest 链可核验来源、引用闭包、构建工具及最终制品。</figcaption></figure>
 
 | 内容对象 | 必须固化的证据 | 何时不可变 | 失败语义 |
 |---|---|---|---|
@@ -656,12 +695,12 @@ F06 的 IN-01（首页的待审核、检查失败、可发布、撤销风险）�
 | Upload SourceSnapshot | 上传操作者、输入 digest、受控文件集合、采集时间 | 导入确认后 | 文件格式/安全检查失败不得成为可发布 Revision |
 | Revision | asset_id、source_snapshot_id、原文 digest、引用闭包 digest、规范声明、sequence | 成功登记时内容不可变 | 校验失败保留诊断，不伪造 APPROVED |
 | CheckRun | revision_digest、policy_digest、ruleset/tool versions、结果快照 | CheckRun 完成后 | worker 崩溃可重试新 attempt，不改写旧完成事实 |
-| ReviewDecision | decision actor、角色证据、范围、target class、有效期、CheckRunRef | 决策记录提交后 | 策略/范围变化可能使旧证据不适用 |
-| Release | release_id、revision_id、decision refs、build_manifest_digest、artifact_digest、signing ref（可选） | READY/FAILED 终态按不变量冻结 | 可读性/摘要失败不得切 READY |
+| ReviewDecision（CR-0001 之前的历史） | decision actor、角色证据、范围、target class、有效期、CheckRunRef | 决策记录提交后 | 只读保留；CR-0001 起不再产生 |
+| Release | release_id、revision_id、check_run_id 和豁免（CR-0001 之前为 decision refs）、build_manifest_digest、artifact_digest、signing ref（可选） | READY/FAILED 终态按不变量冻结 | 可读性/摘要失败不得切 READY |
 | PublicationSlot | target_id、asset_id、active_release_id、generation、visibility、block ref | 历史 Operation 不可变；current pointer 可 CAS 修改 | CAS 失败拒绝，不强行覆盖并发赢家 |
 | Projection | slot generation、source release digest、projection built_at | 只读派生快照，可替换 | 索引失败可重建，不改变 Slot 事实 |
 
-**重要细节**：`source_digest`（原始字节）≠ `reference_closure_digest`（固定引用集合）≠ `artifact_digest`（发布文件）≠ `policy_digest`（审核规则）。即使内容规范化后语义相同，也不可用一个摘要掩盖来源差异。算法使用具名标识（候选 SHA-256），算法替换要保留历史可核验性。
+**重要细节**：`source_digest`（原始字节）≠ `reference_closure_digest`（固定引用集合）≠ `artifact_digest`（发布文件）≠ `policy_digest`（检查规则）。即使内容规范化后语义相同，也不可用一个摘要掩盖来源差异。算法使用具名标识（候选 SHA-256），算法替换要保留历史可核验性。
 
 ## 7. 多维访问范围与关系模型
 
@@ -681,7 +720,7 @@ F06 的 IN-01（首页的待审核、检查失败、可发布、撤销风险）�
 
 ## 8. 四类状态机及事务性状态边界
 
-<figure class="architecture-figure"><div class="fig-label">FIGURE 07 · 四条独立生命周期 / 不共用单一 status</div><div class="fig-grid cols-2"><div class="fig-lane"><strong>Revision</strong><span>DRAFT → IN_REVIEW → APPROVED / REJECTED</span><div class="fig-mini">撤回在审：WITHDRAWN（显式受控状态）</div><div class="fig-mini">变更内容：创建新 Revision，不修改原文</div></div><div class="fig-lane"><strong>Release</strong><span>PREPARING → READY / FAILED</span><div class="fig-mini">READY 内容不可变</div><div class="fig-mini">公开撤销只影响 Slot/Block，不“删除 Release”</div></div><div class="fig-lane"><strong>Publication（Slot 当前状态）</strong><span>EMPTY / REQUESTED / PREPARING / ACTIVE / WITHDRAWN / FAILED</span><div class="fig-mini">Operation 与传播 DeliveryState 分离</div><div class="fig-mini">ACTIVE 指主库逻辑生效，不假称 Edge 已验证</div></div><div class="fig-lane"><strong>APIAsset Lifecycle</strong><span>EXPERIMENTAL → STABLE → DEPRECATED → RETIRED</span><div class="fig-mini">废弃不自动解除所有历史发布</div><div class="fig-mini">Retired 阻止新激活，历史依策略保留</div></div></div><figcaption>F03 增加修订 WITHDRAWN 分支和 Publication EMPTY（无有效版本）用于表达业务空态；不修改 F02 的主状态语义。所有转换见 §8.1～§8.4。</figcaption></figure>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 07 · 四条独立生命周期 / 不共用单一 status</div><div class="fig-grid cols-2"><div class="fig-lane"><strong>Revision</strong><span>DRAFT → IN_REVIEW → APPROVED / REJECTED</span><div class="fig-mini">撤回在审：WITHDRAWN（显式受控状态）</div><div class="fig-mini">CR-0001 起停在 DRAFT，不再转移</div><div class="fig-mini">变更内容：创建新 Revision，不修改原文</div></div><div class="fig-lane"><strong>Release</strong><span>PREPARING → READY / FAILED</span><div class="fig-mini">READY 内容不可变</div><div class="fig-mini">公开撤销只影响 Slot/Block，不“删除 Release”</div></div><div class="fig-lane"><strong>Publication（Slot 当前状态）</strong><span>EMPTY / REQUESTED / PREPARING / ACTIVE / WITHDRAWN / FAILED</span><div class="fig-mini">Operation 与传播 DeliveryState 分离</div><div class="fig-mini">ACTIVE 指主库逻辑生效，不假称 Edge 已验证</div></div><div class="fig-lane"><strong>APIAsset Lifecycle</strong><span>EXPERIMENTAL → STABLE → DEPRECATED → RETIRED</span><div class="fig-mini">废弃不自动解除所有历史发布</div><div class="fig-mini">Retired 阻止新激活，历史依策略保留</div></div></div><figcaption>F03 增加修订 WITHDRAWN 分支和 Publication EMPTY（无有效版本）用于表达业务空态；不修改 F02 的主状态语义。所有转换见 §8.1～§8.4。</figcaption></figure>
 
 ### 8.1 Revision 状态转换（基于内容不可变）
 
@@ -697,12 +736,14 @@ F06 的 IN-01（首页的待审核、检查失败、可发布、撤销风险）�
 
 已实现的转换见 §5.9：比上表多一条 `WITHDRAWN → IN_REVIEW`（撤回后再次提交），撤回只有申请人能做。已批准修订的补充审批由复审实现（§5.11）：它给修订增加一条 `ReviewDecision`，修订的状态不因此变化，所以上表没有从 `APPROVED` 出发的转换。
 
+CR-0001 起上表的转换都不再发生：修订登记为 `DRAFT` 后不再转移，Release 依据检查准备，与修订状态无关。迁移把仍为 `IN_REVIEW` 的修订改为 `WITHDRAWN`（§5.15）。`APPROVED`、`REJECTED`、`WITHDRAWN` 是此前评审留下的状态。
+
 ### 8.2 Release 状态转换
 
 | 从 → 到 | 命令和前置条件 | 失败行为与边界 |
 |---|---|---|
-| 不存在 → PREPARING | `PrepareRelease`；绑定已批准 revision、有效策略/范围、唯一 build fingerprint | 重复同指纹返回现有工作；同 release label 不同内容冲突 |
-| PREPARING → READY | 固定构建输入、制品摘要与对象存储读取复核、可核验批准证据齐备 | 只有一次成功定稿；历史 metadata/manifest 不可覆盖 |
+| 不存在 → PREPARING | `PrepareRelease`；绑定 revision 的一次现行策略下的检查及其豁免（CR-0001 之前为已批准 revision 和有效范围）、唯一 build fingerprint | 重复同指纹返回现有工作；同 release label 不同内容冲突 |
+| PREPARING → READY | 固定构建输入、制品摘要与对象存储读取复核、可核验的检查证据齐备 | 只有一次成功定稿；历史 metadata/manifest 不可覆盖 |
 | PREPARING → FAILED | 校验/构建/存储不可恢复或超限 | 保留诊断；重试需新 Attempt 或新 Release 操作，不改写 READY |
 | READY →（无内容变更） | 无允许内容状态写入 | 撤销使用 Publication/AccessBlock；遗失对象进入独立 IntegrityIncident 而非篡改 READY 记录 |
 
@@ -710,12 +751,12 @@ F06 的 IN-01（首页的待审核、检查失败、可发布、撤销风险）�
 
 | 条件与迁移 | 业务命令 / 主事务 | 并发与可见性要求 |
 |---|---|---|
-| EMPTY/WITHDRAWN → REQUESTED | `RequestPublish(slot,release,expected_generation)` | 检查 Product、Asset、受众/环境、审批/策略和 deny；登记操作 |
-| REQUESTED → PREPARING | `StagePublication` | 先准备受控内容与交付依赖，不使未批准内容可见 |
+| EMPTY/WITHDRAWN → REQUESTED | `RequestPublish(slot,release,expected_generation)` | 检查 Product、Asset、受众/环境、Release 依据的检查（替换另一修订时须以其为对比基线）和 deny；登记操作 |
+| REQUESTED → PREPARING | `StagePublication` | 先准备受控内容与交付依赖，不使未准备的内容可见 |
 | PREPARING → ACTIVE | `ActivateSlot` | 一次 DB CAS 设置 `active_release_id`、递增 generation，并写 Audit+Outbox；外部交付另记状态 |
 | ACTIVE → ACTIVE（替换新版本） | `ReplaceRelease(slot,new_release,expected_generation)` | 只一个条件写赢；失败者读取最新 generation 后重新确认，不能自动覆盖 |
 | ACTIVE → WITHDRAWN/EMPTY | `WithdrawPublication` | 先启用 deny / 服务端拒绝，CAS 清空/移除生效指针；旧 Release 保留 |
-| WITHDRAWN → ACTIVE（恢复） | `RestoreApprovedRelease` | 重新校验当前策略、目标、授权、摘要、deny 清除的审批条件；不是恢复旧未批准的访问 |
+| WITHDRAWN → ACTIVE（恢复） | `RestoreApprovedRelease`（CR-0001 起不再要求批准） | 校验槽位历史、目标、授权、摘要、deny 已清除，以及 Release 依据的检查就是它记录的那次；不按现行策略重新检查（CR-0001 决定 5） |
 | REQUESTED/PREPARING → FAILED | 预检、对象存储、发布传输或条件写失败 | 操作记失败/重试；Slot 当前版本不能错误切换 |
 
 **分离三种状态**：`slot.visibility_state`（主库逻辑生效）与 `operation.status`（命令处理）及 `delivery.status`（Edge/投影传播）互不相同。`ACTIVE` 不意味着所有 Edge 已传播，也不能作为“网络访问全部安全”的证据。
@@ -742,8 +783,8 @@ F06 的 IN-01（首页的待审核、检查失败、可发布、撤销风险）�
 | `RegisterAPIAsset` | API Catalog | Product Engineer；APIAsset | asset + owner + audit/outbox | 搜索索引更新 | MVP |
 | `ImportContractRevision` | Registry | CI/Engineer；Revision | 通过暂存和 digest 验证后提交 revision + event | 异步 CheckRun（失败可诊断） | MVP |
 | `RequestCheckRun` | Policy & Review | Engineer/CI；CheckRun | 注册固定 input/policy 指纹 | Worker 执行、报告制品写入 | MVP |
-| `RecordReviewDecision` | Policy & Review | 独立 Reviewer；ReviewDecision | 权限/职责分离 + immutable decision + audit | Release 可引用 approved decision | MVP |
-| `PrepareRelease` | Registry | Release Manager；Release | 保存 PREPARING + job/outbox | 私有构建、摘要复核后 READY | MVP |
+| `RecordReviewDecision`（CR-0001 起删除） | Policy & Review | 原为独立 Reviewer；ReviewDecision | 已有决定只读保留 | Release 改为依据检查，见 `PrepareRelease` | MVP |
+| `PrepareRelease` | Registry + Policy & Review | Release Manager；Release | 检查门禁与豁免（CR-0001）+ 保存 PREPARING + job/outbox | 私有构建、摘要复核后 READY | MVP |
 | `ActivatePublication` | Publication | Publisher；PublicationSlot | CAS pointer + operation + audit/outbox | 投影/Edge 异步传播 | MVP |
 | `WithdrawPublication` / `Restore` | Publication | EmergencyPublisher；Block + Slot | deny 事实与 CAS/审计（因外部边界分步） | Edge block、缓存失效、回源负向验证 | MVP |
 | `GetAuthorizedDocument` | Publication Read + Developer Access policy | Public/Developer；Slot/Release | 只读、读时验证 ACL 和 deny | 可读取已授权 Release / projection | MVP |
@@ -767,7 +808,7 @@ F06 的 IN-01（首页的待审核、检查失败、可发布、撤销风险）�
 | SourceSnapshot | `srcsnap_0007` | `repo_cp` 的固定 Git commit 和文件快照 |
 | Revision | `rev_cp_ship_0042` | 内容与来源 digest 不变 |
 | CheckRun | `check_214` | 绑定 Revision Digest 和 PolicySnapshot |
-| ReviewDecision | `decision_089` | 独立审核员对 `partner/sandbox` 的批准证据 |
+| ReviewDecision | `decision_089` | CR-0001 之前的样例：独立审核员对 `partner/sandbox` 的批准证据。CR-0001 起不再产生，Release 依据 `check_214` 及准备时的豁免 |
 | ContractRelease | `rel_cp_ship_1_4_0` | 已验证 manifest/digest 的 READY 制品 |
 | PublicationTarget | `target_cp_partner_sandbox` | `product_cp × partner × sandbox × cargopai-developers` |
 | PublicationSlot | `slot_cp_ship_partner_sb` | Target × Shipment APIAsset；generation=6（假设） |
@@ -775,14 +816,14 @@ F06 的 IN-01（首页的待审核、检查失败、可发布、撤销风险）�
 
 ### 10.2 正常路径，明确哪些环节不在同一事务
 
-<figure class="architecture-figure"><div class="fig-label">FIGURE 08 · CargoPai 正常发布（跨域时序，设计示例）</div><div class="fig-grid cols-4"><div class="fig-lane"><strong>1 · CI / Registry</strong><span>Import commit + digest</span><div class="fig-mini">SourceSnapshot → Revision DRAFT</div><div class="fig-mini">审计与任务记录</div></div><div class="fig-lane"><strong>2 · Review</strong><span>CheckRun + PolicySnapshot</span><div class="fig-mini">结果保存 / 角色分离</div><div class="fig-mini">Decision APPROVED (scope bound)</div></div><div class="fig-lane"><strong>3 · Registry</strong><span>Prepare → Verify → READY</span><div class="fig-mini">Artifact Digest + Build Manifest</div><div class="fig-mini">发布制品内容不可变</div></div><div class="fig-lane"><strong>4 · Publication</strong><span>Target + Slot + CAS</span><div class="fig-mini">generation 6 → 7</div><div class="fig-mini">Audit + Outbox 同事务</div></div></div><div class="fig-arrow">↓ Worker 投影、Edge 分发、读时鉴权和外部状态对账；交付成功需独立证据</div><div class="fig-head light"><strong>External Developer Portal · CargoPai / partner / sandbox</strong><small>仅授权开发者看到新 Release；Parcel-only 授权在搜索/详情/下载都被拒绝</small></div><figcaption>外部 Git/对象存储/Edge 不进入 Fabric PostgreSQL 的同一 ACID 事务。每个阶段留下可恢复、可追踪的证据。</figcaption></figure>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 08 · CargoPai 正常发布（跨域时序，设计示例）</div><div class="fig-grid cols-4"><div class="fig-lane"><strong>1 · CI / Registry</strong><span>Import commit + digest</span><div class="fig-mini">SourceSnapshot → Revision DRAFT</div><div class="fig-mini">审计与任务记录</div></div><div class="fig-lane"><strong>2 · Check</strong><span>CheckRun + PolicySnapshot</span><div class="fig-mini">结果保存 / 门禁判定</div><div class="fig-mini">豁免在准备 Release 时填写</div></div><div class="fig-lane"><strong>3 · Registry</strong><span>Prepare → Verify → READY</span><div class="fig-mini">Artifact Digest + Build Manifest</div><div class="fig-mini">发布制品内容不可变</div></div><div class="fig-lane"><strong>4 · Publication</strong><span>Target + Slot + CAS</span><div class="fig-mini">generation 6 → 7</div><div class="fig-mini">Audit + Outbox 同事务</div></div></div><div class="fig-arrow">↓ Worker 投影、Edge 分发、读时鉴权和外部状态对账；交付成功需独立证据</div><div class="fig-head light"><strong>External Developer Portal · CargoPai / partner / sandbox</strong><small>仅授权开发者看到新 Release；Parcel-only 授权在搜索/详情/下载都被拒绝</small></div><figcaption>外部 Git/对象存储/Edge 不进入 Fabric PostgreSQL 的同一 ACID 事务。每个阶段留下可恢复、可追踪的证据。</figcaption></figure>
 
 按步骤说明：
 
 1. CI 以服务身份导入固定 commit 与路径；Registry 复制并校验原文及 `$ref` 闭包，生成不可变 SourceSnapshot 和 Revision。CI 重试相同指纹返回同一登记结果；同 Key 异内容报冲突。
-2. Worker 对固定 `revision_digest + policy_digest + target_scope` 执行检查；审核员须满足职责分离，形成不可变 ReviewDecision。`PASSED_CHECKS` 不等于 `APPROVED`。
+2. Worker 对固定 `revision_digest + policy_digest` 执行检查，结果不可变。CR-0001 起不设审核员：准备 Release 时按检查门禁判定，没通过的可豁免规则逐条豁免，不可豁免规则没通过则不能准备。
 3. Registry 构建 Release 制品包，读取回验证 Artifact Digest，成功才将 Release 标记 `READY`；对象存储异常的制品不能转为 READY。
-4. Publication 将 `target_cp_partner_sandbox × api_cp_ship` 解析到既有 Slot；校验同产品、目标策略、审核范围和主体权限，通过 `expected_generation=6` 的 CAS 原子切换为 Release 并递增到 7，写审计与 Outbox。
+4. Publication 将 `target_cp_partner_sandbox × api_cp_ship` 解析到既有 Slot；校验同产品、目标策略、Release 依据的检查和主体权限，通过 `expected_generation=6` 的 CAS 原子切换为 Release 并递增到 7，写审计与 Outbox。
 5. Worker 创建 portal projection；门户读取时再次根据 Slot 当前代数、deny 和访问范围校验。投影延迟不允许将旧未授权制品公开为新版本。
 6. 同门户的 Tracking API 所属 Slot 与 generation 不变；Parcel 组织只具有 Parcel 文档权限，读取 CargoPai 私有制品须拒绝。
 
@@ -823,8 +864,8 @@ WHERE slot_id = :slot_id
 | 风险/故障 | 最危险错误结果 | 领域保障与恢复路径 | 后续验证 |
 |---|---|---|---|
 | 并发向同一个 Slot 发布 | 两个版本同时被视为当前 | INV-08；同一 slot/generation 原子 CAS；失败者重新确认 | DM-06 / F07 |
-| 已批准后 Source 变化 | 用旧审核批准新内容 | Snapshot 和 digest 固定，任何变更新 Revision/CheckRun | DM-03 / F04 |
-| PolicySnapshot 更新或受众变更 | 旧批准被带到不允许的新目标 | INV-07 重新比对 scope/digest/expiry；重新检查/批准 | DM-04 / F04/F05 |
+| 检查或批准后 Source 变化 | 用旧检查或旧审核放行新内容 | Snapshot 和 digest 固定，任何变更新 Revision/CheckRun | DM-03 / F04 |
+| PolicySnapshot 更新或受众变更 | 旧检查被用来准备新的 Release | INV-07：准备 Release 时要求现行策略下的检查；已有 Release 依其准备时的检查仍可发布和恢复（CR-0001 决定 5）。Release 不再绑定受众，能发布到哪些目标由发布人角色和目标配置决定 | DM-04 / F04/F05 |
 | 对象存储成功、DB 提交失败 | 孤儿对象被外部可见 | 私有临时对象、不可猜测/不可公开 URL、对账垃圾回收 | DM-07 / F07 |
 | DB 指向 READY，但对象读失败 | 用户获取不可用文档 | READY 前可读性复核；激活前再次验证；运行时标记 IntegrityIncident/受控降级 | DM-08 / F07 |
 | Worker 重复事件或 lease 过期 | 重复发布、越权重试 | Outbox at-least-once、消费者 inbox 去重、fencing 和 CAS | DM-09 / F07 |
@@ -865,8 +906,8 @@ WHERE slot_id = :slot_id
 | `ProductBrandChanged`（`fabric.productgovernance.product.brand_changed`） | Governance / 品牌实际变更 | 通用事件字段，`aggregate_id` 为产品 ID，`aggregate_version` 为产品版本 | 品牌内容通过授权后的产品详情读取 |
 | `APIAssetRegistered` | Catalog / Asset 创建成功 | product_id、asset_id、owner_ref | Registry 允许登记契约；事件重复要去重 |
 | `ContractRevisionRegistered` | Registry / Revision 成功登记 | revision_id、asset_id、source_digest | Check Workflow 建立任务；不等于批准 |
-| `GovernanceCheckCompleted` | Policy / 检查终态 | check_run_id、policy_digest、revision_digest | Review UI；失败证据不得默认隐藏 |
-| `ReviewDecisionRecorded` | Policy / 审核决定写入 | decision_id、target_scope、expires_at | Registry Release 前验收；目标变更要重审 |
+| `GovernanceCheckCompleted` | Policy / 检查终态 | check_run_id、policy_digest、revision_digest | 检查详情与准备 Release；失败证据不得默认隐藏 |
+| `ReviewDecisionRecorded` | Policy / 审核决定写入（CR-0001 起不再产生） | decision_id、target_scope、expires_at | 原为 Registry Release 前验收；已发出的事件保留 |
 | `ContractReleasePrepared` | Registry / Release 转 READY | release_id、artifact_digest、revision_id | Publication 可作为候选；无自动公网权 |
 | `PublicationActivated` | Publication / Slot CAS 成功 | slot_id、generation、release_id、target_id | Portal projections；投递失败不撤销主库事实 |
 | `PublicationWithdrawn` | Publication / Slot 清空/切换 | slot_id、generation、reason_code | Edge/投影清理；无保证全部缓存立即生效 |
@@ -912,8 +953,8 @@ F04 负责将这些事件从候选业务含义转化成 AsyncAPI 或其他机器
 |---|---|---|---|
 | DM-01 | CargoPai/Parcel 可以登记同名 Asset，身份、归属分开 | FR-001/007、AR-01 | NOT_RUN |
 | DM-02 | 同 Product 重复 asset_key 被拒绝，改名不影响稳定 ID | FR-007、AI-01 | NOT_RUN |
-| DM-03 | 修改 Git commit 内容不会改写既有 Revision；新输入须重审 | FR-013/016、AR-03 | NOT_RUN |
-| DM-04 | 策略和受众变化时旧批准不可被滥用 | FR-026/027、AI-02 | NOT_RUN |
+| DM-03 | 修改 Git commit 内容不会改写既有 Revision；新输入须重新检查（CR-0001 之前为重审） | FR-013/016、AR-03 | NOT_RUN |
+| DM-04 | 策略和受众变化时旧批准不可被滥用；CR-0001 起改为：策略变化后，准备新 Release 须用现行策略下的检查 | FR-026/027、AI-02 | NOT_RUN |
 | DM-05 | 不可读/摘要不匹配的 Artifact 不可成为 READY Release | FR-017、AR-05 | NOT_RUN |
 | DM-06 | 同 Slot 并发 CAS 只允许一个生效版本 | FR-033/036、AR-04 | NOT_RUN |
 | DM-07 | 对象写成但 DB 失败不发生公开，可回收孤儿对象 | FR-017/064、AR-05 | NOT_RUN |
@@ -946,7 +987,7 @@ F03 不将“有规则映射”误当成“通过门禁”。任何发现与上�
 |---|---|---|---|
 | 内部产品切换 | WorkspaceNavigationView | Product Governance Membership、状态 | 导航、角色任务、错误/空态 |
 | API Catalog 筛选 | AuthorizedCatalogView | Catalog Asset + scopes；无权资产不能进入响应 | 表格、筛选器、批量操作 |
-| 契约版本与审核 | ContractReviewView | Registry Revision + Policy Decisions | Diff 呈现、审核流程、可理解错误 |
+| 契约版本与检查 | ContractReviewView | Registry Revision + CheckRun；历史评审只读 | Diff 呈现、检查与准备 Release、可理解错误（CR-0001 起没有审核流程） |
 | 发布工作台 | PublicationTimelineView | Publication Slot + Operation + DeliveryState | 版本比较、并发冲突、回滚 UX |
 | 外部 API Reference | AuthorizedDocumentView | Active Slot + Release + AccessPolicy + Deny | 多品牌导航、参考文档、代码示例 |
 | 开发者应用/订阅（V1） | DeveloperApplicationView | Developer Access Grant + IAM 快照 | OAuth 说明、沙箱/生产操作旅程 |
@@ -962,7 +1003,7 @@ F06 不得把两个门户合并为一套相同的功能菜单，但可共享设�
 | OD-02 | 七个限界上下文最终是否需要拆合 | 暂保持 F02 七候选 BC，不做物理服务拆分 | 领域评审 / ADR-0002 |
 | OD-03 | PublicationTarget 的多 API 生效粒度 | 已统一 `Slot = Target × APIAsset` 的候选定义；ADR-0004 仍 Proposed | 架构 Owner / F04 |
 | OD-04 | 多 Release 基于同 Revision 的发布版本策略 | Release 可独立 build，但同 Asset release_label 唯一 | F04 / F07 |
-| OD-05 | 审核有效期、作用域和豁免优先级 | 输入、策略、范围、时效绑定，不允许安全强制项豁免 | F04 / F05 |
+| OD-05 | 审核有效期、作用域和豁免优先级 | 输入、策略、范围、时效绑定，不允许安全强制项豁免。CR-0001 起不再有审核：豁免在准备 Release 时逐条填写，随 Release 记录，没有有效期和作用域 | F04 / F05 |
 | OD-06 | Edge deny 的生效协议与传播证明 | deny-first；网络不可达不得假报已完成 | F05 / F07 |
 | OD-07 | 外部 developer Org、IAM/网关真实主权关系 | Fabric 存接入申请/关系，真实密钥/调用权归外部 | F05 / F06 |
 | OD-08 | PostgreSQL、对象存储、锁/Job 策略、保留和容量目标 | 仅逻辑候选；技术与数值保持 TBD | F07 / F08 |
@@ -977,7 +1018,7 @@ F06 不得把两个门户合并为一套相同的功能菜单，但可共享设�
 |---|---|---|
 | **F04 — API Contract Governance** | 修订/审查/Release/Publication 契约语义、事件字段/策略快照、Digest 规则和幂等键 | 精确 OpenAPI/AsyncAPI Schema、HTTP 错误码和兼容性算法尚未定稿 |
 | **F05 — Security & Multitenancy** | 多维身份/租户关系、deny-first、敏感文档与 Edge 阻断事实、审计 | 正式 RBAC/ABAC、威胁模型、缓存与密钥安全策略待设计 |
-| **F06 — Dual Portal Product & UX** | 两个门户的独立 read models、审核/发布和接入旅程所需状态 | 高保真页面、组件、交互、WCAG 全量验证待完成 |
+| **F06 — Dual Portal Product & UX** | 两个门户的独立 read models、检查/发布和接入旅程所需状态（CR-0001 起没有审核） | 高保真页面、组件、交互、WCAG 全量验证待完成 |
 | **F07 — Engineering & Quality** | 逻辑 ERD、CAS、Outbox/Job、Index、对象存储恢复义务 | 实际 Go 包、DDL/Alembic 之外的迁移实现、PoC/压测/灾备演练未执行 |
 | **F08 — Delivery & Acceptance** | DM-01…18、上位门禁映射与签收界面 | 正式测试、风险裁决、SLO/RPO/RTO 签署与生产上线未执行 |
 

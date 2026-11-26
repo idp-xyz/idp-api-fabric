@@ -48,7 +48,7 @@
 @media(max-width:780px){.doc .table-scroll table{min-width:760px;width:max-content;display:table}.doc .fig-grid.cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}.doc .architecture-figure{overflow-wrap:anywhere}}
 @media(max-width:480px){.doc .fig-grid.cols-3{grid-template-columns:1fr}.doc .architecture-figure{padding:12px 10px}}
 @media print{.doc .architecture-figure{break-inside:avoid}.doc .table-scroll{overflow:visible}.doc .table-scroll table{min-width:0;width:100%;font-size:7.5pt}}
-</style></head><body><a class="skip-link" href="#main-content">跳到文档正文</a><button id="sideBackdrop" class="side-backdrop" aria-label="关闭章节目录" aria-hidden="true" tabindex="-1"></button><div class="layout"><aside class="side" id="sidebar"><a href="../index.html" style="text-decoration:none"><div class="logo">IDP API Fabric<small>ENGINEERING BASELINE</small></div></a><div class="side-kicker">文档体系</div><div class="navlist"><a href="F01_Product_Requirements.html" class="">F01 · Product Requirements</a><a href="F02_System_Architecture.html" class="">F02 · System Architecture</a><a href="F03_Domain_and_Data_Model.html" class="">F03 · Domain & Data Model</a><a href="F04_API_Contract_Governance.html" class="">F04 · Contract Governance</a><a href="F05_Security_and_Multitenancy.html" class="active">F05 · Security & Multitenancy</a><div class="pending">F06 · Dual Portal Experience <span class="mini">待编写</span></div><div class="pending">F07 · Engineering & Quality <span class="mini">待编写</span></div><a href="F08_Delivery_and_Acceptance.html" class="">F08 · Delivery & Acceptance</a></div><hr><div class="side-kicker">F05 · 目录</div><input id="navsearch" type="search" placeholder="筛选本文章节…" aria-label="筛选目录章节"><nav class="navlist" id="toc"><a href="#section-0" style="">0. 执行摘要与安全架构裁决</a><a href="#section-1" style="">1. 适用边界、标准与规范效力</a><a href="#section-1-1" style="padding-left:24px">1.1 明确责任和非目标</a><a href="#section-1-2" style="padding-left:24px">1.2 外部依据及采用约束</a><a href="#section-2" style="">2. 安全资产分类、主体与信任边界</a><a href="#section-2-1" style="padding-left:24px">2.1 数据分类（推荐候选）</a><a href="#section-2-2" style="padding-left:24px">2.2 Principal / resource / action / context</a><a href="#section-3" style="">3. STRIDE 威胁模型与攻击面</a><a href="#section-3-1" style="padding-left:24px">3.1 威胁建模对象</a><a href="#section-4" style="">4. 身份联邦、会话及令牌信任</a><a href="#section-4-1" style="padding-left:24px">4.1 身份系统集成原则</a><a href="#section-4-2" style="padding-left:24px">4.2 JWT 与会话最低验证</a><a href="#section-5" style="">5. 多产品、租户与组织授权体系</a><a href="#section-5-1" style="padding-left:24px">5.1 关系模型</a><a href="#section-5-2" style="padding-left:24px">5.2 授权决策次序及结果</a><a href="#section-5-3" style="padding-left:24px">5.3 权限缓存</a><a href="#section-6" style="">6. 内部/外部双门户权限矩阵</a><a href="#section-6-1" style="padding-left:24px">6.1 已实现的产品负责人和列表权限（PR #6 / #7，2026-11-17 同步）</a><a href="#section-6-2" style="padding-left:24px">6.2 其余双门户角色设计</a><a href="#section-6-3" style="padding-left:24px">6.3 已实现的受众配置和产品品牌权限（PR #10 / #11）</a><a href="#section-6-4" style="padding-left:24px">6.4 已实现的 API 目录和契约修订权限</a><a href="#section-6-5" style="padding-left:24px">6.5 已实现的契约检查权限</a><a href="#section-6-6" style="padding-left:24px">6.6 已实现的契约评审权限</a><a href="#section-6-7" style="padding-left:24px">6.7 已实现的 Release 与发布权限</a><a href="#section-6-8" style="padding-left:24px">6.8 已实现的复审与批准状态的权限</a><a href="#section-6-9" style="padding-left:24px">6.9 已实现的查询与审计读取的权限</a><a href="#section-6-10" style="padding-left:24px">6.10 已实现的工作台查询的权限</a><a href="#section-6-11" style="padding-left:24px">6.11 产品负责人读取契约治理材料（0.32.0）</a><a href="#section-6-12" style="padding-left:24px">6.12 内部发布、审计与读取权限（0.33.0、0.35.0、0.36.0）</a><a href="#section-6-13" style="padding-left:24px">6.13 评审队列在矩阵里的条目（AC-54）</a><a href="#section-7" style="">7. 授权策略表达与执行边界</a><a href="#section-8" style="">8. 数据库、对象存储、搜索和缓存的隔离</a><a href="#section-9" style="">9. 安全发布、紧急撤销与传播证明</a><a href="#section-9-1" style="padding-left:24px">9.1 三种撤销级别</a><a href="#section-9-2" style="padding-left:24px">9.2 可观测性状态</a><a href="#section-10" style="">10. 不可信契约、外部引用及内容解析安全</a><a href="#section-11" style="">11. API Explorer 与沙箱执行安全（V1）</a><a href="#section-12" style="">12. Git、CI、Webhook、Worker 与外部适配安全</a><a href="#section-13" style="">13. 加密、密钥及凭证生命周期</a><a href="#section-14" style="">14. 审计、防抵赖与证据完整性</a><a href="#section-15" style="">15. 隐私、数据保留、区域合规与删除</a><a href="#section-16" style="">16. 安全运营、事件响应与恢复</a><a href="#section-17" style="">17. 安全供应链及开发交付门禁</a><a href="#section-18" style="">18. 关键安全质量指标和待定阈值</a><a href="#section-19" style="">19. CargoPai 贯通案例：发布、撤销与跨产品拒绝</a><a href="#section-20" style="">20. 机器可读安全资产与验证计划</a><a href="#section-20-1" style="padding-left:24px">20.1 安全场景测试最低覆盖</a><a href="#section-21" style="">21. 与 F01–F04 的规范、模型与需求追溯</a><a href="#section-22" style="">22. 未决决策、残余风险与下一阶段接口</a><a href="#section-23" style="">23. 参考依据与采用边界</a></nav><div class="side-foot">V1.0 · 安全设计候选 / 待具名批准<br>设计矩阵与静态检查不等于渗透测试或合规认证。</div></aside><div class="main"><header class="topbar"><div><button class="menu" id="menu" aria-label="展开目录" aria-controls="sidebar" aria-expanded="false">☰ 目录</button><span class="crumb"><strong>IDP API Fabric</strong>　/　设计基线　/　F05</span></div><div class="top-actions"><a class="desktop-only" href="../index.html">总目录</a><a href="F05_Security_and_Multitenancy.md">Markdown 源文件</a><button onclick="window.print()">打印 / PDF</button></div></header><main id="main-content" class="sheet" tabindex="-1"><header class="hero"><div class="eyebrow">F05 · Security & Multitenancy</div><h1>IDP API Fabric<br>安全架构与多租户设计</h1><p>身份联邦 · 多维授权 · STRIDE 威胁模型 · 安全发布与撤销 · 双门户隔离 · 可审计证据</p><div class="hero-meta"><span>V1.0 · 设计待评审</span><span>2026.11.09</span><span>正式工程目录</span><span>所有真实安全场景 NOT_RUN</span></div></header><div class="metrics"><div class="metric"><b>10</b><span>安全模型及业务流程图</span></div><div class="metric"><b>54</b><span>操作级授权规则</span></div><div class="metric"><b>29</b><span>STRIDE 风险条目</span></div><div class="metric"><b>36</b><span>待执行安全场景</span></div></div><article class="doc">
+</style></head><body><a class="skip-link" href="#main-content">跳到文档正文</a><button id="sideBackdrop" class="side-backdrop" aria-label="关闭章节目录" aria-hidden="true" tabindex="-1"></button><div class="layout"><aside class="side" id="sidebar"><a href="../index.html" style="text-decoration:none"><div class="logo">IDP API Fabric<small>ENGINEERING BASELINE</small></div></a><div class="side-kicker">文档体系</div><div class="navlist"><a href="F01_Product_Requirements.html" class="">F01 · Product Requirements</a><a href="F02_System_Architecture.html" class="">F02 · System Architecture</a><a href="F03_Domain_and_Data_Model.html" class="">F03 · Domain & Data Model</a><a href="F04_API_Contract_Governance.html" class="">F04 · Contract Governance</a><a href="F05_Security_and_Multitenancy.html" class="active">F05 · Security & Multitenancy</a><div class="pending">F06 · Dual Portal Experience <span class="mini">待编写</span></div><div class="pending">F07 · Engineering & Quality <span class="mini">待编写</span></div><a href="F08_Delivery_and_Acceptance.html" class="">F08 · Delivery & Acceptance</a></div><hr><div class="side-kicker">F05 · 目录</div><input id="navsearch" type="search" placeholder="筛选本文章节…" aria-label="筛选目录章节"><nav class="navlist" id="toc"><a href="#section-0" style="">0. 执行摘要与安全架构裁决</a><a href="#section-1" style="">1. 适用边界、标准与规范效力</a><a href="#section-1-1" style="padding-left:24px">1.1 明确责任和非目标</a><a href="#section-1-2" style="padding-left:24px">1.2 外部依据及采用约束</a><a href="#section-2" style="">2. 安全资产分类、主体与信任边界</a><a href="#section-2-1" style="padding-left:24px">2.1 数据分类（推荐候选）</a><a href="#section-2-2" style="padding-left:24px">2.2 Principal / resource / action / context</a><a href="#section-3" style="">3. STRIDE 威胁模型与攻击面</a><a href="#section-3-1" style="padding-left:24px">3.1 威胁建模对象</a><a href="#section-4" style="">4. 身份联邦、会话及令牌信任</a><a href="#section-4-1" style="padding-left:24px">4.1 身份系统集成原则</a><a href="#section-4-2" style="padding-left:24px">4.2 JWT 与会话最低验证</a><a href="#section-5" style="">5. 多产品、租户与组织授权体系</a><a href="#section-5-1" style="padding-left:24px">5.1 关系模型</a><a href="#section-5-2" style="padding-left:24px">5.2 授权决策次序及结果</a><a href="#section-5-3" style="padding-left:24px">5.3 权限缓存</a><a href="#section-6" style="">6. 内部/外部双门户权限矩阵</a><a href="#section-6-1" style="padding-left:24px">6.1 已实现的产品负责人和列表权限（PR #6 / #7，2026-11-17 同步）</a><a href="#section-6-2" style="padding-left:24px">6.2 其余双门户角色设计</a><a href="#section-6-3" style="padding-left:24px">6.3 已实现的受众配置和产品品牌权限（PR #10 / #11）</a><a href="#section-6-4" style="padding-left:24px">6.4 已实现的 API 目录和契约修订权限</a><a href="#section-6-5" style="padding-left:24px">6.5 已实现的契约检查权限</a><a href="#section-6-6" style="padding-left:24px">6.6 已实现的契约评审权限</a><a href="#section-6-7" style="padding-left:24px">6.7 已实现的 Release 与发布权限</a><a href="#section-6-8" style="padding-left:24px">6.8 已实现的复审与批准状态的权限</a><a href="#section-6-9" style="padding-left:24px">6.9 已实现的查询与审计读取的权限</a><a href="#section-6-10" style="padding-left:24px">6.10 已实现的工作台查询的权限</a><a href="#section-6-11" style="padding-left:24px">6.11 产品负责人读取契约治理材料（0.32.0）</a><a href="#section-6-12" style="padding-left:24px">6.12 内部发布、审计与读取权限（0.33.0、0.35.0、0.36.0）</a><a href="#section-6-13" style="padding-left:24px">6.13 评审队列在矩阵里的条目（AC-54）</a><a href="#section-6-14" style="padding-left:24px">6.14 取消评审后的权限（CR-0001，0.37.0）</a><a href="#section-7" style="">7. 授权策略表达与执行边界</a><a href="#section-8" style="">8. 数据库、对象存储、搜索和缓存的隔离</a><a href="#section-9" style="">9. 安全发布、紧急撤销与传播证明</a><a href="#section-9-1" style="padding-left:24px">9.1 三种撤销级别</a><a href="#section-9-2" style="padding-left:24px">9.2 可观测性状态</a><a href="#section-10" style="">10. 不可信契约、外部引用及内容解析安全</a><a href="#section-11" style="">11. API Explorer 与沙箱执行安全（V1）</a><a href="#section-12" style="">12. Git、CI、Webhook、Worker 与外部适配安全</a><a href="#section-13" style="">13. 加密、密钥及凭证生命周期</a><a href="#section-14" style="">14. 审计、防抵赖与证据完整性</a><a href="#section-15" style="">15. 隐私、数据保留、区域合规与删除</a><a href="#section-16" style="">16. 安全运营、事件响应与恢复</a><a href="#section-17" style="">17. 安全供应链及开发交付门禁</a><a href="#section-18" style="">18. 关键安全质量指标和待定阈值</a><a href="#section-19" style="">19. CargoPai 贯通案例：发布、撤销与跨产品拒绝</a><a href="#section-20" style="">20. 机器可读安全资产与验证计划</a><a href="#section-20-1" style="padding-left:24px">20.1 安全场景测试最低覆盖</a><a href="#section-21" style="">21. 与 F01–F04 的规范、模型与需求追溯</a><a href="#section-22" style="">22. 未决决策、残余风险与下一阶段接口</a><a href="#section-23" style="">23. 参考依据与采用边界</a></nav><div class="side-foot">V1.0 · 安全设计候选 / 待具名批准<br>设计矩阵与静态检查不等于渗透测试或合规认证。</div></aside><div class="main"><header class="topbar"><div><button class="menu" id="menu" aria-label="展开目录" aria-controls="sidebar" aria-expanded="false">☰ 目录</button><span class="crumb"><strong>IDP API Fabric</strong>　/　设计基线　/　F05</span></div><div class="top-actions"><a class="desktop-only" href="../index.html">总目录</a><a href="F05_Security_and_Multitenancy.md">Markdown 源文件</a><button onclick="window.print()">打印 / PDF</button></div></header><main id="main-content" class="sheet" tabindex="-1"><header class="hero"><div class="eyebrow">F05 · Security & Multitenancy</div><h1>IDP API Fabric<br>安全架构与多租户设计</h1><p>身份联邦 · 多维授权 · STRIDE 威胁模型 · 安全发布与撤销 · 双门户隔离 · 可审计证据</p><div class="hero-meta"><span>V1.0 · 设计待评审</span><span>2026.11.09</span><span>正式工程目录</span><span>所有真实安全场景 NOT_RUN</span></div></header><div class="metrics"><div class="metric"><b>10</b><span>安全模型及业务流程图</span></div><div class="metric"><b>54</b><span>操作级授权规则</span></div><div class="metric"><b>29</b><span>STRIDE 风险条目</span></div><div class="metric"><b>36</b><span>待执行安全场景</span></div></div><article class="doc">
 <blockquote>
 <p><strong>文档编号</strong>：F05 · Security &amp; Multitenancy<br/>
 <strong>项目</strong>：IDP API Fabric / <code>idp-api-fabric</code><br/>
@@ -56,7 +56,8 @@
 <strong>状态</strong>：安全架构设计候选，待具名安全/架构评审；本文件不是安全认证、渗透测试报告或生产上线批准<br/>
 <strong>权威输入</strong>：<a href="F01_Product_Requirements.md">F01</a> · <a href="F02_System_Architecture.md">F02</a> · <a href="F03_Domain_and_Data_Model.md">F03</a> · <a href="F04_API_Contract_Governance.md">F04</a> · <a href="README.md">阶段交接约束</a><br/>
 <strong>上位规范</strong>：IDP-SCG-STD-001《IDP Supply Chain DDD Product Engineering Standard V1.0》；项目 Profile 采用仍待具名批准。<br/>
-<strong>验证状态</strong>：本地文件结构/矩阵一致性检查可执行；真实 IAM、Gateway、CDN、API Explorer、授权安全、数据恢复与渗透测试全部 <code>NOT_RUN</code>。</p>
+<strong>验证状态</strong>：本地文件结构/矩阵一致性检查可执行；真实 IAM、Gateway、CDN、API Explorer、授权安全、数据恢复与渗透测试全部 <code>NOT_RUN</code>。<br/>
+<strong>变更</strong>：<a href="../decisions/CR-0001.md">CR-0001</a>（2026-11-26 已决定）取消评审和批准，准备 Release 以检查为准；权限和矩阵的变化见 §6.14。</p>
 </blockquote>
 <h2 id="section-0">0. 执行摘要与安全架构裁决</h2>
 <p><strong>设计目标：在跨产品统一的控制平面上，证明每一条管理命令、契约读取、搜索结果、版本下载、发布操作和外部开发者接入都经过服务器端的多维授权；产品自治不能被共享缓存、统一身份或共享域名击穿。</strong> Fabric 不是 IdP、API Gateway 或业务 API 运行时。F05 只为 Fabric 自身及其适配器定义安全责任；各产品真实 API 的授权由其 Gateway/业务资源服务器负责。</p>
@@ -355,16 +356,16 @@
 <tr>
 <td>Contract Author</td>
 <td>所属 Workspace 创建草稿、查看检验结果</td>
-<td>批准自己的高风险发布</td>
+<td>绕过检查门禁；未持发布人角色时准备或发布 Release</td>
 </tr>
 <tr>
 <td>Independent Reviewer</td>
-<td>指定范围内复核与签字</td>
-<td>修改同一待审 Revision 并自批准</td>
+<td>CR-0001 起不再设立；已有成员关系只读历史评审</td>
+<td>任何写操作</td>
 </tr>
 <tr>
 <td>Release Operator</td>
-<td>按有效审批对指定 Slot 发布、撤销和恢复</td>
+<td>依据检查准备 Release，对指定 Slot 发布、撤销和恢复（CR-0001 之前按有效审批）</td>
 <td>绕过 AccessBlock、修改不可变 Release</td>
 </tr>
 <tr>
@@ -384,7 +385,7 @@
 </tr>
 </tbody>
 </table></div>
-<p><strong>职责分离原则</strong>：Author → Reviewer → Publisher 三方职责原则上分离；同一主体参与多个阶段时，必须定义是否允许的风险等级和独立批准程序。紧急阻断允许经过审计的最小 Break-glass，但解除阻断与恢复发布需重新校验授权和审批，不能由“紧急角色”自动放行。具体 SoD/Break-glass 时限和责任人为 <code>TBD / Proposed</code>。</p>
+<p><strong>职责分离原则</strong>：原设计要求 Author → Reviewer → Publisher 三方职责分离。CR-0001 起内部使用取消这一要求：同一主体可以导入、检查、准备 Release 并发布，检查门禁、按角色授权、访问阻断和审计保留（§6.14）。紧急阻断允许经过审计的最小 Break-glass，但解除阻断与恢复发布需重新校验授权，解除须由另一位安全评审人执行，不能由“紧急角色”自动放行。具体 SoD/Break-glass 时限和责任人为 <code>TBD / Proposed</code>。</p>
 <h3 id="section-6-3">6.3 已实现的受众配置和产品品牌权限（PR #10 / #11）</h3>
 <p>平台管理员、当前产品负责人和该产品任一 Workspace 的有效成员可读取产品及品牌，也可读取该产品的有效受众配置。产品缺失或调用方无权读取产品时，返回 404 <code>PRODUCT_NOT_FOUND</code>。下表路径以 <code>/v1/products/{product_id}</code> 开头。</p>
 <div aria-label="可横向滚动的安全规则和风险表格" class="table-scroll" role="region" tabindex="0"><table>
@@ -521,6 +522,9 @@
 <p><strong>检查记录的完整性。</strong> 应用角色对四张表只有 <code>SELECT</code> 和 <code>INSERT</code>，不能改写或删除已记录的检查。读取时核对各行是否自洽、是否仍对应那个修订（F03 §5.8）；不符时不返回检查，响应不透露原因，原因写入运维日志。数据与摘要同库，这不是防篡改证明。</p>
 <p>功能回归见 <code>cmd/fabric-api/checks_test.go</code>、<code>checkhistory_test.go</code>、<code>compatibility_test.go</code> 和 <code>comparison_check_test.go</code>，使用真实 PostgreSQL 和本地替代 IdP，其中包括作者在检查等待期间被撤销，以及事件写入失败时全部证据回滚。SEC-01…36 的正式安全验收状态为 NOT_RUN。</p>
 <h3 id="section-6-6">6.6 已实现的契约评审权限</h3>
+<blockquote>
+<p><strong>0.37.0 起（CR-0001）</strong>：提交、撤回和决定评审的三个操作已删除，AC-03、AC-35、AC-50、AC-51 退役（<code>RETIRED</code>），评审只能读取，AC-52、AC-53 改为只读历史。<code>internal_reviewer</code> 不再授予，已有成员关系只能读。现行权限见 §6.14；本节保留为 0.17.0–0.36.0 的记录。</p>
+</blockquote>
 <p>本节对应管理 API 0.17.0–0.19.0。下表路径以 <code>/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}</code> 开头。评审人是 Workspace 的成员关系 <code>internal_reviewer</code>，由产品负责人授予和撤销，与其他成员关系走同一条规则（AC-10）；一个主体可以在同一个 Workspace 同时是作者和评审人。每次请求都从数据库读取当时有效的成员关系。</p>
 <div aria-label="可横向滚动的安全规则和风险表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
@@ -597,8 +601,11 @@
 <p><strong>文字内容。</strong> 说明、理由和补偿措施是人写的文字，各限一行、有长度上限、不含控制字符。它们只通过评审接口返回，能读修订的人才能读；审计和事件里没有这些文字，事件也不含范围和豁免。Fabric 不渲染它们。</p>
 <p><strong>评审记录的完整性。</strong> 应用角色对四张评审表只有 <code>SELECT</code> 和 <code>INSERT</code>，不能改写或删除申请、范围、结论和豁免；修订的状态只能沿评审往前走，由表上的触发器保证（F03 §5.9）。读取时核对记录是否自洽、是否仍对应修订现在的内容；不符时不返回，响应不透露原因，原因写入运维日志。数据同库，这不是防篡改证明。</p>
 <p><strong>矩阵。</strong> 本次新增四行设计索引，状态为 PROPOSED：AC-50 <code>review.request</code>、AC-51 <code>review.withdraw</code>、AC-52 <code>review.read</code>、AC-53（评审人的 <code>revision.read</code>）。运行时审计使用 AC-50、AC-51、AC-03、DENY-03 和 DENY-06。AC-03 在矩阵里的动作是 <code>release.approve</code>，实现记的动作名是 <code>review.approve</code> 和 <code>review.reject</code>，驳回也记在 AC-03 名下；这一处对应关系待裁决。</p>
-<p>功能回归见 <code>cmd/fabric-api/reviewer_test.go</code>、<code>reviews_test.go</code> 和 <code>reviewdecision_test.go</code>，使用真实 PostgreSQL 和本地替代 IdP，其中包括参与过的评审人被拒绝、评审人在决定等待期间被撤销、同时到达的几个决定只有一个成功，以及事件写入失败时结论、豁免和状态变化全部回滚。SEC-10 描述的场景有这些回归覆盖，但 SEC-01…36 的正式安全验收状态仍为 NOT_RUN。</p>
+<p>功能回归（0.36.0 时；评审写入和批准的测试在 0.37.0 删除，现行回归见 §6.14）见 <code>cmd/fabric-api/reviewer_test.go</code>、<code>reviews_test.go</code> 和 <code>reviewdecision_test.go</code>，使用真实 PostgreSQL 和本地替代 IdP，其中包括参与过的评审人被拒绝、评审人在决定等待期间被撤销、同时到达的几个决定只有一个成功，以及事件写入失败时结论、豁免和状态变化全部回滚。SEC-10 描述的场景有这些回归覆盖，但 SEC-01…36 的正式安全验收状态仍为 NOT_RUN。</p>
 <h3 id="section-6-7">6.7 已实现的 Release 与发布权限</h3>
+<blockquote>
+<p>0.37.0 起准备 Release 依据检查，准备、激活和恢复不再要求发布人独立，也不核对批准（CR-0001），见 §6.14。阻断的建立和解除不变。</p>
+</blockquote>
 <p>本节对应管理 API 0.20.0–0.22.0。下表路径以 <code>/v1/products/{product_id}</code> 开头。每次请求都从数据库读取当时有效的角色和成员关系；写操作在事务内对调用人的成员关系或产品角色加共享锁后再判断，撤销先提交则操作被拒绝。运行时审计用的是设计矩阵里已有的 AC-04、AC-05、AC-06、AC-07 和 AC-09，本次没有新增矩阵条目，矩阵状态仍为 PROPOSED。</p>
 <div aria-label="可横向滚动的安全规则和风险表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
@@ -685,15 +692,18 @@
 </tbody>
 </table></div>
 <p><strong>与设计矩阵的对应。</strong> 准备 Release 沿用 AC-04，登记发布目标沿用 AC-09。矩阵里的读取角色是 <code>internal_reader</code>（AC-15、AC-16），0.22.0 由资产所属 Workspace 的作者、评审人和发布人读取。0.36.0 的 <code>internal_reader</code> 实现范围见 §6.12。</p>
-<p><strong>职责分离。</strong> 一个修订从写到发布要经过四种人：作者导入和检查，评审人批准，发布人准备 Release 和发布，三者不能是同一个主体（§6.6 的评审人不能是参与人，本节的发布人不能是作者、检查发起人、评审提交人或批准人）。撤销是例外：有发布人角色就能撤销，参与过这个修订的人也可以，因为把内容拿下来不需要第二个人同意。阻断由安全管理员建立，由另一个安全评审人解除，对应 F04-GOV-025 的精神，但那条规则在检查里仍是 <code>NOT_RUN</code>。比较的是主体，同一个人的两个账号发现不了。</p>
-<p><strong>批准有效性。</strong> 0.22.0 在准备 Release、激活、恢复和读取制品时核对当前批准（F03 §5.10）。原评审人授权被撤销、批准或豁免到期时，核对失败可能返回 <code>REVIEWER_AUTH_REVOKED</code>、<code>APPROVAL_EXPIRED</code> 或 <code>WAIVER_EXPIRED</code>。既有 Release 保留为证据，发布人仍可撤销槽位。0.33.0 起，内部恢复和制品读取遵循 §6.12。</p>
-<p><strong>策略和工具版本。</strong> 准备和激活 Release 要求批准依据现行策略和工具版本，否则返回 <code>POLICY_STALE</code>。检查结果可能随工具变化时，更新代码中的工具版本。0.23.0 起，作者可以对已有修订重新检查并提交复审，继续发布同一份内容，见 §6.8。</p>
-<p><strong>阻断是拒绝优先。</strong> 阻断不改槽位，只在读取和激活时拒绝；它覆盖的制品经槽位读对所有人都读不到，包括发布人（0.27.0 起，能读这个 Release 的人仍可以按编号下载，那条路径不看阻断，见 §6.9）。发布人不能建立或解除阻断，安全角色不能发布，也读不到制品。解除阻断不会让任何内容重新可见：必须先撤销，解除之后再由发布人恢复，恢复时重新核对批准。阻断只作用于 Fabric 自己的源站读取；已经被别处缓存或取走的内容不在它的控制之内，<code>edge_status</code> 因此是 <code>UNKNOWN</code>（§9.2）。</p>
+<p><strong>职责分离（0.36.0 之前）。</strong> 一个修订从写到发布要经过四种人：作者导入和检查，评审人批准，发布人准备 Release 和发布，三者不能是同一个主体（§6.6 的评审人不能是参与人，本节的发布人不能是作者、检查发起人、评审提交人或批准人）。撤销是例外：有发布人角色就能撤销，参与过这个修订的人也可以，因为把内容拿下来不需要第二个人同意。阻断由安全管理员建立，由另一个安全评审人解除，对应 F04-GOV-025 的精神，但那条规则在检查里仍是 <code>NOT_RUN</code>。比较的是主体，同一个人的两个账号发现不了。</p>
+<p><strong>批准有效性（0.36.0 之前）。</strong> 0.22.0 在准备 Release、激活、恢复和读取制品时核对当前批准（F03 §5.10）。原评审人授权被撤销、批准或豁免到期时，核对失败可能返回 <code>REVIEWER_AUTH_REVOKED</code>、<code>APPROVAL_EXPIRED</code> 或 <code>WAIVER_EXPIRED</code>。既有 Release 保留为证据，发布人仍可撤销槽位。0.33.0 起，内部恢复和制品读取遵循 §6.12。</p>
+<p><strong>策略和工具版本。</strong> 准备和激活 Release 要求批准依据现行策略和工具版本，否则返回 <code>POLICY_STALE</code>。0.37.0 起只有准备 Release 要求现行策略和工具下的检查，激活和恢复不再要求（§6.14）。检查结果可能随工具变化时，更新代码中的工具版本。0.23.0 起，作者可以对已有修订重新检查并提交复审，继续发布同一份内容，见 §6.8。</p>
+<p><strong>阻断是拒绝优先。</strong> 阻断不改槽位，只在读取和激活时拒绝；它覆盖的制品经槽位读对所有人都读不到，包括发布人（0.27.0 起，能读这个 Release 的人仍可以按编号下载，那条路径不看阻断，见 §6.9）。发布人不能建立或解除阻断，安全角色不能发布，也读不到制品。解除阻断不会让任何内容重新可见：必须先撤销，解除之后再由发布人恢复，恢复时重新核对 Release 依据的检查（0.36.0 之前核对批准）。阻断只作用于 Fabric 自己的源站读取；已经被别处缓存或取走的内容不在它的控制之内，<code>edge_status</code> 因此是 <code>UNKNOWN</code>（§9.2）。</p>
 <p><strong>读取不泄露原因。</strong> 制品不可见时一律返回 404 <code>PUBLISHED_ARTIFACT_NOT_FOUND</code>，不区分是没有发布、被阻断、产品暂停还是批准已不成立；原因在审计和槽位、阻断各自的读取接口里；0.25.0 起，批准不成立的原因由槽位的 <code>approval_problem</code> 说明（§6.8）。例外是目标的受众配置已被移除，这时返回 404 <code>AUDIENCE_CONFIG_NOT_FOUND</code>。不知道产品的人得到 404 <code>PRODUCT_NOT_FOUND</code>。</p>
 <p><strong>目前只有内部受众。</strong> 只有 <code>internal</code> 受众的目标能激活和读取，读的人也限于资产所属 Workspace 的成员。<code>partner</code> 和 <code>public</code> 的目标可以登记，但不能发布：对外读取需要的身份、授权（Developer Access）和边缘分发都还没有。所以这一版没有任何内容离开内部。</p>
 <p><strong>完整性。</strong> Release 和制品只增不改；制品的表约束保证摘要与内容相符，读出时再核对一次。槽位、目标和阻断可以更新，但触发器把更新限定为“代次加 1”和“解除一次”，对所有写入者生效。数据与摘要同库，这不是防篡改证明。</p>
-<p>功能回归见 <code>cmd/fabric-api/</code> 下的 <code>publicationroles_test.go</code>、<code>releases_test.go</code>、<code>publication_test.go</code>、<code>slots_test.go</code> 和 <code>accessblocks_test.go</code>，使用真实 PostgreSQL 和本地替代 IdP，其中包括并发激活只有一个成功、事件写入失败时全部回滚、评审人被撤销后制品不可读，以及上表各项操作谁被允许、谁被拒绝；写操作留下的审计记录和事件也逐项核对。使用批准时的逐项核对见 <code>internal/policyreview/application/approval_test.go</code>，表上的约束和触发器见 <code>internal/contractregistry/adapters/postgres/releases_test.go</code> 和 <code>internal/publication/adapters/postgres/schema_test.go</code>。SEC-01…36 的正式安全验收状态为 NOT_RUN。</p>
+<p>功能回归（0.36.0 时；核对批准的测试在 0.37.0 删除或改写，现行回归见 §6.14）见 <code>cmd/fabric-api/</code> 下的 <code>publicationroles_test.go</code>、<code>releases_test.go</code>、<code>publication_test.go</code>、<code>slots_test.go</code> 和 <code>accessblocks_test.go</code>，使用真实 PostgreSQL 和本地替代 IdP，其中包括并发激活只有一个成功、事件写入失败时全部回滚、评审人被撤销后制品不可读，以及上表各项操作谁被允许、谁被拒绝；写操作留下的审计记录和事件也逐项核对。使用批准时的逐项核对见 <code>internal/policyreview/application/approval_test.go</code>，表上的约束和触发器见 <code>internal/contractregistry/adapters/postgres/releases_test.go</code> 和 <code>internal/publication/adapters/postgres/schema_test.go</code>。SEC-01…36 的正式安全验收状态为 NOT_RUN。</p>
 <h3 id="section-6-8">6.8 已实现的复审与批准状态的权限</h3>
+<blockquote>
+<p>0.37.0 起没有复审，槽位没有 <code>approval_problem</code>（CR-0001，§6.14）。本节保留为 0.23.0–0.36.0 的记录。</p>
+</blockquote>
 <p>本节对应管理 API 0.23.0–0.25.0。下表路径以 <code>/v1/products/{product_id}</code> 开头。这三个版本没有新的操作，也没有新的审计规则，沿用 AC-50、AC-51、AC-03 和 DENY-03、DENY-06。授权矩阵没有改，仍是 53 项，状态仍为 PROPOSED。</p>
 <div aria-label="可横向滚动的安全规则和风险表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
@@ -750,7 +760,7 @@
 <p><strong>“同时只有一个评审”对复审是应用层的保证。</strong> 靠的是事务里锁住修订这一行（F03 §5.11），不是表约束。应用角色在 <code>policyreview.review_request</code> 上仍然只有 <code>SELECT</code> 和 <code>INSERT</code>，改不了、删不掉已有的申请；但能直接写库的人可以给一个修订插入两条未结束的复审。</p>
 <p><strong>新旧版本混跑。</strong> 0.22.0 的进程在迁移后的库上：读复审时应答里没有 <code>supplementary</code>；不能结束复审，决定和撤回都返回 409 <code>REVISION_STATUS_CONFLICT</code>，数据不受影响；照常处理第一次评审，照常提供制品。0.24.0 的放宽和 0.25.0 的 <code>approval_problem</code> 旧进程都没有：只有发布人关系的主体把读取请求发到旧进程仍是 403，旧进程的槽位应答不说明批准的状态。</p>
 <p><strong>后续版本。</strong> 0.33.0 起，批准失效通过槽位的 <code>approval_problem</code> 告知。已生效制品与内部恢复按 §6.12 判定。</p>
-<p>功能回归见 <code>cmd/fabric-api/supplementaryreview_test.go</code>、<code>publisherreads_test.go</code> 和 <code>slotapproval_test.go</code>，使用真实 PostgreSQL 和本地替代 IdP。复审的允许、拒绝和审计见 <code>internal/policyreview/application/supplementary_test.go</code>。表上可以插入两条未结束的复审、应用角色改不了已有的申请，见 <code>internal/policyreview/adapters/postgres/supplementary_test.go</code>；锁住修订这一行见 <code>internal/contractregistry/adapters/postgres/status_test.go</code>，这两处使用真实 PostgreSQL。槽位说出的错误码与激活被拒绝的码逐一相同、契约枚举与之相同，见 <code>internal/transport/http/publication_test.go</code>。SEC-01…36 的正式安全验收状态为 NOT_RUN。</p>
+<p>功能回归（0.36.0 时；复审和槽位批准状态的测试在 0.37.0 删除，现行回归见 §6.14）见 <code>cmd/fabric-api/supplementaryreview_test.go</code>、<code>publisherreads_test.go</code> 和 <code>slotapproval_test.go</code>，使用真实 PostgreSQL 和本地替代 IdP。复审的允许、拒绝和审计见 <code>internal/policyreview/application/supplementary_test.go</code>。表上可以插入两条未结束的复审、应用角色改不了已有的申请，见 <code>internal/policyreview/adapters/postgres/supplementary_test.go</code>；锁住修订这一行见 <code>internal/contractregistry/adapters/postgres/status_test.go</code>，这两处使用真实 PostgreSQL。槽位说出的错误码与激活被拒绝的码逐一相同、契约枚举与之相同，见 <code>internal/transport/http/publication_test.go</code>。SEC-01…36 的正式安全验收状态为 NOT_RUN。</p>
 <h3 id="section-6-9">6.9 已实现的查询与审计读取的权限</h3>
 <p>本节对应管理 API 0.26.0–0.28.0。0.35.0 的审计员任命和 0.36.0 的读取范围见 §6.12。下表路径以 <code>/v1/products/{product_id}</code> 开头。每次请求都从数据库读取当时有效的角色和成员关系；分页令牌不带来任何权限。运行时审计用的是矩阵里已有的 DENY-03 和 AC-10：拒绝记 DENY-03，动作是 <code>publication.read</code>、<code>release.download</code>、<code>release.read</code> 或 <code>audit.search</code>（最后一个就是 AC-29 的动作名）；授予和撤销审计员沿用 AC-10。成功的读取都不记审计。授权矩阵没有改，仍是 53 项，状态仍为 PROPOSED。</p>
 <div aria-label="可横向滚动的安全规则和风险表格" class="table-scroll" role="region" tabindex="0"><table>
@@ -802,7 +812,7 @@
 </tbody>
 </table></div>
 <p><strong>列表不泄露看不到的东西。</strong> 槽位列表的限制是查询的条件：调用人读的 Workspace 里的资产的编号写在位置和 <code>LIMIT</code> 之前，不是取出一页再丢掉别人的，所以每页除最后一页都是满的，页的大小、页数和空页都说不出别的 Workspace 有什么。目标的列表先判权、后看目标：知道产品但一个 Workspace 都读不了的人得到 403，不管目标存不存在；只有能读的人才被告知目标不存在。令牌只记位置，不记调用人，每页重新读调用人现在的成员关系：撤销之后，旧令牌读下一页得到的是没有这个权限的人的答案；别人的令牌交给负责人是 403，交给陌生人是 404，交给另一个 Workspace 的读者，读到的是那个读者自己能读的槽位；别的列表的令牌是 400 <code>PAGE_TOKEN_INVALID</code>。别的产品的目标和资产，对在这里读的人，与不存在的目标和资产答案相同，只差请求的编号；别的产品和别的资产的 Release 编号也一样。读单个槽位锁住发布目标和调用人在 Workspace 的成员关系，放置阻断和撤销成员关系要等这次读完；资产的列表锁成员关系，不锁目标；目标的列表既不锁成员关系，也不锁目标，正在放置阻断时它不等（有测试钉住）。所以目标的列表和同时发生的放置阻断、撤销成员关系之间，没有读单个槽位那样的先后顺序：它读的是读的那一刻的状态。某个槽位的批准核对出了意外（证据或制品损坏）时，整页答 500，与读单个槽位一致。</p>
-<p><strong>按编号下载不看访问阻断，也不重新核对批准（与设计不一致，待裁决）。</strong> <code>GET …/releases/{r}/artifact</code> 只核对调用人能读这个 Release，然后读出字节并核对摘要。它不看发布目标上的阻断，不重新核对批准（批准或豁免到期、批准人的评审人关系被撤销、策略和工具更新），产品暂停也不挡。代码里下载不调用批准核对；测试钉住的是产品暂停、批准到期、批准人失去评审人关系、整个目标或资产或这个 Release 被阻断、受众配置被移除这几种情况下仍然下载成功。理由是：阻断都挂在某个发布目标下（整个目标、目标上的一个资产，或其中一个 Release），按编号下载不经过任何目标，没有“哪个目标的阻断”可看；能下载的人本来就能读修订的原文，Release 的制品是同一批文件的打包。契约里 <code>blockPublicationAccess</code>、<code>getPublishedArtifact</code> 和 <code>getPublicationSlot</code> 的描述已经写明阻断和批准只管经槽位读，<code>getContractRelease</code> 指向了这两个新操作。</p>
+<p><strong>按编号下载不看访问阻断，也不重新核对批准（与设计不一致，待裁决；0.37.0 起没有批准可核对，剩下的是不看阻断）。</strong> <code>GET …/releases/{r}/artifact</code> 只核对调用人能读这个 Release，然后读出字节并核对摘要。它不看发布目标上的阻断，不重新核对批准（批准或豁免到期、批准人的评审人关系被撤销、策略和工具更新），产品暂停也不挡。代码里下载不调用批准核对；测试钉住的是产品暂停、批准到期、批准人失去评审人关系、整个目标或资产或这个 Release 被阻断、受众配置被移除这几种情况下仍然下载成功。理由是：阻断都挂在某个发布目标下（整个目标、目标上的一个资产，或其中一个 Release），按编号下载不经过任何目标，没有“哪个目标的阻断”可看；能下载的人本来就能读修订的原文，Release 的制品是同一批文件的打包。契约里 <code>blockPublicationAccess</code>、<code>getPublishedArtifact</code> 和 <code>getPublicationSlot</code> 的描述已经写明阻断和批准只管经槽位读，<code>getContractRelease</code> 指向了这两个新操作。</p>
 <p>设计正文有五处写的是下载要看阻断，原文如下：</p>
 <ul>
 <li>授权矩阵 AC-16（<code>contract.download</code>，角色 <code>internal_reader</code>）：<code>allow_if</code> 是 <code>release.scope &amp; product.same &amp; accessblock.absent</code>。</li>
@@ -821,6 +831,9 @@
 <p><strong>上线顺序和新旧版本混跑。</strong> 从 0.25.0 升级要重新授权：先执行 <code>fabric-migrate -apply -grant-to &lt;application_role&gt;</code>，应用 <code>productgovernance/009</code> 和 <code>platformoperations/002</code>，并给应用角色补上审计表的 <code>SELECT</code>，再换进程。只迁移不授权，新进程拒绝启动：<code>db: the application role lacks privileges this build needs; run fabric-migrate -apply -grant-to &lt;role&gt;: missing SELECT on platformoperations.audit_record</code>；补救是再执行一次带 <code>-grant-to</code> 的命令，没有东西要迁移。既没有迁移也没有授权时报的是同一条，因为启动时先核对权限、后核对迁移。旧进程在迁移和授权之后照常运行：它只往审计表里写，多出来的 <code>SELECT</code> 不影响它，它的启动检查也不查多出来的权限和迁移。所有进程都升级以后，才授予 <code>internal_auditor</code>：旧进程的契约里没有这个取值，授予请求会被它拒绝（400 <code>REQUEST_INVALID</code>）；库里一有审计员的分配，旧进程列产品角色、读这条分配就返回 500（契约没有声明的取值不发出去），回滚到旧版本也一样。建索引用的是普通 <code>CREATE INDEX</code>，建的时候审计表的写入要等，所以那段时间写操作也会等（F03 §5.12）。0.26.0 和 0.27.0 没有迁移，也不需要授权。</p>
 <p>功能回归见 <code>cmd/fabric-api/</code> 下的 <code>slotlists_test.go</code>、<code>releasedownload_test.go</code>、<code>releaseprovenance_test.go</code> 和 <code>auditreading_test.go</code>，使用真实 PostgreSQL 和本地替代 IdP，其中包括：谁被允许、谁被拒绝，拒绝留下的记录，令牌不带权限，撤销之后读不到下一页，审计员的角色在一次读等待期间被撤销，下载在阻断、批准到期和产品暂停时仍然成功，来源在复审之后不变，记录对不上时答 500 而应答不说原因。用例层的判权和审计见 <code>internal/platformoperations/application/readaudit_test.go</code> 和 <code>internal/productgovernance/application/auditscope_test.go</code>；权限、迁移和启动检查见 <code>internal/platform/db/migrate/auditreading_test.go</code>、<code>internal/platform/db/auditreading_test.go</code> 和 <code>internal/platformoperations/adapters/postgres/audit_test.go</code>；翻页和筛选的查询见 <code>internal/platformoperations/adapters/postgres/auditreader_test.go</code> 和 <code>internal/publication/adapters/postgres/slots_test.go</code>。SEC-01…36 的正式安全验收状态为 NOT_RUN。</p>
 <h3 id="section-6-10">6.10 已实现的工作台查询的权限</h3>
+<blockquote>
+<p>0.37.0 起（CR-0001）评审队列只读历史，不再增长；<code>release_pending</code> 改为“最新修订有检查，而且还没有从它准备出 Release”。读者名单和三档拒绝不变（§6.14）。</p>
+</blockquote>
 <p>本节对应管理 API 0.29.0–0.31.0。下表路径以 <code>/v1/products/{product_id}</code> 开头，<code>GET /v1/caller</code> 除外。每次请求都从数据库读取当时有效的角色和成员关系；分页令牌不带来任何权限。运行时审计用的是矩阵里已有的 DENY-03：拒绝记 DENY-03，动作是 <code>product.read</code>、<code>review.read</code> 或 <code>asset.search</code>；成功的读取都不记审计。授权矩阵没有改，仍是 53 项，状态仍为 PROPOSED。</p>
 <div aria-label="可横向滚动的安全规则和风险表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
@@ -868,11 +881,11 @@
 <p><strong>上线顺序和新旧版本混跑。</strong> 从 0.28.0 升级只需要 <code>fabric-migrate -apply</code>，不需要重新授权，先迁移再换进程：它应用 <code>policyreview/006_review_queue_order</code>，只建一个索引，不改行，应用角色的权限没有变；没有新角色，没有新配置。0.29.0 和 0.31.0 本身没有迁移，也没有状态；0.30.0 起的构建在没迁移的库上拒绝启动：<code>db: the database is not migrated for this build; run fabric-migrate -apply first: migration policyreview/006_review_queue_order is not recorded</code>（迁移测试断言了它是 <code>ErrNotMigrated</code>，并点名这一步没有记录）；补救是执行 <code>fabric-migrate -apply</code>，带不带 <code>-grant-to</code> 都行，没有授权要补。旧进程在迁移之后照常运行：评审的读写语句没有变，启动检查只查它自己计划里的步骤，计划以外的步骤接受（<code>internal/platform/db/open.go</code> 的 <code>checkHistory</code>）；它没有新的路径，对 <code>GET /v1/caller</code>、<code>GET /v1/products/{product_id}/caller</code> 和 <code>GET …/workspaces/{workspace_id}/reviews</code> 答 404 <code>ROUTE_NOT_FOUND</code>；它不认识 <code>check_status</code> 和 <code>release_pending</code>，对带它们的 <code>listAssets</code> 答 400 <code>REQUEST_INVALID</code>（未声明的参数），资产的应答里没有 <code>overview</code>。所以要用这些接口的页面，等所有进程都升级以后再上。建索引用的是普通 <code>CREATE INDEX</code>，建的时候新提交评审的写入要等，读不受影响，没有量过。以后加新的产品角色，仍要等所有进程升级以后才授予：<code>getCallerInProduct</code> 遇到契约没有的角色答 500，与列产品角色一致。回滚到旧程序没有数据要回退，多出的索引旧程序不用，留着即可。</p>
 <p>功能回归见 <code>cmd/fabric-api/</code> 下的 <code>caller_test.go</code>、<code>reviewqueue_test.go</code>、<code>assetoverview_test.go</code>、<code>assetoverview_reach_test.go</code> 和 <code>assetoverview_pages_test.go</code>，使用真实 PostgreSQL 和本地替代 IdP，其中包括：每种角色读到自己的、撤销之后的下一次请求就没有、撤销时另一个会话还没提交也不等、13 种调用人在队列和单读上的答案逐人一致、令牌不带权限、被拒绝时留下的记录、概况跟着每一步变、别的 Workspace 的变化不改变调用人的页、检查的记录被改坏时答 500。用例层的判权和审计见 <code>internal/productgovernance/application/caller_test.go</code>、<code>internal/policyreview/application/queue_test.go</code> 和 <code>internal/apicatalog/application/overview_test.go</code>；队列和概况用的名单与读修订的名单不分叉，见 <code>internal/productgovernance/application/reviewscope_test.go</code> 和 <code>catalogscope_readers_test.go</code>；迁移见 <code>internal/platform/db/migrate/reviewqueue_test.go</code>；传输层和契约见 <code>internal/transport/http/caller_test.go</code>、<code>reviewqueue_test.go</code> 和 <code>assetoverview_test.go</code>；没有跨 schema 的 SQL，见 <code>internal/architecture/schemas_test.go</code>。SEC-01…36 的正式安全验收状态为 NOT_RUN。</p>
 <h3 id="section-6-11">6.11 产品负责人读取契约治理材料（0.32.0）</h3>
-<p>产品负责人可以读取本产品各 Workspace 的资产概况和筛选结果、修订与原文、检查和比较、评审与评审队列、Release 与来源、发布槽位及历史。经槽位读取制品时，服务端核对当前权限、槽位状态和 AccessBlock。批准有效性在内部发布动作和读取中的适用范围见 §6.12。历史 Release 按编号下载沿用 §6.9 的读取语义。</p>
-<p>产品负责人角色只为上述治理材料授予读取权限。提交、决定及发布分别检查 Workspace 内的作者、评审人及发布人授权。产品审计查询需要 <code>internal_auditor</code>，安全阻断与解除需要各自的安全角色。读取仍按所请求的产品隔离，撤销负责人角色后继续按当前 Workspace 成员关系判权。</p>
+<p>产品负责人可以读取本产品各 Workspace 的资产概况和筛选结果、修订与原文、检查和比较、评审与评审队列、Release 与来源、发布槽位及历史。经槽位读取制品时，服务端核对当前权限、槽位状态和 AccessBlock。批准有效性在内部发布动作和读取中的适用范围见 §6.12，0.37.0 起见 §6.14。历史 Release 按编号下载沿用 §6.9 的读取语义。</p>
+<p>产品负责人角色只为上述治理材料授予读取权限。提交、决定及发布分别检查 Workspace 内的作者、评审人及发布人授权；0.37.0 起没有提交和决定，导入和检查归作者，准备 Release 和发布归发布人。产品审计查询需要 <code>internal_auditor</code>，安全阻断与解除需要各自的安全角色。读取仍按所请求的产品隔离，撤销负责人角色后继续按当前 Workspace 成员关系判权。</p>
 <p>权限回归使用真实 PostgreSQL，覆盖同产品多 Workspace、跨产品拒绝、撤权后使用原令牌和分页游标，以及没有评审人授权时拒绝作出评审决定。</p>
 <h3 id="section-6-12">6.12 内部发布、审计与读取权限（0.33.0、0.35.0、0.36.0）</h3>
-<p>0.33.0 起，当前批准用于准备 Release 与激活。批准、豁免或评审人在原范围的授权失效时，内部槽位保留已生效指针，<code>approval_problem</code> 说明重新激活时的拒绝原因。内部恢复验证原批准证据、历史生效记录、独立发布人及 CAS。读取与恢复均受 AccessBlock 约束。</p>
+<p>0.33.0 起，当前批准用于准备 Release 与激活。批准、豁免或评审人在原范围的授权失效时，内部槽位保留已生效指针，<code>approval_problem</code> 说明重新激活时的拒绝原因。内部恢复验证原批准证据、历史生效记录、独立发布人及 CAS。读取与恢复均受 AccessBlock 约束。0.37.0 起准备 Release 依据检查，激活和恢复不再核对批准和发布人独立（§6.14）。</p>
 <p>0.35.0 起，未担任该产品负责人的平台管理员任命与撤销其审计员。受任人须与平台管理员角色及本产品的负责人职责分离。已有审计员授权延续，历史职责重叠由有权管理员复核。产品负责人仍可查询本产品角色，平台管理员带 <code>role=internal_auditor</code> 才可枚举审计员。任命审计使用 AC-08，职责分离拒绝使用 DENY-06，读取审计记录继续要求当前的 <code>internal_auditor</code> 授权。</p>
 <div aria-label="可横向滚动的安全规则和风险表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
@@ -896,7 +909,7 @@
 </tr>
 </tbody>
 </table></div>
-<p>草稿、检查、评审、Release 来源和按编号下载要求治理读取授权。产品级安全角色或 <code>internal_reader</code> 另持治理角色时，按该角色的产品或 Workspace 范围授权。作者、评审人、发布人和安全角色的写动作继续按原权限及职责分离检查。</p>
+<p>草稿、检查、评审、Release 来源和按编号下载要求治理读取授权。产品级安全角色或 <code>internal_reader</code> 另持治理角色时，按该角色的产品或 Workspace 范围授权。作者、发布人和安全角色的写动作按各自权限检查；0.37.0 起评审人没有写动作，职责分离只剩阻断的解除（§6.14）。</p>
 <p>AC-13 和 AC-14 对应资产列表和详情。AC-15 对应 Release 列表与元数据详情，包含所属 Workspace 已准备的 Release。AC-16 对应只读角色经内部槽位下载制品时执行的阻断检查。</p>
 <p>服务端逐次核对当前成员关系和产品授权。槽位读者可查看发布状态，制品读取另查当前授权、受众、目标、发布指针、AccessBlock 和摘要。权限撤销从下一次请求起生效，仍使用原令牌和游标时也重新检查。迁移 010 应用并升级全部 API 副本后，再授予 <code>internal_reader</code>。</p>
 <h3 id="section-6-13">6.13 评审队列在矩阵里的条目（AC-54）</h3>
@@ -919,7 +932,7 @@
 </tr>
 <tr>
 <td>条件</td>
-<td><code>product.same &amp; workspace.same &amp; (role.product_owner OR workspace.reader_role)</code></td>
+<td><code>product.same &amp; workspace.same &amp; (role.product_owner OR workspace.reader_role) &amp; review.history_read_only</code>（CR-0001 加上只读历史）</td>
 </tr>
 <tr>
 <td>默认</td>
@@ -927,7 +940,64 @@
 </tr>
 </tbody>
 </table></div>
-<p>运行时的记录不变：拒绝记 DENY-03，动作 <code>review.read</code>，资源类型 <code>Review</code>，不带资源编号；成功的读取不记审计。同一 Workspace 里互相读得到全部评审（含已撤回、已驳回的）是否可以接受，这一行是否采纳，仍待裁决。发布人和维护者读单个评审（§6.8、§6.12）在 AC-52 里仍没有对应。</p>
+<p>运行时的记录不变：拒绝记 DENY-03，动作 <code>review.read</code>，资源类型 <code>Review</code>，不带资源编号；成功的读取不记审计。同一 Workspace 里互相读得到全部评审（含已撤回、已驳回的）是否可以接受，CR-0001 之后不再需要裁决：评审只是历史，不再增长。这一行是否采纳仍待裁决。发布人和维护者读单个评审（§6.8、§6.12）在 AC-52 里仍没有对应。</p>
+<h3 id="section-6-14">6.14 取消评审后的权限（CR-0001，0.37.0）</h3>
+<p>本节记录管理 API 0.37.0（PR #74）的权限，决定见 <a href="../decisions/CR-0001.md">CR-0001</a>。下表路径以 <code>/v1/products/{product_id}</code> 开头。每次请求都从数据库读取当时有效的角色和成员关系。接口见 F04 §11.5、§11.6，数据见 F03 §5.15。</p>
+<div aria-label="可横向滚动的安全规则和风险表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>操作</th>
+<th>允许范围与状态条件</th>
+<th>拒绝</th>
+<th>运行时审计</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST …/assets/{a}/releases</code></td>
+<td>资产所属 Workspace 的 <code>internal_publisher</code>；产品为 ACTIVE；依据这个修订的一次检查，并通过门禁（F04 §11.6）。发布人可以就是导入或检查这个修订的人</td>
+<td>看不到资产 404；不是发布人 403。门禁不通过是 409 或 422，不是授权拒绝</td>
+<td>成功 AC-04、<code>release.prepare</code>；拒绝 DENY-03</td>
+</tr>
+<tr>
+<td><code>POST …/publication-targets/{t}/assets/{a}/operations</code></td>
+<td>资产所属 Workspace 的 <code>internal_publisher</code>。激活和恢复还要求产品为 ACTIVE、没有阻断、Release 依据的检查是它记录的那次；不要求发布人独立，不核对批准</td>
+<td>不是发布人 403</td>
+<td>成功 AC-04（<code>publication.activate</code>、<code>publication.restore</code>）、AC-05（<code>publication.withdraw</code>）；403 和被阻断记 DENY-03</td>
+</tr>
+<tr>
+<td>读评审、评审历史和 Workspace 的评审队列</td>
+<td>与 0.36.0 相同的读者（§6.6、§6.10、§6.12），读到的是 CR-0001 之前的评审</td>
+<td>与 0.36.0 相同</td>
+<td>与 0.36.0 相同</td>
+</tr>
+<tr>
+<td>授予 <code>internal_reviewer</code></td>
+<td>不再授予</td>
+<td>422 <code>REQUEST_UNPROCESSABLE</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>POST …/reviews</code>、<code>…/reviews/{id}/withdrawal</code>、<code>…/reviews/{id}/decision</code></td>
+<td>已删除</td>
+<td>405 <code>METHOD_NOT_ALLOWED</code>；后两个 404 <code>ROUTE_NOT_FOUND</code></td>
+<td>—</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>取消的双人控制。</strong> CR-0001 取消两处：作者与评审人，作者与发布人（<code>REVIEWER_NOT_INDEPENDENT</code>、<code>PUBLISHER_NOT_INDEPENDENT</code> 不再返回）。同一个人可以导入、检查、准备 Release 并发布。保留的控制：</p>
+<ul>
+<li>检查门禁：不可豁免的规则没通过，不能准备 Release，没有角色和接口能绕过（FR-028）；可豁免的规则逐条豁免，理由和准备人随 Release 记录。</li>
+<li>按角色授权：作者导入和检查，发布人准备 Release 和发布，安全角色阻断和解除。</li>
+<li>访问阻断：由安全管理员建立，由另一位安全评审人解除（403 <code>SECURITY_REVIEWER_NOT_INDEPENDENT</code>，DENY-06），解除之后由发布人另行恢复。</li>
+<li>审计：准备 Release、激活、撤销和恢复都留下 AC-04 或 AC-05 的记录。</li>
+</ul>
+<p>DENY-06 此后只用于阻断解除和审计员任命（§6.12）中的独立性拒绝。</p>
+<p><strong>矩阵。</strong> AC-03（<code>release.approve</code>）、AC-35（<code>review.self_approve</code>）、AC-50（<code>review.request</code>）和 AC-51（<code>review.withdraw</code>）的状态改为 <code>RETIRED</code>，新列 <code>change_ref</code> 为 <code>CR-0001</code>。编号保留，历史审计记录仍引用它们。退役的行不再出现在策略草案的 <code>permit_rules</code> 和 <code>negative_rules</code> 里，另列在 <code>retired_rules</code>。AC-04 的条件去掉 <code>decision.valid</code>。AC-52、AC-53、AC-54 改为只读历史：条件加上 <code>review.history_read_only</code>，AC-53 加上 <code>membership.granted_before_cr0001 &amp; read_only</code>；这四行的 <code>change_ref</code> 也是 <code>CR-0001</code>。矩阵仍是 54 行。<code>scripts/validate_f05.py</code> 为此接受 <code>RETIRED</code> 状态，并要求退役的行写明 <code>change_ref</code>。</p>
+<p><strong>威胁和场景。</strong> 威胁登记册的 TH-05、TH-20 和安全场景 SEC-10、SEC-13、SEC-35 针对评审和批准，现已标明由 CR-0001 取代或接受，编号和 <code>NOT_RUN</code> 状态保留。TH-20（作者评审自己的发布）的风险由 CR-0001 接受，缓释是上面保留的控制。SEC-23（解除阻断须另一人复核）不变。</p>
+<p><strong>旧数据。</strong> <code>internal_reviewer</code> 的已有成员关系保留，持有人能读原来读得到的修订、检查和评审，不能写。迁移把开着的评审结束为 <code>WITHDRAWN</code>，结束人是系统主体 <code>urn:idp-api-fabric:system</code>，不是任何人（F03 §5.15）。审计表里引用 AC-03、AC-50、AC-51 和 DENY-06 的已有记录不变。</p>
+<p><strong>仍待裁决。</strong> 发布人、维护者读修订和评审（§6.8、§6.12）这处放宽，在 AC-52、AC-53 里仍没有对应。按编号下载不看阻断（§6.9）不受 CR-0001 影响。</p>
+<p>功能回归见 <code>cmd/fabric-api/</code> 下的 <code>releases_test.go</code>、<code>releaseprovenance_test.go</code>、<code>publishedrelease_test.go</code>、<code>pastreviews_test.go</code> 和 <code>reviewer_test.go</code>，以及 <code>internal/policyreview/domain/release_test.go</code>、<code>internal/policyreview/application/release_test.go</code> 和迁移测试 <code>internal/platform/db/migrate/releasefromcheck_test.go</code>。SEC-01…36 的正式安全验收状态为 NOT_RUN。</p>
 <h2 id="section-7">7. 授权策略表达与执行边界</h2>
 <p>本阶段提供 <code>governance/policies/F05_Authorization_Policy_DRAFT.json</code>，是<strong>可机器解析的策略结构样例</strong>，包含 <code>deny_overrides</code>、资源关系、显式 Allow 条件及关键禁止项；这不是运行中的 PDP，不可由 CI “JSON 通过”就宣称安全实现完成。</p>
 <div aria-label="可横向滚动的安全规则和风险表格" class="table-scroll" role="region" tabindex="0"><table>
@@ -946,13 +1016,13 @@
 </tr>
 <tr>
 <td><code>release.approve</code></td>
-<td>独立 Reviewer、策略/摘要/目标一致，审查有效</td>
-<td>Author 自批准、策略变更后沿用旧结论</td>
+<td>CR-0001 起退役（AC-03）：没有批准，Release 依据检查门禁准备（F04 §11.6）</td>
+<td>不可豁免规则没通过、检查不是现行策略下的</td>
 </tr>
 <tr>
 <td><code>publication.activate</code></td>
-<td>Release READY，决定有效，Target 产品一致，CAS generation 匹配</td>
-<td>存在 Block、审批过期、发布操作者无权限</td>
+<td>Release READY，依据的检查是它记录的那次（CR-0001 之前为决定有效），Target 产品一致，CAS generation 匹配</td>
+<td>存在 Block、发布操作者无权限</td>
 </tr>
 <tr>
 <td><code>publication.withdraw</code></td>
@@ -984,7 +1054,7 @@
 <p><strong>缓存与 CDN</strong>：私有内容默认 <code>Cache-Control: private, no-store</code>，避免身份无关的共享缓存；若使用可缓存的公开内容，必须按产品/受众/环境/版本隔离键，配置撤销 purge 和 Edge deny。缓存 Key 的组织范围、授权状态不能依赖前端参数决定。</p>
 <h2 id="section-9">9. 安全发布、紧急撤销与传播证明</h2>
 <p><strong>单一生效事实</strong>：<code>PublicationSlot(target_id, api_asset_id)</code> 的 CAS Generation 是主数据库中单个 API 在指定目标的当前发布指针；<code>AccessBlock</code> 是独立且优先的阻断事实（F03 INV-08/09）。公开内容还必须通过发布策略和独立安全扫描，不能把 <code>PortalProjection READY</code> 当成安全 Allow。</p>
-<figure class="architecture-figure"><div class="fig-label">FIGURE 06 · 发布与紧急撤销的安全顺序</div><div class="fig-grid cols-3"><div class="fig-lane"><strong>正常发布</strong><span>Reviewer + Check Evidence</span><div class="fig-mini">Release Digest/Scope 验证</div><div class="fig-mini">无 AccessBlock · CAS 更新 Slot</div><div class="fig-mini">Portal 再验证 + 发布投影</div></div><div class="fig-lane"><strong>错误公开 / 紧急撤销</strong><span>认证安全主体创建 Deny</span><div class="fig-mini">写入单调 BlockGeneration</div><div class="fig-mini">源站/鉴权层立即拒绝后续请求</div><div class="fig-mini">CAS 撤销 Slot / 回退到安全版本</div></div><div class="fig-lane"><strong>传播与恢复</strong><span>触发 CDN/Edge purge + 对账</span><div class="fig-mini">记录 ACK、边缘实测与时间</div><div class="fig-mini">未确认显示 UNKNOWN / AT_RISK</div><div class="fig-mini">具权复核后才允许 Unblock</div></div></div><div class="fig-separator">Deny 的“记录已提交” ≠ 全球 Edge 全部清除；对已下载内容不存在保证召回的技术手段</div><figcaption>顺序是安全目标而非已实现 SLA。阻断目标、客户端可观测性和传播时间指标必须在 F07/F08 实测并批准。</figcaption></figure>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 06 · 发布与紧急撤销的安全顺序</div><div class="fig-grid cols-3"><div class="fig-lane"><strong>正常发布</strong><span>Check Evidence + 豁免</span><div class="fig-mini">Release Digest/Scope 验证</div><div class="fig-mini">无 AccessBlock · CAS 更新 Slot</div><div class="fig-mini">Portal 再验证 + 发布投影</div></div><div class="fig-lane"><strong>错误公开 / 紧急撤销</strong><span>认证安全主体创建 Deny</span><div class="fig-mini">写入单调 BlockGeneration</div><div class="fig-mini">源站/鉴权层立即拒绝后续请求</div><div class="fig-mini">CAS 撤销 Slot / 回退到安全版本</div></div><div class="fig-lane"><strong>传播与恢复</strong><span>触发 CDN/Edge purge + 对账</span><div class="fig-mini">记录 ACK、边缘实测与时间</div><div class="fig-mini">未确认显示 UNKNOWN / AT_RISK</div><div class="fig-mini">具权复核后才允许 Unblock</div></div></div><div class="fig-separator">Deny 的“记录已提交” ≠ 全球 Edge 全部清除；对已下载内容不存在保证召回的技术手段</div><figcaption>顺序是安全目标而非已实现 SLA。阻断目标、客户端可观测性和传播时间指标必须在 F07/F08 实测并批准。</figcaption></figure>
 <h3 id="section-9-1">9.1 三种撤销级别</h3>
 <ul>
 <li><strong>敏感内容泄露（SEV 提议为高）</strong>：阻断 Target/Slot/Artifact 下载 + 禁止缓存继续访问，评估泄露范围，必要时轮换泄露的凭证；不能仅修改 release pointer。</li>
@@ -1053,7 +1123,7 @@
 <li><strong>Workers</strong>：不能直接使用控制平面的全局 DBA 或平台管理员权限；使用按作业类型/范围隔离的凭证、Lease/Fencing Token 与资源预算；导入输入沙箱与发布任务隔离。</li>
 <li><strong>外部 IAM/Gateway</strong>：通过 Ports/ACL 集成；断连时真实凭证与业务调用状态标识 <code>UNKNOWN/STALE</code>；不得为了体验把过期授权当作有效。</li>
 <li><strong>SSRF and egress</strong>：Git/文件拉取器和 Explorer 不共用不受限网络出站；配置 DNS、网段、代理与审计。CI 不能以“构建阶段”绕过正式 Publication 规则。</li>
-<li><strong>策略来源</strong>：对规则和部署制品进行固定 digest、签名/受控来源校验；第三方政策更新后原审批不能自动沿用。</li>
+<li><strong>策略来源</strong>：对规则和部署制品进行固定 digest、签名/受控来源校验；第三方政策更新后，准备新的 Release 须重新检查（CR-0001 之前为原审批不能自动沿用）。</li>
 </ul>
 <h2 id="section-13">13. 加密、密钥及凭证生命周期</h2>
 <p>生产凭证以引用方式使用受管理 Secret Vault/KMS/云服务；应用数据库只持有最小元数据，密钥访问使用工作负载身份与用途隔离。TLS 必须覆盖公开入口和敏感内部链路；存储加密、备份加密、对象加密、密钥轮换和应急吊销应统一设计。</p>
@@ -1075,9 +1145,9 @@
 <td>不记录 Access Token、密码或详细私有对象名称</td>
 </tr>
 <tr>
-<td>Release 审核</td>
-<td>Revision/Policy/Check Digest、Reviewer、风险/有效期</td>
-<td>审批历史不可因新批准而静默覆盖</td>
+<td>Release 准备</td>
+<td>Revision/Policy/Check Digest、豁免及理由、准备人（CR-0001 之前为 Reviewer、风险/有效期）</td>
+<td>历史评审只读，不因新 Release 而改写</td>
 </tr>
 <tr>
 <td>Publication / AccessBlock</td>
@@ -1125,7 +1195,7 @@
 </tr>
 <tr>
 <td>Release integrity</td>
-<td>正式制品 digest 与 manifest 校验、审批绑定内容和策略版本</td>
+<td>正式制品 digest 与 manifest 校验、检查绑定内容和策略版本</td>
 <td>设计完成，真实加密/存储验证 NOT_RUN</td>
 </tr>
 <tr>
@@ -1163,7 +1233,7 @@
 <p><strong>不允许编造</strong> SLA、RPO、RTO、撤销传播秒数、吞吐量或“零泄露”指标。要先由产品/安全/运维 Owner 定义环境、规模、预算和测试方法，再形成批准值。</p>
 <h2 id="section-19">19. CargoPai 贯通案例：发布、撤销与跨产品拒绝</h2>
 <p>所有下列 ID 仅为 <code>DESIGN_EXAMPLE</code>：<code>prod:cargopai</code>、<code>workspace:integrations</code>、<code>asset:shipment-api</code>、<code>release:R-0007</code>、<code>target:partner-sandbox</code>、<code>slot:shipment-api</code>；不是已部署资源。</p>
-<p><strong>正常路径</strong>：企业员工从 IdP 登录 → Workspace Membership 校验 → 固定 Revision 与策略摘要检查 → 独立 Reviewer 审批 → Publisher 对 <code>target×asset</code> CAS 发布 → 外部开发者组织取得对应 Product/Audience/Environment Grant → 受控 BFF 再核对当前 Slot/Block 并输出 Reference。外部 OAuth 对真实业务 API 的调用由产品 Gateway 单独判断。</p>
+<p><strong>正常路径</strong>：企业员工从 IdP 登录 → Workspace Membership 校验 → 固定 Revision 与策略摘要检查 → 检查门禁与豁免（CR-0001 起不经审批） → Publisher 准备 Release 并对 <code>target×asset</code> CAS 发布 → 外部开发者组织取得对应 Product/Audience/Environment Grant → 受控 BFF 再核对当前 Slot/Block 并输出 Reference。外部 OAuth 对真实业务 API 的调用由产品 Gateway 单独判断。</p>
 <p><strong>跨产品负例</strong>：即使开发者使用相同邮箱注册了 IDP Parcel，只要缺少 CargoPai 对应 Grant，搜索、详情、Release 历史、预签名下载和 Portal 页面都拒绝；Gateway 的业务 Token 也不能被 Fabric 自动当作文档授权证明。</p>
 <p><strong>错误发布负例</strong>：安全管理员按经批准的应急机制对 <code>prod:cargopai / partner-sandbox / shipment-api</code> 建立 <code>AccessBlock</code>；读侧先拒绝，再 CAS 回退指针，触发 CDN purge、收集 Edge ACK。未知的边缘传播保持 <code>UNKNOWN/AT_RISK</code>，不是完成证明；历史 Release 保持不可变供取证。不同 Asset（如 Tracking API）不被此 Slot 回退误伤，除非安全 Block 明确以 Target 为作用域。</p>
 <h2 id="section-20">20. 机器可读安全资产与验证计划</h2>
@@ -1210,7 +1280,7 @@
 </table></div>
 <p><strong>本地 <code>validate_f05.py</code> PASS 仅表示文件格式、关键设计 ID 和跨文件引用一致。</strong> 真实安全测试执行环境、测试身份、授权状态、接口行为、CDN/Edge 与 IAM/Gateway 结果归 F07/F08。所有验收场景初始 <code>NOT_RUN</code>，不能静默改为 PASS。</p>
 <h3 id="section-20-1">20.1 安全场景测试最低覆盖</h3>
-<p>测试必须至少包括以下类别：跨 Product/Workspace/DeveloperOrg 的 BOLA/BFLA、匿名访问私有 Release、直接对象 URL、搜索与缓存泄露、过期批准和多发布者 CAS、撤销并发、不可达 IAM/Policy/Edge、旧 Session、JWT <code>iss/aud/alg</code> 错配、CSRF/CORS、恶意 <code>$ref</code>、DNS Rebinding、压缩炸弹、XSS、Explorer 任意 URL、Webhook 重放、Worker 越权、审计导出、恢复后旧 Block 重新生效。每项有明确“预期拒绝/不泄露”断言。</p>
+<p>测试必须至少包括以下类别：跨 Product/Workspace/DeveloperOrg 的 BOLA/BFLA、匿名访问私有 Release、直接对象 URL、搜索与缓存泄露、过期检查（<code>POLICY_STALE</code>）和多发布者 CAS、撤销并发、不可达 IAM/Policy/Edge、旧 Session、JWT <code>iss/aud/alg</code> 错配、CSRF/CORS、恶意 <code>$ref</code>、DNS Rebinding、压缩炸弹、XSS、Explorer 任意 URL、Webhook 重放、Worker 越权、审计导出、恢复后旧 Block 重新生效。每项有明确“预期拒绝/不泄露”断言。</p>
 <h2 id="section-21">21. 与 F01–F04 的规范、模型与需求追溯</h2>
 <div aria-label="可横向滚动的安全规则和风险表格" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
@@ -1233,7 +1303,7 @@
 </tr>
 <tr>
 <td>F01 FR-027–036</td>
-<td>审查职责分离、PublicationSlot、AccessBlock、撤销</td>
+<td>审查记录（CR-0001 起不设评审人）、PublicationSlot、AccessBlock、撤销</td>
 <td>§6–9；SEC-…</td>
 </tr>
 <tr>
@@ -1336,7 +1406,7 @@
 </tr>
 </tbody>
 </table></div>
-<p><strong>F06（双门户）承接</strong>：独立登录与组织切换、内部审批与事故界面、外部授权状态/未知状态、版本和可见性、Explorer 安全提示、错误空态及可访问性。<strong>F07（工程）承接</strong>：Go PEP/PDP、PostgreSQL RLS 适用性、Session/CSP、Worker Sandbox、Vault、CDN 验证、可观测性、备份与真实测试。<strong>F08（验收）承接</strong>：全部 Scenario 的真实验证、责任人批准、R1/R2/R3 风险复核及六道门禁。</p>
+<p><strong>F06（双门户）承接</strong>：独立登录与组织切换、内部检查、准备 Release 与事故界面（CR-0001 起没有审批）、外部授权状态/未知状态、版本和可见性、Explorer 安全提示、错误空态及可访问性。<strong>F07（工程）承接</strong>：Go PEP/PDP、PostgreSQL RLS 适用性、Session/CSP、Worker Sandbox、Vault、CDN 验证、可观测性、备份与真实测试。<strong>F08（验收）承接</strong>：全部 Scenario 的真实验证、责任人批准、R1/R2/R3 风险复核及六道门禁。</p>
 <h2 id="section-23">23. 参考依据与采用边界</h2>
 <ol>
 <li>OWASP ASVS 5.0.0 (2025-05-30)：https://asvs.owasp.org/ ；用于形成安全控制验证要求，不是合规证书。</li>

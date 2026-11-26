@@ -12,7 +12,7 @@ ContractRegistry,ContractRevision,ContractSource,source_id,api_asset_id+source_k
 ContractRegistry,ContractRevision,SourceSnapshot,source_snapshot_id,source_id+source_digest,immutable source fingerprint,N per Source,HIST,MVP
 ContractRegistry,ContractRevision,ContractRevision,revision_id,api_asset_id+source_snapshot_id,api_asset_id+revision_sequence,N per Asset,HIST,MVP
 ContractRegistry,ContractRevision,RefClosureManifest,ref_manifest_id,revision_id+closure_digest,revision_id+closure_digest,1 per registered Revision,HIST,MVP
-ContractRegistry,ContractRelease,ContractRelease,release_id,api_asset_id+revision_id+decision_ref,api_asset_id+release_label,N per Revision,HIST,MVP
+ContractRegistry,ContractRelease,ContractRelease,release_id,api_asset_id+revision_id+check_run_id,api_asset_id+release_label,N per Revision,HIST,MVP
 ContractRegistry,ContractRelease,ArtifactManifest,artifact_manifest_id,release_id+artifact_digest,release_id+manifest_digest,1 per READY Release,HIST,MVP
 ContractRegistry,ContractRelease,IntegrityIncident,integrity_incident_id,release_id+detected_at,incident_id,N per Release,HIST,V1
 PolicyReview,PolicySnapshot,PolicySnapshot,policy_snapshot_id,product_id+policy_digest,policy_snapshot_id,N per Product,HIST,MVP
