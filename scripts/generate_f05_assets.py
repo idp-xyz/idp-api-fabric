@@ -16,7 +16,8 @@ matrix_rows_raw=[
  ('internal_author','ContractRevision','revision.create','internal','workspace.member & product.same & action.role','control-plane','DENY'),
  ('internal_author','ContractRevision','revision.read','internal','workspace.member & product.same & action.role','control-plane','DENY'),
  ('internal_reviewer','ReviewDecision','release.approve','internal','review.assignment & independent.reviewer & digest.valid & policy.current','control-plane','DENY'),
- ('internal_publisher','PublicationSlot','publication.activate','internal','role.publisher & product.same & target.scope & decision.valid & block.absent & cas.match','control-plane','DENY'),
+ # CR-0001 drops decision.valid: a release rests on the check it was prepared on.
+ ('internal_publisher','PublicationSlot','publication.activate','internal','role.publisher & product.same & target.scope & block.absent & cas.match','control-plane','DENY'),
  ('internal_publisher','PublicationSlot','publication.withdraw','internal','role.publisher & product.same & slot.scope & cas.match','control-plane','DENY'),
  ('security_admin','AccessBlock','security.block','internal','role.security & target.scope & incident.logged','control-plane','DENY'),
  ('security_reviewer','AccessBlock','security.unblock','internal','role.security_review & recovery.approved & safety.rechecked','control-plane','DENY'),
@@ -66,19 +67,26 @@ matrix_rows_raw=[
  ('product_owner','ProductAudienceConfig','audience_config.change','internal','role.product_owner & product.same & product.active & row.in_force & cas.match','control-plane','DENY_OR_404'),
  ('product_owner','ProductAudienceConfig','audience_config.remove','internal','role.product_owner & product.same & row.in_force','control-plane','DENY_OR_404'),
  ('product_owner','Product','product.change_brand','internal','role.product_owner & product.same & product.active & cas.match','control-plane','DENY_OR_404'),
- # Contract review operations in F05 section 6.6. A decision reuses AC-03;
- # refusals reuse DENY-03 and, for a reviewer who had a part, DENY-06.
+ # Contract review operations in F05 section 6.6. A decision reused AC-03;
+ # refusals reused DENY-03 and, for a reviewer who had a part, DENY-06.
+ # CR-0001 retires the writes (AC-50, AC-51); the reads stay, of history only.
  ('internal_author','Review','review.request','internal','workspace.member & product.same & product.active & action.role & revision.draft_or_withdrawn & check.current & check.unblocked','control-plane','DENY_OR_404'),
  ('internal_author','Review','review.withdraw','internal','workspace.member & product.same & action.role & review.requester_same & review.open','control-plane','DENY_OR_404'),
- ('internal_author_or_reviewer','Review','review.read','internal','workspace.member & product.same & action.role & revision.same','control-plane','DENY_OR_404'),
- ('internal_reviewer','ContractRevision','revision.read','internal','workspace.member & product.same & action.role','control-plane','DENY_OR_404'),
+ ('internal_author_or_reviewer','Review','review.read','internal','workspace.member & product.same & action.role & revision.same & review.history_read_only','control-plane','DENY_OR_404'),
+ ('internal_reviewer','ContractRevision','revision.read','internal','workspace.member & product.same & action.role & membership.granted_before_cr0001 & read_only','control-plane','DENY_OR_404'),
  # The review queue in F05 sections 6.10 and 6.13: the reviews of a whole
  # workspace, with no revision named. Refusals reuse DENY-03.
- ('product_owner_or_governance_reader','Review','review.read','internal','product.same & workspace.same & (role.product_owner OR workspace.reader_role)','control-plane','DENY_OR_404'),
+ ('product_owner_or_governance_reader','Review','review.read','internal','product.same & workspace.same & (role.product_owner OR workspace.reader_role) & review.history_read_only','control-plane','DENY_OR_404'),
 ]
+# CR-0001 (decisions/CR-0001.md) retires the review and approval rules. They
+# keep their numbers, which audit records cite, and permit nothing any more.
+retired={'AC-03':'CR-0001','AC-35':'CR-0001','AC-50':'CR-0001','AC-51':'CR-0001'}
+# Rules CR-0001 changed but kept.
+changed={'AC-04':'CR-0001','AC-52':'CR-0001','AC-53':'CR-0001','AC-54':'CR-0001'}
 m=[]
 for i,(principal,res,action,channel,conditions,pep,fail) in enumerate(matrix_rows_raw,1):
- m.append(dict(rule_id=f'AC-{i:02d}',principal_role=principal,resource=res,action=action,channel=channel,allow_if=conditions,pep=pep,default_fail=fail,status='PROPOSED',runtime_verification='NOT_RUN'))
+ rid=f'AC-{i:02d}'
+ m.append(dict(rule_id=rid,principal_role=principal,resource=res,action=action,channel=channel,allow_if=conditions,pep=pep,default_fail=fail,status='RETIRED' if rid in retired else 'PROPOSED',runtime_verification='NOT_RUN',change_ref=retired.get(rid) or changed.get(rid,'')))
 write_csv(POL/'F05_Access_Matrix.csv',list(m[0]),m)
 
 # Threat registry: STRIDE, boundaries, attack, control IDs, assigned scenarios
@@ -87,7 +95,7 @@ threat_data=[
  ('S','P0','service identity','CI leaked access token reused as admin','A01/A09','SEC-03'),
  ('S','P0','webhook source','Unsigned webhook or replayed Git event','A06','SEC-17'),
  ('T','P0','Registry','Mutable Release blob replaced after approval','A03/A05','SEC-15'),
- ('T','P0','Policy Review','Reviewer decision reused after policy digest changes','A05/A11','SEC-13'),
+ ('T','P0','Policy Review','Reviewer decision reused after policy digest changes (superseded by CR-0001: no approvals; a new release needs a check under the current policy)','A05/A11','SEC-13'),
  ('T','P0','Publication','Slot CAS races overwrite safe Release','A05','SEC-14'),
  ('R','P1','Audit','Approval cannot be tied to actor and immutable evidence','A08','SEC-23'),
  ('R','P1','Emergency operations','Break-glass actions not independently reviewed','A08/A11','SEC-24'),
@@ -102,7 +110,7 @@ threat_data=[
  ('D','P0','Artifact import','ZIP bomb / oversized expanded file','A06','SEC-12'),
  ('D','P1','Control Plane','Abusive search/API requests exceed quota','A04/A06','SEC-25'),
  ('E','P0','Admin UI','Product admin escalates to platform admin','A02/A11','SEC-09'),
- ('E','P0','Reviewer','Author reviews own high-risk release','A11','SEC-10'),
+ ('E','P0','Reviewer','Author reviews own high-risk release (risk accepted by CR-0001: no review step; check gate, roles, access blocks and audit remain)','A11','SEC-10'),
  ('E','P0','Resolver','External $ref triggers SSRF metadata/internal network','A06','SEC-16'),
  ('E','P0','Explorer','User-supplied URL turns Explorer into open proxy','A06/A07','SEC-18'),
  ('E','P0','Worker','Trusted Worker uses broad credentials across products','A09','SEC-19'),
@@ -141,10 +149,10 @@ scenario_spec=[
  ('cache','Private BFF response entered shared CDN cache','private response cannot be publicly retrieved','MVP'),
  ('withdraw','AccessBlock created during public leak, CDN purge delayed','origin denies; edge status remains UNKNOWN/AT_RISK until proven','MVP'),
  ('roles','Product admin attempts global security action','deny via server-side action and scope','MVP'),
- ('roles','Contract author attempts to approve own high-risk revision','reject; independent review required','MVP'),
+ ('roles','Contract author attempts to approve own high-risk revision','superseded by CR-0001 (no approval step; the author may prepare and publish); was: reject; independent review required','MVP'),
  ('input','Nested/recursive schema bombs parser','bounded timeout/memory; rejects without side effects','MVP'),
  ('input','Archive expands beyond extraction quota or uses ../ path','reject; no escape/no partial release','MVP'),
- ('review','Policy changes after signed decision, then activation attempted','require new review based on new policy digest','MVP'),
+ ('review','Policy changes after signed decision, then activation attempted','superseded by CR-0001 (an existing release stays publishable; preparing a new one needs a check under the new policy digest); was: require new review based on new policy digest','MVP'),
  ('publish','Concurrent CAS activation on same Target×APIAsset Slot','at most one winner; conflict reported','MVP'),
  ('integrity','Immutable Release object differs from signed/content manifest','block reading/publication, audit integrity incident','MVP'),
  ('ssrf','Remote $ref resolves or redirects to private/metadata IP','no request to forbidden IP; safe reject','MVP'),
@@ -166,7 +174,7 @@ scenario_spec=[
  ('download','Expired signed blob URL still accepted by cache','reject/no-store or bound short expiry and risk documented','V1'),
  ('denial','Policy engine unavailable during write/high-risk read','deny and produce INDETERMINATE operational status','MVP'),
  ('recovery','Edge reports partial ACK after origin blocked','UNKNOWN/AT_RISK rather than success','MVP'),
- ('approval','Target audience changed after reviewer approval','invalid old approval, new scope review required','MVP'),
+ ('approval','Target audience changed after reviewer approval','superseded by CR-0001 (no approval scope); was: invalid old approval, new scope review required','MVP'),
  ('multi-slot','Withdrawal of Shipment slot alters Tracking slot','other API slot remains unchanged unless target-wide block','MVP'),
 ]
 s=[]
@@ -234,8 +242,9 @@ policy={
    {'id':'DENY-07','when':'policy_source_or_authorization_indeterminate'},
    {'id':'DENY-08','when':'operation_or_method_not_allowlisted'},
  ],
- 'permit_rules':[{'rule_id':row['rule_id'],'principal_role':row['principal_role'], 'action':row['action'],'resource':row['resource'],'when_all':row['allow_if'].split(' & ')} for row in m if not row['allow_if'].startswith('never_allow')],
- 'negative_rules':[row['rule_id'] for row in m if row['allow_if'].startswith('never_allow')],
+ 'permit_rules':[{'rule_id':row['rule_id'],'principal_role':row['principal_role'], 'action':row['action'],'resource':row['resource'],'when_all':row['allow_if'].split(' & ')} for row in m if not row['allow_if'].startswith('never_allow') and row['status']!='RETIRED'],
+ 'negative_rules':[row['rule_id'] for row in m if row['allow_if'].startswith('never_allow') and row['status']!='RETIRED'],
+ 'retired_rules':[{'rule_id':row['rule_id'],'change_ref':row['change_ref']} for row in m if row['status']=='RETIRED'],
  'notes':['No runtime policy engine is provided by this JSON design sample.','Server must load trusted relations and enforce object-level authorization on every read and write.','No real customer secret should be used in fixtures.']
 }
 (POL/'F05_Authorization_Policy_DRAFT.json').write_text(json.dumps(policy,ensure_ascii=False,indent=2)+'\n',encoding='utf8')

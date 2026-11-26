@@ -3,7 +3,7 @@ TH-01,S,P0,external IdP,"Forged OIDC issuer, tokens with wrong audience",A01/A02
 TH-02,S,P0,service identity,CI leaked access token reused as admin,A01/A09,SEC-03,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
 TH-03,S,P0,webhook source,Unsigned webhook or replayed Git event,A06,SEC-17,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
 TH-04,T,P0,Registry,Mutable Release blob replaced after approval,A03/A05,SEC-15,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
-TH-05,T,P0,Policy Review,Reviewer decision reused after policy digest changes,A05/A11,SEC-13,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-05,T,P0,Policy Review,Reviewer decision reused after policy digest changes (superseded by CR-0001: no approvals; a new release needs a check under the current policy),A05/A11,SEC-13,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
 TH-06,T,P0,Publication,Slot CAS races overwrite safe Release,A05,SEC-14,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
 TH-07,R,P1,Audit,Approval cannot be tied to actor and immutable evidence,A08,SEC-23,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
 TH-08,R,P1,Emergency operations,Break-glass actions not independently reviewed,A08/A11,SEC-24,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
@@ -18,7 +18,7 @@ TH-16,D,P0,Contract Parser,Recursive YAML reference CPU or memory exhaustion,A06
 TH-17,D,P0,Artifact import,ZIP bomb / oversized expanded file,A06,SEC-12,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
 TH-18,D,P1,Control Plane,Abusive search/API requests exceed quota,A04/A06,SEC-25,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
 TH-19,E,P0,Admin UI,Product admin escalates to platform admin,A02/A11,SEC-09,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
-TH-20,E,P0,Reviewer,Author reviews own high-risk release,A11,SEC-10,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
+TH-20,E,P0,Reviewer,"Author reviews own high-risk release (risk accepted by CR-0001: no review step; check gate, roles, access blocks and audit remain)",A11,SEC-10,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
 TH-21,E,P0,Resolver,External $ref triggers SSRF metadata/internal network,A06,SEC-16,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
 TH-22,E,P0,Explorer,User-supplied URL turns Explorer into open proxy,A06/A07,SEC-18,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN
 TH-23,E,P0,Worker,Trusted Worker uses broad credentials across products,A09,SEC-19,TBD,REVIEW_REQUIRED,PROPOSED,NOT_RUN

@@ -4,7 +4,8 @@
 **状态**：工程设计候选，**待具名技术、安全、运维评审**。本文件不是生产代码完成报告，未执行的真实测试均为 `NOT_RUN`。  
 **权威输入**：F01（FR-001–071 / NFR-01–18 / AT-01–12）、F02（AI-01–07）、F03（INV-01–13 / DM-01–18）、F04（F04-GOV-001–028）、F05（授权矩阵 / STRIDE）、F06（A/B/C 两套 LOCAL_MOCK 门户），以及上位 `IDP-SCG-STD-001`。  
 **架构决策状态**：ADR-0001–0007 **均为 Proposed**；本文对设计作具体化，不代表既有 ADR 已获正式批准。  
-**实施边界**：F07 是工程设计、工具链候选、验证方法和证据结构；不代替 F08 的正式验收，不在本阶段宣称 Go 业务后台已实现。
+**实施边界**：F07 是工程设计、工具链候选、验证方法和证据结构；不代替 F08 的正式验收，不在本阶段宣称 Go 业务后台已实现。  
+**变更**：[CR-0001](../decisions/CR-0001.md)（2026-11-26 已决定）内部使用不再设审批，准备 Release 以检查为准。本文中的 ReviewDecision、审核职责分离和审批绑定是取消之前的候选设计，见 §3.2 用例表后的说明。
 
 ## 0. 执行摘要与工程设计裁决
 
@@ -102,6 +103,8 @@ idp-api-fabric/                        # 当前目录只含设计资产；以下
 | `PublishSlot` | Target×Asset + expected_generation +有效审批 | CAS 冲突 `412/409`，不静默重放覆盖 |
 | `BlockPublication` | 高优先级阻断/撤销，服务端读路径同步生效 | CDN 传播未证明为 UNKNOWN/AT_RISK |
 | `ResolveDeveloperRead` | 当前 Principal、Product、Audience、Environment、Grant、Slot generation | 私有内容拒绝，不复用跨产品缓存 |
+
+> CR-0001 起没有 `RecordDecision`：`PrepareRelease` 依据修订的一次检查和准备时的豁免，检查须在现行策略和工具下完成，不可豁免的规则没通过时拒绝；`PublishSlot` 只核对 Release 依据的检查是它记录的那次，不再要求有效审批和发布人独立。实现见 `internal/policyreview/domain/release.go`、F03 §5.15 和 F04 §11.6。下文 F06-A 的“独立审核”和 L6 的“Review bind”按同样方式理解。
 
 ## 4. HTTP API、事件与生成代码的兼容策略
 

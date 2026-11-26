@@ -55,7 +55,8 @@
 <strong>状态</strong>：工程设计候选，<strong>待具名技术、安全、运维评审</strong>。本文件不是生产代码完成报告，未执行的真实测试均为 <code>NOT_RUN</code>。<br/>
 <strong>权威输入</strong>：F01（FR-001–071 / NFR-01–18 / AT-01–12）、F02（AI-01–07）、F03（INV-01–13 / DM-01–18）、F04（F04-GOV-001–028）、F05（授权矩阵 / STRIDE）、F06（A/B/C 两套 LOCAL_MOCK 门户），以及上位 <code>IDP-SCG-STD-001</code>。<br/>
 <strong>架构决策状态</strong>：ADR-0001–0007 <strong>均为 Proposed</strong>；本文对设计作具体化，不代表既有 ADR 已获正式批准。<br/>
-<strong>实施边界</strong>：F07 是工程设计、工具链候选、验证方法和证据结构；不代替 F08 的正式验收，不在本阶段宣称 Go 业务后台已实现。</p>
+<strong>实施边界</strong>：F07 是工程设计、工具链候选、验证方法和证据结构；不代替 F08 的正式验收，不在本阶段宣称 Go 业务后台已实现。<br/>
+<strong>变更</strong>：<a href="../decisions/CR-0001.md">CR-0001</a>（2026-11-26 已决定）内部使用不再设审批，准备 Release 以检查为准。本文中的 ReviewDecision、审核职责分离和审批绑定是取消之前的候选设计，见 §3.2 用例表后的说明。</p>
 <h2 id="section-0">0. 执行摘要与工程设计裁决</h2>
 <p>F07 将前六份文档固化为可实现、可审查、可测试的工程方案。唯一贯通样例：<strong>CargoPai Contract Source → Revision → CheckRun → ReviewDecision → 不可变 Release → <code>(target_id, api_asset_id)</code> PublicationSlot CAS → 私有/公开文档读取 → AccessBlock 紧急撤销及安全恢复</strong>。各产品业务 API 的运行时仍在产品域，Fabric 不取代 API Gateway、IAM、CI/CD、Broker 或 Agent Runtime。</p>
 <div aria-label="可横向滚动的 F07 工程设计与质量管理表" class="table-scroll" role="region" tabindex="0"><table>
@@ -257,6 +258,9 @@
 </tr>
 </tbody>
 </table></div>
+<blockquote>
+<p>CR-0001 起没有 <code>RecordDecision</code>：<code>PrepareRelease</code> 依据修订的一次检查和准备时的豁免，检查须在现行策略和工具下完成，不可豁免的规则没通过时拒绝；<code>PublishSlot</code> 只核对 Release 依据的检查是它记录的那次，不再要求有效审批和发布人独立。实现见 <code>internal/policyreview/domain/release.go</code>、F03 §5.15 和 F04 §11.6。下文 F06-A 的“独立审核”和 L6 的“Review bind”按同样方式理解。</p>
+</blockquote>
 <h2 id="section-4">4. HTTP API、事件与生成代码的兼容策略</h2>
 <h3 id="section-4-1">4.1 工具候选（正式版本锁定前必须完成兼容验证）</h3>
 <ul>

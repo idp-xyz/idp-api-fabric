@@ -4,7 +4,8 @@
 > **状态**：产品与交互设计候选，待具名 UX、安全、产品审查；并非系统已实现  
 > **权威输入**：F01 `FR-001–071`、`NFR-01–18`；F02 总体架构；F03 DDD 发布/权限模型；F04 契约治理；F05 安全多租户；上位 `IDP-SCG-STD-001` CORE/UX 适用规则  
 > **范围**：F06-A 内部工程门户、F06-B 外部产品开发者门户、F06-C 共享设计系统；示范产品 CargoPai  
-> **阶段约束**：MVP 有契约管理到文档发布的可读闭环；注册应用/授予访问/真实沙箱首调/SDK 运营属于 V1，不在 MVP 演示中标为已实现。
+> **阶段约束**：MVP 有契约管理到文档发布的可读闭环；注册应用/授予访问/真实沙箱首调/SDK 运营属于 V1，不在 MVP 演示中标为已实现。  
+> **变更**：[CR-0001](../decisions/CR-0001.md)（2026-11-26 已决定）取消评审和批准，内部链路改为“检查 → 准备 Release → 发布”。受影响的是 §2 角色、§3 主链、§4 的 IN-01 和 IN-06、§5 和 §7。
 
 ## 0. 产品体验设计裁决
 
@@ -24,7 +25,7 @@ F06 解决的是**谁能通过哪个门户完成哪些任务，以及成功、�
 | F01 产品需求 | FR-040–055 直接驱动双门户，FR-007–039 提供其管理对象 | 不改变 MVP/V1 阶段边界 |
 | F02 AI-01–07 | Go 控制平面、共享服务、产品自治 | 不让门户承担业务执行或网关职责 |
 | F03 | Product/Workspace/DeveloperOrg、Revision/Release/Target/Slot | 不把 Publication 和 Release 合为一条状态 |
-| F04 | Rule/CheckRun/ReviewDecision、API Reference | 不展示未发布契约作为正式文档 |
+| F04 | Rule/CheckRun、Release 的豁免（CR-0001 后不再有 ReviewDecision）、API Reference | 不展示未发布契约作为正式文档 |
 | F05 | Grant、AccessBlock、Deny 优先、敏感数据保护 | 隐藏 UI 不等于授权；不得泄露私有元数据 |
 | 上位规范 | CORE/UX 适用性、可追溯与 STD-CP 门禁 | 未有具名采用/签收不能宣称完全符合 |
 
@@ -34,11 +35,11 @@ F06 解决的是**谁能通过哪个门户完成哪些任务，以及成功、�
 
 | 角色 | 入口与范围 | 主要任务 | 禁止或受限行为 |
 |---|---|---|---|
-| Platform Admin | Engineering / 授权全局 | 产品登记、组织归属、策略配置 | 不因平台身份越过生产双人批准与审计 |
+| Platform Admin | Engineering / 授权全局 | 产品登记、组织归属、策略配置 | 不因平台身份越过授权与审计 |
 | Product Owner | Engineering / 本 Product | API Catalog、Owner、产品门户配置 | 不自动查看其他产品私有契约 |
-| API Author | Engineering / 本 Workspace | Revision、检查、提交审核 | 不自行审核自身高风险发布 |
-| Reviewer | Engineering / 授权审核 | Diff、Rule、风险评定、批准/驳回 | 职责分离、策略变更后旧决定失效 |
-| Release Operator | Engineering / 发布 Target | 生效发布、撤销、回退 | 不修改 Release 内容或跳过 AccessBlock |
+| API Author | Engineering / 本 Workspace | Revision、运行检查 | 准备 Release 和发布须另持发布人角色，CR-0001 后可由同一人兼任 |
+| Reviewer（CR-0001 后不再设置） | Engineering / 已有授予只读 | 查看历史评审 | 不再授予，也不再作出决定 |
+| Release Operator | Engineering / 发布 Target | 按检查准备 Release（填写豁免理由）、生效发布、撤销、回退 | 不修改 Release 内容或跳过 AccessBlock |
 | Security Auditor | Engineering / 经授权 | 权限轨迹、风险、访问审计 | 默认只读，无令牌明文 |
 | Anonymous Developer | CargoPai / Public | 快速入门、公开 API Reference | 私有文档、Application/Grant 管理 |
 | Partner Developer | CargoPai / DeveloperOrg | 已授权契约查看、接入流程（V1） | 不自动拥有 API 运行时调用权 |
@@ -47,18 +48,18 @@ F06 解决的是**谁能通过哪个门户完成哪些任务，以及成功、�
 
 <figure class="architecture-figure" aria-label="双门户信息架构"><div class="fig-label">EXPERIENCE MODEL · 双门户信息架构</div><div class="fig-head"><strong>以用户任务组织导航</strong><small>F06 · 设计模型 / 非运行系统证据</small></div><div class="fig-grid cols-2"><div class="fig-box"><b>Engineering</b><small>总览 / Catalog / Revision / Governance</small></div><div class="fig-box"><b>Control</b><small>Review / Release / Publication / Audit</small></div><div class="fig-box"><b>Developer</b><small>Quickstart / API Reference / Versions / Guides</small></div><div class="fig-box"><b>V1 extension</b><small>Applications / Grants / Sandbox / SDK/Webhook</small></div></div><figcaption>外部门户只使用本产品批准且允许可见的契约投影。</figcaption></figure>
 
-按业务任务组织导航：内部以“发现 → 修订 → 检查 → 审核 → 发布 → 运营”为主链；外部以“了解 → 学习 → 查找接口 → 获取授权 → 测试 → 上线”为主链。内部主页提供角色待办和异常，不以各种指标替代待办列表。
+按业务任务组织导航：内部以“发现 → 修订 → 检查 → 准备 Release → 发布 → 运营”为主链；外部以“了解 → 学习 → 查找接口 → 获取授权 → 测试 → 上线”为主链。内部主页提供角色待办和异常，不以各种指标替代待办列表。
 
 ## 4. F06-A 内部门户：页面清单与深度要求
 
 | 页面 ID | 名称 | MVP/V1 | 主要用户任务 | 权威数据和只读投影 |
 |---|---|---|---|---|
-| IN-01 | 工作台 Dashboard | MVP | 查看待审核、检查失败、可发布、撤销风险 | Product, Worklist, CheckRun, Publication |
+| IN-01 | 工作台 Dashboard | MVP | 查看检查失败、已检查待准备 Release、被阻断的发布 | Product, Worklist, CheckRun, Publication |
 | IN-02 | Product / Workspace Switcher | MVP | 切换授权产品和空间 | Product Governance、Membership |
 | IN-03 | API Catalog | MVP | 搜索/过滤/定位 API、Owner、生命周期 | Asset Index（服务端授权过滤） |
 | IN-04 | API Detail & Revision | MVP | 比较 Revision、来源和制品摘要 | Contract Registry |
 | IN-05 | Governance Check | MVP | 阅读 Lint/Breaking Diff/安全检查与建议 | CheckRun、Policy Digest |
-| IN-06 | Review & Approval | MVP | 审核、拒绝、重试检查，查看审计证据 | ReviewDecision、Role Separation |
+| IN-06 | Check and Release Preparation | MVP | 运行检查，按检查准备 Release 并填写豁免理由（CR-0001 前为 Review & Approval） | CheckRun、ContractRelease |
 | IN-07 | Publication & Recovery | MVP | 选择 Target×Asset，CAS 发布与紧急撤销 | PublicationSlot、AccessBlock |
 | IN-08 | Audit & Timeline | MVP 只读 | 查询操作和关联 ID | Audit Projection |
 | IN-09 | Product / Role Administration | V1 | 管理成员、授权、角色和策略 | Product/Workspace/Auth Projection |
@@ -67,13 +68,13 @@ F06 解决的是**谁能通过哪个门户完成哪些任务，以及成功、�
 
 ## 5. F06-A 核心交互流程与异常恢复
 
-<figure class="architecture-figure" aria-label="内部审核工作流"><div class="fig-label">EXPERIENCE MODEL · 内部审核工作流</div><div class="fig-head"><strong>设计态流程；演示动作不写入后端</strong><small>F06 · 设计模型 / 非运行系统证据</small></div><div class="fig-grid cols-2"><div class="fig-box"><b>Submit</b><small>源信息 + Commit + Revision</small></div><div class="fig-box"><b>Inspect</b><small>Lint · Breaking Diff · Security Scan</small></div><div class="fig-box"><b>Approve</b><small>职责分离 + 策略摘要绑定</small></div><div class="fig-box"><b>Publish</b><small>immutable Release + Slot CAS</small></div><div class="fig-box"><b>Recover</b><small>AccessBlock → Remove/Restore → Reconcile</small></div></div><figcaption>拒绝、过期、CAS 冲突和撤销未知状态均为独立可操作状态。</figcaption></figure>
+<figure class="architecture-figure" aria-label="内部检查与发布工作流"><div class="fig-label">EXPERIENCE MODEL · 内部检查与发布工作流</div><div class="fig-head"><strong>设计态流程；演示动作不写入后端</strong><small>F06 · 设计模型 / 非运行系统证据</small></div><div class="fig-grid cols-2"><div class="fig-box"><b>Submit</b><small>源信息 + Commit + Revision</small></div><div class="fig-box"><b>Inspect</b><small>Lint · Breaking Diff · Security Scan</small></div><div class="fig-box"><b>Prepare</b><small>检查门禁 + 豁免理由（CR-0001）</small></div><div class="fig-box"><b>Publish</b><small>immutable Release + Slot CAS</small></div><div class="fig-box"><b>Recover</b><small>AccessBlock → Remove/Restore → Reconcile</small></div></div><figcaption>门禁拒绝、检查过期、CAS 冲突和撤销未知状态均为独立可操作状态。</figcaption></figure>
 
-### 5.1 契约检查、审核与发布
+### 5.1 契约检查、准备 Release 与发布
 
-1. 从工作台进入目标 Product 的 API，检索其最新 Revision 与审批状态；更换 Product 时清空上一产品的行级选择、过滤与缓存。
-2. 检查页分别显示 **Lint / Breaking Diff / Security**，列出规则 ID、定位（JSON Pointer/OperationId）、严重性、版本、可修复动作与安全阻断原因。只允许经过审查的非关键规则 Waiver。
-3. 审核时显示申请者、审核者、Policy Digest、Revision Digest、风险级别、有效期。若发生内容或策略漂移，旧审核不可继续使用。
+1. 从工作台进入目标 Product 的 API，检索其最新 Revision 与检查结论；更换 Product 时清空上一产品的行级选择、过滤与缓存。
+2. 检查页分别显示 **Lint / Breaking Diff / Security**，列出规则 ID、定位（JSON Pointer/OperationId）、严重性、版本、可修复动作与安全阻断原因。只有可豁免的规则能在准备 Release 时由准备的人逐条填写理由豁免；安全、完整性规则不可豁免。
+3. 准备 Release 时显示依据的检查、Policy Digest、Revision Digest 和需要豁免的规则。检查不是按现行策略和工具完成的，不能用来准备 Release（`POLICY_STALE`），须重新运行检查。CR-0001 之前这一步是审核，显示申请者、审核者和有效期。
 4. 发布必须展示 Product、Audience、Environment、Portal、APIAsset、Release Digest、expected Slot Version；操作需用户二次确认，CAS 冲突时恢复到最新状态重新决策，**不能自动覆盖**。
 5. 紧急撤销先显示服务端权威 AccessBlock，后展示 Edge/缓存传播；传播 UNKNOWN/AT_RISK 应继续阻断公开读取，不显示绿色“已完全清除”。
 
@@ -88,9 +89,9 @@ F06 解决的是**谁能通过哪个门户完成哪些任务，以及成功、�
 | Conflict | Slot CAS 冲突 | 当前生效版本与期望版本差异 | 重新获取、重新审查 |
 | UNKNOWN / AT_RISK | 撤销传播或同步不明 | 持续警示、不显示完成 | 进入补偿任务 / 事故流程 |
 
-### 5.3 审核及发布对话框
+### 5.3 准备 Release 及发布对话框
 
-对话框必须明确显示不可逆后果、面向的产品和受众、制品摘要与生效环境；确认按钮根据风险采用二次确认、职责分离和 Step-up（具体授权由 F05/F07）。提交后保留请求关联标识，在网络错误时先查询最终状态再决定重试，不能依靠无限重复点击。
+对话框必须明确显示不可逆后果、面向的产品和受众、制品摘要与生效环境；确认按钮根据风险采用二次确认和 Step-up（具体授权由 F05/F07；CR-0001 后不再要求发布人与作者分离）。提交后保留请求关联标识，在网络错误时先查询最终状态再决定重试，不能依靠无限重复点击。
 
 ## 6. F06-A 工作台、Catalog 与数据密集型交互
 
@@ -100,14 +101,14 @@ F06 解决的是**谁能通过哪个门户完成哪些任务，以及成功、�
 - 比较页支持并排/内联差异，明确“规则告警”和“确认的破坏性变更”区别；不凭颜色区分影响。
 - 审计只能展示脱敏主体和关联 ID，导出需要额外权限，且查询页面不使审计事件可被编辑。
 
-## 7. F06-A 权限可见性与审批责任界面
+## 7. F06-A 权限可见性与操作责任界面
 
-| 操作 | Author | Reviewer | Release Operator | Admin/Auditor | 界面必需条件 |
+| 操作 | Author | Reviewer（CR-0001 后不再设置） | Release Operator | Admin/Auditor | 界面必需条件 |
 |---|---|---|---|---|---|
 | 创建 Revision | 本 Workspace | 只读 | 只读 | Admin 授权 | `product_id + workspace_id` |
-| 审核自己提交的高风险变更 | 拒绝 | 如是提交者则拒绝 | 拒绝 | 仅授权例外 | 显示明确职责分离原因 |
+| 准备 Release | 拒绝，除非兼任发布人 | — | 本 Workspace 发布人 | 受控分配 | 显示依据的检查和豁免理由；CR-0001 前此行为“审核自己提交的高风险变更” |
 | 执行发布 | 拒绝（默认） | 拒绝（默认） | 授权 Target | 受控分配 | 确认 CAS/Release Digest |
-| 紧急撤销 | 可发起申请 | 可审查 | 按策略执行 | Break-glass 可审计 | AccessBlock 优先并保持 UNKNOWN 状态 |
+| 紧急撤销 | 可发起申请 | — | 按策略执行 | Break-glass 可审计 | AccessBlock 优先并保持 UNKNOWN 状态 |
 | 查看其他 Product 的私有 API | 拒绝 | 拒绝 | 拒绝 | 单独授权 | 不返回存在性提示 |
 
 > 权限矩阵是 UI 设计输入，不是身份提供方、PDP 或 Gateway 的最终规则；最终操作授权依赖 F05 的服务端策略。
@@ -190,7 +191,7 @@ CargoPai Developers 是**对外独立品牌门户**，不应把其他 IDP 内部
 | Global Navigation / Product Switcher | Active/Forbidden/Loading | 切换清空跨产品页面状态，不保留私有旧内容 |
 | Data Table / Filter Bar | Empty/Loading/Error/Selected | 可见筛选与数量、可恢复排序、键盘可用 |
 | Code Panel | Language/Copy/Version | 内容对应单一 Release，复制有反馈 |
-| Review Diff / Risk Panel | New/Breaking/Blocked/Waived | 解释规则、原因、风险与审核关系 |
+| Review Diff / Risk Panel | New/Breaking/Blocked/Waived | 解释规则、原因、风险与豁免理由 |
 | Dialog / Confirmation | Focused/Busy/Conflict/Done | 焦点限制、Escape（未提交）、返回触发元素 |
 | Status Badge | Draft/Approved/Blocked/Unknown | 文案、图标及对比度不依赖颜色 |
 | Toast / Inline Error | Info/Warning/Danger | `aria-live` 适当通知；长错误保留在页面 |
@@ -217,7 +218,7 @@ CargoPai Developers 是**对外独立品牌门户**，不应把其他 IDP 内部
 
 | 指标 | 分子 / 分母定义 | 阶段 | 测量方式 |
 |---|---|---|---|
-| Internal review completion | 有效完成审核数 / 有权限进入审核任务数 | MVP | 任务事件与人工评审 |
+| Internal review completion（CR-0001 后不再适用） | 有效完成审核数 / 有权限进入审核任务数 | MVP | 任务事件与人工评审 |
 | Release risk detection | 被正确识别的高风险发布场景 / 预置高风险场景 | MVP | F08 场景回放 |
 | Docs findability | 不受提示完成指定文档任务人数 / 参加任务人数 | MVP | 开发者可用性测试 |
 | First sandbox call success | 有可信真实调用记录的成功首调人数 / 获得有效沙箱授权人数 | V1 | IAM/Gateway Trace |
@@ -230,7 +231,7 @@ CargoPai Developers 是**对外独立品牌门户**，不应把其他 IDP 内部
 
 | 文件 | 类型 | 交互重点 |
 |---|---|---|
-| [`portal/prototypes/internal-engineering.html`](../portal/prototypes/internal-engineering.html) | 离线 HTML / 本地 Mock | 产品切换、Catalog 过滤、治理检查、审核、Publication CAS 冲突、撤销 UNKNOWN |
+| [`portal/prototypes/internal-engineering.html`](../portal/prototypes/internal-engineering.html) | 离线 HTML / 本地 Mock | 产品切换、Catalog 过滤、治理检查、审核（CR-0001 之前的设计）、Publication CAS 冲突、撤销 UNKNOWN |
 | [`portal/prototypes/cargopai-developers.html`](../portal/prototypes/cargopai-developers.html) | 离线 HTML / 本地 Mock | CargoPai 品牌、Quickstart、API Reference、语言切换、私有版本禁止、V1 沙箱限制 |
 | `portal/prototypes/shared.css` | 共享设计 Token / 布局样式 | 复用组件但不同品牌主题 |
 | `docs/F06_Page_Inventory.csv` | 21 个页面或共享视图 | 页面职责、阶段、角色和模型 |

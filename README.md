@@ -7,6 +7,8 @@
 
 ## 工程实现同步（2026-11-19）
 
+> 下面按版本记录实现。0.17.0–0.36.0 各段写到的评审、批准和 `approval_problem` 已由 0.37.0（[CR-0001](decisions/CR-0001.md)）取消，现状见本节最后两段。
+
 PR #6（产品负责人管理）和 #7（四类分页列表）已合入 main。对应领域与物理模型见 F03 §5.5，分页协议见 F04 §3.1.1，权限规则见 F05 §6.1；授权矩阵新增 AC-36…43，仍保留设计候选状态。可复现的本地 HTTP 负载实验及原始数据见 [列表压测记录](tests/performance/README.md)。该实现记录不改变 F01–F08 正式验收和具名批准的状态。
 
 管理 API 0.6.0 支持按产品管理受众、环境和文档入口。升级时执行 `fabric-migrate -apply -grant-to <application_role>`，应用迁移 005 并为应用角色授予新表的权限。[管理 API 契约](api/openapi.yaml)。
@@ -65,6 +67,10 @@ PR #10 和 #11 的实现详见 [F03 §5.6](docs/F03_Domain_and_Data_Model.md#56-
 
 管理 API 0.36.0 扩充治理与发布的读取权限。维护者读所属 Workspace 的治理材料，安全角色读本产品的资产目录和发布记录，`internal_reader` 读所属 Workspace 的资产目录、Release 元数据和发布记录，并通过当前槽位下载内部制品。服务端每次从槽位下载都核对 AccessBlock 和现行权限。先执行 `fabric-migrate -apply` 应用 `productgovernance/010_internal_reader`，再更换所有 API 进程，最后授予新角色。 [读取权限与升级说明](docs/F05_Security_and_Multitenancy.md#612-内部发布审计与读取权限033003500360)
 
+管理 API 0.37.0 按 [CR-0001](decisions/CR-0001.md) 取消评审和批准（PR #74）。发布人准备 Release 时指定修订的一次检查（`check_run_id`），检查须在现行策略和工具下完成；结果为 `FAIL` 或 `UNKNOWN` 的可豁免规则逐条写理由豁免（`waivers`），不可豁免的规则没通过时不能准备。同一个人可以导入、检查、准备 Release 并发布；访问阻断仍由另一位安全评审人解除。激活和恢复只核对 Release 记录的检查，策略更新后已有 Release 仍可发布和恢复；`ACTIVATE` 替换另一修订的 Release 时，检查仍须以那个修订为对比基线。提交、撤回和决定评审的三个操作删除，现有 57 个操作；评审只能读取，`internal_reviewer` 不再授予，槽位不再有 `approval_problem`。这是破坏性变更，调用方要改用 `check_run_id` 准备 Release。
+
+升级执行 `fabric-migrate -apply`，不需要重新授权：应用 `contractregistry/005`、`006` 和 `policyreview/007`，仍在评审中的修订改为 `WITHDRAWN`，开着的评审记为撤回，理由引用 CR-0001，已有结论不变。迁移只处理执行时还开着的评审，旧进程应尽快换完。门户随 PR #75 改为“导入 → 检查 → 准备 Release → 发布”。实现详见 [F03 §5.15](docs/F03_Domain_and_Data_Model.md#515-release-依据检查cr-000103700)、[F04 §11.6](docs/F04_API_Contract_Governance.md#116-已实现的-release-与发布接口) 和 [F05 §6.14](docs/F05_Security_and_Multitenancy.md#614-取消评审后的权限cr-000103700)。授权矩阵中 AC-03、AC-35、AC-50、AC-51 退役，编号保留。
+
 ## 阅读入口
 
 - [index.html](index.html) — 统一的离线 HTML 文档阅读入口。
@@ -76,7 +82,7 @@ PR #10 和 #11 的实现详见 [F03 §5.6](docs/F03_Domain_and_Data_Model.md#56-
 - [docs/F06_Developer_Experience.html](docs/F06_Developer_Experience.html) — F06 双门户设计（八幅图）。
 - [docs/F07_Engineering_and_Quality.html](docs/F07_Engineering_and_Quality.html) — F07 Go/DDD、工程实现、质量、证据设计（九幅图）。
 - [docs/F08_Delivery_and_Acceptance.html](docs/F08_Delivery_and_Acceptance.html) — F08 实施路线图、六道门禁与真实验收设计（九幅图）。
-- [内部门户评审与发布工作台运行说明](cmd/fabric-portal/README.md)
+- [内部门户检查与发布工作台运行说明](cmd/fabric-portal/README.md)
 - [CargoPai 合作方授权读取运行说明](cmd/fabric-api/PARTNER.md)
 - [内部工程门户原型](portal/prototypes/internal-engineering.html) · [CargoPai Developers 原型](portal/prototypes/cargopai-developers.html) — 离线 Local Mock。
 - Markdown 权威源：[F01](docs/F01_Product_Requirements.md) · [F02](docs/F02_System_Architecture.md) · [F03](docs/F03_Domain_and_Data_Model.md) · [F04](docs/F04_API_Contract_Governance.md) · [F05](docs/F05_Security_and_Multitenancy.md) · [F06](docs/F06_Developer_Experience.md) · [F07](docs/F07_Engineering_and_Quality.md) · [F08](docs/F08_Delivery_and_Acceptance.md)。
@@ -215,13 +221,14 @@ python scripts/verify_manifest.py
 
 ## F05 安全设计的可审查资产与界限
 
-- [F05 授权矩阵](governance/policies/F05_Access_Matrix.csv) 收录 54 条候选操作级规则。负责人管理、列表、受众配置和品牌的实现见 F05 §6.1、§6.3，契约评审的实现见 F05 §6.6，评审队列的条目 AC-54 见 F05 §6.13。
+- [F05 授权矩阵](governance/policies/F05_Access_Matrix.csv) 收录 54 条候选操作级规则。负责人管理、列表、受众配置和品牌的实现见 F05 §6.1、§6.3，契约评审的实现见 F05 §6.6，评审队列的条目 AC-54 见 F05 §6.13。AC-03、AC-35、AC-50、AC-51 已按 CR-0001 退役（`RETIRED`，编号保留），取消评审后的权限见 F05 §6.14。
 - [F05 STRIDE 风险登记册](governance/policies/F05_Threat_Register.csv)：29 项威胁及待具名 Owner/残余风险。
 - [F05 授权策略设计 JSON](governance/policies/F05_Authorization_Policy_DRAFT.json)：仅为可读/可检查样例，不是可投入生产的 PDP。
 - [F05 安全测试计划](tests/acceptance/F05_security_scenarios.csv)：36 个场景均为 `NOT_RUN`。
 - [F05 需求追溯](tests/acceptance/F05_security_trace.csv)：覆盖 71 项 FR + 18 项 NFR；按直接责任、协作和后续阶段分类。
 - [ADR-0007](decisions/ADR-0007.md)：受限访问失败关闭及安全撤销，状态仍为 Proposed。
-- [CR-0001](decisions/CR-0001.md)：内部使用不再设审批，准备 Release 以检查为准，已决定。AC-03、AC-04、AC-35、AC-50–AC-54 及评审相关的设计正文随实现同步修改，修改之前仍按原文执行。
+- [ADR-0008](decisions/ADR-0008.md)：检查之外执行的 10 条规则如何计入检查结论，状态仍为 Proposed。CR-0001 之后没有评审人读检查结论，开发侧建议不再推进，留待 Governance Owner 关闭。
+- [CR-0001](decisions/CR-0001.md)：内部使用不再设审批，准备 Release 以检查为准，已决定，管理 API 0.37.0 已实现（PR #74）。设计正文已同步：AC-03、AC-35、AC-50、AC-51 退役，AC-04 去掉 `decision.valid`，AC-52–AC-54 只读历史；F04-GOV-016、025 的含义变化只写在 F04 §11.4，规则登记表不改。
 
 **注意**：本阶段所谓通过仅指文档、矩阵、脚本与压缩包的静态一致性；不存在真实渗透、安全审计、IAM/Gateway/CDN 联调或生产恢复测试 PASS。F06 双门户设计已完成；下一阶段应依据 `docs/README.md` 的 F07 交接约束开展工程实现与质量设计。
 
@@ -230,11 +237,15 @@ python scripts/verify_manifest.py
 - [F06 设计 Markdown](docs/F06_Developer_Experience.md) / [HTML](docs/F06_Developer_Experience.html)（F06-A 内部工程、F06-B CargoPai Developers、F06-C 共享设计系统）
 - [F06-A 内部交互原型](portal/prototypes/internal-engineering.html) · [F06-B CargoPai 外部门户](portal/prototypes/cargopai-developers.html) · [共享 Token 样式](portal/prototypes/shared.css)。全部为 LOCAL_MOCK。
 - [页面清单](docs/F06_Page_Inventory.csv)：21 页/共享视图；[需求追溯](tests/acceptance/F06_experience_trace.csv)：89 行；[体验场景](tests/acceptance/F06_experience_scenarios.csv)：32 行，状态 NOT_RUN。
-- 页面清单的 `status` 列：`MOCK/NOT_RUN` 只有离线原型；`IMPLEMENTED/NOT_RUN` 和 `PARTIAL/NOT_RUN` 表示 main 上已有完整或部分实现，斜杠后面是真实验收，仍未执行。
-  - IN-07 已实现：[内部门户](cmd/fabric-portal/README.md)按目标 × 资产准备 Release，带代次发布、撤销和恢复，并建立和解除访问阻断。
-  - IN-06 部分实现：能批准和驳回、逐条豁免；门户里不能重跑检查，也看不到审计证据。
-  - IN-05 部分实现：评审详情里列出检查的每条规则结论和发现；没有单独的检查页面，也不展示兼容性比较。
-  - EX-03 部分实现：[CargoPai Developers](cmd/fabric-developer-portal/README.md) 展示一个资产的操作、响应码说明和搜索；没有 Schema 和代码示例。
+- 页面清单的 `status` 列：`MOCK/NOT_RUN` 只有离线原型；`IMPLEMENTED/NOT_RUN` 和 `PARTIAL/NOT_RUN` 表示已有完整或部分实现，斜杠后面是真实验收，仍未执行。下列内部门户的状态假定 PR #72（已合入）和 PR #75（门户依据检查准备 Release，尚未合入）都已合入 main。
+  - IN-01 已实现：[内部门户](cmd/fabric-portal/README.md)的「工作台」汇总当前 Workspace 最新检查失败的资产、已检查但还没准备 Release 的修订和被访问阻断的发布，每项打开资产详情。CR-0001 之后没有待审核。
+  - IN-02 已实现：产品和 Workspace 两个选择框，列表来自服务端按角色和成员关系过滤的结果；切换产品时中止上一产品的请求，清空工作台和目录；加载中、没有可见产品或 Workspace 时有文字提示。加载时显示的是文字，不是骨架屏。
+  - IN-03 已实现：「API 目录」按关键字、类型、最近检查结论和“已检查、未准备 Release”筛选，筛选和分页在服务端；列出领域、类型、生命周期、最新修订、最近检查和最新 Release。
+  - IN-04 已实现：资产详情按从新到旧列出修订及其源文件摘要和引用闭包摘要，选中修订显示它的检查、Release 及豁免；CR-0001 之前的评审列为只读的「历史评审」。
+  - IN-05 部分实现：检查详情按类别列出每条规则的结论、级别、可否豁免、工具和发现，检查列表标明是否带兼容性对比基线；没有展示两个修订比较结果（`compareRevisions`）的页面。
+  - IN-06 已实现，页面改为「检查与准备 Release」（编号不变，原为 Review & Approval）：作者运行检查，可选对比基线；发布人选定检查，逐条填写豁免理由后准备 Release，有不可豁免的规则没通过时不能提交。不设评审人。门户里看不到审计证据。
+  - IN-07 已实现：资产详情的「发布」按内部目标显示槽位和最近操作，带代次发布、撤销和恢复；「访问阻断与解除」建立和解除访问阻断。
+  - EX-03 部分实现：[CargoPai Developers](cmd/fabric-developer-portal/README.md) 展示一个资产的操作、参数、请求体和响应的 Schema，cURL、Go、TypeScript 示例，响应码说明和搜索（PR #70）。只展示一项资产，不显示发布时间和环境。
 
 **F08 已完成交付设计**：见 `docs/F08_Delivery_and_Acceptance.md`，真实测试与具名批准仍需实施，Mock 和静态校验不能充当运行验证。
 

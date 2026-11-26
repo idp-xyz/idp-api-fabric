@@ -2,13 +2,14 @@
 
 **正式路径**：`docs/F04_API_Contract_Governance.md` 　**文档版本**：V1.0（沿用工程基线）　**日期**：2026-11-09  
 **状态**：完整设计候选，**待具名领域/安全/架构批准**；本稿中规则与示例是候选实施约束，不是已运行生产系统。  
+**变更**：[CR-0001](../decisions/CR-0001.md)（2026-11-26 已决定）取消评审和批准，准备 Release 以检查为准。管理 API 0.37.0 的实现见 §11.5、§11.6、§11.10；F04-GOV-016、025 的含义变化见 §11.4。  
 **输入**：F01（FR-001–071 / NFR-01–18 / AT-01–12）、F02（AI-01–07、ADR-0001–0006 Proposed）、F03（INV-01–13、DM-01–18、OD-01–10）；上位规范 `IDP-SCG-STD-001`。  
 **范围**：HTTP OpenAPI、异步事件 AsyncAPI、契约来源/制品、兼容性、策略与审批、内外部分发与开发者体验的治理输入。  
 **不在本稿**：不重新定义 F03 聚合，不实现 Gateway/IAM，不伪造 Go 工具兼容结论；F05/F06/F07/F08 各自承担安全实施、双门户高保真、代码与真实验收。
 
 ## 0. 执行摘要与设计裁决
 
-F04 将 **`SourceSnapshot → ContractRevision → CheckRun/ReviewDecision → immutable ContractRelease → PublicationSlot`** 定义为可验证的契约治理流水线。每一份**准许对外可见**的内容必须明确对应 `(product_id, api_asset_id, target_id, release_id, artifact_digest, policy_digest, decision_id)`，并通过**当前服务端授权 + 撤销拒绝**检查；从 Git 或在线编辑器导入的草稿从不自动取得公开权限。
+F04 将 **`SourceSnapshot → ContractRevision → CheckRun（准备 Release 时的门禁与豁免） → immutable ContractRelease → PublicationSlot`** 定义为可验证的契约治理流水线。每一份**准许对外可见**的内容必须明确对应 `(product_id, api_asset_id, target_id, release_id, artifact_digest, policy_digest, check_run_id)`（CR-0001 之前这一步是 CheckRun/ReviewDecision，对应 `decision_id`），并通过**当前服务端授权 + 撤销拒绝**检查；从 Git 或在线编辑器导入的草稿从不自动取得公开权限。
 
 | 决策主题 | F04 设计提议 | 真实状态 |
 |---|---|---|
@@ -19,7 +20,7 @@ F04 将 **`SourceSnapshot → ContractRevision → CheckRun/ReviewDecision → i
 | 对外发布 | Release 不可变；Slot `(target_id,api_asset_id)` 生效指针按 CAS 变更，deny-first；发布到文档门户 ≠ 获得真实业务 API 调用权 | Proposed / ADR-0004 待批 |
 | 工具复用 | 检查器可复用成熟 CLI，但抽象为可替换的适配器；结果必须显示 `PASS/FAIL/WARN/UNKNOWN/NOT_RUN` | 设计意图 |
 
-<figure class="architecture-figure"><div class="fig-label">FIGURE 01 · 单一贯通流程 / Controlled Contract Lifecycle</div><div class="fig-grid cols-3"><div class="fig-box tone-light"><b>01 · Source / Snapshot</b><small>Git commit / 受控上传 · source_digest</small></div><div class="fig-box tone-light"><b>02 · Revision</b><small>稳定内容快照 · 拒绝非受控引用</small></div><div class="fig-box tone-light"><b>03 · Check & Review</b><small>Policy digest · Tool version · 审批范围</small></div></div><div class="fig-arrow">↓ 仅当检查完成、审批有效、制品可核验，才能准备不可变 Release</div><div class="fig-grid cols-3"><div class="fig-box fig-primary"><b>04 · Immutable Release</b><small>artifact_digest / manifest</small></div><div class="fig-box tone-green"><b>05 · Target × API Slot</b><small>CAS generation · 授权发布</small></div><div class="fig-box tone-green"><b>06 · Authorized Read</b><small>有效指针 + grant + deny-first</small></div></div><div class="fig-separator">任何不支持规范、摘要不符、过期审批、跨产品受众或撤销未完成：拒绝发布或进入 UNKNOWN/PENDING，绝不自动放行</div><figcaption>示例为 Fabric 的设计协议，不能替代业务系统 API 的真实部署和调用授权。</figcaption></figure>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 01 · 单一贯通流程 / Controlled Contract Lifecycle</div><div class="fig-grid cols-3"><div class="fig-box tone-light"><b>01 · Source / Snapshot</b><small>Git commit / 受控上传 · source_digest</small></div><div class="fig-box tone-light"><b>02 · Revision</b><small>稳定内容快照 · 拒绝非受控引用</small></div><div class="fig-box tone-light"><b>03 · Check & Gate</b><small>Policy digest · Tool version · 豁免</small></div></div><div class="fig-arrow">↓ 仅当检查在现行策略下完成、通过门禁（含豁免）、制品可核验，才能准备不可变 Release</div><div class="fig-grid cols-3"><div class="fig-box fig-primary"><b>04 · Immutable Release</b><small>artifact_digest / manifest</small></div><div class="fig-box tone-green"><b>05 · Target × API Slot</b><small>CAS generation · 授权发布</small></div><div class="fig-box tone-green"><b>06 · Authorized Read</b><small>有效指针 + grant + deny-first</small></div></div><div class="fig-separator">任何不支持规范、摘要不符、过期检查、跨产品受众或撤销未完成：拒绝发布或进入 UNKNOWN/PENDING，绝不自动放行</div><figcaption>示例为 Fabric 的设计协议，不能替代业务系统 API 的真实部署和调用授权。</figcaption></figure>
 
 ## 1. 规范效力、适用范围和依赖
 
@@ -27,7 +28,7 @@ F04 将 **`SourceSnapshot → ContractRevision → CheckRun/ReviewDecision → i
 
 - **上位规则**：IDP-SCG-STD-001 的 CORE、TECH 及按适用性触发的 Profile 规则优先；`governance/policies/F01_Project_Manifest_DRAFT.json` 尚未获正式批准。F04 的 MUST/SHOULD/MAY 仅在项目采用后成为组织生效约束。
 - **架构边界**：继承 F02 AI-01–07；Git-first/受控导入、不可变 Release、Registry 权威与读侧投影、Go 模块化单体 + Worker 均是待批准候选；不扩大为自研 API Gateway 或外部凭证签发。
-- **领域边界**：遵循 F03 INV-01–13；特别是 INV-04/05/06/07/08/09/12/13 的原文不可变、审批作用域、Slot CAS、deny-first、幂等与 Outbox。
+- **领域边界**：遵循 F03 INV-01–13；特别是 INV-04/05/06/07/08/09/12/13 的原文不可变、检查门禁（INV-07，CR-0001 修改，原为审批作用域）、Slot CAS、deny-first、幂等与 Outbox。
 - **风险等级**：`SECURITY_MANDATORY`、`INTEGRITY_MANDATORY` 不允许被项目豁免；关键风险的 R1/R2/R3 等级、责任人和批准权限以 F05/F08 的真实组织采用记录为准，不在此编造负责人姓名。
 
 ### 1.2 规范与成熟度矩阵（截至 2026-11-09）
@@ -205,23 +206,23 @@ V1 按 `Experimental → Stable → Deprecated → Retired` 表达资产生命�
 |---|---|---|
 | SECURITY_MANDATORY | 全局不可豁免、拒绝优先 | 公开内部 URL、凭证示例、无权外部发布 |
 | INTEGRITY_MANDATORY | 不可豁免 | 摘要不匹配、来源引用不受控、策略过期、Release 被改写 |
-| CONTRACT_COMPATIBILITY | 阶段可要求迁移及批准 | 删除 Operation、必填变化、枚举风险 |
+| CONTRACT_COMPATIBILITY | 阶段可要求迁移；CR-0001 起由准备 Release 的人逐条豁免并写明理由 | 删除 Operation、必填变化、枚举风险 |
 | QUALITY | 满足正当用途和记录可限定豁免 | operationId 规范、文案、示例丰富度 |
 | PRODUCT_EXTENSION | 仅可收紧全球策略 | CargoPai 的特殊业务字段单位/时效 |
 
 ### 7.2 优先级和冲突裁决
 
 - 有效规则集 = 全局强制规则 + 可用的全局质量规则 + 产品/受众/环境的追加规则。**产品覆盖规则不得删除全局强制规则，也不得把 BLOCK 改成 WARN。**
-- 以固定 `policy_digest` 评价 CheckRun；Policy Change、Input Change、Target/Audience Change、Reviewer Permission Change 或 Decision Expiry 要求重新评估或重新审批，不可直接复用旧批准。
+- 以固定 `policy_digest` 评价 CheckRun；Policy Change、Input Change、Target/Audience Change、Reviewer Permission Change 或 Decision Expiry 要求重新评估或重新审批，不可直接复用旧批准。CR-0001 起没有审批：准备 Release 时检查须是现行策略和工具下的（`POLICY_STALE`）；已准备的 Release 依其检查继续可发布和恢复。
 - `UNKNOWN` 和工具故障不等于失败的业务契约已证实有错，但对正式发布为 **block until resolved**，可以继续保存草稿并输出可读的失败证据。
-- 一条可豁免规则的 Waiver 必须绑定 `(rule_id, scope, subject_digest, owner, reviewer, expires_at, reason, compensating_control)`；超出原对象范围或过期不得继承；不可豁免规则不允许创建 `ACTIVE` Waiver。
-- 安全例外责任和分工在 F05/F08 做具名授权；仅 `reviewed_by ≠ created_by` 字符串判断不足以证明职责分离，还需服务端检查主体独立、授权角色、产品/工作区作用域与有效期。
+- 一条可豁免规则的 Waiver 必须绑定 `(rule_id, scope, subject_digest, owner, reviewer, expires_at, reason, compensating_control)`；超出原对象范围或过期不得继承；不可豁免规则不允许创建 `ACTIVE` Waiver。CR-0001 起，豁免在准备 Release 时由准备人逐条填写 `(rule_id, reason)`，随 Release 记录，只对这个 Release 有效，没有到期时间；不可豁免规则仍不能豁免。
+- 安全例外责任和分工在 F05/F08 做具名授权；仅 `reviewed_by ≠ created_by` 字符串判断不足以证明职责分离，还需服务端检查主体独立、授权角色、产品/工作区作用域与有效期。CR-0001 取消了作者与评审人、作者与发布人的分离；访问阻断的解除仍须另一位安全评审人（F05 §6.14）。
 
-<figure class="architecture-figure"><div class="fig-label">FIGURE 05 · 策略层次与审核失效条件</div><div class="fig-head"><strong>Global Mandatory / 无豁免底线</strong><small>安全泄露 · 权限边界 · 摘要完整性 · 不受控外部引用</small></div><div class="fig-arrow">↓ 产品只允许追加约束，不得稀释</div><div class="fig-grid cols-2"><div class="fig-box"><b>Global Quality</b><small>命名 / 示例 / 文档 / 兼容评估</small></div><div class="fig-box tone-green"><b>Product Extensions</b><small>CargoPai / Parcel 各自业务规范</small></div></div><div class="fig-arrow">↓ 固定 PolicySnapshot + ToolManifest + Revision Digest</div><div class="fig-head light"><strong>Independent Review Decision</strong><small>目标、受众、环境或输入变化 → 审批作废/重审</small></div><figcaption>威胁模型中不可豁免的范围由 F05 定稿；本图是策略依赖方向，不表示任何规则已经通过真实安全验收。</figcaption></figure>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 05 · 策略层次与检查失效条件</div><div class="fig-head"><strong>Global Mandatory / 无豁免底线</strong><small>安全泄露 · 权限边界 · 摘要完整性 · 不受控外部引用</small></div><div class="fig-arrow">↓ 产品只允许追加约束，不得稀释</div><div class="fig-grid cols-2"><div class="fig-box"><b>Global Quality</b><small>命名 / 示例 / 文档 / 兼容评估</small></div><div class="fig-box tone-green"><b>Product Extensions</b><small>CargoPai / Parcel 各自业务规范</small></div></div><div class="fig-arrow">↓ 固定 PolicySnapshot + ToolManifest + Revision Digest</div><div class="fig-head light"><strong>Release Gate（CR-0001）</strong><small>输入或策略变化 → 准备新 Release 须重新检查</small></div><figcaption>威胁模型中不可豁免的范围由 F05 定稿；本图是策略依赖方向，不表示任何规则已经通过真实安全验收。</figcaption></figure>
 
 ## 8. 检查流水线及可核验输出
 
-<figure class="architecture-figure"><div class="fig-label">FIGURE 06 · 8 个不可跳过的检查阶段（MVP 推荐）</div><div class="fig-grid cols-4"><div class="fig-box"><b>① Ingest</b><small>保存 bytes、来源、限制</small></div><div class="fig-box"><b>② Parse/Refs</b><small>版本、闭包、安全限制</small></div><div class="fig-box"><b>③ Lint</b><small>命名、Schema、必需文档</small></div><div class="fig-box"><b>④ Diff</b><small>历史兼容性与基线</small></div><div class="fig-box"><b>⑤ Sensitive Scan</b><small>内部地址 / 凭证 / PII</small></div><div class="fig-box"><b>⑥ Policy Evaluate</b><small>规则/例外/目标完整</small></div><div class="fig-box"><b>⑦ Independent Review</b><small>具权威的人工决策</small></div><div class="fig-box tone-green"><b>⑧ Release Verify</b><small>不变制品摘要和 Manifest</small></div></div><div class="fig-separator">任一关键环节 UNKNOWN / FAIL → 不得推进至公开发布；所有结果必须保留证据</div><figcaption>可并发运行独立检查，但通过状态必须与同一组输入摘要和策略版本绑定。图示顺序是逻辑依赖顺序。</figcaption></figure>
+<figure class="architecture-figure"><div class="fig-label">FIGURE 06 · 8 个不可跳过的检查阶段（MVP 推荐）</div><div class="fig-grid cols-4"><div class="fig-box"><b>① Ingest</b><small>保存 bytes、来源、限制</small></div><div class="fig-box"><b>② Parse/Refs</b><small>版本、闭包、安全限制</small></div><div class="fig-box"><b>③ Lint</b><small>命名、Schema、必需文档</small></div><div class="fig-box"><b>④ Diff</b><small>历史兼容性与基线</small></div><div class="fig-box"><b>⑤ Sensitive Scan</b><small>内部地址 / 凭证 / PII</small></div><div class="fig-box"><b>⑥ Policy Evaluate</b><small>规则/例外/目标完整</small></div><div class="fig-box"><b>⑦ Release Gate</b><small>逐条规则结论与豁免（CR-0001 前为独立评审）</small></div><div class="fig-box tone-green"><b>⑧ Release Verify</b><small>不变制品摘要和 Manifest</small></div></div><div class="fig-separator">任一关键环节 UNKNOWN / FAIL → 不得推进至公开发布；所有结果必须保留证据</div><figcaption>可并发运行独立检查，但通过状态必须与同一组输入摘要和策略版本绑定。图示顺序是逻辑依赖顺序。</figcaption></figure>
 
 建议的 CheckRun JSON 结果（字段名为设计契约）：
 
@@ -243,6 +244,8 @@ V1 按 `Experimental → Stable → Deprecated → Retired` 表达资产生命�
 
 ## 9. ReviewDecision、批准、Waiver 与失效
 
+> **CR-0001**：下表是取消评审之前的设计。现在准备 Release 不经批准：检查须在现行策略和工具下完成（`POLICY_STALE`），不可豁免规则没通过不能准备（`RELEASE_BLOCKED`），可豁免规则没通过须逐条豁免（`WAIVER_REQUIRED`、`WAIVER_FORBIDDEN`）。`APPROVAL_SCOPE_MISMATCH`、`REVIEWER_AUTH_REVOKED`、`WAIVER_EXPIRED` 不再返回。见 §11.6。
+
 | 条件 | 批准/发布策略 | 结果 |
 |---|---|---|
 | 输入摘要、策略快照、ToolManifest、目标范围均匹配；没有不可豁免失败 | 分离职责审核，且 Reviewer 权限实时有效 | 允许准备 READY Release（非自动公开） |
@@ -254,7 +257,7 @@ V1 按 `Experimental → Stable → Deprecated → Retired` 表达资产生命�
 
 审批历史为追加式，状态迁移与事实不可变约束继承 F03。所有后台定期审查的 TTL、复核频次与应急权限仍待批准。
 
-评审、撤回、批准、驳回和豁免见 §11.5。Release 引用批准时的有效性校验见 §11.6。
+0.36.0 之前的评审、撤回、批准、驳回和豁免见 §11.5；Release 依据检查准备见 §11.6。
 
 ## 10. 多产品多受众的发布与恢复语义
 
@@ -262,9 +265,9 @@ V1 按 `Experimental → Stable → Deprecated → Retired` 表达资产生命�
 
 | 发布动作 | 必须验证 | 同一事务中的权威变化 | 外部传播/可见性 |
 |---|---|---|---|
-| Publish | 当前授权、Asset/Release 属同 Product；Decision 在目标范围有效；制品 digest 正确；expected_generation 匹配；没有 deny | CAS 更新 Slot generation/active_release、Operation、Audit、Outbox | `PENDING` 直到投影和边缘传播确认 |
+| Publish | 当前授权、Asset/Release 属同 Product；Release 依据的检查是它记录的那次（CR-0001 之前为 Decision 在目标范围有效）；制品 digest 正确；expected_generation 匹配；没有 deny | CAS 更新 Slot generation/active_release、Operation、Audit、Outbox | `PENDING` 直到投影和边缘传播确认 |
 | Withdraw | 授权/应急权限、预期 Slot、原因 | 清空或拒绝生效指针 + generation++、Audit/Outbox，deny 状态优先 | 立即拒绝所有**受控读路径**；无法控制的缓存残留报告 UNKNOWN |
-| Restore | 目标历史 Release 完整、策略和权限重新核实、CAS 匹配、无有效阻断 | 将 Slot 指向已核验历史制品，新 Operation、新 generation | 不改写历史 Release，不把同步中称为完成 |
+| Restore | 目标历史 Release 完整、权限重新核实、CAS 匹配、无有效阻断；不按现行策略重新检查（CR-0001 决定 5） | 将 Slot 指向已核验历史制品，新 Operation、新 generation | 不改写历史 Release，不把同步中称为完成 |
 | Emergency Block | 高优先级应急权限、范围/事件依据 | 新 `AccessBlock` 单调 generation、审计；传播异步 | 读时强制 deny；存量离线副本不可保证回收 |
 
 **拒绝优先**：所有私有内容的查询、下载、搜索结果点击、直连 Release、`/latest` 解析与 CDN/BFF 受控访问路径均必须在可信边界实施当前授权与 deny。Portal Projection 只用于发现和加速，不能决定发布权限。公开内容一旦被第三方抓取无法保证完全撤回，敏感内容误发布应按安全事件响应处理（F05）。
@@ -277,7 +280,7 @@ V1 按 `Experimental → Stable → Deprecated → Retired` 表达资产生命�
 |---|---|---|
 | 双发布者同 generation | 一个 CAS 成功，另一个 `412 PRECONDITION_FAILED`；从服务器读取新 generation 再人工处理 | 冲突 Operation + winner ref |
 | 同 Idempotency-Key 不同请求指纹 | `409 IDEMPOTENCY_CONFLICT`；不得产生两个发布效果 | 原始指纹和冲突指纹摘要 |
-| CheckRun 对旧 Policy/Revision | `409 POLICY_STALE`；重新检查 | 快照版本差异 |
+| CheckRun 对旧 Policy/Revision | 准备 Release 时 `409 POLICY_STALE`；重新检查 | 快照版本差异 |
 | Object Store 写成，数据库尚未提交 | 无 Release 生效；孤儿文件通过 Job/GC 对账清理 | 作业/暂存状态，非公开 |
 | DB 指针提交但 Edge/Projection 更新失败 | 主库记录真实发布；DeliveryState `PENDING/UNKNOWN`；重试并告警 | Outbox/Job/Observation |
 | 失效/撤销后 Edge 尚存缓存 | 受控私有路径立即 deny；未确认的第三方缓存不可宣称清除 | Block generation + 传播状态 |
@@ -372,20 +375,22 @@ V1 按 `Experimental → Stable → Deprecated → Retired` 表达资产生命�
 | F04-GOV-012 | 按导入时的限制重新解析登记的文件，得到的闭包摘要与修订记录的一致 |
 | F04-GOV-013 | 只在检查指定了基线时评估，见“检查里的基线” |
 
-F04-GOV-014 到 020、025 到 027 这 10 条管的是 Release、发布、评审和渲染，检查一个修订时这些还不存在，所以检查里没有工具评估它们，每次检查都记为 `NOT_RUN`。它们在检查之外的环节执行，或者现在不适用，见下表。准备 Release 和发布时，阻断级规则是 `NOT_RUN` 会被拒绝（409 `RELEASE_CHECK_INCOMPLETE`，§11.6），这 10 条和不带基线时的 F04-GOV-013 除外（`internal/policyreview/application/approval.go` 的 `outsideContractChecks`）。所以一次检查的 `status` 仍只会是 `FAIL` 或 `UNKNOWN`，但批准和发布不因这 10 条被挡。登记表没有随之修改，是否把它们移出检查时的策略，待裁决。
+F04-GOV-014 到 020、025 到 027 这 10 条管的是 Release、发布、评审和渲染，检查一个修订时这些还不存在，所以检查里没有工具评估它们，每次检查都记为 `NOT_RUN`。它们在检查之外的环节执行，或者现在不适用，见下表。准备 Release 时，阻断级规则是 `NOT_RUN` 会被拒绝（409 `RELEASE_CHECK_INCOMPLETE`，§11.6），这 10 条和不带基线时的 F04-GOV-013 除外（`internal/policyreview/domain/release.go` 的 `outsideContractChecks`，0.36.0 之前在 `application/approval.go`）。所以一次检查的 `status` 仍只会是 `FAIL` 或 `UNKNOWN`，但准备 Release 不因这 10 条被挡；0.37.0 起激活和恢复不再看检查里的规则结论（§11.6）。登记表没有随之修改。ADR-0008 提出过让这 10 条不计入结论；CR-0001 取消评审后，开发侧建议不再推进，见 ADR-0008。
 
 | 规则 | 在哪里执行 | 见 |
 |---|---|---|
 | F04-GOV-014 摘要链 | 准备 Release 时绑定修订的闭包摘要，制品按 SHA-256 寻址，读出时重新核对 | §11.6、F03 §5.10 |
 | F04-GOV-015 发布范围、CAS 与阻断 | 槽位按目标 × 资产唯一，改变槽位要带 `expected_generation`；经槽位读取时逐次检查阻断。按编号下载不看阻断，与设计不一致，待裁决 | §11.6、F05 §6.9 |
-| F04-GOV-016 策略快照与批准 | 准备 Release、`ACTIVATE` 和 `RESTORE` 时重新核对批准的范围、到期、豁免和现行策略 | §11.6 |
+| F04-GOV-016 策略快照与批准 | 准备 Release 时核对检查、现行策略和豁免（CR-0001）。0.36.0 之前在准备 Release、`ACTIVATE` 和 `RESTORE` 时重新核对批准的范围、到期、豁免和现行策略 | §11.6 |
 | F04-GOV-017 渲染清理 | 内部门户不使用 `innerHTML` 这类写入 HTML 的接口；开发者门户用 `html/template` 转义契约文本 | `cmd/fabric-portal`、`cmd/fabric-developer-portal` |
 | F04-GOV-018 工具与输入的来源 | 每次检查都记录 `tool_manifest` 和 `input_digest`，由检查记录本身满足 | 本节“检查全文” |
 | F04-GOV-019 产品规则不削弱全局规则 | 现在只有全局策略集 `fabric-global-contract-governance`，没有产品级规则，暂不适用 | — |
-| F04-GOV-020 不支持的规范不能发布 | 导入只接受 OpenAPI 3.1.2；F04-GOV-001、009、011 判断不了时为 `UNKNOWN`，三条都不可豁免，提交评审返回 409 `REVIEW_BLOCKED` | §11.3、§11.5 |
-| F04-GOV-025 评审人独立 | 作决定时排除登记人、检查发起人和提交人；准备 Release 和发布时，发布人不能参与过这个修订 | §11.5、§11.6 |
+| F04-GOV-020 不支持的规范不能发布 | 导入只接受 OpenAPI 3.1.2；F04-GOV-001、009、011 判断不了时为 `UNKNOWN`，三条都不可豁免，准备 Release 返回 409 `RELEASE_BLOCKED`（0.36.0 之前提交评审返回 409 `REVIEW_BLOCKED`） | §11.3、§11.6 |
+| F04-GOV-025 评审人独立 | 不再适用（CR-0001）：没有评审人，发布人也不必独立。0.36.0 之前作决定时排除登记人、检查发起人和提交人，准备 Release 和发布时发布人不能参与过这个修订 | §11.5、§11.6 |
 | F04-GOV-026 私有 API 不进公开索引 | 还没有公开门户和搜索；合作方读取绑定一个 `partner` 目标，要登录，暂不适用 | `cmd/fabric-api/PARTNER.md` |
 | F04-GOV-027 外部状态不冒充最新 | 交付状态和边缘传播状态如实报告为 `UNKNOWN` | §11.6 |
+
+**登记表未随 CR-0001 修改。** `F04_Rules_Registry.json` 里 F04-GOV-016 的描述仍是 “PolicySnapshot and ReviewDecision match fixed scope and expiry”，评估器 `approval_binding`；F04-GOV-025 仍是 “Reviewers must be independent authorized principals”，评估器 `four_eyes`。改登记表会改变内置策略的 `policy_digest`，已记录的检查都会不再是现行的（`POLICY_STALE`），所以这两条只在本文改写含义：F04-GOV-016 现在指准备 Release 时核对检查、现行策略和豁免；F04-GOV-025 不再适用。两条在检查里仍记为 `NOT_RUN`，仍在 `outsideContractChecks` 之列，不挡准备 Release。
 
 F04-GOV-001、005、009、012 复核的是导入时已经执行过的限制。读文档内容的规则（001–003、005–008、011）在文件不是良构文档或超出读取上限时为 `UNKNOWN`；004 和 010 按行读原始字节，注释里的内容也在内。F04-GOV-004 和 010 按已知的形式匹配，`PASS` 只说明没有匹配到这些形式，不是“没有凭证”的证明。发现的说明不复述命中的内容。
 
@@ -416,13 +421,15 @@ F04-GOV-001、005、009、012 复核的是导入时已经执行过的限制。�
 
 本节对应管理 API 0.17.0–0.19.0：0.17.0 加入评审人角色，0.18.0 加入提交评审、撤回和读取，0.19.0 加入批准和驳回。下表路径以 `/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}` 开头。数据模型见 F03 §5.9，访问规则见 F05 §6.6。
 
+**0.37.0 起只剩读取（CR-0001）。** 不再提交、撤回和决定评审：`requestRevisionReview`、`withdrawRevisionReview` 和 `decideRevisionReview` 在 0.37.0 删除，`POST …/reviews` 返回 405 `METHOD_NOT_ALLOWED`，`POST …/reviews/{review_id}/withdrawal` 和 `…/decision` 返回 404 `ROUTE_NOT_FOUND`。`GET …/reviews`、`GET …/reviews/{review_id}` 和 Workspace 的评审队列（§11.9）保留，读到的是此前的评审，记录不变。上线时还开着的评审由迁移结束为 `WITHDRAWN`，理由引用 CR-0001（F03 §5.15）。`internal_reviewer` 不再授予（422 `REQUEST_UNPROCESSABLE`），已有的成员关系仍能读。豁免改在准备 Release 时给出（§11.6）。以下是 0.17.0–0.36.0 的记录。
+
 | 操作 | 请求与响应 |
 |---|---|
-| `POST …/reviews` | 提交 `check_run_id`、`scope` 和可选的 `note`。成功返回 201、`Location` 和评审，修订变为 `IN_REVIEW` |
+| `POST …/reviews`（0.37.0 删除） | 提交 `check_run_id`、`scope` 和可选的 `note`。成功返回 201、`Location` 和评审，修订变为 `IN_REVIEW` |
 | `GET …/reviews` | 这个修订的评审历史，按申请时间从早到晚，同一时刻按编号，采用 §3.1.1 的分页约定 |
 | `GET …/reviews/{review_id}` | 一条评审 |
-| `POST …/reviews/{review_id}/withdrawal` | 请求体是 `{}` 或 `{"reason": …}`。成功返回 200 和评审，修订变为 `WITHDRAWN` |
-| `POST …/reviews/{review_id}/decision` | 提交 `outcome`（`APPROVED` 或 `REJECTED`），以及 `reason`、`valid_until`、`waivers`。成功返回 200 和评审，修订变为 `APPROVED` 或 `REJECTED` |
+| `POST …/reviews/{review_id}/withdrawal`（0.37.0 删除） | 请求体是 `{}` 或 `{"reason": …}`。成功返回 200 和评审，修订变为 `WITHDRAWN` |
+| `POST …/reviews/{review_id}/decision`（0.37.0 删除） | 提交 `outcome`（`APPROVED` 或 `REJECTED`），以及 `reason`、`valid_until`、`waivers`。成功返回 200 和评审，修订变为 `APPROVED` 或 `REJECTED` |
 
 全部响应带 `Cache-Control: no-store`。申请和结论记录后不变，所以没有 `ETag` 和 `If-Match`；并发由修订的状态保证，见“状态和并发”。三个写操作都没有 `Idempotency-Key`：重复提交、重复撤回和重复决定得到 409，不会产生第二条记录。
 
@@ -461,37 +468,48 @@ F04-GOV-001、005、009、012 复核的是导入时已经执行过的限制。�
 
 **错误。** 评审不属于该修订或不存在，返回 404 `REVIEW_NOT_FOUND`。请求体不符合契约（缺少必填成员、未声明的成员、取值不在枚举内、时间不是带时区的 RFC 3339、编号不是 UUID）返回 400 `REQUEST_INVALID`，三个写操作都要求有请求体。符合契约但模型不接受的（上面各表之外，还有说明或理由首尾带空白）返回 422 `REQUEST_UNPROCESSABLE`。分页令牌属于另一个修订的列表，返回 400 `PAGE_TOKEN_INVALID`。存储的评审与记录时不符（F03 §5.9）时返回 500 `INTERNAL_ERROR`，响应不说原因，日志在 `correlation_id` 下写明是哪一条评审。
 
-批准记录作为历史证据保留，本身不会改变。0.21.0 起，准备 Release 和发布时按 §11.6 重新核对它：§9 的 `REVIEWER_AUTH_REVOKED`、`WAIVER_EXPIRED` 和 `APPROVAL_SCOPE_MISMATCH` 在那时判断。豁免的范围、内容摘要与评审人来自所属批准，受众和环境来自评审申请。
+批准记录作为历史证据保留，本身不会改变。0.21.0–0.36.0 中，准备 Release 和发布时按 §11.6 重新核对它（0.37.0 起不再核对）：§9 的 `REVIEWER_AUTH_REVOKED`、`WAIVER_EXPIRED` 和 `APPROVAL_SCOPE_MISMATCH` 在那时判断。豁免的范围、内容摘要与评审人来自所属批准，受众和环境来自评审申请。
 
 **兼容性。** 三个版本都只增加操作和 schema，但各给已有的响应枚举增加了成员，按 §5.1 属于 RISKY：0.17.0 给 `WorkspaceRole` 增加 `internal_reviewer`；0.18.0 给 `ContractRevision.status` 增加四个值；0.19.0 给 `ReviewStatus` 和结论的 `outcome` 增加 `APPROVED`、`REJECTED`，并给结论增加可选的 `valid_until` 和 `waivers`。把这些枚举当作封闭集合、或拒绝未知成员的客户端，要先升级。没有人被授予评审人、没有修订被提交之前，响应与 0.16.0 相同。
 
 ### 11.6 已实现的 Release 与发布接口
 
-本节对应管理 API 0.20.0–0.22.0。0.20.0 加入发布人和两种安全角色，0.21.0 加入 Release，0.22.0 加入发布目标、槽位和访问阻断。数据模型见 F03 §5.10，访问规则见 F05 §6.7。自 0.33.0 起，内部恢复和制品读取遵循 §11.10。以下路径均以 `/v1/products/{product_id}` 开头。 [管理 API 契约](../api/openapi.yaml)
+本节对应管理 API 0.20.0–0.22.0。0.20.0 加入发布人和两种安全角色，0.21.0 加入 Release，0.22.0 加入发布目标、槽位和访问阻断。数据模型见 F03 §5.10，访问规则见 F05 §6.7。自 0.33.0 起，内部恢复和制品读取遵循 §11.10。0.37.0 起 Release 依据检查准备（CR-0001），本节按 0.37.0 描述，0.36.0 之前的做法在各段注明；数据模型见 F03 §5.15，访问规则见 F05 §6.14。以下路径均以 `/v1/products/{product_id}` 开头。 [管理 API 契约](../api/openapi.yaml)
 
 | 路径 | 行为 |
 |---|---|
-| `POST /assets/{api_asset_id}/releases` | 工作空间发布人从已批准的修订创建 `READY` Release。相同资产、版本、修订与审批的重试返回已有记录，同一版本绑定其他修订或审批返回 409 |
-| `GET /assets/{api_asset_id}/releases`、`GET …/releases/{release_id}` | 授权成员读取 Release 元数据和检查、策略、审批及制品摘要 |
+| `POST /assets/{api_asset_id}/releases` | 工作空间发布人依据修订的一次检查和豁免创建 `READY` Release。相同资产、版本、修订、检查和豁免的重试返回已有记录，同一版本绑定其他修订、检查或豁免返回 409 |
+| `GET /assets/{api_asset_id}/releases`、`GET …/releases/{release_id}` | 授权成员读取 Release 元数据和检查、策略、豁免及制品摘要；CR-0001 之前准备的 Release 还带 `review_id` |
 | `POST /publication-targets`、`GET /publication-targets`、`GET …/{publication_target_id}` | 产品负责人用当前受众配置与门户标识登记目标。产品内授权主体可读取目标 |
 | `GET …/publication-targets/{publication_target_id}/assets/{api_asset_id}` | 读取 Slot 当前指针、代次和有效阻断状态。首次发布前代次为 0 |
 | `POST …/assets/{api_asset_id}/operations` | `ACTIVATE`、`WITHDRAW`、`RESTORE` 使用 `expected_generation` 执行 CAS。成功回传操作记录。`Idempotency-Key` 相同且输入相同的重试回传原操作。代次冲突返回 412，复用键改写请求返回 409 |
-| `GET …/assets/{api_asset_id}/operations`、`GET …/assets/{api_asset_id}/artifact` | 按代次查询操作历史，或读取当前获准的制品字节。`X-Artifact-Digest` 对应响应的 SHA-256 |
+| `GET …/assets/{api_asset_id}/operations`、`GET …/assets/{api_asset_id}/artifact` | 按代次查询操作历史，或读取当前生效的制品字节。`X-Artifact-Digest` 对应响应的 SHA-256 |
 | `POST …/access-blocks`、`POST …/access-blocks/{access_block_id}/clearance` | 具有产品安全角色的主体按目标、资产或制品建立阻断。独立安全评审人可在受影响指针撤销后解除阻断。可查询阻断记录与历史 |
 
-源文件和摘要打包为 `fabric-openapi-source/v1` JSON，文件内容采用 Base64，制品以 SHA-256 寻址。Release 和制品使用仅可追加的 PostgreSQL 表，Release 绑定修订、审批、检查和策略快照。准备、激活与恢复校验审批有效期、豁免、现行策略与工具、评审人授权和职责分离。换发其他修订时，检查的兼容性基线须匹配该 Slot 上一次生效的修订。回退仅能选择该 Slot 曾生效且当前仍有效的 Release。
+源文件和摘要打包为 `fabric-openapi-source/v1` JSON，文件内容采用 Base64，制品以 SHA-256 寻址。Release 和制品使用仅可追加的 PostgreSQL 表，Release 绑定修订、检查、策略快照和豁免（CR-0001 之前绑定审批）。准备时按门禁核对检查、现行策略与工具和豁免；激活与恢复只核对 Release 依据的检查是它记录的那次，不再校验审批、现行策略和发布人独立（0.36.0 之前校验审批有效期、豁免、现行策略与工具、评审人授权和职责分离）。`ACTIVATE` 换发其他修订时，检查的兼容性基线须匹配该 Slot 上一次生效的修订。回退仅能选择该 Slot 曾生效的 Release。
 
-Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使用独立代次，源站读取逐次检查当前成员、受众配置、指针、审批和阻断。当前源站只提供 `internal` 受众的受控下载。外部交付与 Edge 传播维持 `UNKNOWN`，正式 F08 验收状态见 F08。
+Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使用独立代次，源站读取逐次检查当前成员、受众配置、指针和阻断（0.36.0 之前还核对审批）。当前源站只提供 `internal` 受众的受控下载。外部交付与 Edge 传播维持 `UNKNOWN`，正式 F08 验收状态见 F08。
 
 全部响应带 `Cache-Control: no-store`。Release 记录后不变，没有 `ETag`。槽位的并发控制不用 `If-Match`，而是请求体里的 `expected_generation`：读槽位得到当前代次，改变槽位时原样带上。
 
-**准备 Release。** 请求体是 `revision_id`、`review_id` 和 `version`，版本号是 1–64 个字符的字母、数字和 `.` `_` `+` `-`，以字母或数字开头。记录了新的 Release 返回 201 和 `Location`；同一版本号、同一修订和评审已有记录时返回 200。修订不是 `APPROVED` 返回 409 `REVISION_NOT_APPROVED`；评审没有批准这个修订返回 409 `APPROVAL_REQUIRED`；版本号已经属于另一个修订或评审返回 409 `RELEASE_VERSION_CONFLICT`。使用批准时的核对不通过，返回 409 `APPROVAL_EXPIRED`、`WAIVER_EXPIRED`、`REVIEWER_AUTH_REVOKED`、`POLICY_STALE` 或 `RELEASE_CHECK_INCOMPLETE`；发布人参与过这个修订返回 403 `PUBLISHER_NOT_INDEPENDENT`。
+**准备 Release。** 请求体是 `revision_id`、`check_run_id`、可选的 `waivers` 和 `version`（0.36.0 之前是 `revision_id`、`review_id` 和 `version`）。版本号是 1–64 个字符的字母、数字和 `.` `_` `+` `-`，以字母或数字开头。`waivers` 至多 100 项，每项是 `rule_id` 和 `reason`，理由是 1–1000 个字符的一行文字。记录了新的 Release 返回 201 和 `Location`；同一版本号、同一修订、同一检查和同一组豁免（不计顺序）已有记录时返回 200。版本号已经属于另一个修订、检查或另一组豁免，或属于 CR-0001 之前依据批准准备的 Release，返回 409 `RELEASE_VERSION_CONFLICT`。修订的状态不再参与判断。检查不属于这个修订或不存在，返回 404 `CHECK_RUN_NOT_FOUND`。检查还必须能作为 Release 的依据：
+
+| 情形 | 响应 |
+|---|---|
+| 检查不是按现行策略和现行工具版本做的 | 409 `POLICY_STALE`，重新检查 |
+| 有不可豁免的规则是 `FAIL` 或 `UNKNOWN` | 409 `RELEASE_BLOCKED`，要改契约，导入新修订 |
+| 有可豁免的规则是 `FAIL` 或 `UNKNOWN` 而没有豁免 | 409 `WAIVER_REQUIRED` |
+| 豁免了不可豁免的规则 | 422 `WAIVER_FORBIDDEN` |
+| 豁免了不需要豁免的规则或策略里没有的规则，同一条规则豁免两次，或理由首尾带空白（不符合契约的理由是 400 `REQUEST_INVALID`） | 422 `REQUEST_UNPROCESSABLE` |
+| 阻断级规则是 `NOT_RUN`，而它不在检查之外执行（§11.4） | 409 `RELEASE_CHECK_INCOMPLETE` |
+
+需要豁免的规则与原先批准时相同：检查里可豁免、结果为 `FAIL` 或 `UNKNOWN` 的规则，不分阻断级和警告级。基线里可豁免的是 F04-GOV-002、003、007 和 013；结果为 `WARN` 的规则不需要豁免。豁免由准备 Release 的人填写，随 Release 记录（`ContractRelease.waivers`），只对这个 Release 有效，没有到期时间。发布人不必独立：导入、检查、准备 Release 和发布可以是同一个人。0.36.0 之前的 `REVISION_NOT_APPROVED`、`APPROVAL_REQUIRED`、`APPROVAL_EXPIRED`、`WAIVER_EXPIRED`、`REVIEWER_AUTH_REVOKED` 和 403 `PUBLISHER_NOT_INDEPENDENT` 不再返回。
 
 **登记发布目标。** 请求体是 `audience_config_id` 和 `portal_key`，后者是 1–63 个字符的小写字母、数字和 `-`，以字母或数字开头。新登记返回 201 和 `Location`；同一个受众配置下同一个门户标识已经登记过，返回 200 和已有的目标，不再留审计记录和事件。受众配置不存在、已移除或属于别的产品返回 404 `AUDIENCE_CONFIG_NOT_FOUND`；产品已暂停返回 409 `PRODUCT_NOT_ACTIVE`。目标登记后不能修改，也不能删除。
 
-**改变槽位。** `POST …/operations` 的请求体是 `action`、`expected_generation`，以及按动作需要的 `release_id` 和 `reason`；请求头 `Idempotency-Key` 必填，1–128 个字符的字母、数字和 `.` `_` `:` `-`。`ACTIVATE` 要有 `release_id`；`WITHDRAW` 要有 `reason`，不能有 `release_id`；`RESTORE` 两者都要有，而且只能回到这个槽位上生效过的 Release（否则 409 `RELEASE_NOT_IN_SLOT_HISTORY`）。成功返回 200 和操作记录。代次不是当前的返回 412 `PRECONDITION_FAILED`；同一个键用于另一个请求返回 409 `IDEMPOTENCY_CONFLICT`；要激活的已经在生效返回 409 `RELEASE_ALREADY_ACTIVE`；没有可撤销的返回 409 `NO_ACTIVE_RELEASE`。激活和恢复还会重新核对批准，除上一段的错误码外：目标的受众和环境不在批准的范围内返回 409 `APPROVAL_SCOPE_MISMATCH`；用另一个修订的 Release 替换槽位上最近生效过的那个（中间撤销过也算），而批准依据的检查不是以那个修订为基线，返回 409 `COMPATIBILITY_BASELINE_MISMATCH`，同一个修订的另一个 Release 不需要比较，恢复也不需要；目标不是 `internal` 受众返回 409 `PUBLICATION_TARGET_UNAVAILABLE`，目标的受众配置已被移除返回 404 `AUDIENCE_CONFIG_NOT_FOUND`；被阻断覆盖返回 409 `PUBLICATION_BLOCKED`；产品已暂停返回 409 `PRODUCT_NOT_ACTIVE`。撤销不核对批准，产品暂停时也可以撤销，参与过这个修订的发布人也可以撤销。
+**改变槽位。** `POST …/operations` 的请求体是 `action`、`expected_generation`，以及按动作需要的 `release_id` 和 `reason`；请求头 `Idempotency-Key` 必填，1–128 个字符的字母、数字和 `.` `_` `:` `-`。`ACTIVATE` 要有 `release_id`；`WITHDRAW` 要有 `reason`，不能有 `release_id`；`RESTORE` 两者都要有，而且只能回到这个槽位上生效过的 Release（否则 409 `RELEASE_NOT_IN_SLOT_HISTORY`）。成功返回 200 和操作记录。代次不是当前的返回 412 `PRECONDITION_FAILED`；同一个键用于另一个请求返回 409 `IDEMPOTENCY_CONFLICT`；要激活的已经在生效返回 409 `RELEASE_ALREADY_ACTIVE`；没有可撤销的返回 409 `NO_ACTIVE_RELEASE`。激活和恢复只核对 Release 依据的检查就是它记录的那次（对不上按存储故障处理），不再核对批准、现行策略和工具，也不要求发布人独立（CR-0001 决定 3、5）：策略更新后，已有 Release 仍可激活和恢复。用另一个修订的 Release 替换槽位上最近生效过的那个（中间撤销过也算），而 Release 依据的检查不是以那个修订为基线，返回 409 `COMPATIBILITY_BASELINE_MISMATCH`；同一个修订的另一个 Release 不需要比较，恢复也不需要。目标不是 `internal` 受众返回 409 `PUBLICATION_TARGET_UNAVAILABLE`，目标的受众配置已被移除返回 404 `AUDIENCE_CONFIG_NOT_FOUND`；被阻断覆盖返回 409 `PUBLICATION_BLOCKED`；产品已暂停返回 409 `PRODUCT_NOT_ACTIVE`。撤销不核对检查，产品暂停时也可以撤销。0.36.0 之前，激活和恢复还重新核对批准：受众和环境不在批准范围内返回 409 `APPROVAL_SCOPE_MISMATCH`，另有上一段所列的批准错误码，参与过这个修订的发布人返回 403 `PUBLISHER_NOT_INDEPENDENT`（撤销除外）。
 
-**读取槽位和制品。** 槽位的响应有 `generation`、`visibility`（`EMPTY`、`ACTIVE`、`WITHDRAWN`）、可选的 `active_release_id`、`blocked` 和 `delivery_status`（恒为 `UNKNOWN`）。阻断将 `blocked` 置为真，槽位的指针和代次保持原值。制品以 `application/octet-stream` 返回，`X-Artifact-Digest` 是响应字节的 SHA-256。没有生效的 Release、被阻断或产品暂停时返回 404 `PUBLISHED_ARTIFACT_NOT_FOUND`。目标的受众配置已被移除时返回 404 `AUDIENCE_CONFIG_NOT_FOUND`。0.22.0 中，批准失效也会导致制品返回 404。0.25.0 起槽位通过 `approval_problem` 说明批准失效原因（§11.7）。0.33.0 起已生效的内部制品继续受 §11.10 的读取条件约束。
+**读取槽位和制品。** 槽位的响应有 `generation`、`visibility`（`EMPTY`、`ACTIVE`、`WITHDRAWN`）、可选的 `active_release_id`、`blocked` 和 `delivery_status`（恒为 `UNKNOWN`）。阻断将 `blocked` 置为真，槽位的指针和代次保持原值。制品以 `application/octet-stream` 返回，`X-Artifact-Digest` 是响应字节的 SHA-256。没有生效的 Release、被阻断或产品暂停时返回 404 `PUBLISHED_ARTIFACT_NOT_FOUND`。目标的受众配置已被移除时返回 404 `AUDIENCE_CONFIG_NOT_FOUND`。0.22.0 中，批准失效也会导致制品返回 404。0.25.0 起槽位通过 `approval_problem` 说明批准失效原因（§11.7）。0.33.0 起已生效的内部制品继续受 §11.10 的读取条件约束。0.37.0 起槽位没有 `approval_problem`。
 
 **访问阻断。** `POST …/access-blocks` 的请求体是 `reason` 和可选的 `api_asset_id`、`release_id`（有后者必有前者），分别阻断整个目标、一个资产或一个 Release。新建返回 201；同一范围已有未解除的阻断时，同一个人以同样的理由再次提交返回 200，否则 409 `ACCESS_BLOCK_EXISTS`。资产不属于这个产品返回 404 `API_ASSET_NOT_FOUND`，Release 不属于这个资产返回 404 `RELEASE_NOT_FOUND`。`POST …/clearance` 的请求体是 `reason`：解除人就是建立人返回 403 `SECURITY_REVIEWER_NOT_INDEPENDENT`；阻断覆盖的槽位还有生效的 Release 返回 409 `WITHDRAW_BEFORE_CLEARING`，只看它覆盖的那部分，按 Release 阻断时同一资产换成了别的 Release 就可以解除；已经解除的阻断，解除人以同样的理由再次提交返回 200，否则 409 `ACCESS_BLOCK_CLEARED`。阻断的响应里 `edge_status` 恒为 `UNKNOWN`。
 
@@ -501,9 +519,11 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 
 **与 §10 和 §11.2 的差别。** §11.2 的设计示例用 `PUT /v1/publication-slots/{slot_id}` 加 `If-Match`；实现是目标和资产下的 `POST …/operations` 加请求体里的 `expected_generation`。幂等键的作用域是槽位，没有保留期限：操作记录不删除，键一直有效。同一个键、同一个请求的重试返回同一条操作记录。
 
-**兼容性。** 0.20.0 给 `ProductRole` 和 `WorkspaceRole` 两个枚举增加了成员，按 §5.1 属于 RISKY：把枚举当作封闭集合的客户端要先升级。0.21.0 和 0.22.0 只增加操作和 schema。
+**兼容性。** 0.20.0 给 `ProductRole` 和 `WorkspaceRole` 两个枚举增加了成员，按 §5.1 属于 RISKY：把枚举当作封闭集合的客户端要先升级。0.21.0 和 0.22.0 只增加操作和 schema。0.37.0 是破坏性变更：`ReleasePreparation` 用 `check_run_id` 取代 `review_id` 并增加 `waivers`；`ContractRelease` 的 `review_id` 改为可选，增加必有的 `waivers`；`ContractReleaseProvenance` 的 `approval` 改为可选；`PublicationSlot` 删除 `approval_problem`；三个评审写操作和 `ReviewSubmission`、`ReviewWithdrawal`、`ReviewDecision` 三个 schema 删除，操作从 60 个变为 57 个。用 `review_id` 准备 Release 的调用方要改用 `check_run_id`。升级执行 `fabric-migrate -apply`，不需要重新授权（F03 §5.15）。
 
 ### 11.7 已实现的复审接口与批准状态
+
+> 0.37.0 起（CR-0001）没有复审，`approval_problem` 已从槽位删除，本节的恢复步骤不再需要：策略或工具更新后，已有 Release 照常激活和恢复；要准备新的 Release，重新检查即可（§11.6）。本节保留为 0.23.0–0.36.0 的记录。
 
 本节对应管理 API 0.23.0–0.25.0：0.23.0 让已批准的修订可以再次评审，0.24.0 让发布人能读修订、检查和评审，0.25.0 让槽位说明批准为什么不成立。三个版本都没有增加操作，仍是 52 个。数据模型见 F03 §5.11，访问规则见 F05 §6.8。 [管理 API 契约](../api/openapi.yaml)
 
@@ -555,7 +575,7 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 
 五个应答都带 `Cache-Control: no-store`。
 
-**槽位列表（0.26.0）。** 应答是 `PublicationSlotList`：`items` 和下一页的 `next_page_token`。每一项就是 `getPublicationSlot` 读到的 `PublicationSlot`，含 `blocked` 和可选的 `approval_problem`（§11.7）：同一个槽位在这三处读到的完全一样。只列做过操作的槽位，撤回的也列，所以 `visibility` 只有 `ACTIVE` 和 `WITHDRAWN`；没有发布过的资产没有槽位，读单个槽位是空槽位（`EMPTY`），列表里没有它。目标的列表只含调用人读的 Workspace 里的资产的槽位，资产的列表含这个资产在本产品各个目标上的槽位。谁能读与读单个槽位相同：资产所属 Workspace 的作者、评审人和发布人。能读但没有可见的槽位，得到 200 和空的 `items`，不是错误。`approval_problem` 是读的时候算的，不存库，所以不能按它筛选。一页里的每个槽位各做一次与读单个槽位相同的核对，耗时随页里的槽位数增加，本机的量级见 F03 §5.12。
+**槽位列表（0.26.0）。** 应答是 `PublicationSlotList`：`items` 和下一页的 `next_page_token`。每一项就是 `getPublicationSlot` 读到的 `PublicationSlot`，含 `blocked` 和可选的 `approval_problem`（§11.7；0.37.0 起没有这个成员）：同一个槽位在这三处读到的完全一样。只列做过操作的槽位，撤回的也列，所以 `visibility` 只有 `ACTIVE` 和 `WITHDRAWN`；没有发布过的资产没有槽位，读单个槽位是空槽位（`EMPTY`），列表里没有它。目标的列表只含调用人读的 Workspace 里的资产的槽位，资产的列表含这个资产在本产品各个目标上的槽位。谁能读与读单个槽位相同：资产所属 Workspace 的作者、评审人和发布人。能读但没有可见的槽位，得到 200 和空的 `items`，不是错误。`approval_problem` 是读的时候算的，不存库，所以不能按它筛选。一页里的每个槽位各做一次与读单个槽位相同的核对，耗时随页里的槽位数增加，本机的量级见 F03 §5.12。
 
 **分页和顺序。** 三个列表都采用 §3.1.1 的约定：`page_size` 为 1–100，默认 50，`page_token` 原样使用上一页的 `next_page_token`；除最后一页，每一页都是满的，最后一页没有令牌，刚好装满的也没有；不返回总数。顺序是固定的：
 
@@ -581,16 +601,16 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 
 时刻是 RFC 3339，建议用 `Z` 结尾；带偏移的 `+` 在查询里要写成 `%2B`，否则它是一个空格，请求被拒绝（400 `REQUEST_INVALID`）。时刻按微秒记，更细的截到微秒。`recorded_since` 不早于 `recorded_before` 是 422 `REQUEST_UNPROCESSABLE`：这一条只有模型能判断，所以只对审计员给出，不是审计员的人得到的是 403 或 404。其余条件的格式（上表里的长度、字符和 UUID 形式）契约已经声明，不符合的是 400 `REQUEST_INVALID`；契约没有声明的参数同样是 400（§3.1.1）。一页读多少行：不带筛选的一页读的行数和它返回的相当；按动作、结果、行动人和资源筛选没有索引，满足条件的记录很少时，一页要读很多行（F03 §5.12）。
 
-**下载（0.27.0）。** `GET …/releases/{release_id}/artifact` 按 Release 的编号下载它的制品：`application/octet-stream`，字节就是这个 Release 准备时用的字节（§11.6 说的 `fabric-openapi-source/v1` JSON）。`X-Artifact-Digest` 是响应字节的 SHA-256，也就是 Release 的 `artifact_digest`，格式是 `sha256:` 加小写十六进制，客户端可以自己再算一遍。读取之前，服务端核对制品字节的摘要和修订的闭包摘要，与读槽位的制品时一样。与 `getPublishedArtifact` 不同，它不看槽位指向谁：同一个资产的任何 Release 都可以下载，包括已经被别的 Release 替换的和撤回的。谁能读这个 Release 谁就能下载：资产所属 Workspace 的作者、评审人和发布人，产品暂停时也可以。**它不看发布目标上的访问阻断，也不重新核对批准，这与设计正文不一致，待裁决，见 F05 §6.9。** 路径里的 `release_id` 必须是 Release 的编号：摘要和版本号不是编号，是 400 `REQUEST_INVALID`。
+**下载（0.27.0）。** `GET …/releases/{release_id}/artifact` 按 Release 的编号下载它的制品：`application/octet-stream`，字节就是这个 Release 准备时用的字节（§11.6 说的 `fabric-openapi-source/v1` JSON）。`X-Artifact-Digest` 是响应字节的 SHA-256，也就是 Release 的 `artifact_digest`，格式是 `sha256:` 加小写十六进制，客户端可以自己再算一遍。读取之前，服务端核对制品字节的摘要和修订的闭包摘要，与读槽位的制品时一样。与 `getPublishedArtifact` 不同，它不看槽位指向谁：同一个资产的任何 Release 都可以下载，包括已经被别的 Release 替换的和撤回的。谁能读这个 Release 谁就能下载：资产所属 Workspace 的作者、评审人和发布人，产品暂停时也可以。**它不看发布目标上的访问阻断，也不重新核对批准，这与设计正文不一致，待裁决，见 F05 §6.9。** 0.37.0 起没有批准可核对，剩下的不一致是不看访问阻断。 路径里的 `release_id` 必须是 Release 的编号：摘要和版本号不是编号，是 400 `REQUEST_INVALID`。
 
 **来源（0.27.0）。** `GET …/releases/{release_id}/provenance` 一次给出一个 Release 准备时依据的事实，成员是：
 
 - `release`：就是 `getContractRelease` 读到的 `ContractRelease`；
 - `revision`：`revision_id` 和 `revision_sequence`，`source_kind`（`UPLOAD` 或 `GIT`），`git_origin`（只有 `GIT` 有），入口路径 `entrypoint`，`source_digest` 和 `ref_closure_digest`；
 - `check`：依据的那次检查：`check_run_id`，`policy_set_id` 和 `policy_digest`，`tool_manifest`，`status`，`summary`（各状态的规则数和发现总数），`completed_at`；
-- `approval`：依据的那次评审：`review_id`，`supplementary`（是不是复审），`scope`（批准的受众和环境），`concluded_by` 和 `concluded_at`（谁在什么时候批准），`valid_until`，`waivers`（豁免的规则和各自的到期时间；理由和补偿措施的文字不在这里，要读评审）。
+- `approval`：依据的那次评审（0.37.0 起可选，只有 CR-0001 之前依据批准准备的 Release 才有；Release 自身带 `waivers`）：`review_id`，`supplementary`（是不是复审），`scope`（批准的受众和环境），`concluded_by` 和 `concluded_at`（谁在什么时候批准），`valid_until`，`waivers`（豁免的规则和各自的到期时间；理由和补偿措施的文字不在这里，要读评审）。
 
-各部分和读修订、读检查、读评审得到的同名成员逐一相同。来源说的是准备这个 Release 时依据的事实，不说批准现在成不成立：修订后来被复审、有了更新的检查，旧 Release 的来源不变；批准现在是否成立看槽位的 `approval_problem`（§11.7），来源里没有这样的成员。Git 来源是导入修订时提交人声明的，Fabric 不回仓库核对：`git_origin` 说明的是“谁说这些文件来自哪个提交”，不证明文件和那个提交一致；同一仓库的相同内容后来从别的提交再导入，得到的仍是最先登记的修订，`git_origin` 仍是最早那次的提交。上传的修订没有 `git_origin`。没有指定基线的检查，`check.summary` 里的 `not_run` 是 11：基线里有 10 条规则没有工具，再加上兼容性那一条（F04-GOV-013 只在检查指定了基线时评估），见 §11.4；指定了基线的是 10。读出的评审、检查和修订与 Release 所记的对不上，是存储的故障，答 500 `INTERNAL_ERROR`，不说哪里不对，原因在日志里（F03 §5.12）。
+各部分和读修订、读检查、读评审得到的同名成员逐一相同。来源说的是准备这个 Release 时依据的事实，不说批准现在成不成立：修订后来被复审、有了更新的检查，旧 Release 的来源不变；批准现在是否成立看槽位的 `approval_problem`（§11.7，0.37.0 起已删除），来源里没有这样的成员。Git 来源是导入修订时提交人声明的，Fabric 不回仓库核对：`git_origin` 说明的是“谁说这些文件来自哪个提交”，不证明文件和那个提交一致；同一仓库的相同内容后来从别的提交再导入，得到的仍是最先登记的修订，`git_origin` 仍是最早那次的提交。上传的修订没有 `git_origin`。没有指定基线的检查，`check.summary` 里的 `not_run` 是 11：基线里有 10 条规则没有工具，再加上兼容性那一条（F04-GOV-013 只在检查指定了基线时评估），见 §11.4；指定了基线的是 10。读出的评审、检查和修订与 Release 所记的对不上，是存储的故障，答 500 `INTERNAL_ERROR`，不说哪里不对，原因在日志里（F03 §5.12）。
 
 **失败。**
 
@@ -606,7 +626,7 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 
 ### 11.9 已实现的工作台查询接口
 
-本节对应管理 API 0.29.0–0.31.0，当前为 0.31.0：0.29.0 加入两个“我是谁”，0.30.0 加入一个 Workspace 里的评审队列，0.31.0 给资产的读取加上概况，并给资产列表加两个筛选。三个版本一共增加 3 个操作，现在是 60 个。数据模型见 F03 §5.13，访问规则见 F05 §6.10。 [管理 API 契约](../api/openapi.yaml)
+本节对应管理 API 0.29.0–0.31.0，当时为 0.31.0（现行契约为 0.37.0，见 §11.10）：0.29.0 加入两个“我是谁”，0.30.0 加入一个 Workspace 里的评审队列，0.31.0 给资产的读取加上概况，并给资产列表加两个筛选。三个版本一共增加 3 个操作，当时是 60 个（0.37.0 起 57 个）。数据模型见 F03 §5.13，访问规则见 F05 §6.10。 [管理 API 契约](../api/openapi.yaml)
 
 | 方法 | 路径 | operationId | 从哪个版本起 |
 |---|---|---|---|
@@ -625,7 +645,7 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 
 **“我是谁”（0.29.0）。** `getCaller` 答 `Caller`：`principal`（`Principal`：`issuer` 和 `subject`）和 `platform_administrator`（布尔，是否由部署配置指定为平台管理员）。它不带任何参数；带了查询参数或请求体是 400 `REQUEST_INVALID`，所以没有办法问别人：身份只来自令牌，请求头里写什么都不参与。先认证后检查参数，没有令牌的请求得到的是 401。任何已认证的人都能调，不读库，从不写审计。令牌里只有签发方和主体会往下传，所以没有姓名。`getCallerInProduct` 答 `CallerInProduct`：`product_id`；`roles`，调用人现在持有的产品角色（`ProductRole`，每个一次，可以为空）；`workspaces`，调用人是成员的 Workspace，每一项是 `workspace_id` 和它在那里的角色（`WorkspaceRole`，每个一次，至少一个）。`workspaces` 不是一页列表，没有 `next_page_token`：每个有成员关系的 Workspace 一项，一次给全。它只说持有什么，不说“能做哪些操作”：是不是负责人看 `roles` 里有没有 `product_owner`；负责人不是成员也读得到全部 Workspace，所以 `workspaces` 是“我持有成员关系的”，不是“我读得到的”。每次请求读当时有效的角色和成员关系，不缓存：撤销提交之后的下一次请求就没有，用的还是原来的令牌；产品暂停时照常答。谁能读与 `getProduct` 相同：平台管理员，和在这个产品里现在持有任一产品角色或 Workspace 成员关系的人；什么都不持有的平台管理员得到 200 和两个空数组。其他人，包括曾经持有、已被撤销的人和别的产品的负责人，得到 404 `PRODUCT_NOT_FOUND`，与不存在的产品逐成员相同（`trace_id` 除外）。
 
-**评审队列（0.30.0）。** `GET …/workspaces/{workspace_id}/reviews` 列出一个 Workspace 里每个资产的每个修订的评审，先提交的在前，一页一页读。应答是已有的 `ReviewList`，每一项就是 `getRevisionReview` 读到的 `Review`，由同一个函数输出：没有新的 schema，也不带 `workspace_id` 和资产名，页面要显示资产名得再读资产。没有评审是 200 和空的 `items`；不给总数。参数：
+**评审队列（0.30.0）。** 0.37.0 起队列只读历史，不再增长（§11.5）。`GET …/workspaces/{workspace_id}/reviews` 列出一个 Workspace 里每个资产的每个修订的评审，先提交的在前，一页一页读。应答是已有的 `ReviewList`，每一项就是 `getRevisionReview` 读到的 `Review`，由同一个函数输出：没有新的 schema，也不带 `workspace_id` 和资产名，页面要显示资产名得再读资产。没有评审是 200 和空的 `items`；不给总数。参数：
 
 | 参数 | 含义 |
 |---|---|
@@ -642,7 +662,7 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 | `latest_revision` | `revision_id`、`revision_sequence`、`status`、`created_at`：`revision_sequence` 最大的修订 | `getRevision` 的 `ContractRevision` |
 | `latest_check` | `check_run_id`、`status`、`completed_at`：**最新修订**最近完成的一次检查；没有检查就没有这个成员 | `listRevisionChecks` 的 `CheckRunOverview` |
 | `latest_release` | `release_id`、`revision_id`、`version`、`prepared_at`：这个资产最后准备的 Release，**不管它从哪个修订来**；没有 Release 就没有这个成员 | `listContractReleases` 的 `ContractRelease` |
-| `release_pending` | 布尔：最新修订是 `APPROVED`，而且还没有从它准备出 Release | — |
+| `release_pending` | 布尔：最新修订有检查，而且还没有从它准备出 Release（0.37.0；0.31.0–0.36.0 为最新修订是 `APPROVED`） | — |
 
 没有修订的资产，`overview` 是 `{"release_pending": false}`。复审不改变修订的状态，所以复审开着或结束，概况都不变。谁看得到 `overview`：现在在资产所属 Workspace 持有 `internal_author`、`internal_reviewer` 或 `internal_publisher` 的人，也就是读那个 Workspace 的修订的人。产品负责人和 Workspace 维护者读得到资产，读不到概况：应答里没有 `overview` 这个成员，不是空对象；兼任某个 Workspace 作者的负责人，只在那个 Workspace 的资产上看到。概况每次读的时候现算，不存，所以它说的就是读修订、检查和 Release 此刻说的。`listAssets` 多两个筛选，和已有的 `workspace_id`、`api_kind`、`domain_key`、`q` 叠加，都在分页之前应用；顺序和令牌不变，仍是 `(created_at, api_asset_id)` 升序：
 
@@ -656,7 +676,7 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 “检查失败”和“可发布”的确切含义：
 
 - 检查失败，就是 `check_status=FAIL`：最新修订最近一次检查的结论是 `FAIL`。较早的修订的检查不算，最新修订还没有检查也不算；评审时豁免了失败的规则并批准的修订，检查仍是 `FAIL`，这样的修订同时是 `release_pending`。基线里有 10 条规则没有工具，一次检查的总状态目前只会是 `FAIL` 或 `UNKNOWN`（§11.4），所以 `check_status=PASS` 和 `WARN` 今天没有结果，接口仍收这四个取值。
-- 可发布，就是 `release_pending=true`：最新修订已批准、还没有从它准备出 Release。它只看状态，不重新核对批准：批准过期、豁免到期、评审人失权、策略或工具变了，它都不管，这些在准备 Release 时才核对（§11.6），所以“可发布”不保证现在一定能准备出 Release。
+- 可发布，就是 `release_pending=true`：0.37.0 起是最新修订有检查、还没有从它准备出 Release。它不判断这次检查能否通过门禁：检查失败，或者策略、工具变了，它都不管，这些在准备 Release 时才核对（§11.6），所以“可发布”不保证现在一定能准备出 Release。0.31.0–0.36.0 是最新修订已批准、还没有准备出 Release，也不重新核对批准。
 
 概况里没有“当前发布”（资产现在在哪些目标上生效）：要看用 `listAssetPublications`，撤销风险用 `listPublicationSlots`（§11.8）。
 
@@ -669,7 +689,7 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 
 令牌只记位置和它属于哪个列表（一个产品的一个 Workspace 的队列），不记调用人，也不带来任何权限：每页重新判权，权限撤销以后旧令牌读不到下一页，得到的是没有这个权限的人的答案（403 或 404）。别的 Workspace、别的产品和别的列表的令牌是 400 `PAGE_TOKEN_INVALID`。令牌也不记筛选条件：翻页时要保持筛选条件不变（队列的 `status`、`requested_by_issuer`、`requested_by_subject`，资产列表的 `check_status`、`release_pending` 和已有的几个），换了条件不会报错，只是从那个位置起按新条件读。
 
-**工作台的待办怎么拼。** F06 的 IN-01 要首页显示待审核、检查失败、可发布和撤销风险。没有单独的汇总接口，由页面拼：待审核是 `listWorkspaceReviews` 加 `status=IN_REVIEW`；检查失败是 `listAssets` 加 `check_status=FAIL`；可发布是 `listAssets` 加 `release_pending=true`；撤销风险是 `listPublicationSlots` 和 `listAssetPublications`（每项带 `approval_problem` 和 `blocked`，不能按它们筛选）。页面先用 `getCallerInProduct` 看自己在这个产品里是什么身份，再决定调哪些：没有读评审或读修订的身份的人，调队列和带筛选的列表每次都被拒绝，也每次都留下一条审计记录（F05 §6.10）。要“我的产品和每个产品里我的身份”，得先 `listProducts` 再对每个产品问一次 `getCallerInProduct`，没有一次给全的接口。
+**工作台的待办怎么拼。** F06 的 IN-01 要首页显示待审核、检查失败、可发布和撤销风险（0.37.0 起没有待审核，槽位也没有 `approval_problem`）。没有单独的汇总接口，由页面拼：待审核是 `listWorkspaceReviews` 加 `status=IN_REVIEW`；检查失败是 `listAssets` 加 `check_status=FAIL`；可发布是 `listAssets` 加 `release_pending=true`；撤销风险是 `listPublicationSlots` 和 `listAssetPublications`（每项带 `approval_problem` 和 `blocked`，不能按它们筛选）。页面先用 `getCallerInProduct` 看自己在这个产品里是什么身份，再决定调哪些：没有读评审或读修订的身份的人，调队列和带筛选的列表每次都被拒绝，也每次都留下一条审计记录（F05 §6.10）。要“我的产品和每个产品里我的身份”，得先 `listProducts` 再对每个产品问一次 `getCallerInProduct`，没有一次给全的接口。
 
 **失败。**
 
@@ -692,8 +712,9 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 | 0.33.0 | 已生效的内部制品沿用当前槽位。批准失效通过 `approval_problem` 告知。内部 `RESTORE` 验证原批准证据，`ACTIVATE` 验证当前批准 | 读取成功仍须满足现行权限、配置和 AccessBlock。恢复沿用槽位历史、独立发布人和 CAS |
 | 0.35.0 | 角色分配列表支持 `role` 筛选。平台管理员在有权的产品内使用 `role=internal_auditor` 查看审计员 | 分页请求保持相同角色筛选。产品负责人保留查询权限，任命和撤销由独立的平台管理员操作 |
 | 0.36.0 | Workspace 角色枚举增加 `internal_reader`。该角色可查询所属 Workspace 的 Release 列表和元数据。目录、治理材料和发布读取体现维护者及安全角色的作用域 | 先应用迁移 010 并升级所有副本，再授予新角色。只读角色通过槽位读取内部制品并处理阻断后的 404 |
+| 0.37.0 | CR-0001：准备 Release 用 `check_run_id` 和 `waivers` 取代 `review_id`；删除 `requestRevisionReview`、`withdrawRevisionReview`、`decideRevisionReview`；槽位删除 `approval_problem`；`internal_reviewer` 不再授予；激活和恢复不再核对批准和发布人独立（§11.5、§11.6） | 破坏性变更。先执行 `fabric-migrate -apply`（`contractregistry/005`、`006` 和 `policyreview/007`，不需要重新授权），再换全部进程；调用方改用 `check_run_id` 准备 Release |
 
-上述变更沿用现有 60 个管理操作。服务端按请求重新判权，列表在分页之前按授予的产品和 Workspace 范围过滤。写操作按各自角色检查。详细作用域与拒绝语义见 [F05 §6.12](F05_Security_and_Multitenancy.md#612-内部发布审计与读取权限033003500360)。
+0.33.0–0.36.0 沿用 60 个管理操作，0.37.0 删除 3 个评审写操作，现为 57 个。服务端按请求重新判权，列表在分页之前按授予的产品和 Workspace 范围过滤。写操作按各自角色检查。详细作用域与拒绝语义见 [F05 §6.12](F05_Security_and_Multitenancy.md#612-内部发布审计与读取权限033003500360)。
 
 ## 12. API Catalog 元数据、文档产物和发布加工
 
@@ -705,12 +726,12 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 
 ## 13. CI/CD、Go 工程集成与制品清单
 
-推荐契约在产品的 Go 代码旁维护，经 Pull Request 执行：`parse → schema/lint → diff → sensitive scan → policy → review → release`；Fabric 管理 CheckRun/Approval/制品，业务 CI 平台真正执行各仓库构建，**Fabric 不替代 CI/CD 编排**。
+推荐契约在产品的 Go 代码旁维护，经 Pull Request 执行：`parse → schema/lint → diff → sensitive scan → policy → review → release`；Fabric 管理 CheckRun、Release 的豁免和制品（CR-0001 起没有 Approval），业务 CI 平台真正执行各仓库构建，**Fabric 不替代 CI/CD 编排**。
 
 - **机器输出**：标准化 Finding 包含 `rule_id`, `path`, `location`, `severity`, `message`, `evidence_ref`, `tool_version`, `input_digest`。
 - **可重建**：必须存原始输入/引用闭包、依赖清单、命令参数、规则版本和生成结果摘要；日志不应输出 Token/Secret。
 - **Go DTO 生成**：API Transport DTO/handler 不得成为 DDD Entity；映射由 Adapter/Application 负责。`oapi-codegen` 等工具的规范支持不能凭宣传假定，F07 必须在实际锁定版本与 3.1.2/3.2.1 样例上测试。
-- **准入**：MVP 强制可执行规则之外，若 Parser/安全检测/兼容工具缺失或不确定，**不得放行生产公开**；CI 构建的 PASS 与 Fabric 发布审批的 APPROVED 分开。
+- **准入**：MVP 强制可执行规则之外，若 Parser/安全检测/兼容工具缺失或不确定，**不得放行生产公开**；CI 构建的 PASS 与 Fabric 的检查结论分开（CR-0001 起 Fabric 不再有发布审批）。
 
 ## 14. 最小机器可执行资产与负向样例
 
@@ -756,6 +777,8 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 | CG-23 | SDK 对未知字段及新增枚举的行为 | 在真实消费端回归验证兼容判断 | V1 | NOT_RUN |
 | CG-24 | REST/AsyncAPI 工具不支持特定 Schema 语法 | UNKNOWN，提供限制说明并不发布 | MVP/V1 | NOT_RUN |
 
+CR-0001 之后：CG-07 只对准备 Release 成立；CG-08 不再适用，豁免在准备 Release 时由准备人逐条填写理由，没有期限；CG-13 改为同一修订、同一检查和同一组豁免的重试。场景编号和 `tests/acceptance/F04_governance_scenarios.csv` 不变，执行状态仍为 `NOT_RUN`。
+
 ## 16. 上位规范符合性与风险分工
 
 | 上位门禁 | F04 负责的可审查资产 | 不在此声称完成的证据 |
@@ -788,7 +811,7 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 |---|---|---|---|
 | 查看 API 列表 | owner、lifecycle、Revision、策略结论、风险 | 仅授权的 API Reference、版本与迁移说明 | 搜索和详情不得泄露私有内容 |
 | 处理检查失败 | 规则 ID、定位、修复建议、权威结果、Waiver | 可公开的标准错误说明；不展示内部扫描细节 | 发现项的敏感证据需脱敏 |
-| 发布/撤销 | Scope、Target/Slot、旧新 generation、审批、传播状态 | 当前授权生效版本、变更公告 | 仅内部具权威角色可发布 |
+| 发布/撤销 | Scope、Target/Slot、旧新 generation、依据的检查与豁免（CR-0001 前为审批）、传播状态 | 当前授权生效版本、变更公告 | 仅内部具权威角色可发布 |
 | 阅读代码示例 | 原始/渲染制品摘要、示例可信来源 | 隐去任何真实 Token、沙箱与生产明确区分 | 不把 Try It 请求发向未授权地址 |
 | 接入事件 | AsyncAPI Message/Operation/Version | 仅已支持的 Channel/协议和消费指南 | Broker ACL 独立于文档 ACL |
 

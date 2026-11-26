@@ -53,10 +53,13 @@ check({x['action'] for x in m if 44<=int(x['rule_id'][3:])<=49}=={'audience_conf
 # The audit trail names AC-50 and AC-51, so these two keep their numbers.
 check([(x['rule_id'],x['principal_role'],x['action']) for x in m if int(x['rule_id'][3:])>=50]==[('AC-50','internal_author','review.request'),('AC-51','internal_author','review.withdraw'),('AC-52','internal_author_or_reviewer','review.read'),('AC-53','internal_reviewer','revision.read'),('AC-54','product_owner_or_governance_reader','review.read')],'Review operations missing from matrix')
 check(all(x['default_fail'] in ('DENY','DENY_OR_404') for x in m),'Access Matrix contains non-deny default')
-check(all(x['runtime_verification']=='NOT_RUN' and x['status']=='PROPOSED' for x in m),'Access Matrix claims runtime validation')
+check(all(x['runtime_verification']=='NOT_RUN' and x['status'] in ('PROPOSED','RETIRED') for x in m),'Access Matrix claims runtime validation')
+# A retired rule keeps its number (audit records cite it) and names the change that retired it.
+check(all(x['change_ref'] for x in m if x['status']=='RETIRED'),'Retired access rule without change reference')
 check(all(x['pep'] and x['resource'] and x['action'] and x['allow_if'] for x in m),'Access Matrix incomplete row')
-check(set(policy.get('negative_rules',[]))=={r['rule_id'] for r in m if r['allow_if'].startswith('never_allow')},'Policy negative rules mismatch')
-check({x['rule_id'] for x in policy.get('permit_rules',[])}=={r['rule_id'] for r in m if not r['allow_if'].startswith('never_allow')},'Policy allow candidates mismatch')
+check(set(policy.get('negative_rules',[]))=={r['rule_id'] for r in m if r['allow_if'].startswith('never_allow') and r['status']!='RETIRED'},'Policy negative rules mismatch')
+check({x['rule_id'] for x in policy.get('permit_rules',[])}=={r['rule_id'] for r in m if not r['allow_if'].startswith('never_allow') and r['status']!='RETIRED'},'Policy allow candidates mismatch')
+check({x['rule_id'] for x in policy.get('retired_rules',[])}=={r['rule_id'] for r in m if r['status']=='RETIRED'},'Policy retired rules mismatch')
 th=getcsv(G/'F05_Threat_Register.csv')
 check(len(th)==29 and {x['threat_id'] for x in th}=={f'TH-{i:02d}' for i in range(1,30)},'Threat IDs/count invalid')
 check({x['stride'] for x in th}==set('STRIDE'),'Threat registry lacks one or more STRIDE categories')
