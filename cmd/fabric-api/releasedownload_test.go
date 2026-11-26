@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"go.idp.xyz/idp-api-fabric/internal/platform/ids"
 )
@@ -177,14 +179,15 @@ func TestTwoReleasesOfAnAssetAreDownloadedEachAsItself(t *testing.T) {
 }
 
 // A release is downloaded by its identifier whatever stands between a slot
-// and the artifact: an access block on its target, on its asset or on the
-// release, a product that is suspended, an audience that is not configured
-// any more. A slot serves an artifact to a target, and these are what it
-// holds to. A check the tools have moved on from is not among them: the slot
-// serves on, as the download does. A release read by its identifier is served
-// to none, and is read by whoever may read the
-// release: whoever reads the revision it was prepared from. This is what
-// the contract says of the download, and what was decided of it.
+// and the artifact but a block of the release itself: an access block on its
+// target or on its asset, a product that is suspended, an audience that is
+// not configured any more. A slot serves an artifact to a target, and these
+// are what it holds to. A check the tools have moved on from is not among
+// them: the slot serves on, as the download does. A release read by its
+// identifier is served to no target, and is read by whoever may read the
+// release: whoever reads the revision it was prepared from. A block that
+// names the release refuses the download too (CR-0002), which
+// TestABlockOfAReleaseStopsItsDownloadOnWhicheverTargetItStands follows.
 func TestAReleaseOnABlockedTargetIsStillDownloadedByItsIdentifier(t *testing.T) {
 	s := publicationFor(t)
 	target, configPath := s.target(internalSandbox, "engineering")
@@ -231,20 +234,200 @@ func TestAReleaseOnABlockedTargetIsStillDownloadedByItsIdentifier(t *testing.T) 
 	s.require(s.securityRole("security", "security_admin", "owner"), http.StatusCreated, "")
 	blocking := func(body map[string]string) {
 		t.Helper()
-		body["reason"] = "the release names an internal host"
+		body["reason"] = "the asset names an internal host"
 		s.require(s.call(http.MethodPost, target+"/access-blocks", "security", jsonBody(body)), http.StatusCreated, "")
 	}
-	blocking(map[string]string{"api_asset_id": last(s.asset), "release_id": id})
-	served("a block of the release", http.StatusNotFound, "PUBLISHED_ARTIFACT_NOT_FOUND")
 	blocking(map[string]string{"api_asset_id": last(s.asset)})
+	served("a block of its asset", http.StatusNotFound, "PUBLISHED_ARTIFACT_NOT_FOUND")
 	blocking(map[string]string{})
-	served("blocks of the release, of its asset and of the whole target", http.StatusNotFound, "PUBLISHED_ARTIFACT_NOT_FOUND")
+	served("blocks of its asset and of the whole target", http.StatusNotFound, "PUBLISHED_ARTIFACT_NOT_FOUND")
 	if blocked := s.call(http.MethodGet, slot, "publisher", ""); blocked.body["blocked"] != true {
 		t.Fatalf("the slot reads %v, want it blocked", blocked.body)
 	}
+	s.suspend("SUSPENDED")
+	served("those blocks in a product that is suspended", http.StatusNotFound, "PUBLISHED_ARTIFACT_NOT_FOUND")
+	s.suspend("ACTIVE")
 
 	s.require(s.call(http.MethodDelete, configPath, "owner", ""), http.StatusNoContent, "")
 	served("an audience that is not configured any more", http.StatusNotFound, "AUDIENCE_CONFIG_NOT_FOUND")
+}
+
+// A block of one release refuses its download by identifier, whichever
+// target of the product the block stands on: the target the release is
+// served on, or one it never was on (CR-0002). The refusal says so (409
+// RELEASE_ACCESS_BLOCKED) to whoever may download the release, and is on
+// record as the refusal of the download under DENY-03, as a refusal for want
+// of the grant is. Who may not download is refused for that, and is told
+// nothing of the block. The release and its provenance are read all along,
+// another release of the asset is downloaded, and a block of the release on
+// one target leaves what another target serves alone. Once the block is
+// cleared, the release is downloaded again as it was; a suspended product
+// changes none of this.
+func TestABlockOfAReleaseStopsItsDownloadOnWhicheverTargetItStands(t *testing.T) {
+	s := publicationFor(t)
+	s.join(s.product, s.workspace, "owner", "reader", "internal_reader")
+	serving, configPath := s.target(internalSandbox, "engineering")
+	elsewhere := s.call(http.MethodPost, "/v1/products/"+s.product+"/publication-targets", "owner", jsonBody(map[string]string{
+		"audience_config_id": last(configPath), "portal_key": "preview",
+	}))
+	s.require(elsewhere, http.StatusCreated, "")
+	other := elsewhere.header.Get("Location")
+	slot := assetSlot(serving, s.asset)
+	firstRevision, _, id := s.released(revisionSource, "", "1.0.0")
+	_, _, next := s.released(strings.ReplaceAll(revisionSource, "v1", "v2"), firstRevision, "2.0.0")
+	s.require(s.change(slot, "publisher", "ACTIVATE", 0, id, "", "first"), http.StatusOK, "")
+	path := s.releaseAt(id)
+	want := s.download(path+"/artifact", "author")
+	if want.status != http.StatusOK {
+		t.Fatalf("the release is downloaded as %d %s before any block", want.status, want.body)
+	}
+	for subject, role := range map[string]string{"security": "security_admin", "clearer": "security_reviewer"} {
+		s.require(s.securityRole(subject, role, "owner"), http.StatusCreated, "")
+	}
+	block := func(target string) string {
+		t.Helper()
+		placed := s.call(http.MethodPost, target+"/access-blocks", "security", jsonBody(map[string]string{
+			"api_asset_id": last(s.asset), "release_id": id, "reason": "the release names an internal host",
+		}))
+		s.require(placed, http.StatusCreated, "")
+		return target + "/access-blocks/" + placed.id("access_block_id")
+	}
+	clear := func(block string) {
+		t.Helper()
+		s.require(s.call(http.MethodPost, block+"/clearance", "clearer", jsonBody(map[string]string{"reason": "the host was renamed"})), http.StatusOK, "")
+	}
+	// downloads fails the test unless whoever may download the release is
+	// refused it while the block stands, or downloads it as it was, and the
+	// rest is read as it is.
+	downloads := func(when string, blocked bool) {
+		t.Helper()
+		for _, reader := range []string{"author", "publisher", "maintainer", "owner"} {
+			got := s.download(path+"/artifact", reader)
+			switch {
+			case blocked && (got.status != http.StatusConflict || got.code() != "RELEASE_ACCESS_BLOCKED" || bytes.Contains(got.body, want.body)):
+				t.Errorf("%s: %s downloads %d %s, want 409 RELEASE_ACCESS_BLOCKED", when, reader, got.status, got.code())
+			case !blocked && (got.status != http.StatusOK || !bytes.Equal(got.body, want.body)):
+				t.Errorf("%s: %s downloads %d %s, want the bytes as they were", when, reader, got.status, got.code())
+			}
+		}
+		for _, read := range []string{path, path + "/provenance"} {
+			if got := s.call(http.MethodGet, read, "author", ""); got.status != http.StatusOK {
+				t.Errorf("%s: %s is read as %d %v, want it read", when, read, got.status, got.body)
+			}
+		}
+		if got := s.download(s.releaseAt(next)+"/artifact", "author"); got.status != http.StatusOK {
+			t.Errorf("%s: another release of the asset is downloaded as %d %s, want it downloaded", when, got.status, got.code())
+		}
+		if got := s.download(path+"/artifact", "reader"); got.status != http.StatusForbidden || got.code() != "FORBIDDEN" {
+			t.Errorf("%s: who may not download is answered %d %s, want 403 FORBIDDEN", when, got.status, got.code())
+		}
+		if got := s.download(path+"/artifact", "stranger"); got.status != http.StatusNotFound || got.code() != "PRODUCT_NOT_FOUND" {
+			t.Errorf("%s: a stranger is answered %d %s, want 404 PRODUCT_NOT_FOUND", when, got.status, got.code())
+		}
+	}
+
+	// A block on the target the release was never on.
+	refusals := s.on("author", "release.download", "DENY-03", false)
+	placed := block(other)
+	downloads("a block on another target", true)
+	s.requireArtifact(slot, want.header.Get("X-Artifact-Digest"), revisionSource)
+	if got := s.on("author", "release.download", "DENY-03", false); got != refusals+1 {
+		t.Errorf("%d refusals of the download by the author are on record, want %d", got, refusals+1)
+	}
+	s.suspend("SUSPENDED")
+	downloads("that block in a product that is suspended", true)
+	s.suspend("ACTIVE")
+	clear(placed)
+	downloads("that block cleared", false)
+	s.suspend("SUSPENDED")
+	downloads("a product that is suspended, with the block cleared", false)
+	s.suspend("ACTIVE")
+
+	// A block on the target that serves it: it is taken off that target to
+	// clear the block, and is downloaded again.
+	placed = block(serving)
+	downloads("a block on the target that serves it", true)
+	s.require(s.call(http.MethodGet, slot+"/artifact", "author", ""), http.StatusNotFound, "PUBLISHED_ARTIFACT_NOT_FOUND")
+	s.require(s.change(slot, "publisher", "WITHDRAW", 1, "", "it names an internal host", "down"), http.StatusOK, "")
+	clear(placed)
+	downloads("that block cleared", false)
+}
+
+// The blocks of a release are read after every target of the product is
+// held, as a read through a slot holds its target: a block that is being
+// placed on any of them, even one the release was never on, makes the
+// download wait, and once it is placed the download is refused. Here the
+// placement is what it is in the store: the target locked for update, the
+// block recorded and the block generation of the target advanced, and then
+// committed.
+func TestADownloadByIdentifierWaitsForABlockOfTheReleaseThatIsBeingPlaced(t *testing.T) {
+	s := publicationFor(t)
+	_, configPath := s.target(internalSandbox, "engineering")
+	elsewhere := s.call(http.MethodPost, "/v1/products/"+s.product+"/publication-targets", "owner", jsonBody(map[string]string{
+		"audience_config_id": last(configPath), "portal_key": "preview",
+	}))
+	s.require(elsewhere, http.StatusCreated, "")
+	other := last(elsewhere.header.Get("Location"))
+	_, _, id := s.released(revisionSource, "", "1.0.0")
+	path := s.releaseAt(id) + "/artifact"
+	s.require(s.call(http.MethodGet, path, "author", ""), http.StatusOK, "")
+
+	placing, err := s.owner.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = placing.Rollback(context.WithoutCancel(t.Context())) })
+	for _, statement := range []string{
+		`SELECT 1 FROM publication.target WHERE target_id = $1 FOR UPDATE`,
+		`INSERT INTO publication.access_block
+    (block_id, product_id, target_id, api_asset_id, release_id, generation, reason, created_by_issuer, created_by_subject, created_at)
+SELECT gen_random_uuid(), product_id, target_id, $2, $3, block_generation + 1, 'the release names an internal host',
+       'https://issuer.example', 'security', now()
+FROM publication.target WHERE target_id = $1`,
+		`UPDATE publication.target SET block_generation = block_generation + 1 WHERE target_id = $1`,
+	} {
+		arguments := []any{other}
+		if strings.Contains(statement, "$3") {
+			arguments = append(arguments, last(s.asset), id)
+		}
+		if _, err := placing.Exec(t.Context(), statement, arguments...); err != nil {
+			t.Fatalf("%s: %v", statement, err)
+		}
+	}
+
+	answered := make(chan downloaded, 1)
+	go func() {
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, s.server.URL+path, nil)
+		if err != nil {
+			answered <- downloaded{}
+			return
+		}
+		request.Header.Set("Authorization", "Bearer "+s.token("author"))
+		response, err := s.server.Client().Do(request)
+		if err != nil {
+			answered <- downloaded{}
+			return
+		}
+		defer response.Body.Close()
+		data, _ := io.ReadAll(response.Body)
+		answered <- downloaded{status: response.StatusCode, header: response.Header, body: data}
+	}()
+	select {
+	case got := <-answered:
+		t.Fatalf("the download answered %d %s while a block of the release was being placed, want it to wait", got.status, got.code())
+	case <-time.After(500 * time.Millisecond):
+	}
+	if err := placing.Commit(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-answered:
+		if got.status != http.StatusConflict || got.code() != "RELEASE_ACCESS_BLOCKED" {
+			t.Errorf("the download that waited answered %d %s, want 409 RELEASE_ACCESS_BLOCKED", got.status, got.code())
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the download did not answer once the block was placed")
+	}
 }
 
 // Release downloads and provenance require a governance read grant for the

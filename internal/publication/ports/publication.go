@@ -44,6 +44,18 @@ type Store interface {
 	ClearBlock(context.Context, domain.AccessBlock) error
 }
 
+// ReleaseBlocks reads the access blocks of one release on every target of
+// its product at once, for the download of the release by its identifier.
+type ReleaseBlocks interface {
+	// ReleaseBlocked holds every target of the product as HoldTarget holds
+	// one, in the order of their identifiers, and then reports whether an
+	// access block that is not cleared names the release of the asset on
+	// any of them. A block of a target or of an asset names no release. It
+	// runs in the transaction its context carries and fails without one: a
+	// hold taken outside a transaction is let go before the answer is used.
+	ReleaseBlocked(ctx context.Context, productID, assetID, releaseID string) (bool, error)
+}
+
 type TargetPosition struct {
 	At time.Time
 	ID string

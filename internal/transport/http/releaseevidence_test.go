@@ -346,9 +346,14 @@ func TestTheContractStatesTheReadsOfAReleaseAsTheyAreAnswered(t *testing.T) {
 	for name, c := range map[string]struct {
 		path, content string
 		headers       []string
+		answers       []string
 	}{
-		"the artifact":   {release + "/artifact", "application/octet-stream", []string{"Cache-Control", "X-Artifact-Digest"}},
-		"the provenance": {release + "/provenance", "application/json", []string{"Cache-Control"}},
+		// The artifact is refused besides while an access block of the
+		// release stands (409, CR-0002); the provenance is not.
+		"the artifact": {release + "/artifact", "application/octet-stream", []string{"Cache-Control", "X-Artifact-Digest"},
+			[]string{"200", "400", "401", "403", "404", "409", "default"}},
+		"the provenance": {release + "/provenance", "application/json", []string{"Cache-Control"},
+			[]string{"200", "400", "401", "403", "404", "default"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			operation := contract.Paths.Find(c.path).Get
@@ -359,14 +364,14 @@ func TestTheContractStatesTheReadsOfAReleaseAsTheyAreAnswered(t *testing.T) {
 			// The answers a read has: a request that cannot be read, a caller
 			// who is not known, one who may not read, and what is not there,
 			// and for anything else a problem.
-			if declared := slices.Sorted(maps.Keys(operation.Responses.Map())); !reflect.DeepEqual(declared, []string{"200", "400", "401", "403", "404", "default"}) {
-				t.Errorf("%s declares the answers %v", name, declared)
+			if declared := slices.Sorted(maps.Keys(operation.Responses.Map())); !reflect.DeepEqual(declared, c.answers) {
+				t.Errorf("%s declares the answers %v, want %v", name, declared, c.answers)
 			}
-			for status, ref := range map[string]string{
-				"400": "#/components/responses/Problem", "401": "#/components/responses/Unauthenticated",
-				"403": "#/components/responses/Problem", "404": "#/components/responses/Problem",
-				"default": "#/components/responses/Problem",
-			} {
+			for _, status := range c.answers[1:] {
+				ref := "#/components/responses/Problem"
+				if status == "401" {
+					ref = "#/components/responses/Unauthenticated"
+				}
 				if answer := operation.Responses.Value(status); answer == nil || answer.Ref != ref {
 					t.Errorf("%s declares %s as %+v, want %s", name, status, answer, ref)
 				}
@@ -630,6 +635,7 @@ func TestTheArtifactOfAReleaseIsAnsweredAsOctetsUnderItsDigest(t *testing.T) {
 	}{
 		"a release of no asset here":                   {registry.ErrReleaseNotFound, http.StatusNotFound, "RELEASE_NOT_FOUND"},
 		"a caller who reads no release":                {registry.ErrForbidden, http.StatusForbidden, "FORBIDDEN"},
+		"a release an access block names":              {registry.ErrReleaseBlocked, http.StatusConflict, "RELEASE_ACCESS_BLOCKED"},
 		"bytes that are not what the release recorded": {fmt.Errorf("release %s: %w", releaseID, registrydomain.ErrArtifactDamaged), http.StatusInternalServerError, CodeInternalError},
 		"anything else":                                {errors.New("the connection is gone"), http.StatusInternalServerError, CodeInternalError},
 	} {

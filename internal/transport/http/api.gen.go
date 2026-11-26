@@ -6695,6 +6695,20 @@ func (response GetContractReleaseArtifact404ApplicationProblemPlusJSONResponse) 
 	return err
 }
 
+type GetContractReleaseArtifact409ApplicationProblemPlusJSONResponse Problem
+
+func (response GetContractReleaseArtifact409ApplicationProblemPlusJSONResponse) VisitGetContractReleaseArtifactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetContractReleaseArtifactdefaultApplicationProblemPlusJSONResponse struct {
 	Body       Problem
 	StatusCode int

@@ -15,6 +15,10 @@ import (
 var (
 	ErrReleaseNotFound = errors.New("no such release of the API asset")
 	ErrReleaseConflict = errors.New("the release version already names other evidence")
+	// ErrReleaseBlocked refuses the download of a release by its identifier
+	// while an access block of the release stands on a target of its
+	// product.
+	ErrReleaseBlocked = errors.New("an access block of the release stands")
 )
 
 type ReleaseDependencies struct {
@@ -230,8 +234,12 @@ func (r *Releases) authorizedAsset(ctx context.Context, query ports.ScopeQuery, 
 	return scope.Asset, nil
 }
 
+// refused puts a refusal on record under DENY-03: one of a caller without the
+// grant, and one of a download that an access block of the release stands
+// in the way of, as Publication puts on record a read through a slot that a
+// block refuses.
 func (r *Releases) refused(ctx context.Context, query ports.ScopeQuery, action string, cause error) error {
-	if !errors.Is(cause, ErrForbidden) {
+	if !errors.Is(cause, ErrForbidden) && !errors.Is(cause, ErrReleaseBlocked) {
 		return cause
 	}
 	if err := r.deps.Audit(ctx, ports.AuditEntry{Query: query, Action: action, Rule: "DENY-03"}); err != nil {
@@ -244,7 +252,8 @@ func (r *Releases) refused(ctx context.Context, query ports.ScopeQuery, action s
 // caller. Publication uses them for what a slot serves, and its use case
 // checks caller, target, current pointer and grants before serving any
 // release material. GetReleaseArtifact uses them too, to download a release by
-// its identifier after checking the caller's release evidence grant.
+// its identifier after checking the caller's release evidence grant and the
+// access blocks of the release.
 func (r *Releases) FindRelease(ctx context.Context, asset domain.AssetRef, id string) (domain.Release, error) {
 	release, found, err := r.deps.Releases.Find(ctx, asset, id)
 	if err != nil {

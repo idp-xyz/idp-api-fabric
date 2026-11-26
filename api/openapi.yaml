@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.37.0
+  version: 0.38.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -2312,8 +2312,13 @@ paths:
         publication slot points at, and whatever was released after it.
         A product owner or a current maintainer, author, reviewer or publisher
         of the asset's workspace can download by release identifier, including
-        while the product is suspended. Access blocks apply to target delivery
-        through getPublishedArtifact.
+        while the product is suspended. While an access block of the release
+        stands, on any publication target of the product and whatever the
+        target serves, the download is refused (409 RELEASE_ACCESS_BLOCKED)
+        until the block is cleared; the release and its provenance are still
+        read. A block of a whole target or of an asset on it does not refuse
+        the download: it applies to target delivery through
+        getPublishedArtifact.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/CheckAssetId'
@@ -2344,6 +2349,8 @@ paths:
         '403':
           $ref: '#/components/responses/Problem'
         '404':
+          $ref: '#/components/responses/Problem'
+        '409':
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
@@ -2760,7 +2767,8 @@ paths:
         the active pointer and effective access blocks on every read, and the
         bytes against the digest of the release. What a slot points at is
         served until it is withdrawn or blocked. getContractReleaseArtifact
-        serves the same bytes to callers with a release evidence grant.
+        serves the same bytes to callers with a release evidence grant, unless
+        an access block of the release stands.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -2835,7 +2843,10 @@ paths:
         a release ID is given. The slot generation and pointer stay independent.
         A block marks affected slots as blocked and prevents artifact delivery
         through the target. getContractReleaseArtifact is a governance
-        download by release identifier and uses its own grants.
+        download by release identifier and uses its own grants: a block of
+        one release refuses it too, whichever target the block is on, until
+        the block is cleared, while a block of a target or of an asset does
+        not.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'

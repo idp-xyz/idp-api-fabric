@@ -16,6 +16,8 @@ func publicationProblem(err error) (Problem, bool) {
 		return problem(http.StatusNotFound, "RELEASE_NOT_FOUND", ""), true
 	case errors.Is(err, registry.ErrReleaseConflict):
 		return problem(http.StatusConflict, "RELEASE_VERSION_CONFLICT", "That version already names another release."), true
+	case errors.Is(err, registry.ErrReleaseBlocked):
+		return problem(http.StatusConflict, "RELEASE_ACCESS_BLOCKED", "An access block of this release stands on a publication target of the product."), true
 	case errors.Is(err, publication.ErrTargetNotFound):
 		return problem(http.StatusNotFound, "PUBLICATION_TARGET_NOT_FOUND", ""), true
 	case errors.Is(err, publication.ErrNoVisibleArtifact):
