@@ -213,7 +213,7 @@ python scripts/verify_manifest.py
 
 ## F05 安全设计的可审查资产与界限
 
-- [F05 授权矩阵](governance/policies/F05_Access_Matrix.csv) 收录 53 条候选操作级规则。负责人管理、列表、受众配置和品牌的实现见 F05 §6.1、§6.3，契约评审的实现见 F05 §6.6。
+- [F05 授权矩阵](governance/policies/F05_Access_Matrix.csv) 收录 54 条候选操作级规则。负责人管理、列表、受众配置和品牌的实现见 F05 §6.1、§6.3，契约评审的实现见 F05 §6.6，评审队列的条目 AC-54 见 F05 §6.13。
 - [F05 STRIDE 风险登记册](governance/policies/F05_Threat_Register.csv)：29 项威胁及待具名 Owner/残余风险。
 - [F05 授权策略设计 JSON](governance/policies/F05_Authorization_Policy_DRAFT.json)：仅为可读/可检查样例，不是可投入生产的 PDP。
 - [F05 安全测试计划](tests/acceptance/F05_security_scenarios.csv)：36 个场景均为 `NOT_RUN`。

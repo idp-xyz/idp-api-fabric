@@ -52,3 +52,4 @@ AC-50,internal_author,Review,review.request,internal,workspace.member & product.
 AC-51,internal_author,Review,review.withdraw,internal,workspace.member & product.same & action.role & review.requester_same & review.open,control-plane,DENY_OR_404,PROPOSED,NOT_RUN
 AC-52,internal_author_or_reviewer,Review,review.read,internal,workspace.member & product.same & action.role & revision.same,control-plane,DENY_OR_404,PROPOSED,NOT_RUN
 AC-53,internal_reviewer,ContractRevision,revision.read,internal,workspace.member & product.same & action.role,control-plane,DENY_OR_404,PROPOSED,NOT_RUN
+AC-54,product_owner_or_governance_reader,Review,review.read,internal,product.same & workspace.same & (role.product_owner OR workspace.reader_role),control-plane,DENY_OR_404,PROPOSED,NOT_RUN

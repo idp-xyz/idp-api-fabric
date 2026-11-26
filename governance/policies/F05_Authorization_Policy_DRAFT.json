@@ -701,6 +701,17 @@
         "product.same",
         "action.role"
       ]
+    },
+    {
+      "rule_id": "AC-54",
+      "principal_role": "product_owner_or_governance_reader",
+      "action": "review.read",
+      "resource": "Review",
+      "when_all": [
+        "product.same",
+        "workspace.same",
+        "(role.product_owner OR workspace.reader_role)"
+      ]
     }
   ],
   "negative_rules": [

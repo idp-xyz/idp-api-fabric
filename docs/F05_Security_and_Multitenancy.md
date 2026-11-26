@@ -437,6 +437,19 @@ AC-13 和 AC-14 对应资产列表和详情。AC-15 对应 Release 列表与元�
 
 服务端逐次核对当前成员关系和产品授权。槽位读者可查看发布状态，制品读取另查当前授权、受众、目标、发布指针、AccessBlock 和摘要。权限撤销从下一次请求起生效，仍使用原令牌和游标时也重新检查。迁移 010 应用并升级全部 API 副本后，再授予 `internal_reader`。
 
+### 6.13 评审队列在矩阵里的条目（AC-54）
+
+本节只记录现状，实现没有变化。矩阵新增 AC-54，状态 `PROPOSED`，对应 `listWorkspaceReviews`：读一个 Workspace 的全部评审，不指定修订。§6.10 记下的对不上之处由这一行承载；AC-52 仍指读一个修订的评审。
+
+| 项 | AC-54 |
+|---|---|
+| 主体 | 产品负责人，或在这个 Workspace 持有 `workspace_maintainer`、`internal_author`、`internal_reviewer`、`internal_publisher` 之一的成员。与读修订是同一份名单（`revisionReaders`），条件里写作 `workspace.reader_role` |
+| 动作与资源 | `review.read`，`Review` |
+| 条件 | `product.same & workspace.same & (role.product_owner OR workspace.reader_role)` |
+| 默认 | `DENY_OR_404`，即 §6.10 的三档拒绝 |
+
+运行时的记录不变：拒绝记 DENY-03，动作 `review.read`，资源类型 `Review`，不带资源编号；成功的读取不记审计。同一 Workspace 里互相读得到全部评审（含已撤回、已驳回的）是否可以接受，这一行是否采纳，仍待裁决。发布人和维护者读单个评审（§6.8、§6.12）在 AC-52 里仍没有对应。
+
 ## 7. 授权策略表达与执行边界
 
 本阶段提供 `governance/policies/F05_Authorization_Policy_DRAFT.json`，是**可机器解析的策略结构样例**，包含 `deny_overrides`、资源关系、显式 Allow 条件及关键禁止项；这不是运行中的 PDP，不可由 CI “JSON 通过”就宣称安全实现完成。
