@@ -44,7 +44,10 @@ export function releaseForm({ productName, asset, revision, path, releasePath, s
     submit.disabled = working || !detail || blocked;
   }
 
+  // A check made under an earlier policy can read the same as a current one;
+  // the start of its policy digest tells them apart.
   const label = item => statuses[item.status] + " · " + timestamp(item.completed_at) +
+    " · 策略 " + item.policy_digest.slice("sha256:".length, "sha256:".length + 8) +
     (item.compatibility ? " · 对比 #" + (sequenceOf(item.compatibility.baseline.revision_id) ?? "?") : "");
 
   function showRules() {

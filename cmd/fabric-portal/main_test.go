@@ -92,10 +92,10 @@ func TestPortalForwardsNoReviewChange(t *testing.T) {
 		{http.MethodPost, revision + "/reviews", http.StatusMethodNotAllowed},
 		{http.MethodPost, revision + "/reviews/x/withdrawal", http.StatusNotFound},
 		{http.MethodPost, revision + "/reviews/x/decision", http.StatusNotFound},
-		{http.MethodPost, revision + "/reviews/x", http.StatusMethodNotAllowed},
+		{http.MethodPost, revision + "/reviews/x", http.StatusNotFound},
 		{http.MethodGet, revision + "/reviews?page_size=100", http.StatusOK},
-		{http.MethodGet, revision + "/reviews/x", http.StatusOK},
-		{http.MethodGet, "/v1/products/p/workspaces/w/reviews?status=WITHDRAWN", http.StatusOK},
+		{http.MethodGet, revision + "/reviews/x", http.StatusNotFound},
+		{http.MethodGet, "/v1/products/p/workspaces/w/reviews?status=WITHDRAWN", http.StatusNotFound},
 	} {
 		req := httptest.NewRequest(c.method, "/api"+c.path, strings.NewReader("{}"))
 		req.Header.Set("Authorization", "Bearer example-access-token")
@@ -113,8 +113,8 @@ func TestPortalForwardsNoReviewChange(t *testing.T) {
 			}
 		}
 	}
-	if got := forwarded.Load(); got != 3 {
-		t.Errorf("upstream received %d requests, want only the three review reads", got)
+	if got := forwarded.Load(); got != 1 {
+		t.Errorf("upstream received %d requests, want only the read of a revision's past reviews", got)
 	}
 }
 

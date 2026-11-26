@@ -211,6 +211,23 @@ export function catalogPanel({ product, productName, workspace, roles, signal })
     return row;
   }
 
+  // releasedFrom brings an asset's row up to date with a release just
+  // prepared, as listAssets would answer now: the release is the latest, and
+  // the latest revision waits for none once it is prepared from that revision.
+  function releasedFrom(asset, release) {
+    const overview = asset.overview;
+    const row = rows.querySelector("button[data-asset=\"" + CSS.escape(asset.api_asset_id) + "\"]")?.closest("tr");
+    if (!overview || !row) return;
+    asset.overview = {
+      ...overview,
+      latest_release: { release_id: release.release_id, revision_id: release.revision_id, version: release.version, prepared_at: release.prepared_at },
+      release_pending: overview.release_pending && overview.latest_revision?.revision_id !== release.revision_id,
+    };
+    const replacement = assetRow(asset);
+    replacement.querySelector("button[data-asset]").setAttribute("aria-pressed", "true");
+    row.replaceWith(replacement);
+  }
+
   function closeAsset() {
     detailRequest?.abort();
     detail.hidden = true;
@@ -424,6 +441,7 @@ export function catalogPanel({ product, productName, workspace, roles, signal })
       // Should the releases not be read again, the one just prepared is
       // still shown and offered for publication.
       async function prepared(release) {
+        releasedFrom(asset, release);
         const listed = await settle(list(base + "/releases", current));
         if (current.aborted) return;
         releaseList = listed.value || [...releaseList.filter(item => item.release_id !== release.release_id), release];
