@@ -146,7 +146,9 @@ idp-api-fabric/
 │   ├── ADR-0004.md
 │   ├── ADR-0005.md
 │   ├── ADR-0006.md
-│   └── ADR-0007.md
+│   ├── ADR-0007.md
+│   ├── ADR-0008.md
+│   └── CR-0001.md
 ├── portal/prototypes/              # F06-A / F06-B 离线高保真交互原型和共享 CSS
 └── scripts/
     ├── requirements-docs.txt
@@ -219,6 +221,7 @@ python scripts/verify_manifest.py
 - [F05 安全测试计划](tests/acceptance/F05_security_scenarios.csv)：36 个场景均为 `NOT_RUN`。
 - [F05 需求追溯](tests/acceptance/F05_security_trace.csv)：覆盖 71 项 FR + 18 项 NFR；按直接责任、协作和后续阶段分类。
 - [ADR-0007](decisions/ADR-0007.md)：受限访问失败关闭及安全撤销，状态仍为 Proposed。
+- [CR-0001](decisions/CR-0001.md)：内部使用不再设审批，准备 Release 以检查为准，已决定。AC-03、AC-04、AC-35、AC-50–AC-54 及评审相关的设计正文随实现同步修改，修改之前仍按原文执行。
 
 **注意**：本阶段所谓通过仅指文档、矩阵、脚本与压缩包的静态一致性；不存在真实渗透、安全审计、IAM/Gateway/CDN 联调或生产恢复测试 PASS。F06 双门户设计已完成；下一阶段应依据 `docs/README.md` 的 F07 交接约束开展工程实现与质量设计。
 
