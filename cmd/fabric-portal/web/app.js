@@ -2,6 +2,7 @@ import { api, assetPath, badge, field, fill, list, node, page, productPath, revi
   segment, statuses, timestamp } from "./workbench.js";
 import { publicationPanel } from "./publication.js";
 import { accessBlockPanel } from "./access-blocks.js";
+import { catalogPanel } from "./catalog.js";
 
 const el = id => document.getElementById(id);
 const productSelect = el("product");
@@ -15,6 +16,7 @@ const readers = ["workspace_maintainer", "internal_author", "internal_reviewer",
 let productRequest;
 let view;
 let caller;
+let shownView = "reviews";
 
 function notice(text = "", error = false) {
   const item = el("notice");
@@ -29,7 +31,18 @@ function report(error) {
 }
 
 function showReviewWorkspace(visible) {
-  for (const id of ["workspace-field", "filter-field", "review-columns", "refresh"]) el(id).hidden = !visible;
+  el("workspace-field").hidden = el("views").hidden = !visible;
+  showView(visible ? shownView : "");
+}
+
+function showView(name) {
+  for (const id of ["filter-field", "refresh", "reviews-view"]) el(id).hidden = name !== "reviews";
+  el("catalog-view").hidden = name !== "catalog";
+  if (!name) return;
+  shownView = name;
+  el("view-reviews").setAttribute("aria-pressed", String(name === "reviews"));
+  el("view-catalog").setAttribute("aria-pressed", String(name === "catalog"));
+  if (name === "catalog") view?.catalog.start();
 }
 
 async function chooseProduct(preferredWorkspace = "") {
@@ -85,6 +98,7 @@ async function chooseProduct(preferredWorkspace = "") {
 }
 
 function clearWorkspace() {
+  el("catalog-view").replaceChildren();
   el("queue").replaceChildren();
   el("queue-status").textContent = "";
   el("more").hidden = true;
@@ -108,15 +122,18 @@ async function chooseWorkspace(product, callerInProduct) {
   const owner = callerInProduct.roles.includes("product_owner");
   const canReadReviews = owner || roles.some(role => readers.includes(role));
   el("context").textContent = productSelect.selectedOptions[0].text + " / " + workspaceSelect.selectedOptions[0].text;
+  const selection = {
+    product, workspace, roles, reviews: canReadReviews, controller: new AbortController(), assets: new Map(), targets: [],
+  };
+  view = selection;
+  const { signal } = selection.controller;
+  selection.catalog = catalogPanel({ product, workspace, signal });
+  el("catalog-view").replaceChildren(selection.catalog.element);
+  if (shownView === "catalog") selection.catalog.start();
   if (!canReadReviews) {
     el("queue-status").textContent = "当前身份无法读取此工作区的评审。";
     return;
   }
-  const selection = {
-    product, workspace, roles, controller: new AbortController(), assets: new Map(), targets: [],
-  };
-  view = selection;
-  const { signal } = selection.controller;
   const assetsPath = productPath(product) + "/assets?workspace_id=" + segment(workspace);
   const author = roles.includes("internal_author");
   const [assets, targets] = await Promise.all([
@@ -417,8 +434,10 @@ async function start() {
 }
 
 productSelect.onchange = () => chooseProduct().catch(report);
-el("filter").onchange = () => { if (view) loadQueue(view, true).catch(report); };
-el("more").onclick = () => { if (view) loadQueue(view, false).catch(report); };
+el("filter").onchange = () => { if (view?.reviews) loadQueue(view, true).catch(report); };
+el("more").onclick = () => { if (view?.reviews) loadQueue(view, false).catch(report); };
+el("view-reviews").onclick = () => showView("reviews");
+el("view-catalog").onclick = () => showView("catalog");
 el("refresh").onclick = () => chooseProduct(workspaceSelect.value).catch(report);
 el("request-form").onsubmit = event => submitReview(event).catch(report);
 start().catch(error => {
