@@ -20,16 +20,14 @@ export function badge(state) {
 function describeError(status, code, trace) {
   const messages = {
     FORBIDDEN: "当前身份没有所需权限。",
-    REVIEWER_NOT_INDEPENDENT: "此评审需由未参与修订、检查或提交的评审人决定。",
-    POLICY_STALE: "检查证据已过期，请让作者重新检查。",
-    REVIEW_BLOCKED: "检查存在阻断项，此修订无法提交评审。",
-    WAIVER_REQUIRED: "请填写所有必需的豁免理由。",
-    APPROVAL_REQUIRED: "该 Release 缺少可用批准。",
-    APPROVAL_EXPIRED: "批准已到期。",
-    WAIVER_EXPIRED: "审批豁免已到期。",
-    REVIEWER_AUTH_REVOKED: "评审人授权已撤销。",
-    APPROVAL_SCOPE_MISMATCH: "该目标不在评审批准范围内。",
-    PUBLISHER_NOT_INDEPENDENT: "请由未参与修订、检查或评审的发布人操作。",
+    POLICY_STALE: "该检查不是按现行策略和工具完成的，请重新运行检查。",
+    RELEASE_BLOCKED: "检查中有不可豁免的规则失败或未知，不能准备 Release。",
+    WAIVER_REQUIRED: "请为每条失败或未知的可豁免规则填写豁免理由。",
+    WAIVER_FORBIDDEN: "不可豁免的规则不能豁免。",
+    RELEASE_CHECK_INCOMPLETE: "检查中有必需规则未执行，不能准备 Release。",
+    CHECK_RUN_NOT_FOUND: "此修订没有该检查记录。",
+    RELEASE_VERSION_CONFLICT: "此版本已用于另一个 Release。",
+    COMPATIBILITY_BASELINE_MISMATCH: "槽位上次生效的是另一修订。请以该修订为兼容性对比基线检查，在该检查上准备 Release 后再发布。",
     ACCESS_BLOCK_EXISTS: "此范围已有访问阻断。",
     ACCESS_BLOCK_CLEARED: "此阻断已解除，请刷新记录。",
     WITHDRAW_BEFORE_CLEARING: "请由发布人先撤销受此阻断影响的发布。",
@@ -37,8 +35,6 @@ function describeError(status, code, trace) {
     PUBLICATION_BLOCKED: "访问阻断覆盖此发布操作。",
     RELEASE_NOT_IN_SLOT_HISTORY: "该 Release 从未在此槽位生效，无法恢复。",
     PRECONDITION_FAILED: "槽位代数已变化，请核对当前状态。",
-    REVISION_STATUS_CONFLICT: "修订状态已有变化，请刷新队列。",
-    REVIEW_IN_PROGRESS: "此修订已有待处理的评审。",
     PRODUCT_NOT_ACTIVE: "产品已暂停，暂不接受新的操作。",
     FABRIC_UNAVAILABLE: "Fabric API 暂不可用，请稍后重试。",
   };
@@ -49,7 +45,9 @@ function describeError(status, code, trace) {
     (trace ? " · 请求 " + trace : "");
 }
 
-export async function api(path, { signal, data, idempotencyKey, post = Boolean(data) } = {}) {
+// With withStatus the answer is { status, body }, for an operation whose 200
+// and 201 say different things.
+export async function api(path, { signal, data, idempotencyKey, post = Boolean(data), withStatus = false } = {}) {
   const options = { signal, headers: { Accept: "application/json" }, cache: "no-store" };
   if (post) options.method = "POST";
   if (data) {
@@ -71,15 +69,13 @@ export async function api(path, { signal, data, idempotencyKey, post = Boolean(d
     throw error;
   }
   if (!body) throw new Error("Fabric API 返回了无法读取的结果。");
-  return body;
+  return withStatus ? { status: response.status, body } : body;
 }
 
 export const segment = value => encodeURIComponent(value);
 export const productPath = id => "/v1/products/" + segment(id);
 export const assetPath = (product, asset) => productPath(product) + "/assets/" + segment(asset);
 export const revisionPath = (product, asset, revision) => assetPath(product, asset) + "/revisions/" + segment(revision);
-export const reviewPath = review => revisionPath(review.product_id, review.api_asset_id, review.revision_id) +
-  "/reviews/" + segment(review.review_id);
 export const timestamp = value => dateFormat.format(new Date(value));
 
 export function fill(select, items, key, label, placeholder) {

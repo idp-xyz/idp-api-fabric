@@ -1,13 +1,17 @@
-import { assetPath, badge, list, node, page, productPath, revisionPath, field, statuses, timestamp } from "./workbench.js";
+import { api, assetPath, badge, field, fill, list, node, page, productPath, revisionPath, segment, statuses, timestamp } from "./workbench.js";
+import { checkDetail } from "./checks.js";
+import { publicationPanel } from "./publication.js";
+import { releaseForm } from "./releases.js";
 
 const kinds = { HTTP: "HTTP", EVENT: "事件" };
 const lifecycles = { EXPERIMENTAL: "试验", STABLE: "稳定", DEPRECATED: "已弃用", RETIRED: "已退役" };
-const visibility = { EMPTY: "尚未发布", ACTIVE: "已生效", WITHDRAWN: "已撤销" };
 const sources = { UPLOAD: "上传", GIT: "Git" };
 const releaseStates = { READY: "可发布" };
 
 const settle = promise => promise.then(value => ({ value }), error => ({ error }));
 const short = digest => digest.length > 19 ? digest.slice(0, 19) + "…" : digest;
+const newestFirst = (a, b) => Date.parse(b.completed_at) - Date.parse(a.completed_at);
+const revisionLabel = item => "#" + item.revision_sequence + " · " + (statuses[item.status] || item.status);
 
 function code(text) {
   return node("code", text, "digest");
@@ -50,10 +54,34 @@ function table(caption, headings, rows) {
   return wrap;
 }
 
+// A release prepared under an approval of before CR-0001 has its waivers in
+// that review, not in the release.
+function waiversOf(release) {
+  if (release.review_id) return "旧审批";
+  if (!release.waivers?.length) return "无";
+  const lines = node("div");
+  for (const waiver of release.waivers) {
+    const line = node("small");
+    line.append(node("span", waiver.rule_id, "rule"), " " + waiver.reason);
+    lines.append(line);
+  }
+  return lines;
+}
+
+function releaseTable(items) {
+  return table("Release", ["版本", "状态", "制品摘要", "准备时间", "豁免"], items.map(item => [
+    item.version, releaseStates[item.status] || item.status, code(item.artifact_digest), timestamp(item.prepared_at),
+    waiversOf(item)]));
+}
+
 // catalogPanel lists the API assets of one workspace with the filters the
-// server applies before paging, and opens an asset's revisions, checks,
-// reviews, releases and publications in place.
-export function catalogPanel({ product, workspace, signal }) {
+// server applies before paging, and opens an asset in place: its revisions,
+// a revision's checks, releases and past reviews, and where the asset is
+// published. There an author runs checks and a publisher prepares releases
+// and publishes them.
+export function catalogPanel({ product, productName, workspace, roles, signal }) {
+  const author = roles.includes("internal_author");
+  const publisher = roles.includes("internal_publisher");
   const element = node("section", "", "panel catalog");
   element.setAttribute("aria-labelledby", "catalog-title");
   const title = node("div", "", "panel-title");
@@ -77,7 +105,7 @@ export function catalogPanel({ product, workspace, signal }) {
   pending.id = "catalog-pending";
   const pendingLabel = node("label", "", "inline-check");
   pendingLabel.htmlFor = pending.id;
-  pendingLabel.append(pending, "只看已批准、未准备 Release");
+  pendingLabel.append(pending, "只看已检查、未准备 Release");
   const apply = node("button", "筛选", "primary");
   apply.type = "submit";
   const clear = node("button", "清空筛选");
@@ -217,17 +245,17 @@ export function catalogPanel({ product, workspace, signal }) {
     title.focus();
 
     const base = assetPath(product, asset.api_asset_id);
-    const [revisions, releases, slots, targets] = await Promise.all([
+    const [revisions, releases] = await Promise.all([
       settle(list(base + "/revisions", current)),
       settle(list(base + "/releases", current)),
-      settle(list(base + "/publications", current)),
-      settle(list(productPath(product) + "/publication-targets", current)),
     ]);
     if (current.aborted) return;
-    const releaseList = releases.value || [];
-    const versionOf = id => releaseList.find(item => item.release_id === id)?.version || short(id);
+    let releaseList = releases.value || [];
+    let releaseError = releases.error;
+    let revisionRequest;
     const revisionBox = node("div");
     const ordered = (revisions.value || []).toSorted((a, b) => b.revision_sequence - a.revision_sequence);
+    const sequenceOf = id => ordered.find(item => item.revision_id === id)?.revision_sequence;
     const revisionSection = section("修订", revisions, () => {
       if (!ordered.length) return node("p", "此资产还没有修订。", "muted");
       return table("修订", ["修订", "状态", "来源", "规范版本", "源文件摘要", "引用闭包摘要", "导入时间"], ordered.map(item => {
@@ -240,43 +268,32 @@ export function catalogPanel({ product, workspace, signal }) {
           code(short(item.source_digest)), code(short(item.ref_closure_digest)), timestamp(item.created_at)];
       }));
     });
-    const publicationSection = section("发布状态", slots, items => {
-      if (!items.length) return node("p", "此资产尚未发布到任何目标。", "muted");
-      const targetOf = id => {
-        const found = targets.value?.find(item => item.publication_target_id === id);
-        return found ? found.audience + " / " + found.environment + " · " + found.portal_key : short(id);
-      };
-      return table("发布状态", ["发布目标", "槽位状态", "生效 Release", "槽位代数", "访问阻断", "批准状态", "边缘传播"],
-        items.map(slot => [targetOf(slot.publication_target_id), visibility[slot.visibility] || slot.visibility,
-          slot.active_release_id ? versionOf(slot.active_release_id) : "无", String(slot.generation),
-          slot.blocked ? "已阻断" : "无", slot.approval_problem || "无问题",
-          statuses[slot.delivery_status] || slot.delivery_status]));
+    const publication = publicationPanel({
+      product, productName, asset, releases: releases.value, publisher, signal: current,
+      describe: item => item.version + (sequenceOf(item.revision_id) ? " · 修订 #" + sequenceOf(item.revision_id) : ""),
     });
     loading.remove();
     detail.append(revisionSection, revisionBox);
     // A caller may read the releases of an asset without its revisions.
-    if (revisions.error && releaseList.length) {
-      detail.append(section("Release", releases, items => table("Release", ["版本", "状态", "制品摘要", "准备时间"],
-        items.map(item => [item.version, releaseStates[item.status] || item.status, code(item.artifact_digest),
-          timestamp(item.prepared_at)]))));
-    }
-    detail.append(publicationSection);
+    if (revisions.error && releaseList.length) detail.append(section("Release", releases, releaseTable));
+    detail.append(publication.element);
     if (ordered.length) await showRevision(ordered[0]);
 
     async function showRevision(revision) {
-      const shown = Symbol();
-      revisionBox.shown = shown;
+      revisionRequest?.abort();
+      const controller = new AbortController();
+      revisionRequest = controller;
+      const shown = AbortSignal.any([controller.signal, current]);
       for (const button of revisionSection.querySelectorAll("button[data-revision]")) {
         button.setAttribute("aria-pressed", String(button.dataset.revision === revision.revision_id));
       }
       const path = revisionPath(product, revision.api_asset_id, revision.revision_id);
       revisionBox.replaceChildren(node("p", "正在读取修订 #" + revision.revision_sequence + "…", "muted"));
       const [checks, reviews] = await Promise.all([
-        settle(list(path + "/check-runs", current)),
-        settle(list(path + "/reviews", current)),
+        settle(list(path + "/check-runs", shown)),
+        settle(list(path + "/reviews", shown)),
       ]);
-      if (current.aborted || revisionBox.shown !== shown) return;
-      const sequenceOf = id => ordered.find(item => item.revision_id === id)?.revision_sequence;
+      if (shown.aborted) return;
       const origin = revision.git_origin;
       const block = node("section", "", "detail-section revision");
       block.append(node("h4", "修订 #" + revision.revision_sequence), facts([
@@ -290,21 +307,127 @@ export function catalogPanel({ product, workspace, signal }) {
         ["引用闭包摘要", code(revision.ref_closure_digest)],
         ["导入时间", timestamp(revision.created_at)],
       ]));
-      block.append(section("检查", checks, items => items.length ? table("检查", ["结论", "完成时间", "策略摘要", "兼容性对比"],
-        items.map(item => [badge(item.status), timestamp(item.completed_at), code(short(item.policy_digest)),
-          item.compatibility ? "对比 #" + (sequenceOf(item.compatibility.baseline.revision_id) ?? "?") : "未对比"]))
-        : node("p", "此修订还没有检查。", "muted")));
-      block.append(section("评审", reviews, items => items.length ? table("评审", ["状态", "提交人", "提交时间", "审批范围", "批准有效期"],
-        items.map(item => [badge(item.status), item.requested_by.subject, timestamp(item.requested_at),
-          item.scope.map(scope => scope.audience + " / " + scope.environment).join("，"),
-          item.conclusion?.valid_until ? timestamp(item.conclusion.valid_until) : null]))
-        : node("p", "此修订还没有评审。", "muted")));
-      const prepared = releaseList.filter(item => item.revision_id === revision.revision_id);
-      block.append(section("Release", releases, () => prepared.length ? table("Release", ["版本", "状态", "制品摘要", "准备时间"],
-        prepared.map(item => [item.version, releaseStates[item.status] || item.status, code(item.artifact_digest),
-          timestamp(item.prepared_at)]))
-        : node("p", "此修订还没有准备 Release。", "muted")));
+
+      let checkItems = checks.value || [];
+      const checkList = node("div");
+      const checkBox = node("div");
+      const checkSection = node("section", "", "detail-section");
+      checkSection.append(node("h4", "检查"));
+      if (author) checkSection.append(checkRunForm());
+      checkSection.append(checkList, checkBox);
+      block.append(checkSection);
+      // Preparing needs the list of the revision's checks to choose from.
+      const preparation = publisher && !checks.error ? releaseForm({
+        productName, asset, revision, path, releasePath: base + "/releases", sequenceOf, signal: shown, onPrepared: prepared,
+      }) : null;
+      if (preparation) {
+        const preparing = node("section", "", "detail-section");
+        preparing.append(node("h4", "准备 Release"), preparation.element);
+        block.append(preparing);
+      }
+      if (checks.error) checkList.replaceChildren(node("p", checks.error.message, "muted"));
+      else showChecks(checkItems);
+
+      const releaseBox = node("div");
+      const releaseSection = node("section", "", "detail-section");
+      releaseSection.append(node("h4", "Release"), releaseBox);
+      block.append(releaseSection);
+      showReleases();
+      if (reviews.error || reviews.value.length) {
+        block.append(section("历史评审", reviews, items => table("历史评审", ["状态", "提交人", "提交时间", "审批范围", "批准有效期"],
+          items.map(item => [badge(item.status), item.requested_by.subject, timestamp(item.requested_at),
+            item.scope.map(scope => scope.audience + " / " + scope.environment).join("，"),
+            item.conclusion?.valid_until ? timestamp(item.conclusion.valid_until) : null]))));
+      }
       revisionBox.replaceChildren(block);
+
+      async function openCheck(item, button) {
+        for (const other of checkList.querySelectorAll("button[data-check]")) {
+          other.setAttribute("aria-pressed", String(other === button));
+        }
+        checkBox.replaceChildren(node("p", "正在读取检查…", "muted"));
+        try {
+          const result = await api(path + "/check-runs/" + segment(item.check_run_id), { signal: shown });
+          if (!shown.aborted && button.getAttribute("aria-pressed") === "true") checkBox.replaceChildren(checkDetail(result));
+        } catch (error) {
+          if (!shown.aborted) checkBox.replaceChildren(node("p", error.message, "muted"));
+        }
+      }
+
+      // showChecks lists the checks newest first. A check just run is opened
+      // and offered for a release.
+      function showChecks(items, opened) {
+        checkItems = items.toSorted(newestFirst);
+        checkList.replaceChildren(checkItems.length ? table("检查", ["结论", "完成时间", "策略摘要", "兼容性对比", "详情"],
+          checkItems.map(item => {
+            const view = node("button", "查看", "row-action");
+            view.type = "button";
+            view.dataset.check = item.check_run_id;
+            view.setAttribute("aria-pressed", String(item.check_run_id === opened?.check_run.check_run_id));
+            view.onclick = () => openCheck(item, view);
+            return [badge(item.status), timestamp(item.completed_at), code(short(item.policy_digest)),
+              item.compatibility ? "对比 #" + (sequenceOf(item.compatibility.baseline.revision_id) ?? "?") : "未对比", view];
+          }))
+          : node("p", "此修订还没有检查。", "muted"));
+        if (opened) checkBox.replaceChildren(checkDetail(opened));
+        preparation?.setChecks(checkItems, opened?.check_run.check_run_id);
+      }
+
+      // Only an author runs a check. Whether it was recorded now or before
+      // is what the status of the answer says.
+      function checkRunForm() {
+        const baseline = node("select");
+        fill(baseline, ordered.filter(item => item.revision_id !== revision.revision_id), "revision_id", revisionLabel, "不对比");
+        const runButton = node("button", "运行检查");
+        runButton.type = "button";
+        const controls = node("div", "", "check-run");
+        controls.append(field("兼容性对比基线（可选）", baseline, "catalog-baseline"), runButton);
+        const status = node("p", "", "muted");
+        status.setAttribute("role", "status");
+        const box = node("div", "", "check-run-form");
+        box.append(controls, node("p", "按现行策略和工具检查此修订。相同修订、基线、策略和工具的检查沿用已有记录；策略更新后再运行会得到新的检查。",
+          "hint muted"), status);
+        runButton.onclick = async () => {
+          runButton.disabled = true;
+          status.classList.remove("publication-error");
+          status.textContent = "正在运行检查…";
+          let url = path + "/check-runs";
+          if (baseline.value) url += "?baseline_revision_id=" + segment(baseline.value);
+          try {
+            const { status: answered, body } = await api(url, { post: true, signal: shown, withStatus: true });
+            const listed = await settle(list(path + "/check-runs", shown));
+            if (shown.aborted) return;
+            const run = body.check_run;
+            showChecks(listed.value || [...checkItems.filter(item => item.check_run_id !== run.check_run_id), run], body);
+            status.textContent = (answered === 201 ? "检查已记录。" : "相同输入、基线、策略和工具的检查已有记录。") +
+              "结论：" + statuses[run.status] + "。";
+          } catch (error) {
+            if (shown.aborted) return;
+            status.textContent = error.message;
+            status.classList.add("publication-error");
+          } finally {
+            if (!shown.aborted) runButton.disabled = false;
+          }
+        };
+        return box;
+      }
+
+      function showReleases() {
+        const prepared = releaseList.filter(item => item.revision_id === revision.revision_id);
+        if (releaseError) releaseBox.replaceChildren(node("p", releaseError.message, "muted"));
+        else releaseBox.replaceChildren(prepared.length ? releaseTable(prepared) : node("p", "此修订还没有准备 Release。", "muted"));
+      }
+
+      // Should the releases not be read again, the one just prepared is
+      // still shown and offered for publication.
+      async function prepared(release) {
+        const listed = await settle(list(base + "/releases", current));
+        if (current.aborted) return;
+        releaseList = listed.value || [...releaseList.filter(item => item.release_id !== release.release_id), release];
+        if (listed.value) releaseError = undefined;
+        showReleases();
+        publication.setReleases(releaseList);
+      }
     }
   }
 
@@ -318,12 +441,18 @@ export function catalogPanel({ product, workspace, signal }) {
   };
   more.onclick = () => load(false);
 
+  function start() {
+    if (started) return;
+    started = true;
+    load(true);
+  }
+
   return {
     element,
-    start() {
-      if (started) return;
-      started = true;
-      load(true);
+    start,
+    open(asset) {
+      start();
+      showAsset(asset);
     },
   };
 }
