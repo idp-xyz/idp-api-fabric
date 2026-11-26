@@ -1,5 +1,4 @@
-<!DOCTYPE html>
-<html lang="zh-CN"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><meta content="light" name="color-scheme"/><meta content="IDP API Fabric F06 V1.0 双门户产品与体验设计：内部门户、CargoPai Developers、共享设计系统、可操作 HTML 原型。" name="description"/><title>F06 · IDP API Fabric 双门户产品与体验设计</title><style>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="description" content="IDP API Fabric F06 V1.0 双门户产品与体验设计：内部门户、CargoPai Developers、共享设计系统、可操作 HTML 原型。"><title>F06 · IDP API Fabric 双门户产品与体验设计</title><style>
 :root{--ink:#1a2c3e;--muted:#64768a;--brand:#0969aa;--brand2:#087c9e;--line:#dbe4ec;--panel:#fff;--bg:#f4f7fa;--soft:#eef5fb;--accent:#eaf6f4;--warn:#fff3d9;--danger:#fff0ed;--shadow:0 10px 40px rgba(20,52,88,.06)}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:var(--ink);background:var(--bg);font-family:Inter,"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;line-height:1.78;font-size:14px}a{color:var(--brand);text-decoration:none}a:hover{text-decoration:underline}button,input{font:inherit}button{cursor:pointer}
 .layout{display:grid;grid-template-columns:296px minmax(0,1fr);min-height:100vh}.side{position:sticky;top:0;height:100vh;overflow-y:auto;background:#0c273f;color:#d7e3ee;padding:27px 19px 28px;scrollbar-width:thin;scrollbar-color:#557086 #0c273f}.logo{font-weight:800;letter-spacing:.045em;color:white;font-size:19px}.logo small{display:block;letter-spacing:.06em;color:#a1bccf;font-size:10px;margin-top:1px}.side-kicker{text-transform:uppercase;letter-spacing:.13em;color:#76a9c9;font-size:10px;margin:30px 10px 13px;font-weight:800}.navlist{display:flex;flex-direction:column;gap:4px}.navlist a,.navlist .pending{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;color:#b8d0e1;font-size:12px;line-height:1.4}.navlist a:hover{background:#163a58;color:white;text-decoration:none}.navlist a.active{background:#164a70;color:white;border-left:3px solid #4bc2d4}.navlist .pending{color:#7f98ab}.mini{margin-left:auto;font-size:10px;color:#9fb6c6}.side input{width:100%;background:#16354f;border:1px solid #2b4d66;border-radius:8px;padding:10px 12px;color:white;outline:none;font-size:12px}.side input::placeholder{color:#9eb4c6}.side hr{border:0;border-top:1px solid #27455e;margin:18px 0}.side-foot{font-size:11px;color:#7998b2;line-height:1.6;margin:22px 10px 4px}
@@ -48,13 +47,14 @@
 @media(max-width:780px){.doc .table-scroll table{width:max-content;display:table}.doc .fig-grid.cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.doc .fig-grid.cols-3{grid-template-columns:1fr}.doc .architecture-figure{padding:12px 9px}}
 @media print{.doc .table-scroll{overflow:visible}.doc .table-scroll table{min-width:0;width:100%;font-size:7.5pt}}
-</style></head><body><a class="skip-link" href="#main-content">跳到文档正文</a><button aria-hidden="true" aria-label="关闭章节目录" class="side-backdrop" id="sideBackdrop" tabindex="-1"></button><div class="layout"><aside class="side" id="sidebar"><a href="../index.html" style="text-decoration:none"><div class="logo">IDP API Fabric<small>ENGINEERING BASELINE</small></div></a><div class="side-kicker">正式文档体系</div><div class="navlist"><a class="" href="F01_Product_Requirements.html">F01 · Product Requirements</a><a class="" href="F02_System_Architecture.html">F02 · System Architecture</a><a class="" href="F03_Domain_and_Data_Model.html">F03 · Domain &amp; Data Model</a><a class="" href="F04_API_Contract_Governance.html">F04 · Contract Governance</a><a class="" href="F05_Security_and_Multitenancy.html">F05 · Security &amp; Multitenancy</a><a class="active" href="F06_Developer_Experience.html">F06 · Dual Portal Experience</a><div class="pending">F07 · Engineering &amp; Quality <span class="mini">待编写</span></div><a href="F08_Delivery_and_Acceptance.html">F08 · Delivery &amp; Acceptance</a></div><hr/><div class="side-kicker">F06 · 目录</div><input aria-label="筛选目录章节" id="navsearch" placeholder="筛选本文章节…" type="search"/><nav class="navlist" id="toc"><a href="#section-0" style="">0. 产品体验设计裁决</a><a href="#section-1" style="">1. 设计输入、适用性与不变量</a><a href="#section-2" style="">2. 用户、角色与关键目标</a><a href="#section-3" style="">3. 产品信息架构、站点地图与优先级</a><a href="#section-4" style="">4. F06-A 内部门户：页面清单与深度要求</a><a href="#section-5" style="">5. F06-A 核心交互流程与异常恢复</a><a href="#section-5-1" style="padding-left:24px">5.1 契约检查、审核与发布</a><a href="#section-5-2" style="padding-left:24px">5.2 页面操作级状态</a><a href="#section-5-3" style="padding-left:24px">5.3 审核及发布对话框</a><a href="#section-6" style="">6. F06-A 工作台、Catalog 与数据密集型交互</a><a href="#section-7" style="">7. F06-A 权限可见性与审批责任界面</a><a href="#section-8" style="">8. F06-B 外部门户：独立品牌与页面结构</a><a href="#section-9" style="">9. F06-B 公开与受限内容、版本选择与搜索</a><a href="#section-10" style="">10. F06-B 外部首次接入与分期验收</a><a href="#section-10-1" style="padding-left:24px">10.1 MVP 文档阅读闭环</a><a href="#section-10-2" style="padding-left:24px">10.2 V1 真实沙箱闭环（由 F07/F08 验证）</a><a href="#section-11" style="">11. F06-B SDK、Webhook、错误与自助支持</a><a href="#section-12" style="">12. 双门户的共同状态与边界</a><a href="#section-13" style="">13. F06-C 共享设计系统：Token 与视觉层级</a><a href="#section-14" style="">14. F06-C 组件库与交互规范</a><a href="#section-15" style="">15. 断点、键盘、可访问性和国际化</a><a href="#section-16" style="">16. 隐私、缓存与安全运营的 UX</a><a href="#section-17" style="">17. 真实使用者评估与产品指标</a><a href="#section-18" style="">18. 原型交付文件与演示约束</a><a href="#section-19" style="">19. F06 上位规范、需求追溯与 F07/F08 交接</a><a href="#section-20" style="">20. 风险、开放决策与设计签收条件</a></nav><div class="side-foot">V1.0 · 设计候选 / 待具名审查<br/>交互原型全为 LOCAL MOCK；实际服务测试 NOT_RUN。</div></aside><div class="main"><header class="topbar"><div><button aria-controls="sidebar" aria-expanded="false" aria-label="展开目录" class="menu" id="menu">☰ 目录</button><span class="crumb"><strong>IDP API Fabric</strong>　/　设计基线　/　F06</span></div><div class="top-actions"><a class="desktop-only" href="../index.html">总目录</a><a href="F06_Developer_Experience.md">Markdown 源文件</a><button onclick="window.print()">打印 / PDF</button></div></header><main class="sheet" id="main-content" tabindex="-1"><header class="hero"><div class="eyebrow">F06 · Dual Portal Product &amp; Experience Design</div><h1>IDP API Fabric<br/>双门户产品与体验设计</h1><p>F06-A Engineering Portal · F06-B CargoPai Developers · F06-C Shared Design System</p><div class="hero-meta"><span>V1.0 · 设计待评审</span><span>2026.11.09</span><span>正式工程目录</span><span>真实运行验证 NOT_RUN</span></div></header><div class="metrics"><div class="metric"><b>2</b><span>可操作的独立门户原型</span></div><div class="metric"><b>8</b><span>用户旅程与交互模型图</span></div><div class="metric"><b>21</b><span>页面 / 共享视图目录</span></div><div class="metric"><b>32</b><span>待执行体验验收场景</span></div></div><article class="doc">
+</style></head><body><a class="skip-link" href="#main-content">跳到文档正文</a><button id="sideBackdrop" class="side-backdrop" aria-label="关闭章节目录" aria-hidden="true" tabindex="-1"></button><div class="layout"><aside class="side" id="sidebar"><a href="../index.html" style="text-decoration:none"><div class="logo">IDP API Fabric<small>ENGINEERING BASELINE</small></div></a><div class="side-kicker">正式文档体系</div><div class="navlist"><a href="F01_Product_Requirements.html" class="">F01 · Product Requirements</a><a href="F02_System_Architecture.html" class="">F02 · System Architecture</a><a href="F03_Domain_and_Data_Model.html" class="">F03 · Domain & Data Model</a><a href="F04_API_Contract_Governance.html" class="">F04 · Contract Governance</a><a href="F05_Security_and_Multitenancy.html" class="">F05 · Security & Multitenancy</a><a href="F06_Developer_Experience.html" class="active">F06 · Dual Portal Experience</a><div class="pending">F07 · Engineering & Quality <span class="mini">待编写</span></div><a href="F08_Delivery_and_Acceptance.html" class="">F08 · Delivery & Acceptance</a></div><hr><div class="side-kicker">F06 · 目录</div><input id="navsearch" type="search" placeholder="筛选本文章节…" aria-label="筛选目录章节"><nav class="navlist" id="toc"><a href="#section-0" style="">0. 产品体验设计裁决</a><a href="#section-1" style="">1. 设计输入、适用性与不变量</a><a href="#section-2" style="">2. 用户、角色与关键目标</a><a href="#section-3" style="">3. 产品信息架构、站点地图与优先级</a><a href="#section-4" style="">4. F06-A 内部门户：页面清单与深度要求</a><a href="#section-5" style="">5. F06-A 核心交互流程与异常恢复</a><a href="#section-5-1" style="padding-left:24px">5.1 契约检查、准备 Release 与发布</a><a href="#section-5-2" style="padding-left:24px">5.2 页面操作级状态</a><a href="#section-5-3" style="padding-left:24px">5.3 准备 Release 及发布对话框</a><a href="#section-6" style="">6. F06-A 工作台、Catalog 与数据密集型交互</a><a href="#section-7" style="">7. F06-A 权限可见性与操作责任界面</a><a href="#section-8" style="">8. F06-B 外部门户：独立品牌与页面结构</a><a href="#section-9" style="">9. F06-B 公开与受限内容、版本选择与搜索</a><a href="#section-10" style="">10. F06-B 外部首次接入与分期验收</a><a href="#section-10-1" style="padding-left:24px">10.1 MVP 文档阅读闭环</a><a href="#section-10-2" style="padding-left:24px">10.2 V1 真实沙箱闭环（由 F07/F08 验证）</a><a href="#section-11" style="">11. F06-B SDK、Webhook、错误与自助支持</a><a href="#section-12" style="">12. 双门户的共同状态与边界</a><a href="#section-13" style="">13. F06-C 共享设计系统：Token 与视觉层级</a><a href="#section-14" style="">14. F06-C 组件库与交互规范</a><a href="#section-15" style="">15. 断点、键盘、可访问性和国际化</a><a href="#section-16" style="">16. 隐私、缓存与安全运营的 UX</a><a href="#section-17" style="">17. 真实使用者评估与产品指标</a><a href="#section-18" style="">18. 原型交付文件与演示约束</a><a href="#section-19" style="">19. F06 上位规范、需求追溯与 F07/F08 交接</a><a href="#section-20" style="">20. 风险、开放决策与设计签收条件</a></nav><div class="side-foot">V1.0 · 设计候选 / 待具名审查<br>交互原型全为 LOCAL MOCK；实际服务测试 NOT_RUN。</div></aside><div class="main"><header class="topbar"><div><button class="menu" id="menu" aria-label="展开目录" aria-controls="sidebar" aria-expanded="false">☰ 目录</button><span class="crumb"><strong>IDP API Fabric</strong>　/　设计基线　/　F06</span></div><div class="top-actions"><a class="desktop-only" href="../index.html">总目录</a><a href="F06_Developer_Experience.md">Markdown 源文件</a><button onclick="window.print()">打印 / PDF</button></div></header><main id="main-content" class="sheet" tabindex="-1"><header class="hero"><div class="eyebrow">F06 · Dual Portal Product & Experience Design</div><h1>IDP API Fabric<br>双门户产品与体验设计</h1><p>F06-A Engineering Portal · F06-B CargoPai Developers · F06-C Shared Design System</p><div class="hero-meta"><span>V1.0 · 设计待评审</span><span>2026.11.09</span><span>正式工程目录</span><span>真实运行验证 NOT_RUN</span></div></header><div class="metrics"><div class="metric"><b>2</b><span>可操作的独立门户原型</span></div><div class="metric"><b>8</b><span>用户旅程与交互模型图</span></div><div class="metric"><b>21</b><span>页面 / 共享视图目录</span></div><div class="metric"><b>32</b><span>待执行体验验收场景</span></div></div><article class="doc">
 <blockquote>
-<p><strong>版本</strong>：V1.0（延续 F01–F05；不提高版本）<br>
-<strong>状态</strong>：产品与交互设计候选，待具名 UX、安全、产品审查；并非系统已实现<br>
+<p><strong>版本</strong>：V1.0（延续 F01–F05；不提高版本）<br/>
+<strong>状态</strong>：产品与交互设计候选，待具名 UX、安全、产品审查；并非系统已实现<br/>
 <strong>权威输入</strong>：F01 <code>FR-001–071</code>、<code>NFR-01–18</code>；F02 总体架构；F03 DDD 发布/权限模型；F04 契约治理；F05 安全多租户；上位 <code>IDP-SCG-STD-001</code> CORE/UX 适用规则<br/>
 <strong>范围</strong>：F06-A 内部工程门户、F06-B 外部产品开发者门户、F06-C 共享设计系统；示范产品 CargoPai<br/>
-<strong>阶段约束</strong>：MVP 有契约管理到文档发布的可读闭环；注册应用/授予访问/真实沙箱首调/SDK 运营属于 V1，不在 MVP 演示中标为已实现。</br></br></p>
+<strong>阶段约束</strong>：MVP 有契约管理到文档发布的可读闭环；注册应用/授予访问/真实沙箱首调/SDK 运营属于 V1，不在 MVP 演示中标为已实现。<br/>
+<strong>变更</strong>：<a href="../decisions/CR-0001.md">CR-0001</a>（2026-11-26 已决定）取消评审和批准，内部链路改为“检查 → 准备 Release → 发布”。受影响的是 §2 角色、§3 主链、§4 的 IN-01 和 IN-06、§5 和 §7。</p>
 </blockquote>
 <h2 id="section-0">0. 产品体验设计裁决</h2>
 <p>F06 解决的是<strong>谁能通过哪个门户完成哪些任务，以及成功、失败、权限拒绝、冲突和不确定性如何可理解地呈现</strong>。不重新定义 F03 聚合、不修改 F04 治理规则、不弱化 F05 授权，不写 F07 生产后端实现。</p>
@@ -92,7 +92,7 @@
 </tr>
 <tr>
 <td>F04</td>
-<td>Rule/CheckRun/ReviewDecision、API Reference</td>
+<td>Rule/CheckRun、Release 的豁免（CR-0001 后不再有 ReviewDecision）、API Reference</td>
 <td>不展示未发布契约作为正式文档</td>
 </tr>
 <tr>
@@ -123,7 +123,7 @@
 <td>Platform Admin</td>
 <td>Engineering / 授权全局</td>
 <td>产品登记、组织归属、策略配置</td>
-<td>不因平台身份越过生产双人批准与审计</td>
+<td>不因平台身份越过授权与审计</td>
 </tr>
 <tr>
 <td>Product Owner</td>
@@ -134,19 +134,19 @@
 <tr>
 <td>API Author</td>
 <td>Engineering / 本 Workspace</td>
-<td>Revision、检查、提交审核</td>
-<td>不自行审核自身高风险发布</td>
+<td>Revision、运行检查</td>
+<td>准备 Release 和发布须另持发布人角色，CR-0001 后可由同一人兼任</td>
 </tr>
 <tr>
-<td>Reviewer</td>
-<td>Engineering / 授权审核</td>
-<td>Diff、Rule、风险评定、批准/驳回</td>
-<td>职责分离、策略变更后旧决定失效</td>
+<td>Reviewer（CR-0001 后不再设置）</td>
+<td>Engineering / 已有授予只读</td>
+<td>查看历史评审</td>
+<td>不再授予，也不再作出决定</td>
 </tr>
 <tr>
 <td>Release Operator</td>
 <td>Engineering / 发布 Target</td>
-<td>生效发布、撤销、回退</td>
+<td>按检查准备 Release（填写豁免理由）、生效发布、撤销、回退</td>
 <td>不修改 Release 内容或跳过 AccessBlock</td>
 </tr>
 <tr>
@@ -171,7 +171,7 @@
 </table></div>
 <h2 id="section-3">3. 产品信息架构、站点地图与优先级</h2>
 <figure aria-label="双门户信息架构" class="architecture-figure"><div class="fig-label">EXPERIENCE MODEL · 双门户信息架构</div><div class="fig-head"><strong>以用户任务组织导航</strong><small>F06 · 设计模型 / 非运行系统证据</small></div><div class="fig-grid cols-2"><div class="fig-box"><b>Engineering</b><small>总览 / Catalog / Revision / Governance</small></div><div class="fig-box"><b>Control</b><small>Review / Release / Publication / Audit</small></div><div class="fig-box"><b>Developer</b><small>Quickstart / API Reference / Versions / Guides</small></div><div class="fig-box"><b>V1 extension</b><small>Applications / Grants / Sandbox / SDK/Webhook</small></div></div><figcaption>外部门户只使用本产品批准且允许可见的契约投影。</figcaption></figure>
-<p>按业务任务组织导航：内部以“发现 → 修订 → 检查 → 审核 → 发布 → 运营”为主链；外部以“了解 → 学习 → 查找接口 → 获取授权 → 测试 → 上线”为主链。内部主页提供角色待办和异常，不以各种指标替代待办列表。</p>
+<p>按业务任务组织导航：内部以“发现 → 修订 → 检查 → 准备 Release → 发布 → 运营”为主链；外部以“了解 → 学习 → 查找接口 → 获取授权 → 测试 → 上线”为主链。内部主页提供角色待办和异常，不以各种指标替代待办列表。</p>
 <h2 id="section-4">4. F06-A 内部门户：页面清单与深度要求</h2>
 <div aria-label="可横向滚动的 F06 页面与体验规范表" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
@@ -188,7 +188,7 @@
 <td>IN-01</td>
 <td>工作台 Dashboard</td>
 <td>MVP</td>
-<td>查看待审核、检查失败、可发布、撤销风险</td>
+<td>查看检查失败、已检查待准备 Release、被阻断的发布</td>
 <td>Product, Worklist, CheckRun, Publication</td>
 </tr>
 <tr>
@@ -221,10 +221,10 @@
 </tr>
 <tr>
 <td>IN-06</td>
-<td>Review &amp; Approval</td>
+<td>Check and Release Preparation</td>
 <td>MVP</td>
-<td>审核、拒绝、重试检查，查看审计证据</td>
-<td>ReviewDecision、Role Separation</td>
+<td>运行检查，按检查准备 Release 并填写豁免理由（CR-0001 前为 Review &amp; Approval）</td>
+<td>CheckRun、ContractRelease</td>
 </tr>
 <tr>
 <td>IN-07</td>
@@ -264,12 +264,12 @@
 </tbody>
 </table></div>
 <h2 id="section-5">5. F06-A 核心交互流程与异常恢复</h2>
-<figure aria-label="内部审核工作流" class="architecture-figure"><div class="fig-label">EXPERIENCE MODEL · 内部审核工作流</div><div class="fig-head"><strong>设计态流程；演示动作不写入后端</strong><small>F06 · 设计模型 / 非运行系统证据</small></div><div class="fig-grid cols-2"><div class="fig-box"><b>Submit</b><small>源信息 + Commit + Revision</small></div><div class="fig-box"><b>Inspect</b><small>Lint · Breaking Diff · Security Scan</small></div><div class="fig-box"><b>Approve</b><small>职责分离 + 策略摘要绑定</small></div><div class="fig-box"><b>Publish</b><small>immutable Release + Slot CAS</small></div><div class="fig-box"><b>Recover</b><small>AccessBlock → Remove/Restore → Reconcile</small></div></div><figcaption>拒绝、过期、CAS 冲突和撤销未知状态均为独立可操作状态。</figcaption></figure>
-<h3 id="section-5-1">5.1 契约检查、审核与发布</h3>
+<figure aria-label="内部检查与发布工作流" class="architecture-figure"><div class="fig-label">EXPERIENCE MODEL · 内部检查与发布工作流</div><div class="fig-head"><strong>设计态流程；演示动作不写入后端</strong><small>F06 · 设计模型 / 非运行系统证据</small></div><div class="fig-grid cols-2"><div class="fig-box"><b>Submit</b><small>源信息 + Commit + Revision</small></div><div class="fig-box"><b>Inspect</b><small>Lint · Breaking Diff · Security Scan</small></div><div class="fig-box"><b>Prepare</b><small>检查门禁 + 豁免理由（CR-0001）</small></div><div class="fig-box"><b>Publish</b><small>immutable Release + Slot CAS</small></div><div class="fig-box"><b>Recover</b><small>AccessBlock → Remove/Restore → Reconcile</small></div></div><figcaption>门禁拒绝、检查过期、CAS 冲突和撤销未知状态均为独立可操作状态。</figcaption></figure>
+<h3 id="section-5-1">5.1 契约检查、准备 Release 与发布</h3>
 <ol>
-<li>从工作台进入目标 Product 的 API，检索其最新 Revision 与审批状态；更换 Product 时清空上一产品的行级选择、过滤与缓存。</li>
-<li>检查页分别显示 <strong>Lint / Breaking Diff / Security</strong>，列出规则 ID、定位（JSON Pointer/OperationId）、严重性、版本、可修复动作与安全阻断原因。只允许经过审查的非关键规则 Waiver。</li>
-<li>审核时显示申请者、审核者、Policy Digest、Revision Digest、风险级别、有效期。若发生内容或策略漂移，旧审核不可继续使用。</li>
+<li>从工作台进入目标 Product 的 API，检索其最新 Revision 与检查结论；更换 Product 时清空上一产品的行级选择、过滤与缓存。</li>
+<li>检查页分别显示 <strong>Lint / Breaking Diff / Security</strong>，列出规则 ID、定位（JSON Pointer/OperationId）、严重性、版本、可修复动作与安全阻断原因。只有可豁免的规则能在准备 Release 时由准备的人逐条填写理由豁免；安全、完整性规则不可豁免。</li>
+<li>准备 Release 时显示依据的检查、Policy Digest、Revision Digest 和需要豁免的规则。检查不是按现行策略和工具完成的，不能用来准备 Release（<code>POLICY_STALE</code>），须重新运行检查。CR-0001 之前这一步是审核，显示申请者、审核者和有效期。</li>
 <li>发布必须展示 Product、Audience、Environment、Portal、APIAsset、Release Digest、expected Slot Version；操作需用户二次确认，CAS 冲突时恢复到最新状态重新决策，<strong>不能自动覆盖</strong>。</li>
 <li>紧急撤销先显示服务端权威 AccessBlock，后展示 Edge/缓存传播；传播 UNKNOWN/AT_RISK 应继续阻断公开读取，不显示绿色“已完全清除”。</li>
 </ol>
@@ -322,8 +322,8 @@
 </tr>
 </tbody>
 </table></div>
-<h3 id="section-5-3">5.3 审核及发布对话框</h3>
-<p>对话框必须明确显示不可逆后果、面向的产品和受众、制品摘要与生效环境；确认按钮根据风险采用二次确认、职责分离和 Step-up（具体授权由 F05/F07）。提交后保留请求关联标识，在网络错误时先查询最终状态再决定重试，不能依靠无限重复点击。</p>
+<h3 id="section-5-3">5.3 准备 Release 及发布对话框</h3>
+<p>对话框必须明确显示不可逆后果、面向的产品和受众、制品摘要与生效环境；确认按钮根据风险采用二次确认和 Step-up（具体授权由 F05/F07；CR-0001 后不再要求发布人与作者分离）。提交后保留请求关联标识，在网络错误时先查询最终状态再决定重试，不能依靠无限重复点击。</p>
 <h2 id="section-6">6. F06-A 工作台、Catalog 与数据密集型交互</h2>
 <ul>
 <li>工作台首屏展示<strong>待处理任务、风险警报、最近变更、产品范围</strong>；统计卡片不作为唯一信息来源。</li>
@@ -332,13 +332,13 @@
 <li>比较页支持并排/内联差异，明确“规则告警”和“确认的破坏性变更”区别；不凭颜色区分影响。</li>
 <li>审计只能展示脱敏主体和关联 ID，导出需要额外权限，且查询页面不使审计事件可被编辑。</li>
 </ul>
-<h2 id="section-7">7. F06-A 权限可见性与审批责任界面</h2>
+<h2 id="section-7">7. F06-A 权限可见性与操作责任界面</h2>
 <div aria-label="可横向滚动的 F06 页面与体验规范表" class="table-scroll" role="region" tabindex="0"><table>
 <thead>
 <tr>
 <th>操作</th>
 <th>Author</th>
-<th>Reviewer</th>
+<th>Reviewer（CR-0001 后不再设置）</th>
 <th>Release Operator</th>
 <th>Admin/Auditor</th>
 <th>界面必需条件</th>
@@ -354,12 +354,12 @@
 <td><code>product_id + workspace_id</code></td>
 </tr>
 <tr>
-<td>审核自己提交的高风险变更</td>
-<td>拒绝</td>
-<td>如是提交者则拒绝</td>
-<td>拒绝</td>
-<td>仅授权例外</td>
-<td>显示明确职责分离原因</td>
+<td>准备 Release</td>
+<td>拒绝，除非兼任发布人</td>
+<td>—</td>
+<td>本 Workspace 发布人</td>
+<td>受控分配</td>
+<td>显示依据的检查和豁免理由；CR-0001 前此行为“审核自己提交的高风险变更”</td>
 </tr>
 <tr>
 <td>执行发布</td>
@@ -372,7 +372,7 @@
 <tr>
 <td>紧急撤销</td>
 <td>可发起申请</td>
-<td>可审查</td>
+<td>—</td>
 <td>按策略执行</td>
 <td>Break-glass 可审计</td>
 <td>AccessBlock 优先并保持 UNKNOWN 状态</td>
@@ -576,7 +576,7 @@
 <tr>
 <td>Review Diff / Risk Panel</td>
 <td>New/Breaking/Blocked/Waived</td>
-<td>解释规则、原因、风险与审核关系</td>
+<td>解释规则、原因、风险与豁免理由</td>
 </tr>
 <tr>
 <td>Dialog / Confirmation</td>
@@ -637,7 +637,7 @@
 </thead>
 <tbody>
 <tr>
-<td>Internal review completion</td>
+<td>Internal review completion（CR-0001 后不再适用）</td>
 <td>有效完成审核数 / 有权限进入审核任务数</td>
 <td>MVP</td>
 <td>任务事件与人工评审</td>
@@ -688,7 +688,7 @@
 <tr>
 <td><a href="../portal/prototypes/internal-engineering.html"><code>portal/prototypes/internal-engineering.html</code></a></td>
 <td>离线 HTML / 本地 Mock</td>
-<td>产品切换、Catalog 过滤、治理检查、审核、Publication CAS 冲突、撤销 UNKNOWN</td>
+<td>产品切换、Catalog 过滤、治理检查、审核（CR-0001 之前的设计）、Publication CAS 冲突、撤销 UNKNOWN</td>
 </tr>
 <tr>
 <td><a href="../portal/prototypes/cargopai-developers.html"><code>portal/prototypes/cargopai-developers.html</code></a></td>
@@ -772,4 +772,4 @@
 </tbody>
 </table></div>
 <p><strong>F06 文档交付完成判据：</strong> A/B/C 同一正文具备可审查内容；21 个页面/视图与 89 项需求关联；32 项可执行场景设计清楚；两套离线 HTML 原型可操作并明确 MOCK；构建与本地链接/浏览器布局/ZIP 解压通过；F01–F05 Markdown 字节不变；F07/F08 尚未完成且不得伪造。<strong>文档交付完成不等于 F08 正式验收。</strong></p>
-</article><div class="footer">IDP API Fabric · F06 · Markdown is authority · All prototypes are LOCAL_MOCK, runtime tests NOT_RUN</div></main></div></div><a class="back-to-top" href="#">↑ 返回顶部</a><script>(()=>{const m=document.getElementById('menu'),q=document.getElementById('navsearch'),toc=document.getElementById('toc'),shade=document.getElementById('sideBackdrop');let last=null;function open(v){document.body.classList.toggle('navopen',v);m.setAttribute('aria-expanded',String(v));shade.setAttribute('aria-hidden',String(!v));if(v){last=document.activeElement;q.focus()}else if(last){last.focus();last=null}}m.addEventListener('click',()=>open(!document.body.classList.contains('navopen')));shade.addEventListener('click',()=>open(false));document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('navopen'))open(false)});toc.addEventListener('click',e=>{if(e.target.closest('a')&&document.body.classList.contains('navopen'))open(false)});q.addEventListener('input',()=>{let s=q.value.toLocaleLowerCase();toc.querySelectorAll('a').forEach(a=>a.style.display=a.textContent.toLocaleLowerCase().includes(s)?'':'none')});})();</script></body></html>
+</article><div class="footer">IDP API Fabric · F06 · Markdown is authority · All prototypes are LOCAL_MOCK, runtime tests NOT_RUN</div></main></div></div><a href="#" class="back-to-top">↑ 返回顶部</a><script>(()=>{const m=document.getElementById('menu'),q=document.getElementById('navsearch'),toc=document.getElementById('toc'),shade=document.getElementById('sideBackdrop');let last=null;function open(v){document.body.classList.toggle('navopen',v);m.setAttribute('aria-expanded',String(v));shade.setAttribute('aria-hidden',String(!v));if(v){last=document.activeElement;q.focus()}else if(last){last.focus();last=null}}m.addEventListener('click',()=>open(!document.body.classList.contains('navopen')));shade.addEventListener('click',()=>open(false));document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('navopen'))open(false)});toc.addEventListener('click',e=>{if(e.target.closest('a')&&document.body.classList.contains('navopen'))open(false)});q.addEventListener('input',()=>{let s=q.value.toLocaleLowerCase();toc.querySelectorAll('a').forEach(a=>a.style.display=a.textContent.toLocaleLowerCase().includes(s)?'':'none')});})();</script></body></html>
