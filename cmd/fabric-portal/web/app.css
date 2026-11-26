@@ -91,6 +91,8 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .checks li { padding: .4rem 0; border-bottom: 1px solid var(--line); }
 .checks small { display: block; margin-top: .15rem; }
 .rule { font: .83rem ui-monospace, monospace; }
+.check-group { margin: 1rem 0 0; font-weight: 650; }
+.check-detail { border-top: 1px solid var(--line); margin-top: .6rem; }
 .views { display: flex; flex-wrap: wrap; gap: .5rem; margin: 0 0 1rem; }
 .views button[aria-pressed="true"] { background: var(--tint); border-color: var(--accent); box-shadow: inset 0 -3px var(--accent); }
 .catalog-filters {

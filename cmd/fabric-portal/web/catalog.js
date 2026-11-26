@@ -1,4 +1,5 @@
-import { assetPath, badge, list, node, page, productPath, revisionPath, field, statuses, timestamp } from "./workbench.js";
+import { api, assetPath, badge, list, node, page, productPath, revisionPath, field, segment, statuses, timestamp } from "./workbench.js";
+import { checkDetail } from "./checks.js";
 
 const kinds = { HTTP: "HTTP", EVENT: "事件" };
 const lifecycles = { EXPERIMENTAL: "试验", STABLE: "稳定", DEPRECATED: "已弃用", RETIRED: "已退役" };
@@ -290,10 +291,30 @@ export function catalogPanel({ product, workspace, signal }) {
         ["引用闭包摘要", code(revision.ref_closure_digest)],
         ["导入时间", timestamp(revision.created_at)],
       ]));
-      block.append(section("检查", checks, items => items.length ? table("检查", ["结论", "完成时间", "策略摘要", "兼容性对比"],
-        items.map(item => [badge(item.status), timestamp(item.completed_at), code(short(item.policy_digest)),
-          item.compatibility ? "对比 #" + (sequenceOf(item.compatibility.baseline.revision_id) ?? "?") : "未对比"]))
-        : node("p", "此修订还没有检查。", "muted")));
+      const checkBox = node("div");
+      const openCheck = async (item, button) => {
+        for (const other of block.querySelectorAll("button[data-check]")) {
+          other.setAttribute("aria-pressed", String(other === button));
+        }
+        checkBox.replaceChildren(node("p", "正在读取检查…", "muted"));
+        try {
+          const detail = await api(path + "/check-runs/" + segment(item.check_run_id), { signal: current });
+          if (!current.aborted && button.getAttribute("aria-pressed") === "true") checkBox.replaceChildren(checkDetail(detail));
+        } catch (error) {
+          if (!current.aborted) checkBox.replaceChildren(node("p", error.message, "muted"));
+        }
+      };
+      block.append(section("检查", checks, items => items.length ? table("检查", ["结论", "完成时间", "策略摘要", "兼容性对比", "详情"],
+        items.map(item => {
+          const view = node("button", "查看", "row-action");
+          view.type = "button";
+          view.dataset.check = item.check_run_id;
+          view.setAttribute("aria-pressed", "false");
+          view.onclick = () => openCheck(item, view);
+          return [badge(item.status), timestamp(item.completed_at), code(short(item.policy_digest)),
+            item.compatibility ? "对比 #" + (sequenceOf(item.compatibility.baseline.revision_id) ?? "?") : "未对比", view];
+        }))
+        : node("p", "此修订还没有检查。", "muted")), checkBox);
       block.append(section("评审", reviews, items => items.length ? table("评审", ["状态", "提交人", "提交时间", "审批范围", "批准有效期"],
         items.map(item => [badge(item.status), item.requested_by.subject, timestamp(item.requested_at),
           item.scope.map(scope => scope.audience + " / " + scope.environment).join("，"),

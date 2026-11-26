@@ -4,6 +4,7 @@ import { publicationPanel } from "./publication.js";
 import { accessBlockPanel } from "./access-blocks.js";
 import { catalogPanel } from "./catalog.js";
 import { dashboardPanel } from "./dashboard.js";
+import { checkDetail } from "./checks.js";
 
 const el = id => document.getElementById(id);
 const productSelect = el("product");
@@ -334,17 +335,7 @@ function renderEvidence(selection, review, revision, check, signal) {
   evidence.replaceChildren(node("h3", asset?.display_name || review.api_asset_id), badge(review.status), facts);
 
   const rules = node("details");
-  rules.append(node("summary", "检查规则与发现"));
-  const outcomes = node("ul", "", "checks");
-  for (const rule of check.outcomes) {
-    const entry = node("li");
-    entry.append(node("span", rule.rule_id + " ", "rule"), badge(rule.status), node("small", rule.description, "muted"));
-    for (const finding of check.findings.filter(item => item.rule_id === rule.rule_id)) {
-      entry.append(node("small", finding.path + " · " + finding.message));
-    }
-    outcomes.append(entry);
-  }
-  rules.append(outcomes);
+  rules.append(node("summary", "检查规则与发现"), checkDetail(check));
   evidence.append(rules);
   if (review.status === "IN_REVIEW" && selection.roles.includes("internal_reviewer")) {
     const ownRequest = review.requested_by.issuer === caller.issuer && review.requested_by.subject === caller.subject;

@@ -173,7 +173,7 @@ func TestPortalServesTheWorkbenchAndRefusesAnHTMLAPIResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/", "/app.css", "/app.js", "/workbench.js", "/publication.js", "/access-blocks.js", "/catalog.js", "/dashboard.js"} {
+	for _, path := range []string{"/", "/app.css", "/app.js", "/workbench.js", "/publication.js", "/access-blocks.js", "/catalog.js", "/dashboard.js", "/checks.js"} {
 		got := httptest.NewRecorder()
 		handler.ServeHTTP(got, httptest.NewRequest(http.MethodGet, path, nil))
 		if got.Code != http.StatusOK || got.Body.Len() == 0 || got.Header().Get("Content-Security-Policy") == "" {
