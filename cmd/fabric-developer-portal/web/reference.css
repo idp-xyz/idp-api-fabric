@@ -43,7 +43,7 @@ aside nav { margin-top: 1rem; }
 aside nav a { display: block; padding: .42rem .25rem; text-decoration: none; overflow-wrap: anywhere; }
 aside nav a:hover { text-decoration: underline; }
 aside nav strong { font: 700 .78rem ui-monospace, monospace; }
-.operations { display: grid; gap: 1rem; min-width: 0; }
+.operations { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; min-width: 0; }
 article, .notice { padding: 1.3rem 1.55rem; background: var(--surface); border: 1px solid var(--line); border-radius: .65rem; }
 article { scroll-margin-top: 1rem; }
 article:target { border-color: var(--teal); }
@@ -55,6 +55,27 @@ dl { margin: 0; }
 dl div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); border-top: 1px solid var(--line); padding: .45rem 0; }
 dt { font-weight: 650; }
 dd { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+article h4 { font-size: .88rem; margin: .8rem 0 .3rem; overflow-wrap: anywhere; }
+.servers dl div { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; }
+.note { color: var(--muted); font-size: .85rem; }
+.required { color: #8a3b12; font-size: .75rem; font-weight: 650; }
+.media { margin: .35rem 0; font-size: .85rem; }
+.table { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+th { text-align: left; font-weight: 650; border-bottom: 1px solid var(--line); padding: .35rem .5rem .35rem 0; }
+td { vertical-align: top; border-top: 1px solid var(--line); padding: .4rem .5rem .4rem 0; }
+td.prose { color: var(--muted); white-space: pre-line; overflow-wrap: anywhere; }
+.schema .depth-1 td:first-child { padding-left: 1rem; }
+.schema .depth-2 td:first-child { padding-left: 2rem; }
+.schema .depth-3 td:first-child { padding-left: 3rem; }
+.schema .depth-4 td:first-child { padding-left: 4rem; }
+.schema .depth-5 td:first-child { padding-left: 5rem; }
+.schema .depth-6 td:first-child { padding-left: 6rem; }
+.response { border-top: 1px solid var(--line); }
+.sample { border: 1px solid var(--line); border-radius: .4rem; margin-top: .4rem; }
+.sample summary { cursor: pointer; padding: .4rem .6rem; font-weight: 650; }
+.sample pre { margin: 0; padding: .75rem; overflow-x: auto; background: var(--canvas); border-top: 1px solid var(--line); tab-size: 4; font-size: .82rem; line-height: 1.5; }
+.sample pre code { overflow-wrap: normal; }
 .digest { margin: 0; font-size: .8rem; color: var(--muted); }
 .notice { max-width: 40rem; margin: 3rem auto; }
 .notice h1 { font-size: 1.8rem; }
@@ -67,4 +88,5 @@ dd { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
   .reference { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
   aside nav { display: none; }
   article { padding: 1rem; }
+  .servers dl div { grid-template-columns: minmax(0, 1fr); gap: 0; }
 }

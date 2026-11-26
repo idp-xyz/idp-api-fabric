@@ -44,15 +44,40 @@
         </nav>{{end}}
       </aside>
       <section class="operations" aria-label="Operation details">
+        <article class="servers" aria-labelledby="base-urls">
+          <h2 id="base-urls">Base URLs</h2>
+          {{if .Servers}}<dl>{{range .Servers}}<div><dt><code>{{.URL}}</code></dt><dd>{{.Description}}</dd></div>{{end}}</dl>
+          {{else}}<p>This contract does not declare a base URL. Ask your CargoPai representative which address to use.</p>{{end}}
+          <p class="note">Code samples read the base URL from <code>API_BASE_URL</code> and credentials from <code>API_ACCESS_TOKEN</code> or <code>API_KEY</code>. They contain no real credentials.</p>
+        </article>
         {{range .Operations}}
         <article id="{{.Anchor}}">
           <h2><span class="method">{{.Method}}</span> <code>{{.Path}}</code></h2>
           {{if .Summary}}<p class="summary">{{.Summary}}</p>{{end}}
           {{if .Description}}<p class="description">{{.Description}}</p>{{end}}
+          {{if .Parameters}}
+          <h3>Parameters</h3>
+          <div class="table"><table>
+            <thead><tr><th scope="col">Name</th><th scope="col">In</th><th scope="col">Type</th><th scope="col">Description</th></tr></thead>
+            <tbody>{{range .Parameters}}<tr><td><code>{{.Name}}</code>{{if .Required}} <span class="required">required</span>{{end}}</td><td>{{.In}}</td><td><code>{{.Type}}</code></td><td class="prose">{{.Description}}</td></tr>{{end}}</tbody>
+          </table></div>
+          {{end}}
+          {{with .RequestBody}}
+          <h3>Request body{{if .Required}} <span class="required">required</span>{{end}}</h3>
+          {{if .Description}}<p class="description">{{.Description}}</p>{{end}}
+          {{range .Contents}}{{template "content" .}}{{end}}
+          {{end}}
           {{if .Responses}}
           <h3>Responses</h3>
-          <dl>{{range .Responses}}<div><dt><code>{{.Code}}</code></dt><dd>{{.Description}}</dd></div>{{end}}</dl>
+          {{range .Responses}}
+          <section class="response">
+            <h4><code>{{.Code}}</code> {{.Description}}</h4>
+            {{range .Contents}}{{template "content" .}}{{end}}
+          </section>
           {{end}}
+          {{end}}
+          <h3>Code samples</h3>
+          {{range $i, $sample := .Samples}}<details class="sample"{{if eq $i 0}} open{{end}}><summary>{{$sample.Language}}</summary><pre><code>{{$sample.Code}}</code></pre></details>{{end}}
         </article>
         {{else}}
         <article>{{if .Query}}<p>No operations match your search.</p><a href="/">See all operations</a>{{else}}<p>This contract has no HTTP operations to display. The original source bundle is available for download.</p>{{end}}</article>
@@ -64,3 +89,10 @@
   </main>
 </body>
 </html>
+{{define "content"}}<div class="content">
+  <p class="media"><code>{{.MediaType}}</code>{{if .Problem}} <span class="note">RFC 9457 problem details</span>{{end}}</p>
+  {{if .Fields}}<div class="table"><table class="schema">
+    <thead><tr><th scope="col">Field</th><th scope="col">Type</th><th scope="col">Description</th></tr></thead>
+    <tbody>{{range .Fields}}<tr class="depth-{{.Depth}}"><td>{{if .Name}}<code>{{.Name}}</code>{{else if .Type}}<em>Body</em>{{end}}{{if .Required}} <span class="required">required</span>{{end}}</td><td>{{if .Type}}<code>{{.Type}}</code>{{end}}</td><td class="prose">{{.Description}}{{if .Note}} <span class="note">{{.Note}}</span>{{end}}</td></tr>{{end}}</tbody>
+  </table></div>{{end}}
+</div>{{end}}
