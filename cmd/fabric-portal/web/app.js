@@ -2,6 +2,9 @@ import { api, assetPath, badge, field, fill, list, node, page, productPath, revi
   segment, statuses, timestamp } from "./workbench.js";
 import { publicationPanel } from "./publication.js";
 import { accessBlockPanel } from "./access-blocks.js";
+import { catalogPanel } from "./catalog.js";
+import { dashboardPanel } from "./dashboard.js";
+import { checkDetail } from "./checks.js";
 
 const el = id => document.getElementById(id);
 const productSelect = el("product");
@@ -15,6 +18,7 @@ const readers = ["workspace_maintainer", "internal_author", "internal_reviewer",
 let productRequest;
 let view;
 let caller;
+let shownView = "dashboard";
 
 function notice(text = "", error = false) {
   const item = el("notice");
@@ -29,7 +33,19 @@ function report(error) {
 }
 
 function showReviewWorkspace(visible) {
-  for (const id of ["workspace-field", "filter-field", "review-columns", "refresh"]) el(id).hidden = !visible;
+  el("workspace-field").hidden = el("views").hidden = !visible;
+  showView(visible ? shownView : "");
+}
+
+function showView(name) {
+  for (const id of ["filter-field", "refresh", "reviews-view"]) el(id).hidden = name !== "reviews";
+  el("catalog-view").hidden = name !== "catalog";
+  el("dashboard-view").hidden = name !== "dashboard";
+  if (!name) return;
+  shownView = name;
+  for (const mode of ["dashboard", "reviews", "catalog"]) el("view-" + mode).setAttribute("aria-pressed", String(name === mode));
+  if (name === "catalog") view?.catalog.start();
+  if (name === "dashboard") view?.dashboard.start();
 }
 
 async function chooseProduct(preferredWorkspace = "") {
@@ -85,6 +101,8 @@ async function chooseProduct(preferredWorkspace = "") {
 }
 
 function clearWorkspace() {
+  el("dashboard-view").replaceChildren();
+  el("catalog-view").replaceChildren();
   el("queue").replaceChildren();
   el("queue-status").textContent = "";
   el("more").hidden = true;
@@ -108,25 +126,43 @@ async function chooseWorkspace(product, callerInProduct) {
   const owner = callerInProduct.roles.includes("product_owner");
   const canReadReviews = owner || roles.some(role => readers.includes(role));
   el("context").textContent = productSelect.selectedOptions[0].text + " / " + workspaceSelect.selectedOptions[0].text;
-  if (!canReadReviews) {
-    el("queue-status").textContent = "当前身份无法读取此工作区的评审。";
-    return;
-  }
   const selection = {
-    product, workspace, roles, controller: new AbortController(), assets: new Map(), targets: [],
+    product, workspace, roles, reviews: canReadReviews, controller: new AbortController(), assets: new Map(), targets: [],
   };
   view = selection;
   const { signal } = selection.controller;
   const assetsPath = productPath(product) + "/assets?workspace_id=" + segment(workspace);
+  const assets = list(assetsPath, signal).then(items => new Map(items.map(item => [item.api_asset_id, item])));
+  assets.catch(() => {});
+  selection.catalog = catalogPanel({ product, workspace, signal });
+  selection.dashboard = dashboardPanel({
+    product, workspace, assets, reviews: canReadReviews, signal,
+    openReview: review => {
+      showView("reviews");
+      showReview(selection, review, true).catch(report);
+    },
+    openAsset: asset => {
+      showView("catalog");
+      selection.catalog.open(asset);
+    },
+  });
+  el("catalog-view").replaceChildren(selection.catalog.element);
+  el("dashboard-view").replaceChildren(selection.dashboard.element);
+  if (shownView === "catalog") selection.catalog.start();
+  if (shownView === "dashboard") selection.dashboard.start();
+  if (!canReadReviews) {
+    el("queue-status").textContent = "当前身份无法读取此工作区的评审。";
+    return;
+  }
   const author = roles.includes("internal_author");
-  const [assets, targets] = await Promise.all([
-    list(assetsPath, signal),
+  const [visible, targets] = await Promise.all([
+    assets,
     author ? list(productPath(product) + "/audience-configs", signal) : Promise.resolve([]),
   ]);
   if (signal.aborted) return;
-  selection.assets = new Map(assets.map(item => [item.api_asset_id, item]));
+  selection.assets = visible;
   selection.targets = targets;
-  if (author) configureSubmission(selection, assets);
+  if (author) configureSubmission(selection, [...visible.values()]);
   await loadQueue(selection, true);
 }
 
@@ -299,17 +335,7 @@ function renderEvidence(selection, review, revision, check, signal) {
   evidence.replaceChildren(node("h3", asset?.display_name || review.api_asset_id), badge(review.status), facts);
 
   const rules = node("details");
-  rules.append(node("summary", "检查规则与发现"));
-  const outcomes = node("ul", "", "checks");
-  for (const rule of check.outcomes) {
-    const entry = node("li");
-    entry.append(node("span", rule.rule_id + " ", "rule"), badge(rule.status), node("small", rule.description, "muted"));
-    for (const finding of check.findings.filter(item => item.rule_id === rule.rule_id)) {
-      entry.append(node("small", finding.path + " · " + finding.message));
-    }
-    outcomes.append(entry);
-  }
-  rules.append(outcomes);
+  rules.append(node("summary", "检查规则与发现"), checkDetail(check));
   evidence.append(rules);
   if (review.status === "IN_REVIEW" && selection.roles.includes("internal_reviewer")) {
     const ownRequest = review.requested_by.issuer === caller.issuer && review.requested_by.subject === caller.subject;
@@ -417,8 +443,11 @@ async function start() {
 }
 
 productSelect.onchange = () => chooseProduct().catch(report);
-el("filter").onchange = () => { if (view) loadQueue(view, true).catch(report); };
-el("more").onclick = () => { if (view) loadQueue(view, false).catch(report); };
+el("filter").onchange = () => { if (view?.reviews) loadQueue(view, true).catch(report); };
+el("more").onclick = () => { if (view?.reviews) loadQueue(view, false).catch(report); };
+el("view-dashboard").onclick = () => showView("dashboard");
+el("view-reviews").onclick = () => showView("reviews");
+el("view-catalog").onclick = () => showView("catalog");
 el("refresh").onclick = () => chooseProduct(workspaceSelect.value).catch(report);
 el("request-form").onsubmit = event => submitReview(event).catch(report);
 start().catch(error => {

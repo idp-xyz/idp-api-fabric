@@ -40,6 +40,14 @@
         </div>
       </section>
       <div id="security-controls" hidden></div>
+      <div id="views" class="views" role="group" aria-label="工作台视图" hidden>
+        <button id="view-dashboard" type="button" aria-pressed="true">工作台</button>
+        <button id="view-reviews" type="button" aria-pressed="false">评审与发布</button>
+        <button id="view-catalog" type="button" aria-pressed="false">API 目录</button>
+      </div>
+      <div id="dashboard-view" hidden></div>
+      <div id="catalog-view" hidden></div>
+      <div id="reviews-view" hidden>
       <details id="submission" class="panel" hidden>
         <summary>提交修订评审</summary>
         <form id="request-form" class="form">
@@ -53,7 +61,7 @@
           <button id="request" class="primary" type="submit" disabled>提交评审</button>
         </form>
       </details>
-      <div id="review-columns" class="columns" hidden>
+      <div id="review-columns" class="columns">
         <section class="panel" aria-labelledby="queue-title">
           <div class="panel-title"><h2 id="queue-title">评审队列</h2></div>
           <p id="queue-status" class="panel-body muted" role="status"></p>
@@ -64,6 +72,7 @@
           <div class="panel-title"><h2 id="detail-title" tabindex="-1">评审详情</h2></div>
           <div id="evidence" class="panel-body" aria-live="polite"></div>
         </section>
+      </div>
       </div>
     </div>
   </main>
