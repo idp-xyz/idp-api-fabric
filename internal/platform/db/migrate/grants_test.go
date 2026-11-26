@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"go.idp.xyz/idp-api-fabric/internal/platform/db"
 	"go.idp.xyz/idp-api-fabric/internal/platform/db/migrate"
 	"go.idp.xyz/idp-api-fabric/internal/platform/db/pgtest"
 )
@@ -76,6 +77,9 @@ func TestTheApplicationRoleHoldsWhatItNeedsAndNothingElse(t *testing.T) {
 		`DELETE FROM fabric_migration.applied_migration`,
 		`CREATE TABLE platformoperations.intruder (id integer)`,
 		`DROP SCHEMA platformoperations CASCADE`,
+		// CR-0001 retired reviews: the role records none and moves no status.
+		`INSERT INTO policyreview.review_conclusion (review_id) VALUES (gen_random_uuid())`,
+		`UPDATE contractregistry.contract_revision SET status = 'WITHDRAWN'`,
 	}
 	for _, statement := range refused {
 		if _, err := app.Exec(t.Context(), statement); sqlState(err) != insufficientPrivilege {
@@ -131,6 +135,111 @@ func TestEveryFabricTableHasItsPrivilegesDeclared(t *testing.T) {
 	if !slices.Equal(tables, declared) {
 		t.Errorf("the migrated database holds the tables\n %v\nand privileges are declared for\n %v", tables, declared)
 	}
+}
+
+// A privilege leaves ApplicationPrivileges for RetiredPrivileges: Grant
+// gives none it takes back, and takes back none on a table it does not know.
+func TestARetiredPrivilegeIsOneThisBuildNoLongerGrants(t *testing.T) {
+	declared := make(map[string][]string)
+	for _, table := range migrate.ApplicationPrivileges() {
+		declared[table.Schema+"."+table.Table] = table.Privileges
+	}
+	for _, table := range migrate.RetiredPrivileges() {
+		name := table.Schema + "." + table.Table
+		granted, known := declared[name]
+		if !known {
+			t.Errorf("%s is retired from and declared for nothing", name)
+		}
+		for _, privilege := range table.Privileges {
+			if slices.Contains(granted, privilege) {
+				t.Errorf("%s on %s is both granted and retired", privilege, name)
+			}
+		}
+	}
+}
+
+// A role an earlier build granted holds what this build retired (CR-0001):
+// INSERT on the tables of reviews and UPDATE on revisions. Granting with this
+// build takes exactly those back and leaves the rest, a privilege granted by
+// hand included. A process of this build starts on the role before and
+// after, and granting again changes nothing.
+func TestGrantTakesBackTheRetiredPrivilegesAndNothingElse(t *testing.T) {
+	database := pgtest.MigratedDatabase(t)
+	conn := pgtest.Connect(t, database.Migrator)
+	role := pgx.Identifier{database.ApplicationRole}.Sanitize()
+
+	// The role as the builds before this one left it: what this build
+	// grants, with the writes of reviews and of statuses on top. And one
+	// privilege an operator added by hand, which nothing retired.
+	for _, statement := range []string{
+		`GRANT SELECT, INSERT ON policyreview.review_request, policyreview.review_scope,
+		     policyreview.review_conclusion, policyreview.review_waiver TO ` + role,
+		`GRANT SELECT, INSERT, UPDATE ON contractregistry.contract_revision TO ` + role,
+		`GRANT DELETE ON bento.outbox TO ` + role,
+	} {
+		if _, err := conn.Exec(t.Context(), statement); err != nil {
+			t.Fatalf("grant as the builds before: %v", err)
+		}
+	}
+	held := func() []string {
+		t.Helper()
+		rows, err := conn.Query(t.Context(), `
+			SELECT n.nspname || '.' || c.relname || ' ' || a.privilege_type
+			FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace, aclexplode(c.relacl) a
+			WHERE a.grantee = (SELECT oid FROM pg_roles WHERE rolname = $1) AND n.nspname = ANY($2)
+			ORDER BY 1`, database.ApplicationRole, fabricSchemas(t))
+		if err != nil {
+			t.Fatalf("read the privileges of the role: %v", err)
+		}
+		privileges, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			t.Fatalf("read the privileges of the role: %v", err)
+		}
+		return privileges
+	}
+	retired := []string{
+		"contractregistry.contract_revision UPDATE",
+		"policyreview.review_conclusion INSERT",
+		"policyreview.review_request INSERT",
+		"policyreview.review_scope INSERT",
+		"policyreview.review_waiver INSERT",
+	}
+	before := held()
+	for _, privilege := range retired {
+		if !slices.Contains(before, privilege) {
+			t.Fatalf("the role as the builds before left it does not hold %s: %v", privilege, before)
+		}
+	}
+	open := func(when string) {
+		t.Helper()
+		opened, err := db.Open(t.Context(), database.Application)
+		if err != nil {
+			t.Fatalf("%s: %v", when, err)
+		}
+		opened.Close()
+	}
+	open("on the role as the builds before left it")
+
+	want := slices.DeleteFunc(slices.Clone(before), func(privilege string) bool { return slices.Contains(retired, privilege) })
+	for range 2 {
+		if err := migrate.Grant(t.Context(), conn, database.ApplicationRole); err != nil {
+			t.Fatalf("grant with this build: %v", err)
+		}
+		if got := held(); !slices.Equal(got, want) {
+			t.Errorf("granted with this build, the role holds\n %v\nwant what it held without the retired privileges\n %v", got, want)
+		}
+	}
+	for _, table := range migrate.ApplicationPrivileges() {
+		for _, privilege := range table.Privileges {
+			if name := table.Schema + "." + table.Table + " " + privilege; !slices.Contains(want, name) {
+				t.Errorf("the role does not hold %s, which this build grants", name)
+			}
+		}
+	}
+	if !slices.Contains(want, "bento.outbox DELETE") {
+		t.Error("the privilege granted by hand is gone")
+	}
+	open("once this build granted the role")
 }
 
 func TestGrantIsRepeatable(t *testing.T) {

@@ -66,10 +66,10 @@ func TestADecisionIsReadBackWithWhatItHeldForAndWhatItWaived(t *testing.T) {
 
 // The tables hold every writer to what a decision is: an approval holds
 // until a time after it was given and nothing else holds for a time, a
-// rejection says why, a waiver belongs to a conclusion and says why and
-// until when, and nothing of either is changed or removed by the role a
-// process connects with. What the tables cannot say the model finds out
-// when the review is read.
+// rejection says why, and a waiver belongs to a conclusion and says why and
+// until when. Nothing of either is written, changed or removed by the role a
+// process connects with. What the tables cannot say the model finds out when
+// the review is read.
 func TestTheTablesHoldADecisionToItsOutcome(t *testing.T) {
 	f, database := newReviewFixture(t)
 	asked := time.Date(2026, 11, 19, 9, 0, 0, 0, time.UTC)
@@ -95,7 +95,7 @@ VALUES ($1, $2, $3, $4, 'https://issuer.example', 'rita', $5)`
 	}
 	open := f.submitted(asked)
 	for _, c := range refusals {
-		if _, err := app.Exec(t.Context(), conclude, open.Request.ID, c.outcome, c.reason, decided, c.validUntil); stateOf(err) != c.want {
+		if _, err := f.owner.Exec(t.Context(), conclude, open.Request.ID, c.outcome, c.reason, decided, c.validUntil); stateOf(err) != c.want {
 			t.Errorf("%s: got %v, want it refused by %s", c.name, err, c.want)
 		}
 	}
@@ -121,7 +121,7 @@ INSERT INTO policyreview.review_waiver (review_id, rule_id, reason, compensating
 		"a waiver whose control is nothing":         {review.Request.ID, "F04-GOV-002", "accepted", "", "23514 "},
 		"a waiver of no rule":                       {review.Request.ID, "", "accepted", nil, "23514 "},
 	} {
-		if _, err := app.Exec(t.Context(), waive, c.review, c.rule, c.reason, c.control, decided.Add(time.Hour)); !strings.HasPrefix(stateOf(err), c.want) {
+		if _, err := f.owner.Exec(t.Context(), waive, c.review, c.rule, c.reason, c.control, decided.Add(time.Hour)); !strings.HasPrefix(stateOf(err), c.want) {
 			t.Errorf("%s: got %v, want it refused with %s", name, err, c.want)
 		}
 	}
@@ -131,6 +131,7 @@ INSERT INTO policyreview.review_waiver (review_id, rule_id, reason, compensating
 		"extend an approval":    `UPDATE policyreview.review_conclusion SET valid_until = valid_until + interval '1 year'`,
 		"turn a decision round": `UPDATE policyreview.review_conclusion SET outcome = 'REJECTED', reason = 'no', valid_until = NULL`,
 		"empty the waivers":     `TRUNCATE policyreview.review_waiver`,
+		"waive another rule":    `INSERT INTO policyreview.review_waiver SELECT review_id, 'F04-GOV-002', 'accepted', NULL, now() FROM policyreview.review_waiver`,
 	} {
 		if _, err := app.Exec(t.Context(), statement); !strings.HasPrefix(stateOf(err), "42501") {
 			t.Errorf("%s, as the application role: got %v, want it refused for lack of privilege", name, err)

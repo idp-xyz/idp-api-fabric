@@ -3,6 +3,7 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -79,8 +80,9 @@ SET status = $2, status_version = status_version + 1 WHERE revision_id = $1`, id
 // The table holds every writer to what a revision is: it begins as a draft,
 // its status moves one step and one version at a time, nothing else of it
 // changes, and it is never removed. No use case of this build moves a status
-// any more; the table still holds what a build before this one and the
-// migration that withdraws open reviews write to it.
+// any more, and the role a process connects with may not (CR-0001); the
+// table still holds what a build before this one and the migration that
+// withdraws open reviews write to it.
 func TestTheTableLetsTheStatusOfARevisionMoveAndNothingElse(t *testing.T) {
 	f, database := newStatusFixture(t)
 	draft, reviewed, withdrawn := f.record(), f.record(), f.record()
@@ -129,11 +131,17 @@ func TestTheTableLetsTheStatusOfARevisionMoveAndNothingElse(t *testing.T) {
 		return ""
 	}
 	// The role a process connects with, and the owner of the table: the
-	// trigger is no privilege, so it holds both.
+	// trigger is no privilege, so it holds both. The role holds no UPDATE
+	// since CR-0001, so it is refused every move before the trigger is
+	// asked.
 	app, owner := pgtest.Connect(t, database.Application), pgtest.Connect(t, database.Migrator)
 	for _, s := range statements {
-		if _, err := app.Exec(t.Context(), s.statement, s.id); state(err) != s.state {
-			t.Errorf("%s, as the application role: got %v, want SQLSTATE %s", s.name, err, s.state)
+		want := s.state
+		if strings.HasPrefix(s.statement, update) {
+			want = insufficientPrivilege
+		}
+		if _, err := app.Exec(t.Context(), s.statement, s.id); state(err) != want {
+			t.Errorf("%s, as the application role: got %v, want SQLSTATE %s", s.name, err, want)
 		}
 		if s.state == insufficientPrivilege {
 			continue
@@ -157,7 +165,7 @@ func TestTheTableLetsTheStatusOfARevisionMoveAndNothingElse(t *testing.T) {
 	// The moves a review made are ones the table takes, by hand as well:
 	// a submission, and the withdrawal of a revision in review, which is the
 	// move the migration of CR-0001 makes.
-	if _, err := app.Exec(t.Context(), update+`status = 'IN_REVIEW', status_version = 2 WHERE revision_id = $1`, draft.ID); err != nil {
+	if _, err := owner.Exec(t.Context(), update+`status = 'IN_REVIEW', status_version = 2 WHERE revision_id = $1`, draft.ID); err != nil {
 		t.Errorf("a submission by hand: %v", err)
 	}
 	if _, err := owner.Exec(t.Context(), update+`status = 'WITHDRAWN', status_version = 3 WHERE revision_id = $1`, withdrawn.ID); err != nil {
