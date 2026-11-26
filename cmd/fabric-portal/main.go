@@ -114,6 +114,7 @@ func newPortal(origin string) (http.Handler, error) {
 	} {
 		mux.Handle("GET "+path, proxy)
 	}
+	mux.Handle("POST "+revision+"/check-runs", proxy)
 	mux.Handle("POST "+revision+"/reviews", proxy)
 	mux.Handle("POST "+revision+"/reviews/{review}/decision", proxy)
 	mux.Handle("POST "+asset+"/releases", proxy)

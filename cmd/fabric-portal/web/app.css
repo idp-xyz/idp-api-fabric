@@ -101,10 +101,14 @@ dd { margin: 0; overflow-wrap: anywhere; }
 
 .publication { border-top: 1px solid var(--line); margin: 1rem 0 0; }
 .publication summary { padding-inline: 0; }
-.publication-scope {
+.publication-scope, .check-run {
   display: flex; flex-wrap: wrap; gap: .65rem; align-items: end;
   margin: .75rem 0;
 }
+.check-run { margin: 0; }
+.check-run .field { flex: 1 1 14rem; min-width: 0; }
+.check-run button { flex: 0 0 auto; }
+.hint { margin: 0; font-size: .8rem; }
 .publication-scope .field { flex: 1 1 14rem; min-width: 0; }
 .publication-scope button { flex: 0 0 auto; }
 .publication-error { color: var(--danger); }

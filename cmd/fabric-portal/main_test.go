@@ -163,6 +163,49 @@ func TestPortalForwardsAccessBlockReadsAndSameOriginChanges(t *testing.T) {
 	}
 }
 
+func TestPortalForwardsASameOriginCheckRunWithItsBaseline(t *testing.T) {
+	const checks = "/v1/products/p/assets/a/revisions/r/check-runs"
+	var forwarded atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwarded.Add(1)
+		if r.Method != http.MethodPost || r.URL.Path != checks || r.URL.RawQuery != "baseline_revision_id=b" ||
+			r.Header.Get("Authorization") != "Bearer example-access-token" || r.Header.Get("Cookie") != "" {
+			t.Errorf("misrouted check run %s %s or wrong caller", r.Method, r.URL)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Location", checks+"/c")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, "{}")
+	}))
+	defer upstream.Close()
+	handler, err := newPortal(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range []struct {
+		path, site string
+		want       int
+	}{
+		{checks + "?baseline_revision_id=b", "same-origin", http.StatusCreated},
+		{checks + "?baseline_revision_id=b", "cross-site", http.StatusForbidden},
+		{checks + "/c", "same-origin", http.StatusMethodNotAllowed},
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api"+c.path, nil)
+		req.Header.Set("Authorization", "Bearer example-access-token")
+		req.Header.Set("Cookie", "browser-session=private")
+		req.Header.Set("Sec-Fetch-Site", c.site)
+		got := httptest.NewRecorder()
+		handler.ServeHTTP(got, req)
+		if got.Code != c.want || got.Header().Get("Cache-Control") != "no-store" || got.Header().Get("Location") != "" {
+			t.Errorf("POST %s (%s) returned %d with %v, want %d, no-store and no upstream location", c.path, c.site, got.Code, got.Header(), c.want)
+		}
+	}
+	if got := forwarded.Load(); got != 1 {
+		t.Errorf("upstream received %d requests, want the one same-origin check run", got)
+	}
+}
+
 func TestPortalServesTheWorkbenchAndRefusesAnHTMLAPIResponse(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
