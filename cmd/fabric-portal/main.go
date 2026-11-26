@@ -82,7 +82,7 @@ func newPortal(origin string) (http.Handler, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", staticFile("index.html"))
-	for _, name := range []string{"app.js", "app.css", "workbench.js", "publication.js", "access-blocks.js", "catalog.js", "dashboard.js", "checks.js", "releases.js"} {
+	for _, name := range []string{"app.js", "app.css", "workbench.js", "publication.js", "access-blocks.js", "catalog.js", "dashboard.js", "checks.js", "releases.js", "compare.js"} {
 		mux.HandleFunc("GET /"+name, staticFile(name))
 	}
 	proxy := fabricProxy(upstream)
@@ -98,15 +98,14 @@ func newPortal(origin string) (http.Handler, error) {
 		"/api/v1/products",
 		product + "/caller",
 		product + "/workspaces",
-		product + "/workspaces/{workspace}/reviews",
 		product + "/audience-configs",
 		product + "/assets",
 		asset + "/revisions",
 		revision,
 		revision + "/check-runs",
 		revision + "/check-runs/{check}",
+		revision + "/compatibility",
 		revision + "/reviews",
-		revision + "/reviews/{review}",
 		asset + "/releases",
 		asset + "/publications",
 		product + "/publication-targets",

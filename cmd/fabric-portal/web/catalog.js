@@ -1,5 +1,6 @@
 import { api, assetPath, badge, field, fill, list, node, page, productPath, revisionPath, segment, statuses, timestamp } from "./workbench.js";
 import { checkDetail } from "./checks.js";
+import { compareSection } from "./compare.js";
 import { publicationPanel } from "./publication.js";
 import { releaseForm } from "./releases.js";
 
@@ -210,6 +211,23 @@ export function catalogPanel({ product, productName, workspace, roles, signal })
     return row;
   }
 
+  // releasedFrom brings an asset's row up to date with a release just
+  // prepared, as listAssets would answer now: the release is the latest, and
+  // the latest revision waits for none once it is prepared from that revision.
+  function releasedFrom(asset, release) {
+    const overview = asset.overview;
+    const row = rows.querySelector("button[data-asset=\"" + CSS.escape(asset.api_asset_id) + "\"]")?.closest("tr");
+    if (!overview || !row) return;
+    asset.overview = {
+      ...overview,
+      latest_release: { release_id: release.release_id, revision_id: release.revision_id, version: release.version, prepared_at: release.prepared_at },
+      release_pending: overview.release_pending && overview.latest_revision?.revision_id !== release.revision_id,
+    };
+    const replacement = assetRow(asset);
+    replacement.querySelector("button[data-asset]").setAttribute("aria-pressed", "true");
+    row.replaceWith(replacement);
+  }
+
   function closeAsset() {
     detailRequest?.abort();
     detail.hidden = true;
@@ -315,7 +333,9 @@ export function catalogPanel({ product, productName, workspace, roles, signal })
       checkSection.append(node("h4", "检查"));
       if (author) checkSection.append(checkRunForm());
       checkSection.append(checkList, checkBox);
-      block.append(checkSection);
+      block.append(checkSection, compareSection({
+        path, revision, others: ordered.filter(item => item.revision_id !== revision.revision_id), signal: shown,
+      }));
       // Preparing needs the list of the revision's checks to choose from.
       const preparation = publisher && !checks.error ? releaseForm({
         productName, asset, revision, path, releasePath: base + "/releases", sequenceOf, signal: shown, onPrepared: prepared,
@@ -421,6 +441,7 @@ export function catalogPanel({ product, productName, workspace, roles, signal })
       // Should the releases not be read again, the one just prepared is
       // still shown and offered for publication.
       async function prepared(release) {
+        releasedFrom(asset, release);
         const listed = await settle(list(base + "/releases", current));
         if (current.aborted) return;
         releaseList = listed.value || [...releaseList.filter(item => item.release_id !== release.release_id), release];

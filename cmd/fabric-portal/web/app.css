@@ -64,7 +64,9 @@ label input, .field input, .field select { width: 100%; min-width: 0; font-weigh
 .badge { display: inline-block; padding: .12rem .45rem; background: #e8eff4; color: #314e66; border-radius: 5px; font-size: .78rem; font-weight: 650; }
 .badge[data-state="APPROVED"], .badge[data-state="PASS"] { background: #e1f3ed; color: var(--success); }
 .badge[data-state="REJECTED"], .badge[data-state="FAIL"] { background: #faeeee; color: var(--danger); }
-.badge[data-state="IN_REVIEW"], .badge[data-state="UNKNOWN"] { background: #fcf2da; color: #744f00; }
+.badge[data-state="IN_REVIEW"], .badge[data-state="UNKNOWN"], .badge[data-state="RISKY"] { background: #fcf2da; color: #744f00; }
+.badge[data-state="COMPATIBLE"] { background: #e1f3ed; color: var(--success); }
+.badge[data-state="BREAKING"] { background: #faeeee; color: var(--danger); }
 summary { cursor: pointer; font-weight: 650; padding: .8rem 1rem; }
 .form { display: grid; gap: .7rem; max-width: 44rem; padding: 0 0 .6rem; }
 .form button { justify-self: start; }
