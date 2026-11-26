@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -22,9 +21,9 @@ import (
 
 // queueWorld is a product of two workspaces, engineering and operations, and
 // another product, Parcel, with a workspace of its own, and an asset in each of
-// the three. In engineering two authors ask for reviews, a reviewer decides
-// them, a publisher reads, and a maintainer and the owner of the product read
-// none. The people of the other workspaces are named for them: ops-author,
+// the three. In engineering two authors asked for reviews and a reviewer
+// decided them, before reviews were retired; a publisher reads, and a
+// maintainer and the owner of the product read none. The people of the other workspaces are named for them: ops-author,
 // ops-reviewer and ops-maintainer, sort-author, sort-reviewer and
 // sort-maintainer, and owner2 owns Parcel.
 type queueWorld struct {
@@ -83,40 +82,19 @@ func queueMadeIDs(reviews []queueMade) []string {
 	return listed
 }
 
-// queueDecided decides the review as the subject, which has to be answered.
-func (f *reviewFixture) queueDecided(review, subject, body string) answer {
-	f.t.Helper()
-	got := f.call(http.MethodPost, review+"/decision", subject, body)
-	if got.status != http.StatusOK {
-		f.t.Fatalf("decide %s as %s: %d %v", review, subject, got.status, got.body)
-	}
-	return got
-}
-
-// queueAskedAgain asks for another review of the revision, as the subject, on its
-// check of today and for a scope its approval did not name: a supplementary
-// review. It returns its identifier.
-func (f *reviewFixture) queueAskedAgain(revision, subject string) string {
-	f.t.Helper()
-	got := f.call(http.MethodPost, revision+"/reviews", subject, asking(f.checkOf(revision), internalProduction))
-	if got.status != http.StatusCreated || got.body["supplementary"] != true {
-		f.t.Fatalf("ask for a supplementary review as %s: %d %v", subject, got.status, got.body)
-	}
-	return got.id("review_id")
-}
-
-// filled asks for the reviews of engineering, in each state a review stands
-// in, in the order of the queue: open, approved, withdrawn, rejected, open
-// again, approved with the waiver of the rule that did not pass, a
-// supplementary review that is open, one that is approved with the same
-// waiver, and open once more. After each of them a review is asked for in each
-// of the other two workspaces, so that a page that was cut from the reviews of
-// all three, and then relieved of those of the others, would not be full.
+// filled records the reviews of engineering as the build before recorded
+// them, in each state a review stands in, in the order of the queue: open,
+// approved, withdrawn, rejected, open again, approved with the waiver of the
+// rule that did not pass, a supplementary review that is open, one that is
+// approved with the same waiver, and open once more. After each of them a
+// review is recorded in each of the other two workspaces, so that a page that
+// was cut from the reviews of all three, and then relieved of those of the
+// others, would not be full. A review that was open when reviews were retired
+// was withdrawn then; the tables of a test hold open ones all the same, which
+// the queue lists as it lists any other.
 func (w *queueWorld) filled() []queueMade {
 	w.t.Helper()
 
-	until := time.Now().UTC().Add(90 * 24 * time.Hour).Truncate(time.Second)
-	sooner := until.Add(-30 * 24 * time.Hour)
 	var made []queueMade
 	asked := 0
 	next := func() string { asked++; return fmt.Sprintf("%s# engineering %d\n", revisionSource, asked) }
@@ -132,32 +110,32 @@ func (w *queueWorld) filled() []queueMade {
 	keep(last(open.review), "IN_REVIEW", "author", false)
 
 	approved := w.inReview(next(), "author", "author", "coauthor")
-	w.queueDecided(approved.review, "reviewer", deciding("APPROVED", "reviewed with the partner team", until))
+	w.concluded(approved.review, "reviewer", "APPROVED", "reviewed with the partner team")
 	keep(last(approved.review), "APPROVED", "coauthor", false)
 
 	withdrawn := w.inReview(next(), "author", "author", "author")
-	if got := w.call(http.MethodPost, withdrawn.review+"/withdrawal", "author", `{"reason":"the wrong baseline"}`); got.status != http.StatusOK {
-		w.t.Fatalf("withdraw a review: %d %v", got.status, got.body)
-	}
+	w.concluded(withdrawn.review, "author", "WITHDRAWN", "the wrong baseline")
 	keep(last(withdrawn.review), "WITHDRAWN", "author", false)
 
 	rejected := w.inReview(next(), "author", "author", "author")
-	w.queueDecided(rejected.review, "reviewer", deciding("REJECTED", "every operation needs its operationId", time.Time{}))
+	w.concluded(rejected.review, "reviewer", "REJECTED", "every operation needs its operationId")
 	keep(last(rejected.review), "REJECTED", "author", false)
 
 	again := w.inReview(next(), "author", "author", "coauthor")
 	keep(last(again.review), "IN_REVIEW", "coauthor", false)
 
 	unnamed := w.inReview(unnamedSource, "author", "author", "author")
-	w.queueDecided(unnamed.review, "reviewer", deciding("APPROVED", "", until, waiving("F04-GOV-003", sooner)))
+	w.concluded(unnamed.review, "reviewer", "APPROVED", "", "F04-GOV-003")
 	keep(last(unnamed.review), "APPROVED", "author", false)
 
-	supplementary := w.queueAskedAgain(approved.revision, "author")
-	keep(supplementary, "IN_REVIEW", "author", true)
+	// An approved revision was reviewed again in a supplementary review,
+	// for a scope its approval did not name.
+	supplementary := w.asked(approved.revision, approved.check, "author", internalProduction)
+	keep(last(supplementary), "IN_REVIEW", "author", true)
 
-	waived := w.queueAskedAgain(unnamed.revision, "coauthor")
-	w.queueDecided(unnamed.revision+"/reviews/"+waived, "reviewer", deciding("APPROVED", "", until, waiving("F04-GOV-003", sooner)))
-	keep(waived, "APPROVED", "coauthor", true)
+	waived := w.asked(unnamed.revision, unnamed.check, "coauthor", internalProduction)
+	w.concluded(waived, "reviewer", "APPROVED", "", "F04-GOV-003")
+	keep(last(waived), "APPROVED", "coauthor", true)
 
 	final := w.inReview(next(), "author", "author", "author")
 	keep(last(final.review), "IN_REVIEW", "author", false)
@@ -348,10 +326,10 @@ func TestAReviewOfTheQueueIsTheReviewAsItIsRead(t *testing.T) {
 		t.Errorf("the queue holds the states\n %v\nwant\n %v", states, wantStates)
 	}
 
-	// What the answer of a decision said of the review is what the queue says
-	// of it afterwards.
+	// What a read of the review says once it is decided is what the queue
+	// says of it.
 	extra := w.inReview(revisionSource+"# decided last\n", "author", "author", "author")
-	decision := w.queueDecided(extra.review, "reviewer", deciding("APPROVED", "as it is", time.Now().UTC().Add(48*time.Hour).Truncate(time.Second)))
+	decision := w.concluded(extra.review, "reviewer", "APPROVED", "as it is")
 	items = listed(s.queuePages(w.queueOf(), "", "reviewer", 100))
 	if got := items[len(items)-1]; !reflect.DeepEqual(got, decision.body) {
 		t.Errorf("the queue shows the review that was decided last as\n %v\nthe decision answered\n %v", got, decision.body)
@@ -543,7 +521,7 @@ func TestAReviewAskedOrConcludedWhileTheQueueIsReadRepeatsNothingAndSkipsNothing
 			path = queueItemPath(item)
 		}
 	}
-	w.queueDecided(path, "reviewer", deciding("APPROVED", "approved while the queue was read", time.Now().UTC().Add(48*time.Hour).Truncate(time.Second)))
+	w.concluded(path, "reviewer", "APPROVED", "approved while the queue was read")
 	added := w.inReview(revisionSource+"# asked while the queue was read\n", "author", "author", "author")
 
 	rest, next := s.page(w.queueOf()+"?status=IN_REVIEW&page_size=2&page_token="+token, "reviewer")

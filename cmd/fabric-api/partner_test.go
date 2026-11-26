@@ -21,8 +21,8 @@ func TestCargoPaiPartnerOriginUsesLiveGrantsAndPublicationState(t *testing.T) {
 	s := publicationFor(t)
 	target, _ := s.target(partnerSandbox, "cargopai-developers")
 	slot := assetSlot(target, s.asset)
-	revision, review := s.approve(revisionSource, "", partnerSandbox)
-	released := s.prepare(revision, review, "1.0.0", "publisher")
+	revision, check := s.checkedRevision(revisionSource, "")
+	released := s.prepare(revision, check, "1.0.0", "publisher")
 	s.require(released, http.StatusCreated, "")
 	releaseID := released.id("release_id")
 	s.require(s.change(slot, "publisher", "ACTIVATE", 0, releaseID, "", "initial"),
@@ -139,17 +139,19 @@ func TestCargoPaiPartnerOriginUsesLiveGrantsAndPublicationState(t *testing.T) {
 		t.Fatal("restoring the slot changed the partner artifact")
 	}
 
-	var reviewerMembership string
-	if err := s.owner.QueryRow(t.Context(), `SELECT membership_id FROM productgovernance.workspace_membership
-WHERE product_id = $1 AND workspace_id = $2 AND principal_subject = 'reviewer'
-AND role = 'internal_reviewer' AND revoked_at IS NULL`, s.product, s.workspace).Scan(&reviewerMembership); err != nil {
-		t.Fatal(err)
+	// A release on a check that the tools have moved on from is put on the
+	// partner slot, served there and returned to, as any release is: the
+	// partner origin asks no more of it than the internal origin does.
+	later := recordAnotherCheck(t, checkFixture{stack: s.stack}, checkRef(s, revision), check)
+	before := s.preparedOn(releaseID, later, "0.9.0")
+	s.require(s.change(slot, "publisher", "ACTIVATE", 3, before, "", "before"), http.StatusOK, "")
+	if served, _ := expect(reference, allowedToken, http.StatusOK); !bytes.Equal(served, body) {
+		t.Fatal("the release on the earlier check is served with other bytes")
 	}
-	s.revoke("/v1/products/"+s.product+"/workspaces/"+s.workspace+"/memberships/"+reviewerMembership, "owner")
+	s.require(s.change(slot, "publisher", "WITHDRAW", 4, "", "withdraw", "withdraw-before"), http.StatusOK, "")
 	expect(reference, allowedToken, http.StatusNotFound)
-	s.require(s.change(slot, "publisher", "WITHDRAW", 3, "", "reviewer grant ended", "withdraw-lapsed"), http.StatusOK, "")
-	s.require(s.change(slot, "publisher", "RESTORE", 4, releaseID, "restore", "restore-lapsed"),
-		http.StatusConflict, "REVIEWER_AUTH_REVOKED")
+	s.require(s.change(slot, "publisher", "RESTORE", 5, before, "restore", "restore-before"), http.StatusOK, "")
+	expect(reference, allowedToken, http.StatusOK)
 }
 
 func (s *stack) startPartnerOrigin(partner partnerSettings) *httptest.Server {

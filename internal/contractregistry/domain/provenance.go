@@ -3,31 +3,32 @@ package domain
 import "time"
 
 // ReleaseProvenance is what a release was prepared on, read at once: the
-// release, the revision it is of, and the check and the approval it names.
+// release, the revision it is of, the check it names and the approval it
+// names if it was prepared under one.
 //
 // Each part was recorded before the release was and is never changed, so
-// this says the same whatever is recorded after. That the revision is
-// reviewed again and approved anew changes none of it: a release keeps the
-// review and the check it was prepared under. It does not say whether that
-// approval holds now (that is for a slot to say), and the status of the
-// revision is not part of it.
+// this says the same whatever is recorded after: a release keeps the check
+// it was prepared on, its waivers and the review it names, if any. The
+// status of the revision is not part of it.
 type ReleaseProvenance struct {
 	Release  Release
 	Revision Revision
 	Evidence ReleaseEvidence
 }
 
-// ReleaseEvidence is the check and the approval a release names. Policy &
-// Review keeps both; the registry reads them back through the port that
-// hands them over, and has no say in what they are.
+// ReleaseEvidence is the check a release names, and the approval it names
+// if it was prepared under one. Policy & Review keeps both; the registry
+// reads them back through the port that hands them over, and has no say in
+// what they are.
 type ReleaseEvidence struct {
-	Check    ReleaseCheck
-	Approval ReleaseApproval
+	Check ReleaseCheck
+	// Approval is nil for a release prepared on its check alone, which is
+	// every release prepared since reviews are no longer decided (CR-0001).
+	Approval *ReleaseApproval
 }
 
-// ReleaseCheck is the check the approval of a release rests on: which one it
-// was, the policy it was held to, the tools that evaluated it and what it
-// concluded.
+// ReleaseCheck is the check a release rests on: which one it was, the policy
+// it was held to, the tools that evaluated it and what it concluded.
 type ReleaseCheck struct {
 	ID           string
 	PolicySetID  string

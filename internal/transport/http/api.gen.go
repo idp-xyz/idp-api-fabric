@@ -438,36 +438,6 @@ func (e PublicationAction) Valid() bool {
 	}
 }
 
-// Defines values for PublicationSlotApprovalProblem.
-const (
-	PublicationSlotApprovalProblemAPPROVALEXPIRED       PublicationSlotApprovalProblem = "APPROVAL_EXPIRED"
-	PublicationSlotApprovalProblemAPPROVALREQUIRED      PublicationSlotApprovalProblem = "APPROVAL_REQUIRED"
-	PublicationSlotApprovalProblemAPPROVALSCOPEMISMATCH PublicationSlotApprovalProblem = "APPROVAL_SCOPE_MISMATCH"
-	PublicationSlotApprovalProblemPOLICYSTALE           PublicationSlotApprovalProblem = "POLICY_STALE"
-	PublicationSlotApprovalProblemREVIEWERAUTHREVOKED   PublicationSlotApprovalProblem = "REVIEWER_AUTH_REVOKED"
-	PublicationSlotApprovalProblemWAIVEREXPIRED         PublicationSlotApprovalProblem = "WAIVER_EXPIRED"
-)
-
-// Valid indicates whether the value is a known member of the PublicationSlotApprovalProblem enum.
-func (e PublicationSlotApprovalProblem) Valid() bool {
-	switch e {
-	case PublicationSlotApprovalProblemAPPROVALEXPIRED:
-		return true
-	case PublicationSlotApprovalProblemAPPROVALREQUIRED:
-		return true
-	case PublicationSlotApprovalProblemAPPROVALSCOPEMISMATCH:
-		return true
-	case PublicationSlotApprovalProblemPOLICYSTALE:
-		return true
-	case PublicationSlotApprovalProblemREVIEWERAUTHREVOKED:
-		return true
-	case PublicationSlotApprovalProblemWAIVEREXPIRED:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for PublicationSlotDeliveryStatus.
 const (
 	PublicationSlotDeliveryStatusUNKNOWN PublicationSlotDeliveryStatus = "UNKNOWN"
@@ -537,24 +507,6 @@ func (e ReviewConclusionOutcome) Valid() bool {
 	case ReviewConclusionOutcomeREJECTED:
 		return true
 	case ReviewConclusionOutcomeWITHDRAWN:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ReviewDecisionOutcome.
-const (
-	ReviewDecisionOutcomeAPPROVED ReviewDecisionOutcome = "APPROVED"
-	ReviewDecisionOutcomeREJECTED ReviewDecisionOutcome = "REJECTED"
-)
-
-// Valid indicates whether the value is a known member of the ReviewDecisionOutcome enum.
-func (e ReviewDecisionOutcome) Valid() bool {
-	switch e {
-	case ReviewDecisionOutcomeAPPROVED:
-		return true
-	case ReviewDecisionOutcomeREJECTED:
 		return true
 	default:
 		return false
@@ -753,7 +705,7 @@ type AssetOverview struct {
 	// LatestRevision The latest revision of an asset, as getRevision gives it
 	LatestRevision *OverviewRevision `json:"latest_revision,omitempty"`
 
-	// ReleasePending True when the latest revision is APPROVED and no release was prepared from it. It does not say that the approval still holds: it may have run out, a waiver of it may have, its reviewer may have lost the grant, or the policy and the tools may have moved on. prepareContractRelease asks that when a release is prepared.
+	// ReleasePending True when the latest revision has a check and no release was prepared from it. It does not say that the check lets a release be prepared: it may have failed, or the policy and the tools may have moved on. prepareContractRelease asks that when a release is prepared.
 	ReleasePending bool `json:"release_pending"`
 }
 
@@ -1079,7 +1031,7 @@ type ContractRelease struct {
 	ArtifactDigest ContractDigest                `json:"artifact_digest"`
 	ArtifactFormat ContractReleaseArtifactFormat `json:"artifact_format"`
 
-	// CheckRunID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
+	// CheckRunID The check the release rests on
 	CheckRunID   Identifier     `json:"check_run_id"`
 	PolicyDigest ContractDigest `json:"policy_digest"`
 
@@ -1097,13 +1049,16 @@ type ContractRelease struct {
 	// ReleaseID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 	ReleaseID Identifier `json:"release_id"`
 
-	// ReviewID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
-	ReviewID Identifier `json:"review_id"`
+	// ReviewID The review that approved the revision, for a release prepared under an approval before releases were prepared on a check alone. Absent for every other release.
+	ReviewID *Identifier `json:"review_id,omitempty"`
 
 	// RevisionID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 	RevisionID Identifier            `json:"revision_id"`
 	Status     ContractReleaseStatus `json:"status"`
 	Version    string                `json:"version"`
+
+	// Waivers The rules that did not pass in the check and that the release was prepared with a waiver of, by rule. Empty for a release that waived nothing, and for one prepared under an approval, whose waivers the approval names.
+	Waivers []ReleaseWaiver `json:"waivers"`
 
 	// WorkspaceID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 	WorkspaceID Identifier `json:"workspace_id"`
@@ -1123,12 +1078,12 @@ type ContractReleaseList struct {
 	NextPageToken *NextPageToken `json:"next_page_token,omitempty"`
 }
 
-// ContractReleaseProvenance What a release was prepared on: the release, its revision, the check and the approval it rests on. All of it was recorded before the release was, and none of it changes with what is recorded after.
+// ContractReleaseProvenance What a release was prepared on: the release, its revision and the check it rests on, and the approval for a release prepared under one. All of it was recorded before the release was, and none of it changes with what is recorded after.
 type ContractReleaseProvenance struct {
-	// Approval The approval a release was prepared under: which review it was, who approved, when, for what and until when, and the rules it let stand. It says nothing of whether the approval holds now.
-	Approval ReleaseProvenanceApproval `json:"approval"`
+	// Approval The approval the release was prepared under. Present only for a release prepared under an approval, before releases were prepared on a check alone.
+	Approval *ReleaseProvenanceApproval `json:"approval,omitempty"`
 
-	// Check The check the approval of a release rests on: which check it was, the policy it was held to, the tools that evaluated it and what it concluded.
+	// Check The check a release rests on: which check it was, the policy it was held to, the tools that evaluated it and what it concluded.
 	Check   ReleaseProvenanceCheck `json:"check"`
 	Release ContractRelease        `json:"release"`
 
@@ -1162,7 +1117,7 @@ type ContractRevision struct {
 	SourceSnapshotID Identifier                  `json:"source_snapshot_id"`
 	SpecVersion      ContractRevisionSpecVersion `json:"spec_version"`
 
-	// Status Where the revision stands in its review. It is recorded as a DRAFT, is IN_REVIEW from the moment it is submitted, and leaves the review APPROVED, REJECTED or WITHDRAWN. Its content is the same at every status.
+	// Status Where the revision stood in its review. A revision is recorded as a DRAFT and stays one: no review is asked for any more. Revisions reviewed before are APPROVED, REJECTED or WITHDRAWN. Its content is the same at every status, and the status does not gate a release.
 	Status ContractRevisionStatus `json:"status"`
 }
 
@@ -1172,7 +1127,7 @@ type ContractRevisionSourceKind string
 // ContractRevisionSpecVersion defines model for ContractRevision.SpecVersion.
 type ContractRevisionSpecVersion string
 
-// ContractRevisionStatus Where the revision stands in its review. It is recorded as a DRAFT, is IN_REVIEW from the moment it is submitted, and leaves the review APPROVED, REJECTED or WITHDRAWN. Its content is the same at every status.
+// ContractRevisionStatus Where the revision stood in its review. A revision is recorded as a DRAFT and stays one: no review is asked for any more. Revisions reviewed before are APPROVED, REJECTED or WITHDRAWN. Its content is the same at every status, and the status does not gate a release.
 type ContractRevisionStatus string
 
 // ContractRevisionList defines model for ContractRevisionList.
@@ -1286,7 +1241,7 @@ type Membership struct {
 	// ProductID The product the workspace belongs to
 	ProductID Identifier `json:"product_id"`
 
-	// Role What a member is in a workspace. A workspace_maintainer creates and updates its API assets and reads their governance evidence. An internal_author writes and reads its contract revisions and runs their checks. An internal_reviewer reads revisions and checks and decides on reviews. An internal_publisher prepares and publishes approved releases. An internal_reader reads its asset catalog, release metadata, publication slots and history, and active artifacts through the internal publication origin. Owners of the product manage the workspace and its members.
+	// Role What a member is in a workspace. A workspace_maintainer creates and updates its API assets and reads their governance evidence. An internal_author writes and reads its contract revisions and runs their checks. An internal_reviewer read revisions and checks to decide on reviews; it is no longer granted, and a membership that grants it reads what it read. An internal_publisher prepares releases of checked revisions and publishes them. An internal_reader reads its asset catalog, release metadata, publication slots and history, and active artifacts through the internal publication origin. Owners of the product manage the workspace and its members.
 	Role WorkspaceRole `json:"role"`
 
 	// WorkspaceID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
@@ -1298,7 +1253,7 @@ type MembershipGrant struct {
 	// Member A user, a service account or a workload: a subject as one issuer names it. The same subject under another issuer is another principal.
 	Member Principal `json:"member"`
 
-	// Role What a member is in a workspace. A workspace_maintainer creates and updates its API assets and reads their governance evidence. An internal_author writes and reads its contract revisions and runs their checks. An internal_reviewer reads revisions and checks and decides on reviews. An internal_publisher prepares and publishes approved releases. An internal_reader reads its asset catalog, release metadata, publication slots and history, and active artifacts through the internal publication origin. Owners of the product manage the workspace and its members.
+	// Role What a member is in a workspace. A workspace_maintainer creates and updates its API assets and reads their governance evidence. An internal_author writes and reads its contract revisions and runs their checks. An internal_reviewer read revisions and checks to decide on reviews; it is no longer granted, and a membership that grants it reads what it read. An internal_publisher prepares releases of checked revisions and publishes them. An internal_reader reads its asset catalog, release metadata, publication slots and history, and active artifacts through the internal publication origin. Owners of the product manage the workspace and its members.
 	Role WorkspaceRole `json:"role"`
 }
 
@@ -1510,13 +1465,10 @@ type PublicationSlot struct {
 	ActiveReleaseID *Identifier `json:"active_release_id,omitempty"`
 
 	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
-	APIAssetID Identifier `json:"api_asset_id"`
-
-	// ApprovalProblem Why the approval the active release rests on does not hold for this target now: the error code an activation of that release would be refused with. Absent when the approval holds and when no release is active. The slot retains the release pointer. The internal origin can still serve the artifact. The partner origin requires a current approval to serve that release.
-	ApprovalProblem *PublicationSlotApprovalProblem `json:"approval_problem,omitempty"`
-	Blocked         bool                            `json:"blocked"`
-	DeliveryStatus  PublicationSlotDeliveryStatus   `json:"delivery_status"`
-	Generation      int64                           `json:"generation"`
+	APIAssetID     Identifier                    `json:"api_asset_id"`
+	Blocked        bool                          `json:"blocked"`
+	DeliveryStatus PublicationSlotDeliveryStatus `json:"delivery_status"`
+	Generation     int64                         `json:"generation"`
 
 	// PublicationTargetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 	PublicationTargetID Identifier `json:"publication_target_id"`
@@ -1525,9 +1477,6 @@ type PublicationSlot struct {
 	SlotID     *Identifier               `json:"slot_id,omitempty"`
 	Visibility PublicationSlotVisibility `json:"visibility"`
 }
-
-// PublicationSlotApprovalProblem Why the approval the active release rests on does not hold for this target now: the error code an activation of that release would be refused with. Absent when the approval holds and when no release is active. The slot retains the release pointer. The internal origin can still serve the artifact. The partner origin requires a current approval to serve that release.
-type PublicationSlotApprovalProblem string
 
 // PublicationSlotDeliveryStatus defines model for PublicationSlot.DeliveryStatus.
 type PublicationSlotDeliveryStatus string
@@ -1584,12 +1533,15 @@ type Reference = string
 
 // ReleasePreparation defines model for ReleasePreparation.
 type ReleasePreparation struct {
-	// ReviewID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
-	ReviewID Identifier `json:"review_id"`
+	// CheckRunID A recorded check of the revision, which the release rests on
+	CheckRunID Identifier `json:"check_run_id"`
 
 	// RevisionID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 	RevisionID Identifier `json:"revision_id"`
 	Version    string     `json:"version"`
+
+	// Waivers One waiver for every rule that failed or could not be judged in the check and that can be waived, and for no other rule. Absent or empty when nothing needs one.
+	Waivers *[]ReleaseWaiver `json:"waivers,omitempty"`
 }
 
 // ReleaseProvenanceApproval The approval a release was prepared under: which review it was, who approved, when, for what and until when, and the rules it let stand. It says nothing of whether the approval holds now.
@@ -1615,7 +1567,7 @@ type ReleaseProvenanceApproval struct {
 	Waivers []ReleaseProvenanceWaiver `json:"waivers"`
 }
 
-// ReleaseProvenanceCheck The check the approval of a release rests on: which check it was, the policy it was held to, the tools that evaluated it and what it concluded.
+// ReleaseProvenanceCheck The check a release rests on: which check it was, the policy it was held to, the tools that evaluated it and what it concluded.
 type ReleaseProvenanceCheck struct {
 	// CheckRunID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 	CheckRunID   Identifier      `json:"check_run_id"`
@@ -1657,7 +1609,16 @@ type ReleaseProvenanceWaiver struct {
 	RuleID ReviewRuleID `json:"rule_id"`
 }
 
-// Review A request for a decision on one revision, with its conclusion once it has one. Neither changes once it is recorded.
+// ReleaseWaiver One rule that did not pass in the check of a release and that whoever prepared the release let stand, and why. A waiver is part of the release it was given with and holds for nothing else.
+type ReleaseWaiver struct {
+	// Reason Why the rule is let stand: one line of 1 to 1000 characters, without control characters and without space around it.
+	Reason ReviewReason `json:"reason"`
+
+	// RuleID The identifier a rule has in the policy of a check, as in F04-GOV-013
+	RuleID ReviewRuleID `json:"rule_id"`
+}
+
+// Review A request for a decision on one revision, with its conclusion. Neither changes once it is recorded. No review is asked for any more: these are the reviews of before.
 type Review struct {
 	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 	APIAssetID Identifier `json:"api_asset_id"`
@@ -1687,7 +1648,7 @@ type Review struct {
 	// RevisionID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
 	RevisionID Identifier `json:"revision_id"`
 
-	// Scope The targets the revision is to be approved for, by audience and then environment
+	// Scope The targets the revision was to be approved for, by audience and then environment
 	Scope []ReviewTarget `json:"scope"`
 
 	// Status Where a review stands: IN_REVIEW until it is concluded, then the way it ended.
@@ -1718,21 +1679,6 @@ type ReviewConclusion struct {
 // ReviewConclusionOutcome defines model for ReviewConclusion.Outcome.
 type ReviewConclusionOutcome string
 
-// ReviewDecision What a reviewer decides with. A rejection gives its reason and nothing else. An approval gives the time it holds until and a waiver for every rule that failed or could not be judged; its reason is optional.
-type ReviewDecision struct {
-	Outcome ReviewDecisionOutcome `json:"outcome"`
-
-	// Reason Why a review ended the way it did: one line of 1 to 1000 characters, without control characters and without space around it.
-	Reason *ReviewReason `json:"reason,omitempty"`
-
-	// ValidUntil Until when an approval holds, at most a year away
-	ValidUntil *time.Time      `json:"valid_until,omitempty"`
-	Waivers    *[]ReviewWaiver `json:"waivers,omitempty"`
-}
-
-// ReviewDecisionOutcome defines model for ReviewDecision.Outcome.
-type ReviewDecisionOutcome string
-
 // ReviewList defines model for ReviewList.
 type ReviewList struct {
 	Items []Review `json:"items"`
@@ -1753,19 +1699,7 @@ type ReviewRuleID = string
 // ReviewStatus Where a review stands: IN_REVIEW until it is concluded, then the way it ended.
 type ReviewStatus string
 
-// ReviewSubmission defines model for ReviewSubmission.
-type ReviewSubmission struct {
-	// CheckRunID A recorded check of the revision, the evidence the decision is asked on
-	CheckRunID Identifier `json:"check_run_id"`
-
-	// Note What whoever asks for a review says of it: one line of 1 to 500 characters, without control characters and without space around it.
-	Note *ReviewNote `json:"note,omitempty"`
-
-	// Scope What the revision is to be approved for, each target once
-	Scope []ReviewTarget `json:"scope"`
-}
-
-// ReviewTarget One audience in one environment. The scope of a review is the targets a revision is asked to be approved for.
+// ReviewTarget One audience in one environment. The scope of a review is the targets a revision was asked to be approved for.
 type ReviewTarget struct {
 	// Audience Who a product documents its APIs for. public is anybody, signed in or not; partner is the external developers of the organizations the product gives access to; internal is the engineers of IDP. What each of them may read is a rule of the platform, the same for every product, so a product names no audience of its own.
 	Audience Audience `json:"audience"`
@@ -1787,12 +1721,6 @@ type ReviewWaiver struct {
 
 	// RuleID The identifier a rule has in the policy of a check, as in F04-GOV-013
 	RuleID ReviewRuleID `json:"rule_id"`
-}
-
-// ReviewWithdrawal defines model for ReviewWithdrawal.
-type ReviewWithdrawal struct {
-	// Reason Why a review ended the way it did: one line of 1 to 1000 characters, without control characters and without space around it.
-	Reason *ReviewReason `json:"reason,omitempty"`
 }
 
 // RevisionCompatibility defines model for RevisionCompatibility.
@@ -1843,7 +1771,7 @@ type WorkspaceList struct {
 	NextPageToken *NextPageToken `json:"next_page_token,omitempty"`
 }
 
-// WorkspaceRole What a member is in a workspace. A workspace_maintainer creates and updates its API assets and reads their governance evidence. An internal_author writes and reads its contract revisions and runs their checks. An internal_reviewer reads revisions and checks and decides on reviews. An internal_publisher prepares and publishes approved releases. An internal_reader reads its asset catalog, release metadata, publication slots and history, and active artifacts through the internal publication origin. Owners of the product manage the workspace and its members.
+// WorkspaceRole What a member is in a workspace. A workspace_maintainer creates and updates its API assets and reads their governance evidence. An internal_author writes and reads its contract revisions and runs their checks. An internal_reviewer read revisions and checks to decide on reviews; it is no longer granted, and a membership that grants it reads what it read. An internal_publisher prepares releases of checked revisions and publishes them. An internal_reader reads its asset catalog, release metadata, publication slots and history, and active artifacts through the internal publication origin. Owners of the product manage the workspace and its members.
 type WorkspaceRole string
 
 // AccessBlockID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
@@ -1917,10 +1845,10 @@ type ListAssetsParams struct {
 	// Q A literal substring of the asset key, display name or domain key, ignoring case
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
-	// CheckStatus Only the assets whose latest revision has a latest check that concluded this. A revision that was approved with a waiver of the rule that failed is still one whose check failed.
+	// CheckStatus Only the assets whose latest revision has a latest check that concluded this. A revision released with a waiver of the rule that failed is still one whose check failed.
 	CheckStatus *CheckRunStatus `form:"check_status,omitempty" json:"check_status,omitempty"`
 
-	// ReleasePending Only the assets whose latest revision is APPROVED and that have no release prepared from it. There is no filter for the others.
+	// ReleasePending Only the assets whose latest revision has a check and that have no release prepared from it. There is no filter for the others.
 	ReleasePending *ListAssetsParamsReleasePending `form:"release_pending,omitempty" json:"release_pending,omitempty"`
 }
 
@@ -2134,15 +2062,6 @@ type PrepareContractReleaseJSONRequestBody = ReleasePreparation
 // ImportRevisionJSONRequestBody defines body for ImportRevision for application/json ContentType.
 type ImportRevisionJSONRequestBody = ContractSourceUpload
 
-// RequestRevisionReviewJSONRequestBody defines body for RequestRevisionReview for application/json ContentType.
-type RequestRevisionReviewJSONRequestBody = ReviewSubmission
-
-// DecideRevisionReviewJSONRequestBody defines body for DecideRevisionReview for application/json ContentType.
-type DecideRevisionReviewJSONRequestBody = ReviewDecision
-
-// WithdrawRevisionReviewJSONRequestBody defines body for WithdrawRevisionReview for application/json ContentType.
-type WithdrawRevisionReviewJSONRequestBody = ReviewWithdrawal
-
 // ConfigureAudienceJSONRequestBody defines body for ConfigureAudience for application/json ContentType.
 type ConfigureAudienceJSONRequestBody = AudienceConfigCreation
 
@@ -2205,7 +2124,7 @@ type ServerInterface interface {
 	// ListContractReleases List the immutable releases of the API asset
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/releases)
 	ListContractReleases(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, params ListContractReleasesParams)
-	// PrepareContractRelease Prepare an immutable release from an approved revision
+	// PrepareContractRelease Prepare an immutable release from a checked revision
 	// (POST /v1/products/{product_id}/assets/{api_asset_id}/releases)
 	PrepareContractRelease(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID)
 	// GetContractRelease Read the metadata of a release of the API asset
@@ -2241,18 +2160,9 @@ type ServerInterface interface {
 	// ListRevisionReviews List the reviews of one revision
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews)
 	ListRevisionReviews(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, params ListRevisionReviewsParams)
-	// RequestRevisionReview Submit a revision for review
-	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews)
-	RequestRevisionReview(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID)
 	// GetRevisionReview Read one review of a revision
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id})
 	GetRevisionReview(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, reviewID ReviewID)
-	// DecideRevisionReview Approve or reject a revision that is in review
-	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/decision)
-	DecideRevisionReview(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, reviewID ReviewID)
-	// WithdrawRevisionReview Take a request for review back
-	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/withdrawal)
-	WithdrawRevisionReview(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, reviewID ReviewID)
 	// GetRevisionSource Read the files a draft revision was recorded from
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/source)
 	GetRevisionSource(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier, revisionID Identifier)
@@ -3431,50 +3341,6 @@ func (siw *ServerInterfaceWrapper) ListRevisionReviews(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
-// RequestRevisionReview operation middleware
-func (siw *ServerInterfaceWrapper) RequestRevisionReview(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "product_id" -------------
-	var productID ProductID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "api_asset_id" -------------
-	var apiAssetID CheckAssetID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "revision_id" -------------
-	var revisionID CheckRevisionID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "revision_id", r.PathValue("revision_id"), &revisionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revision_id", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.RequestRevisionReview(w, r, productID, apiAssetID, revisionID)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // GetRevisionReview operation middleware
 func (siw *ServerInterfaceWrapper) GetRevisionReview(w http.ResponseWriter, r *http.Request) {
 
@@ -3519,112 +3385,6 @@ func (siw *ServerInterfaceWrapper) GetRevisionReview(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetRevisionReview(w, r, productID, apiAssetID, revisionID, reviewID)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DecideRevisionReview operation middleware
-func (siw *ServerInterfaceWrapper) DecideRevisionReview(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "product_id" -------------
-	var productID ProductID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "api_asset_id" -------------
-	var apiAssetID CheckAssetID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "revision_id" -------------
-	var revisionID CheckRevisionID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "revision_id", r.PathValue("revision_id"), &revisionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revision_id", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "review_id" -------------
-	var reviewID ReviewID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "review_id", r.PathValue("review_id"), &reviewID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "review_id", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DecideRevisionReview(w, r, productID, apiAssetID, revisionID, reviewID)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// WithdrawRevisionReview operation middleware
-func (siw *ServerInterfaceWrapper) WithdrawRevisionReview(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "product_id" -------------
-	var productID ProductID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "product_id", r.PathValue("product_id"), &productID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "product_id", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "api_asset_id" -------------
-	var apiAssetID CheckAssetID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "api_asset_id", r.PathValue("api_asset_id"), &apiAssetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_asset_id", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "revision_id" -------------
-	var revisionID CheckRevisionID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "revision_id", r.PathValue("revision_id"), &revisionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revision_id", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "review_id" -------------
-	var reviewID ReviewID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "review_id", r.PathValue("review_id"), &reviewID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "review_id", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.WithdrawRevisionReview(w, r, productID, apiAssetID, revisionID, reviewID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5465,10 +5225,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/check-runs/{check_run_id}", wrapper.GetRevisionCheck)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/compatibility", wrapper.CompareRevisionCompatibility)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews", wrapper.ListRevisionReviews)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews", wrapper.RequestRevisionReview)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}", wrapper.GetRevisionReview)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/withdrawal", wrapper.WithdrawRevisionReview)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/decision", wrapper.DecideRevisionReview)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/workspaces/{workspace_id}/reviews", wrapper.ListWorkspaceReviews)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ListAudienceConfigs)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/products/{product_id}/audience-configs", wrapper.ConfigureAudience)
@@ -8180,189 +7937,6 @@ func (response ListRevisionReviewsdefaultApplicationProblemPlusJSONResponse) Vis
 	return err
 }
 
-type RequestRevisionReviewRequestObject struct {
-	ProductID  ProductID       `json:"product_id"`
-	APIAssetID CheckAssetID    `json:"api_asset_id"`
-	RevisionID CheckRevisionID `json:"revision_id"`
-	Body       *RequestRevisionReviewJSONRequestBody
-}
-
-type RequestRevisionReviewResponseObject interface {
-	VisitRequestRevisionReviewResponse(w http.ResponseWriter) error
-}
-
-type RequestRevisionReview201ResponseHeaders struct {
-	CacheControl string
-	Location     string
-}
-
-type RequestRevisionReview201JSONResponse struct {
-	Body    Review
-	Headers RequestRevisionReview201ResponseHeaders
-}
-
-func (response RequestRevisionReview201JSONResponse) VisitRequestRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
-	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RequestRevisionReview400ApplicationProblemPlusJSONResponse struct {
-	ProblemApplicationProblemPlusJSONResponse
-}
-
-func (response RequestRevisionReview400ApplicationProblemPlusJSONResponse) VisitRequestRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RequestRevisionReview401ApplicationProblemPlusJSONResponse struct {
-	UnauthenticatedApplicationProblemPlusJSONResponse
-}
-
-func (response RequestRevisionReview401ApplicationProblemPlusJSONResponse) VisitRequestRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RequestRevisionReview403ApplicationProblemPlusJSONResponse Problem
-
-func (response RequestRevisionReview403ApplicationProblemPlusJSONResponse) VisitRequestRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RequestRevisionReview404ApplicationProblemPlusJSONResponse Problem
-
-func (response RequestRevisionReview404ApplicationProblemPlusJSONResponse) VisitRequestRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RequestRevisionReview409ApplicationProblemPlusJSONResponse Problem
-
-func (response RequestRevisionReview409ApplicationProblemPlusJSONResponse) VisitRequestRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RequestRevisionReview413ApplicationProblemPlusJSONResponse Problem
-
-func (response RequestRevisionReview413ApplicationProblemPlusJSONResponse) VisitRequestRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(413)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RequestRevisionReview415ApplicationProblemPlusJSONResponse Problem
-
-func (response RequestRevisionReview415ApplicationProblemPlusJSONResponse) VisitRequestRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(415)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RequestRevisionReview422ApplicationProblemPlusJSONResponse Problem
-
-func (response RequestRevisionReview422ApplicationProblemPlusJSONResponse) VisitRequestRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(422)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RequestRevisionReview503ApplicationProblemPlusJSONResponse Problem
-
-func (response RequestRevisionReview503ApplicationProblemPlusJSONResponse) VisitRequestRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(503)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RequestRevisionReviewdefaultApplicationProblemPlusJSONResponse struct {
-	Body       Problem
-	StatusCode int
-}
-
-func (response RequestRevisionReviewdefaultApplicationProblemPlusJSONResponse) VisitRequestRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type GetRevisionReviewRequestObject struct {
 	ProductID  ProductID       `json:"product_id"`
 	APIAssetID CheckAssetID    `json:"api_asset_id"`
@@ -8477,370 +8051,6 @@ type GetRevisionReviewdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetRevisionReviewdefaultApplicationProblemPlusJSONResponse) VisitGetRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DecideRevisionReviewRequestObject struct {
-	ProductID  ProductID       `json:"product_id"`
-	APIAssetID CheckAssetID    `json:"api_asset_id"`
-	RevisionID CheckRevisionID `json:"revision_id"`
-	ReviewID   ReviewID        `json:"review_id"`
-	Body       *DecideRevisionReviewJSONRequestBody
-}
-
-type DecideRevisionReviewResponseObject interface {
-	VisitDecideRevisionReviewResponse(w http.ResponseWriter) error
-}
-
-type DecideRevisionReview200ResponseHeaders struct {
-	CacheControl string
-}
-
-type DecideRevisionReview200JSONResponse struct {
-	Body    Review
-	Headers DecideRevisionReview200ResponseHeaders
-}
-
-func (response DecideRevisionReview200JSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DecideRevisionReview400ApplicationProblemPlusJSONResponse struct {
-	ProblemApplicationProblemPlusJSONResponse
-}
-
-func (response DecideRevisionReview400ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DecideRevisionReview401ApplicationProblemPlusJSONResponse struct {
-	UnauthenticatedApplicationProblemPlusJSONResponse
-}
-
-func (response DecideRevisionReview401ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DecideRevisionReview403ApplicationProblemPlusJSONResponse Problem
-
-func (response DecideRevisionReview403ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DecideRevisionReview404ApplicationProblemPlusJSONResponse Problem
-
-func (response DecideRevisionReview404ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DecideRevisionReview409ApplicationProblemPlusJSONResponse Problem
-
-func (response DecideRevisionReview409ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DecideRevisionReview413ApplicationProblemPlusJSONResponse Problem
-
-func (response DecideRevisionReview413ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(413)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DecideRevisionReview415ApplicationProblemPlusJSONResponse Problem
-
-func (response DecideRevisionReview415ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(415)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DecideRevisionReview422ApplicationProblemPlusJSONResponse Problem
-
-func (response DecideRevisionReview422ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(422)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DecideRevisionReview503ApplicationProblemPlusJSONResponse Problem
-
-func (response DecideRevisionReview503ApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(503)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DecideRevisionReviewdefaultApplicationProblemPlusJSONResponse struct {
-	Body       Problem
-	StatusCode int
-}
-
-func (response DecideRevisionReviewdefaultApplicationProblemPlusJSONResponse) VisitDecideRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawRevisionReviewRequestObject struct {
-	ProductID  ProductID       `json:"product_id"`
-	APIAssetID CheckAssetID    `json:"api_asset_id"`
-	RevisionID CheckRevisionID `json:"revision_id"`
-	ReviewID   ReviewID        `json:"review_id"`
-	Body       *WithdrawRevisionReviewJSONRequestBody
-}
-
-type WithdrawRevisionReviewResponseObject interface {
-	VisitWithdrawRevisionReviewResponse(w http.ResponseWriter) error
-}
-
-type WithdrawRevisionReview200ResponseHeaders struct {
-	CacheControl string
-}
-
-type WithdrawRevisionReview200JSONResponse struct {
-	Body    Review
-	Headers WithdrawRevisionReview200ResponseHeaders
-}
-
-func (response WithdrawRevisionReview200JSONResponse) VisitWithdrawRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawRevisionReview400ApplicationProblemPlusJSONResponse struct {
-	ProblemApplicationProblemPlusJSONResponse
-}
-
-func (response WithdrawRevisionReview400ApplicationProblemPlusJSONResponse) VisitWithdrawRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawRevisionReview401ApplicationProblemPlusJSONResponse struct {
-	UnauthenticatedApplicationProblemPlusJSONResponse
-}
-
-func (response WithdrawRevisionReview401ApplicationProblemPlusJSONResponse) VisitWithdrawRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.Header().Set("WWW-Authenticate", fmt.Sprint(response.Headers.WWWAuthenticate))
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawRevisionReview403ApplicationProblemPlusJSONResponse Problem
-
-func (response WithdrawRevisionReview403ApplicationProblemPlusJSONResponse) VisitWithdrawRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawRevisionReview404ApplicationProblemPlusJSONResponse Problem
-
-func (response WithdrawRevisionReview404ApplicationProblemPlusJSONResponse) VisitWithdrawRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawRevisionReview409ApplicationProblemPlusJSONResponse Problem
-
-func (response WithdrawRevisionReview409ApplicationProblemPlusJSONResponse) VisitWithdrawRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawRevisionReview413ApplicationProblemPlusJSONResponse Problem
-
-func (response WithdrawRevisionReview413ApplicationProblemPlusJSONResponse) VisitWithdrawRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(413)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawRevisionReview415ApplicationProblemPlusJSONResponse Problem
-
-func (response WithdrawRevisionReview415ApplicationProblemPlusJSONResponse) VisitWithdrawRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(415)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawRevisionReview422ApplicationProblemPlusJSONResponse Problem
-
-func (response WithdrawRevisionReview422ApplicationProblemPlusJSONResponse) VisitWithdrawRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(422)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawRevisionReview503ApplicationProblemPlusJSONResponse Problem
-
-func (response WithdrawRevisionReview503ApplicationProblemPlusJSONResponse) VisitWithdrawRevisionReviewResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(503)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawRevisionReviewdefaultApplicationProblemPlusJSONResponse struct {
-	Body       Problem
-	StatusCode int
-}
-
-func (response WithdrawRevisionReviewdefaultApplicationProblemPlusJSONResponse) VisitWithdrawRevisionReviewResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -13164,7 +12374,7 @@ type StrictServerInterface interface {
 	// ListContractReleases List the immutable releases of the API asset
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/releases)
 	ListContractReleases(ctx context.Context, request ListContractReleasesRequestObject) (ListContractReleasesResponseObject, error)
-	// PrepareContractRelease Prepare an immutable release from an approved revision
+	// PrepareContractRelease Prepare an immutable release from a checked revision
 	// (POST /v1/products/{product_id}/assets/{api_asset_id}/releases)
 	PrepareContractRelease(ctx context.Context, request PrepareContractReleaseRequestObject) (PrepareContractReleaseResponseObject, error)
 	// GetContractRelease Read the metadata of a release of the API asset
@@ -13200,18 +12410,9 @@ type StrictServerInterface interface {
 	// ListRevisionReviews List the reviews of one revision
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews)
 	ListRevisionReviews(ctx context.Context, request ListRevisionReviewsRequestObject) (ListRevisionReviewsResponseObject, error)
-	// RequestRevisionReview Submit a revision for review
-	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews)
-	RequestRevisionReview(ctx context.Context, request RequestRevisionReviewRequestObject) (RequestRevisionReviewResponseObject, error)
 	// GetRevisionReview Read one review of a revision
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id})
 	GetRevisionReview(ctx context.Context, request GetRevisionReviewRequestObject) (GetRevisionReviewResponseObject, error)
-	// DecideRevisionReview Approve or reject a revision that is in review
-	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/decision)
-	DecideRevisionReview(ctx context.Context, request DecideRevisionReviewRequestObject) (DecideRevisionReviewResponseObject, error)
-	// WithdrawRevisionReview Take a request for review back
-	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/withdrawal)
-	WithdrawRevisionReview(ctx context.Context, request WithdrawRevisionReviewRequestObject) (WithdrawRevisionReviewResponseObject, error)
 	// GetRevisionSource Read the files a draft revision was recorded from
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/source)
 	GetRevisionSource(ctx context.Context, request GetRevisionSourceRequestObject) (GetRevisionSourceResponseObject, error)
@@ -13982,41 +13183,6 @@ func (sh *strictHandler) ListRevisionReviews(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-// RequestRevisionReview operation middleware
-func (sh *strictHandler) RequestRevisionReview(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID) {
-	var request RequestRevisionReviewRequestObject
-
-	request.ProductID = productID
-	request.APIAssetID = apiAssetID
-	request.RevisionID = revisionID
-
-	var body RequestRevisionReviewJSONRequestBody
-	if err := runtime.BindJSONBody(r, &body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.RequestRevisionReview(ctx, request.(RequestRevisionReviewRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "RequestRevisionReview")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(RequestRevisionReviewResponseObject); ok {
-		if err := validResponse.VisitRequestRevisionReviewResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // GetRevisionReview operation middleware
 func (sh *strictHandler) GetRevisionReview(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, reviewID ReviewID) {
 	var request GetRevisionReviewRequestObject
@@ -14039,78 +13205,6 @@ func (sh *strictHandler) GetRevisionReview(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetRevisionReviewResponseObject); ok {
 		if err := validResponse.VisitGetRevisionReviewResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// DecideRevisionReview operation middleware
-func (sh *strictHandler) DecideRevisionReview(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, reviewID ReviewID) {
-	var request DecideRevisionReviewRequestObject
-
-	request.ProductID = productID
-	request.APIAssetID = apiAssetID
-	request.RevisionID = revisionID
-	request.ReviewID = reviewID
-
-	var body DecideRevisionReviewJSONRequestBody
-	if err := runtime.BindJSONBody(r, &body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DecideRevisionReview(ctx, request.(DecideRevisionReviewRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DecideRevisionReview")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DecideRevisionReviewResponseObject); ok {
-		if err := validResponse.VisitDecideRevisionReviewResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// WithdrawRevisionReview operation middleware
-func (sh *strictHandler) WithdrawRevisionReview(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID CheckAssetID, revisionID CheckRevisionID, reviewID ReviewID) {
-	var request WithdrawRevisionReviewRequestObject
-
-	request.ProductID = productID
-	request.APIAssetID = apiAssetID
-	request.RevisionID = revisionID
-	request.ReviewID = reviewID
-
-	var body WithdrawRevisionReviewJSONRequestBody
-	if err := runtime.BindJSONBody(r, &body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.WithdrawRevisionReview(ctx, request.(WithdrawRevisionReviewRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "WithdrawRevisionReview")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(WithdrawRevisionReviewResponseObject); ok {
-		if err := validResponse.VisitWithdrawRevisionReviewResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

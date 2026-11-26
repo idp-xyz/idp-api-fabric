@@ -1,53 +1,19 @@
 package domain
 
-import (
-	"errors"
-	"fmt"
-	"slices"
-	"time"
-)
+import "time"
 
 const SourceUpload = "UPLOAD"
 
 // The statuses of a revision (F03 §8.1). The content of a revision never
-// changes; its status says where it stands in its review. A revision is
-// recorded as a draft, is in review from the moment it is submitted, and
-// leaves the review approved, rejected or withdrawn.
+// changes; its status says where it stood in its review. A revision was
+// recorded as a draft, was in review from the moment it was submitted, and
+// left the review approved, rejected or withdrawn.
 //
-// The status is not the approval: what approves a revision is the decision
-// Policy & Review records, for the content, the policy and the scope it
-// names. The status says that there is one.
-const (
-	RevisionDraft     = "DRAFT"
-	RevisionInReview  = "IN_REVIEW"
-	RevisionApproved  = "APPROVED"
-	RevisionRejected  = "REJECTED"
-	RevisionWithdrawn = "WITHDRAWN"
-)
-
-// ErrStatusConflict reports a revision that is not at a status the change
-// asked for starts from.
-var ErrStatusConflict = errors.New("the revision is not at a status this starts from")
-
-// moves are the changes of status there are. A revision is submitted as a
-// draft, or again once it was withdrawn: its content is recorded once for a
-// source, so a withdrawal that ended there would end what can be asked of
-// that content. Approved and rejected are where a review ends, and nothing
-// leaves them: what is wrong with a rejected revision is mended in another.
-var moves = map[string][]string{
-	RevisionDraft:     {RevisionInReview},
-	RevisionWithdrawn: {RevisionInReview},
-	RevisionInReview:  {RevisionApproved, RevisionRejected, RevisionWithdrawn},
-}
-
-// Move checks that a revision at the status from can take the status to. It
-// fails with ErrStatusConflict, naming the status the revision is at.
-func Move(from, to string) error {
-	if !slices.Contains(moves[from], to) {
-		return fmt.Errorf("%w: it is %s", ErrStatusConflict, from)
-	}
-	return nil
-}
+// No review is asked for any more (CR-0001): a revision is recorded as a
+// draft and stays where it is, and a release is prepared from a revision
+// whatever its status, on a check of it. The statuses of before are kept
+// as they were recorded.
+const RevisionDraft = "DRAFT"
 
 type Principal struct {
 	Issuer  string
@@ -92,7 +58,6 @@ type Revision struct {
 	RefClosureDigest string
 	CreatedAt        time.Time
 	// CreatedBy is who recorded the revision: the author of its content as
-	// far as the registry knows. Whoever reviews a revision is someone
-	// else.
+	// far as the registry knows.
 	CreatedBy Principal
 }

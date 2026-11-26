@@ -12,23 +12,18 @@ import (
 const maxSlotPage = 100
 
 // view is a slot as it is read, whoever reads it and in whichever way: what
-// it points at, whether an access block stands between that release and
-// whoever asks for its artifact, and whether the approval the release rests
-// on still holds. Reading one slot and listing many go through it and
-// through nothing else, so that a slot is the same slot wherever it is read.
+// it points at and whether an access block stands between that release and
+// whoever asks for its artifact. Reading one slot and listing many go
+// through it and through nothing else, so that a slot is the same slot
+// wherever it is read.
 //
-// request names the product and the asset of the slot, and workspaceID is the
-// workspace that owns the asset.
-func (s *Publication) view(ctx context.Context, request domain.Request, workspaceID string, target domain.Target, slot domain.Slot) (domain.SlotView, error) {
+// request names the asset of the slot.
+func (s *Publication) view(ctx context.Context, request domain.Request, target domain.Target, slot domain.Slot) (domain.SlotView, error) {
 	blocked, err := s.deps.Store.HasBlock(ctx, target, request.AssetID, slot.ActiveReleaseID)
 	if err != nil {
 		return domain.SlotView{}, err
 	}
-	view := domain.SlotView{Slot: slot, Blocked: blocked}
-	if slot.ActiveReleaseID != "" {
-		view.Unapproved, err = s.deps.Authority.Approval(ctx, request, workspaceID, target, slot.ActiveReleaseID)
-	}
-	return view, err
+	return domain.SlotView{Slot: slot, Blocked: blocked}, nil
 }
 
 // SlotPage is a page of slots, each as getPublicationSlot reads it. Next is
@@ -60,21 +55,20 @@ func (s *Publication) ListSlots(ctx context.Context, request domain.Request, aft
 			return err
 		}
 		assets := make([]string, 0, len(readable))
-		owners := make(map[string]string, len(readable))
+		reads := make(map[string]bool, len(readable))
 		for _, asset := range readable {
 			assets = append(assets, asset.AssetID)
-			owners[asset.AssetID] = asset.WorkspaceID
+			reads[asset.AssetID] = true
 		}
 		rows, err := s.deps.Store.Slots(tx, target, assets, after, limit+1)
 		if err != nil {
 			return err
 		}
-		page, err = s.slotPage(tx, request, rows, limit, func(slot domain.Slot) (string, error) {
-			workspace, found := owners[slot.AssetID]
-			if !found {
-				return "", errors.New("the store listed a slot of an asset that the caller does not read")
+		page, err = s.slotPage(tx, request, rows, limit, func(slot domain.Slot) error {
+			if !reads[slot.AssetID] {
+				return errors.New("the store listed a slot of an asset that the caller does not read")
 			}
-			return workspace, nil
+			return nil
 		})
 		return err
 	})
@@ -90,15 +84,14 @@ func (s *Publication) ListAssetPublications(ctx context.Context, request domain.
 	}
 	var page SlotPage
 	err := s.deps.Transactions.WithinTransaction(ctx, func(tx context.Context) error {
-		access, err := s.asset(tx, request, false)
-		if err != nil {
+		if _, err := s.asset(tx, request, false); err != nil {
 			return err
 		}
 		rows, err := s.deps.Store.AssetSlots(tx, request.ProductID, request.AssetID, after, limit+1)
 		if err != nil {
 			return err
 		}
-		page, err = s.slotPage(tx, request, rows, limit, func(domain.Slot) (string, error) { return access.WorkspaceID, nil })
+		page, err = s.slotPage(tx, request, rows, limit, func(domain.Slot) error { return nil })
 		return err
 	})
 	return page, s.refused(ctx, request, "publication.read", "PublicationSlot", err)
@@ -106,9 +99,9 @@ func (s *Publication) ListAssetPublications(ctx context.Context, request domain.
 
 // slotPage reads each slot of a page as view does. The store was asked for a
 // row more than the page holds: that one is not read, it only says that
-// slots follow. workspaceOf is the workspace that owns the asset of a slot.
+// slots follow. readable fails for a slot the caller does not read.
 func (s *Publication) slotPage(ctx context.Context, request domain.Request, rows []ports.PlacedSlot, limit int,
-	workspaceOf func(domain.Slot) (string, error)) (SlotPage, error) {
+	readable func(domain.Slot) error) (SlotPage, error) {
 	page := SlotPage{Items: make([]domain.SlotView, 0, min(len(rows), limit))}
 	for index, row := range rows {
 		if index == limit {
@@ -116,13 +109,12 @@ func (s *Publication) slotPage(ctx context.Context, request domain.Request, rows
 			page.Next = &next
 			break
 		}
-		workspace, err := workspaceOf(row.Slot)
-		if err != nil {
+		if err := readable(row.Slot); err != nil {
 			return SlotPage{}, err
 		}
 		asked := request
 		asked.TargetID, asked.AssetID = row.Target.ID, row.Slot.AssetID
-		item, err := s.view(ctx, asked, workspace, row.Target, row.Slot)
+		item, err := s.view(ctx, asked, row.Target, row.Slot)
 		if err != nil {
 			return SlotPage{}, err
 		}

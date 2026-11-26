@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.36.0
+  version: 0.37.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -798,15 +798,15 @@ paths:
           name: check_status
           description: >-
             Only the assets whose latest revision has a latest check that
-            concluded this. A revision that was approved with a waiver of
-            the rule that failed is still one whose check failed.
+            concluded this. A revision released with a waiver of the rule
+            that failed is still one whose check failed.
           schema:
             $ref: '#/components/schemas/CheckRunStatus'
         - in: query
           name: release_pending
           description: >-
-            Only the assets whose latest revision is APPROVED and that have no
-            release prepared from it. There is no filter for the others.
+            Only the assets whose latest revision has a check and that have
+            no release prepared from it. There is no filter for the others.
           schema:
             type: boolean
             const: true
@@ -1374,8 +1374,10 @@ paths:
         A product owner or a current maintainer, author, reviewer or publisher
         of the asset's workspace can read the reviews of the revision in request order. The page
         token belongs to this product, asset and revision. Each review says
-        what was asked, on which check, for which scope, and how it ended
-        if it has ended.
+        what was asked, on which check, for which scope, and how it ended.
+        No review is asked for or decided any more: a release is prepared on
+        a check (prepareContractRelease). The reviews that were recorded
+        before stay as they were and are read here.
       parameters:
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageToken'
@@ -1404,81 +1406,6 @@ paths:
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
-    post:
-      operationId: requestRevisionReview
-      summary: Submit a revision for review
-      description: >-
-        A current author of the asset's workspace asks for a decision on a
-        revision of an active product. The request names one recorded check
-        of the revision, the evidence the decision is asked on, and the scope
-        the revision is to be approved for: audiences in environments.
-        The check has to be one a decision can rest on now. A check made
-        under another policy or by other tool versions than a check is made
-        with today is refused (409 POLICY_STALE): run the check again. A
-        check in which a rule that nothing waives failed or could not be
-        judged is refused as well (409 REVIEW_BLOCKED): no decision approves
-        such a revision.
-        A revision is submitted as a DRAFT, or again once it was WITHDRAWN,
-        and is IN_REVIEW from then on, under this one request. A revision
-        that is IN_REVIEW or REJECTED is refused (409
-        REVISION_STATUS_CONFLICT).
-        A revision that is APPROVED is reviewed again the same way: for a
-        scope its approval did not name, or once that approval holds no
-        longer because it ran out, its reviewer lost the grant, or the
-        policy and the tools moved on from its check. That review is
-        supplementary. It moves nothing: the revision stays APPROVED while
-        the review is open and however it ends, and what was approved before
-        holds or lapses on its own terms. A revision is under one review at
-        a time, so the request is refused while another review of it is
-        open (409 REVIEW_IN_PROGRESS).
-        The request, the status of the revision where it moves, the audit
-        record and the event commit together.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ReviewSubmission'
-      responses:
-        '201':
-          description: >-
-            The review was asked for. The revision is in review, or stays
-            approved under a supplementary review
-          headers:
-            Location:
-              required: true
-              schema:
-                type: string
-                format: uri-reference
-            Cache-Control:
-              required: true
-              schema:
-                type: string
-                const: no-store
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Review'
-        '400':
-          $ref: '#/components/responses/Problem'
-        '401':
-          $ref: '#/components/responses/Unauthenticated'
-        '403':
-          $ref: '#/components/responses/Problem'
-        '404':
-          $ref: '#/components/responses/Problem'
-        '409':
-          $ref: '#/components/responses/Problem'
-        '413':
-          $ref: '#/components/responses/Problem'
-        '415':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
-        '503':
-          $ref: '#/components/responses/Problem'
-        default:
-          $ref: '#/components/responses/Problem'
   /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}:
     parameters:
       - $ref: '#/components/parameters/ProductId'
@@ -1490,9 +1417,9 @@ paths:
       summary: Read one review of a revision
       description: >-
         A product owner or a current maintainer, author, reviewer or publisher
-        of the asset's workspace can read a review of the requested revision. A publisher reads here
-        which review approved the revision it is to release. A review of another revision is
-        reported as missing.
+        of the asset's workspace can read a review of the requested revision. A release
+        prepared under an approval names the review that gave it, which is read
+        here. A review of another revision is reported as missing.
       responses:
         '200':
           description: The review
@@ -1518,136 +1445,6 @@ paths:
           $ref: '#/components/responses/Problem'
         default:
           $ref: '#/components/responses/Problem'
-  /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/withdrawal:
-    parameters:
-      - $ref: '#/components/parameters/ProductId'
-      - $ref: '#/components/parameters/CheckAssetId'
-      - $ref: '#/components/parameters/CheckRevisionId'
-      - $ref: '#/components/parameters/ReviewId'
-    post:
-      operationId: withdrawRevisionReview
-      summary: Take a request for review back
-      description: >-
-        Whoever asked for a review takes the request back, while still an
-        author of the asset's workspace and while the review is open. The
-        revision is WITHDRAWN from then on and can be submitted again. A
-        supplementary review that is taken back leaves the revision
-        APPROVED. A review that has its conclusion is refused (409
-        REVIEW_CONCLUDED). The conclusion, the status of the revision where
-        it moves, the audit record and the event commit together.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ReviewWithdrawal'
-      responses:
-        '200':
-          description: The review was withdrawn
-          headers:
-            Cache-Control:
-              required: true
-              schema:
-                type: string
-                const: no-store
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Review'
-        '400':
-          $ref: '#/components/responses/Problem'
-        '401':
-          $ref: '#/components/responses/Unauthenticated'
-        '403':
-          $ref: '#/components/responses/Problem'
-        '404':
-          $ref: '#/components/responses/Problem'
-        '409':
-          $ref: '#/components/responses/Problem'
-        '413':
-          $ref: '#/components/responses/Problem'
-        '415':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
-        '503':
-          $ref: '#/components/responses/Problem'
-        default:
-          $ref: '#/components/responses/Problem'
-  /v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/decision:
-    parameters:
-      - $ref: '#/components/parameters/ProductId'
-      - $ref: '#/components/parameters/CheckAssetId'
-      - $ref: '#/components/parameters/CheckRevisionId'
-      - $ref: '#/components/parameters/ReviewId'
-    post:
-      operationId: decideRevisionReview
-      summary: Approve or reject a revision that is in review
-      description: >-
-        A current reviewer of the asset's workspace decides on an open
-        review of a revision of an active product: the revision is APPROVED
-        or REJECTED from then on, and the review is concluded.
-        A supplementary review leaves the revision APPROVED either way. Its
-        approval is another approval of the same content, for the scope and
-        the time it names; its rejection takes back nothing that was
-        approved before.
-        Whoever decides had no part in what is reviewed. Whoever recorded
-        the revision, ran the check the review rests on or asked for the
-        review is refused (403 REVIEWER_NOT_INDEPENDENT), also when holding
-        the reviewer role.
-        A rejection says why. An approval rests on the check of the review
-        as the request did: a check that is no longer one of the current
-        policy and tool versions is refused (409 POLICY_STALE). Every rule
-        that failed or could not be judged in that check is waived by name,
-        for a reason and until a time; an approval that leaves one out is
-        refused (409 WAIVER_REQUIRED). A rule that nothing waives is never
-        waived (422 WAIVER_FORBIDDEN). A rule that warns and a rule no tool
-        evaluates need no waiver: the approval is bound to the check that
-        says so. The approval holds until valid_until, which is at most a
-        year away, and no waiver outlives it.
-        An approval approves the content the check read, for the scope of
-        the request and until its time, and nothing wider. The conclusion,
-        its waivers, the status of the revision where it moves, the audit
-        record and the event commit together.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ReviewDecision'
-      responses:
-        '200':
-          description: The review was decided
-          headers:
-            Cache-Control:
-              required: true
-              schema:
-                type: string
-                const: no-store
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Review'
-        '400':
-          $ref: '#/components/responses/Problem'
-        '401':
-          $ref: '#/components/responses/Unauthenticated'
-        '403':
-          $ref: '#/components/responses/Problem'
-        '404':
-          $ref: '#/components/responses/Problem'
-        '409':
-          $ref: '#/components/responses/Problem'
-        '413':
-          $ref: '#/components/responses/Problem'
-        '415':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
-        '503':
-          $ref: '#/components/responses/Problem'
-        default:
-          $ref: '#/components/responses/Problem'
   /v1/products/{product_id}/workspaces/{workspace_id}/reviews:
     get:
       operationId: listWorkspaceReviews
@@ -1655,12 +1452,10 @@ paths:
       description: >-
         Lists the reviews of every revision of every asset the workspace
         owns, oldest first by the instant they were asked for and then by
-        review_id: the queue a reviewer reads to find what waits for a
-        decision (status IN_REVIEW) and an author reads to find what became
-        of what it asked. A review keeps its place for as long as it is
-        listed. What is asked for while the list is read comes after every
-        position a page handed out: it repeats no review that was read and
-        takes none from those that were not.
+        review_id: the record of what was asked and how it ended. No review
+        is asked for or decided any more, and every review that was still
+        open when that changed was concluded as WITHDRAWN, so the list no
+        longer grows. A review keeps its place for as long as it is listed.
 
         A product owner or a current maintainer, author, reviewer or publisher
         of the workspace reads its reviews. As with getRevisionReview, each
@@ -1686,8 +1481,7 @@ paths:
         whatever page token the caller holds.
 
         status keeps the list to the reviews that stand at it. IN_REVIEW is
-        a review that has no conclusion yet, a supplementary review of an
-        APPROVED revision included, which leaves that revision APPROVED; the
+        a review that has no conclusion, which no review has any more; the
         others are the way a review ended. requested_by_issuer and
         requested_by_subject keep it to the reviews a principal asked for:
         the issuer alone, the subject alone under any issuer, or both. Each
@@ -2215,6 +2009,9 @@ paths:
         already is refused (409 MEMBERSHIP_EXISTS), and so are a product that
         is suspended (409 PRODUCT_NOT_ACTIVE) and a member under an issuer
         this deployment does not trust (422 MEMBER_ISSUER_NOT_TRUSTED).
+        internal_reviewer is no longer granted, since no review is decided
+        any more (422 REQUEST_UNPROCESSABLE); a membership that grants it
+        already stays and reads what it read.
 
 
         The membership, the audit record and the event are committed together
@@ -2348,6 +2145,9 @@ paths:
       description: >-
         Product owners and current maintainers, authors, reviewers, publishers
         and internal readers of the asset's workspace can read release metadata.
+        A release names the check it was prepared on and the waivers it was
+        prepared with. One prepared under an approval, before releases were
+        prepared on a check alone, also names that review.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/CheckAssetId'
@@ -2378,11 +2178,37 @@ paths:
           $ref: '#/components/responses/Problem'
     post:
       operationId: prepareContractRelease
-      summary: Prepare an immutable release from an approved revision
+      summary: Prepare an immutable release from a checked revision
       description: >-
-        A publisher of the asset workspace supplies the revision, review and a
-        version label unique to the asset. The artifact is verified before the
-        release is recorded. Repeating the same preparation returns the release.
+        A publisher of the asset's workspace, in an active product, supplies
+        the revision, a recorded check of it and a version label unique to
+        the asset. No review or approval is asked for, and the status of the
+        revision does not matter: the check is what the release rests on. The
+        publisher may be whoever imported or checked the revision.
+
+
+        The check has to be one a release can rest on now. A check made
+        under another policy or by other tool versions than a check is made
+        with today is refused (409 POLICY_STALE): run the check again. A check
+        in which a rule that nothing waives failed or could not be judged is
+        refused (409 RELEASE_BLOCKED). Every other rule that failed or could
+        not be judged is waived by name, each for a reason of one line, in
+        waivers: a release that leaves one out is refused (409
+        WAIVER_REQUIRED), and a waiver of a rule that nothing waives is
+        refused (422 WAIVER_FORBIDDEN), as is one of a rule that did not fail,
+        one named twice or one the policy does not have (422
+        REQUEST_UNPROCESSABLE). A rule that warns needs no waiver. A rule that
+        blocks and that no tool ran is accepted only when it is enforced
+        outside a check, and refused otherwise (409 RELEASE_CHECK_INCOMPLETE).
+        A check of another revision, or one that is not recorded, is not
+        found (404 CHECK_RUN_NOT_FOUND).
+
+
+        The artifact is verified before the release is recorded, with its
+        waivers. Repeating the same preparation, of the same revision on the
+        same check with the same waivers, returns the release; anything else
+        under the version is refused (409 RELEASE_VERSION_CONFLICT). The
+        release, the audit record and the event commit together.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/CheckAssetId'
@@ -2526,17 +2352,14 @@ paths:
       operationId: getContractReleaseProvenance
       summary: Read where a release came from
       description: >-
-        The release, its revision with where the source of the revision came
-        from, the check the approval rests on and the approval itself, read at
-        once. It says what the release was prepared on: the review and the
-        check named when it was prepared, whatever has been recorded of the
-        revision since. The revision may be reviewed again and approved anew,
-        and a release prepared before keeps the approval and the check it was
-        prepared on. It does not say whether the approval holds now: that is
-        for the slot to say, in approval_problem, which getPublicationSlot
-        gives and so does each item of listPublicationSlots and
-        listAssetPublications. Provenance uses the same grants as
-        getContractReleaseArtifact.
+        The release with its waivers, its revision with where the source of
+        the revision came from, and the check the release rests on, read at
+        once. A release prepared under an approval, before releases were
+        prepared on a check alone, also has that approval. It says what the
+        release was prepared on, whatever has been recorded of the revision
+        since. It does not say whether the check would pass under the policy
+        and the tools of today: a release keeps the check it was prepared on.
+        Provenance uses the same grants as getContractReleaseArtifact.
 
         A Git origin is what the submitter of the revision declared when it
         was imported. Fabric does not read the repository, so the commit is
@@ -2711,9 +2534,7 @@ paths:
         A caller who reads a workspace without a slot on the target receives
         an empty list. A target the product does not have is answered with
         404 PUBLICATION_TARGET_NOT_FOUND to whoever may read. Each item is
-        the slot exactly as getPublicationSlot reads it, with blocked and
-        approval_problem. approval_problem is worked out when the slot is
-        read and is not stored, so the list cannot be filtered by it.
+        the slot exactly as getPublicationSlot reads it, with blocked.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -2757,9 +2578,7 @@ paths:
         missing, cross-product or withheld asset returns API_ASSET_NOT_FOUND
         when the caller can know the product exists. A caller who may know
         the asset but cannot read its slots receives 403. An asset that is published nowhere has an empty list. Each item
-        is the slot exactly as getPublicationSlot reads it, with blocked and
-        approval_problem. approval_problem is worked out when the slot is
-        read and is not stored, so the list cannot be filtered by it.
+        is the slot exactly as getPublicationSlot reads it, with blocked.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/CheckAssetId'
@@ -2798,13 +2617,9 @@ paths:
         internal reader can inspect slots of their workspace.
         An asset without a slot starts at generation zero. The slot reports the
         database pointer, origin blocking, and the separate delivery status.
-        It also says whether the approval the active release rests on still
-        holds for this target. The slot keeps its pointer when an approval
-        stops holding. The internal origin serves the artifact until the slot
-        is withdrawn or blocked. The partner origin requires a current
-        approval. approval_problem names why the release would not be
-        activated today. A supplementary review lets the revision be
-        released and activated with new approval evidence.
+        The internal and the partner origin serve the artifact of the active
+        release until the slot is withdrawn or blocked, whatever policy and
+        tools a check is made with since.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -2872,21 +2687,19 @@ paths:
       summary: Activate, withdraw or restore a release with compare-and-swap
       description: >-
         The publisher names the generation read from the slot. An activation
-        puts a release on the slot and requires an approval that holds for
-        this target now: one that covers its audience and environment, whose
-        reviewer still holds the grant, that has not run out and of which no
-        waiver has, on a check of the current policy and tools that compared
-        the revision with the one the slot served last, where that is another
-        revision. A restoration returns the slot to a release it served
-        before. Internal restoration verifies the approval as it was given.
-        Partner restoration also requires the approval to hold now. An
-        activation of a previously served release uses the same checks as
-        any activation. Activation and restoration both require a publisher
-        who took no part in the revision, its check or its approval, an
-        active product and a release clear of access blocks. The configured
-        CargoPai partner target supports publication when its partner origin
-        and grant authority are configured. A withdrawal requires the
-        publisher role alone. A completed retry returns the original operation.
+        puts a release on the slot on the check it was prepared on. Where the
+        slot served a release of another revision last, that check has to
+        have compared the revision with that one (409
+        COMPATIBILITY_BASELINE_MISMATCH). A restoration returns the slot to a
+        release it served before. Neither asks whether the check would pass
+        under the policy and the tools of today: that was asked when the
+        release was prepared, so a release stays publishable after the policy
+        moves on. Activation and restoration both require an active product
+        and a release clear of access blocks; the publisher may be whoever
+        imported, checked or prepared the revision. The configured CargoPai
+        partner target supports publication when its partner origin and grant
+        authority are configured. A withdrawal requires the publisher role
+        alone. A completed retry returns the original operation.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -2945,11 +2758,9 @@ paths:
         publishers and internal readers of the asset's workspace. The origin
         checks the current read grant, target configuration,
         the active pointer and effective access blocks on every read, and the
-        bytes against the digest of the release. It does not ask whether the
-        approval the release rests on still holds: what a slot points at is
-        served until it is withdrawn or blocked, and getPublicationSlot says
-        what became of the approval. getContractReleaseArtifact serves the
-        same bytes to callers with a release evidence grant.
+        bytes against the digest of the release. What a slot points at is
+        served until it is withdrawn or blocked. getContractReleaseArtifact
+        serves the same bytes to callers with a release evidence grant.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -3118,8 +2929,7 @@ paths:
       description: >-
         A separate product security reviewer supplies a reason. Clearing a
         block does not restore a slot. Restore uses a new CAS and revalidates
-        the publisher's independence and artifact integrity. Partner
-        restoration also checks the current approval.
+        artifact integrity.
       parameters:
         - $ref: '#/components/parameters/ProductId'
         - $ref: '#/components/parameters/PublicationTargetId'
@@ -3324,19 +3134,45 @@ components:
     ReleasePreparation:
       type: object
       additionalProperties: false
-      required: [revision_id, review_id, version]
+      required: [revision_id, check_run_id, version]
       properties:
         revision_id:
           $ref: '#/components/schemas/Identifier'
-        review_id:
+        check_run_id:
+          description: A recorded check of the revision, which the release rests on
           $ref: '#/components/schemas/Identifier'
+        waivers:
+          description: >-
+            One waiver for every rule that failed or could not be judged in
+            the check and that can be waived, and for no other rule. Absent
+            or empty when nothing needs one.
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ReleaseWaiver'
         version:
           type: string
           pattern: '^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$'
+    ReleaseWaiver:
+      description: >-
+        One rule that did not pass in the check of a release and that whoever
+        prepared the release let stand, and why. A waiver is part of the
+        release it was given with and holds for nothing else.
+      type: object
+      additionalProperties: false
+      required: [rule_id, reason]
+      properties:
+        rule_id:
+          $ref: '#/components/schemas/ReviewRuleId'
+        reason:
+          description: >-
+            Why the rule is let stand: one line of 1 to 1000 characters,
+            without control characters and without space around it.
+          $ref: '#/components/schemas/ReviewReason'
     ContractRelease:
       type: object
       additionalProperties: false
-      required: [release_id, product_id, workspace_id, api_asset_id, revision_id, review_id, check_run_id, policy_snapshot_id, policy_digest, ref_closure_digest, artifact_digest, artifact_format, version, status, prepared_at, prepared_by]
+      required: [release_id, product_id, workspace_id, api_asset_id, revision_id, check_run_id, policy_snapshot_id, policy_digest, waivers, ref_closure_digest, artifact_digest, artifact_format, version, status, prepared_at, prepared_by]
       properties:
         release_id:
           $ref: '#/components/schemas/Identifier'
@@ -3349,13 +3185,28 @@ components:
         revision_id:
           $ref: '#/components/schemas/Identifier'
         review_id:
+          description: >-
+            The review that approved the revision, for a release prepared
+            under an approval before releases were prepared on a check alone.
+            Absent for every other release.
           $ref: '#/components/schemas/Identifier'
         check_run_id:
+          description: The check the release rests on
           $ref: '#/components/schemas/Identifier'
         policy_snapshot_id:
           $ref: '#/components/schemas/Identifier'
         policy_digest:
           $ref: '#/components/schemas/ContractDigest'
+        waivers:
+          description: >-
+            The rules that did not pass in the check and that the release was
+            prepared with a waiver of, by rule. Empty for a release that
+            waived nothing, and for one prepared under an approval, whose
+            waivers the approval names.
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ReleaseWaiver'
         ref_closure_digest:
           $ref: '#/components/schemas/ContractDigest'
         artifact_digest:
@@ -3387,12 +3238,13 @@ components:
           $ref: '#/components/schemas/NextPageToken'
     ContractReleaseProvenance:
       description: >-
-        What a release was prepared on: the release, its revision, the check
-        and the approval it rests on. All of it was recorded before the
-        release was, and none of it changes with what is recorded after.
+        What a release was prepared on: the release, its revision and the
+        check it rests on, and the approval for a release prepared under
+        one. All of it was recorded before the release was, and none of it
+        changes with what is recorded after.
       type: object
       additionalProperties: false
-      required: [release, revision, check, approval]
+      required: [release, revision, check]
       properties:
         release:
           $ref: '#/components/schemas/ContractRelease'
@@ -3401,6 +3253,10 @@ components:
         check:
           $ref: '#/components/schemas/ReleaseProvenanceCheck'
         approval:
+          description: >-
+            The approval the release was prepared under. Present only for a
+            release prepared under an approval, before releases were prepared
+            on a check alone.
           $ref: '#/components/schemas/ReleaseProvenanceApproval'
     ReleaseProvenanceRevision:
       description: >-
@@ -3435,9 +3291,8 @@ components:
           $ref: '#/components/schemas/ContractDigest'
     ReleaseProvenanceCheck:
       description: >-
-        The check the approval of a release rests on: which check it was, the
-        policy it was held to, the tools that evaluated it and what it
-        concluded.
+        The check a release rests on: which check it was, the policy it was
+        held to, the tools that evaluated it and what it concluded.
       type: object
       additionalProperties: false
       required: [check_run_id, policy_set_id, policy_digest, tool_manifest, status, summary, completed_at]
@@ -3577,16 +3432,6 @@ components:
           $ref: '#/components/schemas/Identifier'
         blocked:
           type: boolean
-        approval_problem:
-          description: >-
-            Why the approval the active release rests on does not hold for
-            this target now: the error code an activation of that release
-            would be refused with. Absent when the approval holds and when
-            no release is active. The slot retains the release pointer. The
-            internal origin can still serve the artifact. The partner origin
-            requires a current approval to serve that release.
-          type: string
-          enum: [APPROVAL_REQUIRED, APPROVAL_EXPIRED, WAIVER_EXPIRED, REVIEWER_AUTH_REVOKED, APPROVAL_SCOPE_MISMATCH, POLICY_STALE]
         delivery_status:
           type: string
           enum: [UNKNOWN]
@@ -4240,7 +4085,7 @@ components:
     ReviewTarget:
       description: >-
         One audience in one environment. The scope of a review is the targets
-        a revision is asked to be approved for.
+        a revision was asked to be approved for.
       type: object
       additionalProperties: false
       required: [audience, environment]
@@ -4265,30 +4110,6 @@ components:
       minLength: 1
       maxLength: 1000
       pattern: '^[^\p{Cc}]+$'
-    ReviewSubmission:
-      type: object
-      additionalProperties: false
-      required: [check_run_id, scope]
-      properties:
-        check_run_id:
-          description: A recorded check of the revision, the evidence the decision is asked on
-          $ref: '#/components/schemas/Identifier'
-        scope:
-          description: What the revision is to be approved for, each target once
-          type: array
-          minItems: 1
-          maxItems: 6
-          uniqueItems: true
-          items:
-            $ref: '#/components/schemas/ReviewTarget'
-        note:
-          $ref: '#/components/schemas/ReviewNote'
-    ReviewWithdrawal:
-      type: object
-      additionalProperties: false
-      properties:
-        reason:
-          $ref: '#/components/schemas/ReviewReason'
     ReviewStatus:
       description: >-
         Where a review stands: IN_REVIEW until it is concluded, then the way
@@ -4320,30 +4141,6 @@ components:
           description: Until when the waiver holds, no later than the approval
           type: string
           format: date-time
-    ReviewDecision:
-      description: >-
-        What a reviewer decides with. A rejection gives its reason and nothing
-        else. An approval gives the time it holds until and a waiver for
-        every rule that failed or could not be judged; its reason is
-        optional.
-      type: object
-      additionalProperties: false
-      required: [outcome]
-      properties:
-        outcome:
-          type: string
-          enum: [APPROVED, REJECTED]
-        reason:
-          $ref: '#/components/schemas/ReviewReason'
-        valid_until:
-          description: Until when an approval holds, at most a year away
-          type: string
-          format: date-time
-        waivers:
-          type: array
-          maxItems: 100
-          items:
-            $ref: '#/components/schemas/ReviewWaiver'
     ReviewConclusion:
       description: >-
         How a review ended, who ended it and when. An approval says until
@@ -4374,8 +4171,9 @@ components:
             $ref: '#/components/schemas/ReviewWaiver'
     Review:
       description: >-
-        A request for a decision on one revision, with its conclusion once it
-        has one. Neither changes once it is recorded.
+        A request for a decision on one revision, with its conclusion. Neither
+        changes once it is recorded. No review is asked for any more: these
+        are the reviews of before.
       type: object
       additionalProperties: false
       required: [review_id, product_id, api_asset_id, revision_id, check_run_id, input_digest, status, supplementary, scope, requested_by, requested_at]
@@ -4402,7 +4200,7 @@ components:
             asked for. Such a review does not move the revision.
           type: boolean
         scope:
-          description: The targets the revision is to be approved for, by audience and then environment
+          description: The targets the revision was to be approved for, by audience and then environment
           type: array
           minItems: 1
           maxItems: 6
@@ -4580,10 +4378,11 @@ components:
           minimum: 1
         status:
           description: >-
-            Where the revision stands in its review. It is recorded as a
-            DRAFT, is IN_REVIEW from the moment it is submitted, and leaves
-            the review APPROVED, REJECTED or WITHDRAWN. Its content is the
-            same at every status.
+            Where the revision stood in its review. A revision is recorded as
+            a DRAFT and stays one: no review is asked for any more. Revisions
+            reviewed before are APPROVED, REJECTED or WITHDRAWN. Its content
+            is the same at every status, and the status does not gate a
+            release.
           type: string
           enum: [DRAFT, IN_REVIEW, APPROVED, REJECTED, WITHDRAWN]
         source_kind:
@@ -4739,11 +4538,11 @@ components:
           $ref: '#/components/schemas/OverviewRelease'
         release_pending:
           description: >-
-            True when the latest revision is APPROVED and no release was
-            prepared from it. It does not say that the approval still holds:
-            it may have run out, a waiver of it may have, its reviewer may
-            have lost the grant, or the policy and the tools may have moved on.
-            prepareContractRelease asks that when a release is prepared.
+            True when the latest revision has a check and no release was
+            prepared from it. It does not say that the check lets a release be
+            prepared: it may have failed, or the policy and the tools may have
+            moved on. prepareContractRelease asks that when a release is
+            prepared.
           type: boolean
     OverviewRevision:
       description: The latest revision of an asset, as getRevision gives it
@@ -4923,8 +4722,10 @@ components:
         What a member is in a workspace. A workspace_maintainer creates and
         updates its API assets and reads their governance evidence. An
         internal_author writes and reads its contract revisions and runs their checks. An
-        internal_reviewer reads revisions and checks and decides on reviews.
-        An internal_publisher prepares and publishes approved releases.
+        internal_reviewer read revisions and checks to decide on reviews; it is
+        no longer granted, and a membership that grants it reads what it read.
+        An internal_publisher prepares releases of checked revisions and
+        publishes them.
         An internal_reader reads its asset catalog, release metadata, publication slots and
         history, and active artifacts through the internal publication origin.
         Owners of the product manage the workspace and its members.

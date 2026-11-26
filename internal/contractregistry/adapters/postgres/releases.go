@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -17,19 +18,54 @@ type Releases struct{ database *bentopostgres.DB }
 
 func NewReleases(database *bentopostgres.DB) *Releases { return &Releases{database: database} }
 
+// A release prepared on its check alone names no review: review_id is NULL
+// and is read as the empty identifier. Its waivers are a JSON array of rule
+// and reason, in the order of their rules, and an empty one for a release
+// that waives nothing.
 const selectRelease = `
-SELECT release_id, product_id, workspace_id, api_asset_id, revision_id, review_id,
+SELECT release_id, product_id, workspace_id, api_asset_id, revision_id, coalesce(review_id::text, ''),
        check_run_id, policy_snapshot_id, policy_digest, input_digest, artifact_digest,
-       release_version, prepared_at, prepared_by_issuer, prepared_by_subject
+       release_version, prepared_at, prepared_by_issuer, prepared_by_subject, waivers
 FROM contractregistry.contract_release
 WHERE product_id = $1 AND api_asset_id = $2 AND workspace_id = $3`
 
+// storedWaiver is a waiver of a release as the table keeps it.
+type storedWaiver struct {
+	RuleID string `json:"rule_id"`
+	Reason string `json:"reason"`
+}
+
 func scanRelease(row pgx.Row) (domain.Release, error) {
 	var r domain.Release
+	var waivers []byte
 	err := row.Scan(&r.ID, &r.Asset.ProductID, &r.Asset.WorkspaceID, &r.Asset.AssetID, &r.RevisionID, &r.ReviewID,
-		&r.Approval.CheckRunID, &r.Approval.PolicySnapshotID, &r.Approval.PolicyDigest, &r.InputDigest, &r.ArtifactDigest,
-		&r.Version, &r.PreparedAt, &r.PreparedBy.Issuer, &r.PreparedBy.Subject)
+		&r.Evidence.CheckRunID, &r.Evidence.PolicySnapshotID, &r.Evidence.PolicyDigest, &r.InputDigest, &r.ArtifactDigest,
+		&r.Version, &r.PreparedAt, &r.PreparedBy.Issuer, &r.PreparedBy.Subject, &waivers)
+	if err != nil {
+		return domain.Release{}, err
+	}
+	r.Waivers, err = readWaivers(waivers)
 	return r, err
+}
+
+func readWaivers(stored []byte) ([]domain.Waiver, error) {
+	var items []storedWaiver
+	if err := json.Unmarshal(stored, &items); err != nil {
+		return nil, fmt.Errorf("read the waivers of a release: %w", err)
+	}
+	var waivers []domain.Waiver
+	for _, item := range items {
+		waivers = append(waivers, domain.Waiver(item))
+	}
+	return waivers, nil
+}
+
+func writeWaivers(waivers []domain.Waiver) ([]byte, error) {
+	items := make([]storedWaiver, 0, len(waivers))
+	for _, waiver := range waivers {
+		items = append(items, storedWaiver(waiver))
+	}
+	return json.Marshal(items)
 }
 
 func (s *Releases) Find(ctx context.Context, asset domain.AssetRef, id string) (domain.Release, bool, error) {
@@ -91,15 +127,20 @@ VALUES ($1, $2) ON CONFLICT (artifact_digest) DO NOTHING`
 	if err := domain.VerifyArtifact(release.ArtifactDigest, stored); err != nil {
 		return false, err
 	}
+	waivers, err := writeWaivers(release.Waivers)
+	if err != nil {
+		return false, err
+	}
 	const insert = `INSERT INTO contractregistry.contract_release
     (release_id, product_id, workspace_id, api_asset_id, revision_id, review_id, check_run_id,
      policy_snapshot_id, policy_digest, input_digest, artifact_digest, release_version,
-     prepared_at, prepared_by_issuer, prepared_by_subject)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+     prepared_at, prepared_by_issuer, prepared_by_subject, waivers)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 ON CONFLICT (product_id, api_asset_id, release_version) DO NOTHING`
 	result, err := writer.Exec(ctx, insert, release.ID, release.Asset.ProductID, release.Asset.WorkspaceID, release.Asset.AssetID,
-		release.RevisionID, release.ReviewID, release.Approval.CheckRunID, release.Approval.PolicySnapshotID, release.Approval.PolicyDigest,
-		release.InputDigest, release.ArtifactDigest, release.Version, release.PreparedAt, release.PreparedBy.Issuer, release.PreparedBy.Subject)
+		release.RevisionID, nullable(release.ReviewID), release.Evidence.CheckRunID, release.Evidence.PolicySnapshotID,
+		release.Evidence.PolicyDigest, release.InputDigest, release.ArtifactDigest, release.Version, release.PreparedAt,
+		release.PreparedBy.Issuer, release.PreparedBy.Subject, string(waivers))
 	if err != nil {
 		return false, fmt.Errorf("record release: %w", err)
 	}

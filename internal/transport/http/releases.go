@@ -22,9 +22,15 @@ func (o operations) PrepareContractRelease(ctx context.Context, request PrepareC
 	if err != nil {
 		return nil, err
 	}
-	result, err := o.releases.Prepare(ctx, registry.PrepareRelease{
-		ScopeQuery: scope, RevisionID: request.Body.RevisionID, ReviewID: request.Body.ReviewID, Version: request.Body.Version,
-	})
+	command := registry.PrepareRelease{
+		ScopeQuery: scope, RevisionID: request.Body.RevisionID, CheckRunID: request.Body.CheckRunID, Version: request.Body.Version,
+	}
+	if request.Body.Waivers != nil {
+		for _, waiver := range *request.Body.Waivers {
+			command.Waivers = append(command.Waivers, domain.Waiver{RuleID: waiver.RuleID, Reason: waiver.Reason})
+		}
+	}
+	result, err := o.releases.Prepare(ctx, command)
 	if err != nil {
 		return nil, err
 	}
@@ -81,11 +87,16 @@ func (o operations) ListContractReleases(ctx context.Context, request ListContra
 }
 
 func showRelease(release domain.Release) ContractRelease {
-	return ContractRelease{
+	body := ContractRelease{
 		ReleaseID: release.ID, ProductID: release.Asset.ProductID, WorkspaceID: release.Asset.WorkspaceID, APIAssetID: release.Asset.AssetID,
-		RevisionID: release.RevisionID, ReviewID: release.ReviewID, CheckRunID: release.Approval.CheckRunID,
-		PolicySnapshotID: release.Approval.PolicySnapshotID, PolicyDigest: release.Approval.PolicyDigest, RefClosureDigest: release.InputDigest,
+		RevisionID: release.RevisionID, ReviewID: optionalString(release.ReviewID), CheckRunID: release.Evidence.CheckRunID,
+		PolicySnapshotID: release.Evidence.PolicySnapshotID, PolicyDigest: release.Evidence.PolicyDigest,
+		Waivers: make([]ReleaseWaiver, 0, len(release.Waivers)), RefClosureDigest: release.InputDigest,
 		ArtifactDigest: release.ArtifactDigest, ArtifactFormat: domain.ArtifactFormat, Version: release.Version, Status: "READY",
 		PreparedAt: release.PreparedAt, PreparedBy: Principal(release.PreparedBy),
 	}
+	for _, waiver := range release.Waivers {
+		body.Waivers = append(body.Waivers, ReleaseWaiver{RuleID: waiver.RuleID, Reason: waiver.Reason})
+	}
+	return body
 }

@@ -3,7 +3,6 @@ package http
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	checks "go.idp.xyz/idp-api-fabric/internal/policyreview/application"
-	reviewdomain "go.idp.xyz/idp-api-fabric/internal/policyreview/domain"
 	governanceports "go.idp.xyz/idp-api-fabric/internal/productgovernance/ports"
 	publication "go.idp.xyz/idp-api-fabric/internal/publication/application"
 	"go.idp.xyz/idp-api-fabric/internal/publication/domain"
@@ -232,10 +229,9 @@ func TestASlotListHandsItsRequestToItsUseCaseAndAnswersAPage(t *testing.T) {
 					t.Errorf("a page of %s reached the use case", size)
 				}
 			}
-			// A page and nothing else is asked for: no filter is declared, and
-			// least of all one by what a slot says of its approval.
+			// A page and nothing else is asked for: no filter is declared.
 			fake = &slotLists{}
-			wantProblem(t, newSlotListService(t, fake).do(t, call{Method: http.MethodGet, Token: "alice", Target: list.target + "?approval_problem=APPROVAL_EXPIRED"}),
+			wantProblem(t, newSlotListService(t, fake).do(t, call{Method: http.MethodGet, Token: "alice", Target: list.target + "?visibility=ACTIVE"}),
 				http.StatusBadRequest, CodeRequestInvalid, "The request has a query parameter the operation does not declare.")
 			if fake.calls() != 0 {
 				t.Error("a request with a filter reached the use case")
@@ -308,31 +304,14 @@ func TestASlotListThatNamesNoPageSizeIsAskedForTheDefaultPageOfTheContract(t *te
 
 // What a slot says of itself it says the same wherever it is read: the slot
 // that is read alone, and the same slot in the list of its target and in the
-// list of its asset, are shown by one function. That holds for the reason an
-// approval does not hold as well, and for the cause that the contract has no
-// word for, which is a failure of the service wherever it comes up.
+// list of its asset, are shown by one function.
 func TestAListedSlotIsShownAsTheSlotIsRead(t *testing.T) {
 	blocked := activeSlot()
 	blocked.Blocked = true
 	empty := domain.SlotView{Slot: domain.Slot{ProductID: productID, TargetID: publicationTargetID, AssetID: apiAssetID}}
 	states := map[string]domain.SlotView{
-		"a release whose approval holds": activeSlot(), "a blocked slot": blocked, "a withdrawn slot": withdrawnSlot(),
+		"an active release": activeSlot(), "a blocked slot": blocked, "a withdrawn slot": withdrawnSlot(),
 		"a slot that took no operation": empty,
-	}
-	for name, cause := range map[string]error{
-		"no approval":                          checks.ErrApprovalRequired,
-		"an approval that ran out":             checks.ErrApprovalExpired,
-		"a waiver that ran out":                checks.ErrWaiverExpired,
-		"a reviewer who lost the grant":        checks.ErrReviewerGrantRevoked,
-		"a target the approval does not name":  checks.ErrApprovalScope,
-		"a check the tools have moved on from": fmt.Errorf("review %s: %w", reviewID, reviewdomain.ErrCheckStale),
-	} {
-		unapproved := activeSlot()
-		unapproved.Unapproved = cause
-		states[name] = unapproved
-		both := unapproved
-		both.Blocked = true
-		states[name+", and blocked"] = both
 	}
 
 	read := call{Method: http.MethodGet, Target: publicationSlot, Token: alice.Subject}
@@ -348,28 +327,6 @@ func TestAListedSlotIsShownAsTheSlotIsRead(t *testing.T) {
 				items, _ := members(t, listed)["items"].([]any)
 				if listed.Code != http.StatusOK || len(items) != 1 || !reflect.DeepEqual(items[0], members(t, single)) {
 					t.Errorf("%s: %d %v, want the slot as it is read alone: %v", list.name, listed.Code, items, members(t, single))
-				}
-			}
-		})
-	}
-
-	for name, cause := range map[string]error{
-		"a publisher who had a part in the revision": checks.ErrPublisherInvolved,
-		"a review that is not what was recorded":     fmt.Errorf("review %s: %w", reviewID, reviewdomain.ErrReviewDamaged),
-		"anything else":                              errors.New("the connection is gone"),
-	} {
-		t.Run(name, func(t *testing.T) {
-			slot := activeSlot()
-			slot.Unapproved = cause
-			s := newSlotListService(t, &slotLists{slot: slot, page: publication.SlotPage{Items: []domain.SlotView{activeSlot(), slot}}})
-			wantProblem(t, s.do(t, read), http.StatusInternalServerError, CodeInternalError, "")
-			for _, list := range slotListsOfTheAPI {
-				s.log.Reset()
-				wantProblem(t, s.do(t, call{Method: http.MethodGet, Target: list.target, Token: alice.Subject}),
-					http.StatusInternalServerError, CodeInternalError, "")
-				if logged := s.log.String(); !strings.Contains(logged, "the slot cannot say why the approval of its release does not hold") ||
-					!strings.Contains(logged, cause.Error()) {
-					t.Errorf("%s: the log does not say what the slot could not name: %s", list.name, logged)
 				}
 			}
 		})
@@ -469,8 +426,7 @@ func TestTheSlotListsNeedAVerifiedCaller(t *testing.T) {
 
 // The contract shows the list of slots as it shows the slot: every item is a
 // PublicationSlot, whatever else the slot says is said in every place it is
-// read. A list takes a page and nothing else, so that none of them is read by
-// what a slot says of its approval, which is worked out when the slot is read.
+// read. A list takes a page and nothing else.
 func TestTheContractListsSlotsAsItShowsOne(t *testing.T) {
 	contract, err := loadContract()
 	if err != nil {

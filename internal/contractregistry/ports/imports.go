@@ -25,7 +25,7 @@ type Scopes interface {
 	// current membership without acquiring a row lock.
 	Author(ctx context.Context, caller domain.Principal, asset domain.AssetRef, importing bool) (author, productActive bool, err error)
 	// Reader reports whether the caller may read the revisions of the
-	// asset: a current author or reviewer of its workspace.
+	// asset: a current holder of a reading role of its workspace.
 	Reader(ctx context.Context, caller domain.Principal, asset domain.AssetRef) (bool, error)
 }
 

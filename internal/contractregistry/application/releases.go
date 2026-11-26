@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"go.idp.xyz/idp-api-fabric/internal/contractregistry/domain"
@@ -11,9 +13,8 @@ import (
 )
 
 var (
-	ErrReleaseNotFound    = errors.New("no such release of the API asset")
-	ErrReleaseConflict    = errors.New("the release version already names other evidence")
-	ErrRevisionUnapproved = errors.New("the revision has not been approved")
+	ErrReleaseNotFound = errors.New("no such release of the API asset")
+	ErrReleaseConflict = errors.New("the release version already names other evidence")
 )
 
 type ReleaseDependencies struct {
@@ -37,10 +38,14 @@ func NewReleases(deps ReleaseDependencies) (*Releases, error) {
 	return &Releases{deps: deps}, nil
 }
 
+// PrepareRelease names the revision a release is prepared from, the check of
+// it the release rests on and the waivers of the rules that did not pass in
+// that check.
 type PrepareRelease struct {
 	ports.ScopeQuery
 	RevisionID string
-	ReviewID   string
+	CheckRunID string
+	Waivers    []domain.Waiver
 	Version    string
 }
 
@@ -49,6 +54,12 @@ type Preparation struct {
 	Created bool
 }
 
+// Prepare makes a release of a revision, on a check of it. Whatever status
+// the revision has in the review it may have had is not asked: the check,
+// with its waivers, is what Policy & Review holds the release to. Asking
+// again under the same version answers the release that is there when it
+// was prepared from the same revision, check and waivers, and is refused
+// otherwise (ErrReleaseConflict).
 func (r *Releases) Prepare(ctx context.Context, command PrepareRelease) (Preparation, error) {
 	if err := domain.ValidateReleaseVersion(command.Version); err != nil {
 		return Preparation{}, err
@@ -68,11 +79,11 @@ func (r *Releases) Prepare(ctx context.Context, command PrepareRelease) (Prepara
 			return err
 		}
 
-		revision, err := r.approvedRevision(tx, asset, command.RevisionID)
+		revision, err := r.revision(tx, asset, command.RevisionID)
 		if err != nil {
 			return err
 		}
-		evidence, err := r.deps.Scopes.Approval(tx, revision, command.ReviewID, command.Caller)
+		evidence, waivers, err := r.deps.Scopes.Check(tx, revision, command.CheckRunID, command.Waivers)
 		if err != nil {
 			return err
 		}
@@ -85,8 +96,8 @@ func (r *Releases) Prepare(ctx context.Context, command PrepareRelease) (Prepara
 			return err
 		}
 		release := domain.Release{
-			ID: r.deps.Identifiers.NewID(), Asset: asset, RevisionID: revision.ID, ReviewID: command.ReviewID,
-			Approval: evidence, Version: command.Version, InputDigest: revision.RefClosureDigest, ArtifactDigest: digest,
+			ID: r.deps.Identifiers.NewID(), Asset: asset, RevisionID: revision.ID, Evidence: evidence, Waivers: waivers,
+			Version: command.Version, InputDigest: revision.RefClosureDigest, ArtifactDigest: digest,
 			PreparedAt: r.deps.Clock.Now().UTC().Truncate(time.Microsecond), PreparedBy: command.Caller,
 		}
 		created, err := r.deps.Releases.Record(tx, release, payload)
@@ -115,23 +126,27 @@ func (r *Releases) Prepare(ctx context.Context, command PrepareRelease) (Prepara
 	return result, r.refused(ctx, command.ScopeQuery, "release.prepare", err)
 }
 
+// reusedRelease is the release a version names already, when it is the one
+// the command asks for: of the same revision, on the same check, with the
+// same waivers in whatever order they are given. A release prepared under a
+// review is never the one a command asks for, which names no review.
 func reusedRelease(existing domain.Release, command PrepareRelease) (Preparation, error) {
-	if existing.RevisionID != command.RevisionID || existing.ReviewID != command.ReviewID {
+	waivers := slices.Clone(command.Waivers)
+	slices.SortFunc(waivers, func(a, b domain.Waiver) int { return strings.Compare(a.RuleID, b.RuleID) })
+	if existing.RevisionID != command.RevisionID || existing.ReviewID != "" ||
+		existing.Evidence.CheckRunID != command.CheckRunID || !slices.Equal(existing.Waivers, waivers) {
 		return Preparation{}, ErrReleaseConflict
 	}
 	return Preparation{Release: existing}, nil
 }
 
-func (r *Releases) approvedRevision(ctx context.Context, asset domain.AssetRef, id string) (domain.Revision, error) {
+func (r *Releases) revision(ctx context.Context, asset domain.AssetRef, id string) (domain.Revision, error) {
 	revision, found, err := r.deps.Revisions.Find(ctx, asset, id)
 	if err != nil {
 		return domain.Revision{}, err
 	}
 	if !found {
 		return domain.Revision{}, ErrRevisionNotFound
-	}
-	if revision.Status != domain.RevisionApproved {
-		return domain.Revision{}, ErrRevisionUnapproved
 	}
 	return revision, nil
 }
@@ -242,7 +257,7 @@ func (r *Releases) FindRelease(ctx context.Context, asset domain.AssetRef, id st
 }
 
 func (r *Releases) ReleaseMaterial(ctx context.Context, release domain.Release) (domain.Revision, []byte, error) {
-	revision, err := r.approvedRevision(ctx, release.Asset, release.RevisionID)
+	revision, err := r.revision(ctx, release.Asset, release.RevisionID)
 	if err != nil {
 		return domain.Revision{}, nil, err
 	}

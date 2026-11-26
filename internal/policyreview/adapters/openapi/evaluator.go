@@ -20,10 +20,10 @@ import (
 // holds the behaviour to the version.
 //
 // Raising it has a price since releases are published (F05 §6.7). A release
-// is prepared, activated, restored and served only while the check its
-// approval rests on was made by the tools of today. When a build with
-// another version starts, every approval given before stops counting, and
-// what is published under those approvals is served no more.
+// is prepared only on a check made by the tools of today: when a build with
+// another version starts, every revision is checked again before a release
+// of it is prepared. What was released before is activated, restored and
+// served on the check it was prepared on.
 const Version = "3"
 
 // Evaluator is the built-in tool of a check.

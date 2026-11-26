@@ -10,8 +10,11 @@ func TestReadsFollowTheCurrentWorkspaceAndProductGrants(t *testing.T) {
 	s := publicationFor(t)
 	target, _ := s.target(internalSandbox, "engineering")
 	slot := assetSlot(target, s.asset)
-	revision, review := s.approve(revisionSource, "", internalSandbox)
-	release := s.prepare(revision, review, "1.0.0", "publisher")
+	revision, check := s.checkedRevision(revisionSource, "")
+	// A review of the revision from before, which whoever reads the
+	// revision reads.
+	review := last(s.asked(s.pathOf(revision), check, "author", internalSandbox))
+	release := s.prepare(revision, check, "1.0.0", "publisher")
 	s.require(release, http.StatusCreated, "")
 	releaseID := release.id("release_id")
 	s.require(s.change(slot, "publisher", "ACTIVATE", 0, releaseID, "", "first"), http.StatusOK, "")
@@ -52,7 +55,7 @@ func TestReadsFollowTheCurrentWorkspaceAndProductGrants(t *testing.T) {
 	for _, path := range []string{revisionPath, workspace + "/reviews", releasePath + "/provenance", releasePath + "/artifact"} {
 		read("reader", path, http.StatusForbidden, "FORBIDDEN")
 	}
-	s.require(s.prepare(revision, review, "1.0.1", "reader"), http.StatusForbidden, "FORBIDDEN")
+	s.require(s.prepare(revision, check, "1.0.1", "reader"), http.StatusForbidden, "FORBIDDEN")
 	s.require(s.change(slot, "reader", "WITHDRAW", 1, "", "not a publisher", "reader"), http.StatusForbidden, "FORBIDDEN")
 
 	security := s.securityRole("security", "security_admin", "owner")

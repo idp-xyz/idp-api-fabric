@@ -3,7 +3,6 @@ package http
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -26,8 +25,8 @@ const (
 	reviews = revisions + "/" + revisionID + "/reviews"
 )
 
-// contractReviews stands in for the use cases of a review. It keeps what it
-// was asked and answers what the test set. The use cases of a check are not
+// contractReviews stands in for the reads of a review. It keeps what it was
+// asked and answers what the test set. The use cases of a check are not
 // reached by these tests.
 type contractReviews struct {
 	PolicyReview
@@ -36,27 +35,9 @@ type contractReviews struct {
 	page   checks.ReviewPage
 	err    error
 
-	targets   []reviewports.Target
-	asked     []checks.RequestReview
-	withdrawn [][2]string
-	decided   []reviewdomain.Decision
-	read      []string
-	listed    []checks.ListReviews
-}
-
-func (r *contractReviews) DecideReview(_ context.Context, target reviewports.Target, id string, decision reviewdomain.Decision) (reviewdomain.Review, error) {
-	r.targets, r.read, r.decided = append(r.targets, target), append(r.read, id), append(r.decided, decision)
-	return r.review, r.err
-}
-
-func (r *contractReviews) RequestReview(_ context.Context, target reviewports.Target, command checks.RequestReview) (reviewdomain.Review, error) {
-	r.targets, r.asked = append(r.targets, target), append(r.asked, command)
-	return r.review, r.err
-}
-
-func (r *contractReviews) WithdrawReview(_ context.Context, target reviewports.Target, id, reason string) (reviewdomain.Review, error) {
-	r.targets, r.withdrawn = append(r.targets, target), append(r.withdrawn, [2]string{id, reason})
-	return r.review, r.err
+	targets []reviewports.Target
+	read    []string
+	listed  []checks.ListReviews
 }
 
 func (r *contractReviews) GetReview(_ context.Context, target reviewports.Target, id string) (reviewdomain.Review, error) {
@@ -179,35 +160,6 @@ func shownRejection() map[string]any {
 	}
 }
 
-// decision is what a reviewer sends to approve the review as approvedReview
-// has it, changed by the test.
-func decision(change func(map[string]any)) string {
-	decided := createdAt.Add(time.Hour)
-	body := map[string]any{
-		"outcome": "APPROVED", "reason": "reviewed with the partner team",
-		"valid_until": decided.Add(90 * 24 * time.Hour).Format(time.RFC3339Nano),
-		"waivers": []any{
-			map[string]any{
-				"rule_id": "F04-GOV-003", "reason": "generated clients are not used yet",
-				"expires_at": decided.Add(30 * 24 * time.Hour).Format(time.RFC3339Nano),
-			},
-			map[string]any{
-				"rule_id": "F04-GOV-002", "reason": "the title is settled next sprint",
-				"compensating_control": "the portal shows the asset name",
-				"expires_at":           decided.Add(60 * 24 * time.Hour).Format(time.RFC3339Nano),
-			},
-		},
-	}
-	if change != nil {
-		change(body)
-	}
-	encoded, err := json.Marshal(body)
-	if err != nil {
-		panic(err)
-	}
-	return string(encoded)
-}
-
 func shownReview(conclusion map[string]any) map[string]any {
 	shown := map[string]any{
 		"review_id": reviewID, "product_id": productID, "api_asset_id": apiAssetID, "revision_id": revisionID,
@@ -227,169 +179,27 @@ func shownReview(conclusion map[string]any) map[string]any {
 	return shown
 }
 
-func submission(change func(map[string]any)) string {
-	body := map[string]any{
-		"check_run_id": checkRunID,
-		"scope": []any{
-			map[string]any{"audience": "partner", "environment": "sandbox"},
-			map[string]any{"audience": "internal", "environment": "production"},
-		},
-		"note": "ready for partners",
-	}
-	if change != nil {
-		change(body)
-	}
-	encoded, err := json.Marshal(body)
-	if err != nil {
-		panic(err)
-	}
-	return string(encoded)
-}
-
-// What an author asks a review with reaches the use case as it was said: the
-// check, the targets in the order they were named, the note, for the
-// revision of the path and the caller of the token. The answer is the
-// review as the contract states it, and where to read it.
-func TestAReviewIsAskedAndAnsweredAsTheContractStatesIt(t *testing.T) {
-	fake := &contractReviews{review: askedReview()}
-	s := newReviewService(t, fake)
-	recorder := s.do(t, call{Method: http.MethodPost, Target: reviews, Token: alice.Subject, Body: submission(nil)})
-	if recorder.Code != http.StatusCreated {
-		t.Fatalf("status %d, want 201: %s", recorder.Code, recorder.Body)
-	}
-	want := checks.RequestReview{
-		CheckRunID: checkRunID, Note: "ready for partners",
-		Scope: []reviewdomain.Target{{Audience: "partner", Environment: "sandbox"}, {Audience: "internal", Environment: "production"}},
-	}
-	if len(fake.asked) != 1 || !reflect.DeepEqual(fake.asked[0], want) {
-		t.Errorf("the use case was asked %+v, want %+v", fake.asked, want)
-	}
-	target := fake.targets[0]
-	if target.ProductID != productID || target.AssetID != apiAssetID || target.RevisionID != revisionID ||
-		target.Caller != (reviewdomain.Principal{Issuer: alice.Issuer, Subject: alice.Subject}) || target.CorrelationID == "" {
-		t.Errorf("the use case was asked for %+v, want the revision of the path and the caller of the token", target)
-	}
-	if got := members(t, recorder); !reflect.DeepEqual(got, shownReview(nil)) {
-		t.Errorf("answered\n %v\nwant\n %v", got, shownReview(nil))
-	}
-	if got := recorder.Header().Get("Location"); got != reviews+"/"+reviewID {
-		t.Errorf("Location %q, want the review", got)
-	}
-	if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
-		t.Errorf("Cache-Control %q, want no-store", got)
-	}
-
-	// A review without a note is asked and answered without one.
-	silent := askedReview()
-	silent.Request.Note = ""
-	fake = &contractReviews{review: silent}
-	recorder = newReviewService(t, fake).do(t, call{Method: http.MethodPost, Target: reviews, Token: alice.Subject,
-		Body: submission(func(body map[string]any) { delete(body, "note") })})
-	if _, said := members(t, recorder)["note"]; recorder.Code != http.StatusCreated || said || fake.asked[0].Note != "" {
-		t.Errorf("a review without a note: %d %s, asked %+v", recorder.Code, recorder.Body, fake.asked)
-	}
-
-	// A review of a revision that was approved already is asked the same
-	// way and answered as the supplementary review it is.
-	supplementary := askedReview()
-	supplementary.Request.Supplementary = true
-	fake = &contractReviews{review: supplementary}
-	recorder = newReviewService(t, fake).do(t, call{Method: http.MethodPost, Target: reviews, Token: alice.Subject, Body: submission(nil)})
-	shown := shownReview(nil)
-	shown["supplementary"] = true
-	if got := members(t, recorder); recorder.Code != http.StatusCreated || !reflect.DeepEqual(got, shown) || !reflect.DeepEqual(fake.asked[0], want) {
-		t.Errorf("a supplementary review: %d\n %v\nwant 201\n %v", recorder.Code, got, shown)
-	}
-
-	// What the contract does not state is refused before the use case.
-	long := strings.Repeat("r", 501)
-	refused := map[string]string{
-		"no body":                       "",
-		"no check":                      submission(func(body map[string]any) { delete(body, "check_run_id") }),
-		"a check that is no identifier": submission(func(body map[string]any) { body["check_run_id"] = "latest" }),
-		"no scope":                      submission(func(body map[string]any) { delete(body, "scope") }),
-		"a scope of nothing":            submission(func(body map[string]any) { body["scope"] = []any{} }),
-		"a target named twice": submission(func(body map[string]any) {
-			body["scope"] = []any{map[string]any{"audience": "partner", "environment": "sandbox"}, map[string]any{"environment": "sandbox", "audience": "partner"}}
-		}),
-		"an audience there is not": submission(func(body map[string]any) {
-			body["scope"] = []any{map[string]any{"audience": "customers", "environment": "sandbox"}}
-		}),
-		"an environment there is not": submission(func(body map[string]any) {
-			body["scope"] = []any{map[string]any{"audience": "partner", "environment": "staging"}}
-		}),
-		"a target without an environment": submission(func(body map[string]any) { body["scope"] = []any{map[string]any{"audience": "partner"}} }),
-		"a target that says more": submission(func(body map[string]any) {
-			body["scope"] = []any{map[string]any{"audience": "partner", "environment": "sandbox", "portal": "cargopai"}}
-		}),
-		"a note of nothing":           submission(func(body map[string]any) { body["note"] = "" }),
-		"a note longer than allowed":  submission(func(body map[string]any) { body["note"] = long }),
-		"a note of two lines":         submission(func(body map[string]any) { body["note"] = "ready\nfor partners" }),
-		"a member nobody declared":    submission(func(body map[string]any) { body["reviewer"] = "bob" }),
-		"a decision with the request": submission(func(body map[string]any) { body["outcome"] = "APPROVED" }),
-	}
-	for name, body := range refused {
-		t.Run(name, func(t *testing.T) {
-			fake := &contractReviews{review: askedReview()}
-			recorder := newReviewService(t, fake).do(t, call{Method: http.MethodPost, Target: reviews, Token: alice.Subject, Body: body})
-			wantRefusal(t, recorder, http.StatusBadRequest, CodeRequestInvalid)
-			if len(fake.asked) != 0 {
-				t.Errorf("the use case was asked %+v", fake.asked)
-			}
-		})
-	}
-}
-
-// A withdrawal says which review and, if it gives one, why. A review is read
-// by its identifier and listed page by page, under the cursor of its own
-// list.
-func TestAReviewIsWithdrawnReadAndListedAsTheContractStatesIt(t *testing.T) {
+// A review is read by its identifier and listed page by page, under the
+// cursor of its own list. The reviews read are those recorded before reviews
+// were retired (CR-0001).
+func TestAReviewIsReadAndListedAsTheContractStatesIt(t *testing.T) {
 	conclusion := map[string]any{
 		"outcome": "WITHDRAWN", "reason": "the wrong baseline",
 		"concluded_by": map[string]any{"issuer": alice.Issuer, "subject": alice.Subject},
 		"concluded_at": createdAt.Add(time.Hour).Format(time.RFC3339Nano),
 	}
-	withdrawal := reviews + "/" + reviewID + "/withdrawal"
 
 	fake := &contractReviews{review: withdrawnReview()}
 	s := newReviewService(t, fake)
-	recorder := s.do(t, call{Method: http.MethodPost, Target: withdrawal, Token: alice.Subject, Body: `{"reason":"the wrong baseline"}`})
-	if recorder.Code != http.StatusOK || !reflect.DeepEqual(members(t, recorder), shownReview(conclusion)) {
-		t.Fatalf("withdrawn: %d\n %s\nwant\n %v", recorder.Code, recorder.Body, shownReview(conclusion))
-	}
-	if recorder.Header().Get("Location") != "" || recorder.Header().Get("Cache-Control") != "no-store" {
-		t.Errorf("the headers of a withdrawal: %v", recorder.Header())
-	}
-	recorder = s.do(t, call{Method: http.MethodPost, Target: withdrawal, Token: alice.Subject, Body: `{}`})
-	if recorder.Code != http.StatusOK || !reflect.DeepEqual(fake.withdrawn, [][2]string{{reviewID, "the wrong baseline"}, {reviewID, ""}}) {
-		t.Errorf("the use case was asked to withdraw %v (status %d), want the review with its reason and then without one", fake.withdrawn, recorder.Code)
-	}
-	for name, body := range map[string]string{
-		"no body":                        "",
-		"a reason of nothing":            `{"reason":""}`,
-		"a reason longer than allowed":   `{"reason":"` + strings.Repeat("r", 1001) + `"}`,
-		"a member nobody declared":       `{"reason":"wrong","outcome":"REJECTED"}`,
-		"a review that is no identifier": "-",
-	} {
-		t.Run(name, func(t *testing.T) {
-			fake := &contractReviews{review: withdrawnReview()}
-			c := call{Method: http.MethodPost, Target: withdrawal, Token: alice.Subject, Body: body}
-			if body == "-" {
-				c.Target, c.Body = reviews+"/latest/withdrawal", `{}`
-			}
-			wantRefusal(t, newReviewService(t, fake).do(t, c), http.StatusBadRequest, CodeRequestInvalid)
-			if len(fake.withdrawn) != 0 {
-				t.Errorf("the use case was asked to withdraw %v", fake.withdrawn)
-			}
-		})
-	}
-
-	fake = &contractReviews{review: withdrawnReview()}
-	s = newReviewService(t, fake)
-	recorder = s.do(t, call{Method: http.MethodGet, Target: reviews + "/" + reviewID, Token: alice.Subject})
+	recorder := s.do(t, call{Method: http.MethodGet, Target: reviews + "/" + reviewID, Token: alice.Subject})
 	if recorder.Code != http.StatusOK || !reflect.DeepEqual(members(t, recorder), shownReview(conclusion)) ||
 		!reflect.DeepEqual(fake.read, []string{reviewID}) || recorder.Header().Get("Cache-Control") != "no-store" {
 		t.Errorf("read: %d %s, asked for %v", recorder.Code, recorder.Body, fake.read)
+	}
+	target := fake.targets[0]
+	if target.ProductID != productID || target.AssetID != apiAssetID || target.RevisionID != revisionID ||
+		target.Caller != (reviewdomain.Principal{Issuer: alice.Issuer, Subject: alice.Subject}) || target.CorrelationID == "" {
+		t.Errorf("the use case was asked for %+v, want the revision of the path and the caller of the token", target)
 	}
 
 	// The list, and the cursor of its next page.
@@ -420,127 +230,59 @@ func TestAReviewIsWithdrawnReadAndListedAsTheContractStatesIt(t *testing.T) {
 	}
 }
 
-// What a reviewer decides with reaches the use case as it was said: the
-// outcome, the reason, the time an approval holds until and its waivers in
-// the order they were named, for the review of the path and the caller of
-// the token. The answer is the review with its conclusion.
-func TestAReviewIsDecidedAndAnsweredAsTheContractStatesIt(t *testing.T) {
-	deciding := reviews + "/" + reviewID + "/decision"
-	decided := createdAt.Add(time.Hour)
-
-	fake := &contractReviews{review: approvedReview()}
-	s := newReviewService(t, fake)
-	recorder := s.do(t, call{Method: http.MethodPost, Target: deciding, Token: alice.Subject, Body: decision(nil)})
-	if recorder.Code != http.StatusOK || !reflect.DeepEqual(members(t, recorder), shownReview(shownApproval())) {
-		t.Fatalf("approved: %d\n %s\nwant\n %v", recorder.Code, recorder.Body, shownReview(shownApproval()))
+// Nothing asks for, withdraws or decides a review any more, so the contract
+// has no operation that does and the service no route: what was asked of
+// those is refused before any use case is reached, as anything the contract
+// does not declare is.
+func TestAReviewIsNoLongerAskedForWithdrawnOrDecided(t *testing.T) {
+	contract, err := loadContract()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if recorder.Header().Get("Location") != "" || recorder.Header().Get("Cache-Control") != "no-store" {
-		t.Errorf("the headers of a decision: %v", recorder.Header())
+	for _, path := range []string{
+		"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews",
+		"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}",
+	} {
+		if item := contract.Paths.Find(path); item == nil || item.Post != nil || item.Get == nil {
+			t.Errorf("%s is not the read it is and nothing else: %+v", path, item)
+		}
 	}
-	want := reviewdomain.Decision{
-		Outcome: reviewdomain.ReviewApproved, Reason: "reviewed with the partner team", ValidUntil: decided.Add(90 * 24 * time.Hour),
-		Waivers: []reviewdomain.Waiver{
-			{RuleID: "F04-GOV-003", Reason: "generated clients are not used yet", ExpiresAt: decided.Add(30 * 24 * time.Hour)},
-			{RuleID: "F04-GOV-002", Reason: "the title is settled next sprint", CompensatingControl: "the portal shows the asset name",
-				ExpiresAt: decided.Add(60 * 24 * time.Hour)},
-		},
+	for _, path := range []string{
+		"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/withdrawal",
+		"/v1/products/{product_id}/assets/{api_asset_id}/revisions/{revision_id}/reviews/{review_id}/decision",
+	} {
+		if contract.Paths.Find(path) != nil {
+			t.Errorf("the contract still declares %s", path)
+		}
 	}
-	if len(fake.decided) != 1 || !sameDecision(fake.decided[0], want) || !reflect.DeepEqual(fake.read, []string{reviewID}) {
-		t.Errorf("the use case was asked to decide %v with %+v, want %s with %+v", fake.read, fake.decided, reviewID, want)
-	}
-	target := fake.targets[0]
-	if target.ProductID != productID || target.AssetID != apiAssetID || target.RevisionID != revisionID ||
-		target.Caller != (reviewdomain.Principal{Issuer: alice.Issuer, Subject: alice.Subject}) || target.CorrelationID == "" {
-		t.Errorf("the use case was asked for %+v, want the revision of the path and the caller of the token", target)
+	for _, name := range []string{"ReviewSubmission", "ReviewWithdrawal", "ReviewDecision"} {
+		if contract.Components.Schemas[name] != nil {
+			t.Errorf("the contract still declares %s, which nothing sends any more", name)
+		}
 	}
 
-	// An approval of a check nothing failed in says until when and no more.
-	plain := approvedReview()
-	plain.Conclusion.Reason, plain.Conclusion.Waivers = "", nil
-	fake = &contractReviews{review: plain}
-	recorder = newReviewService(t, fake).do(t, call{Method: http.MethodPost, Target: deciding, Token: alice.Subject,
-		Body: decision(func(body map[string]any) { delete(body, "reason"); delete(body, "waivers") })})
-	shown, _ := members(t, recorder)["conclusion"].(map[string]any)
-	_, reason := shown["reason"]
-	_, waivers := shown["waivers"]
-	if recorder.Code != http.StatusOK || reason || waivers || shown["valid_until"] == nil || len(fake.decided) != 1 ||
-		!sameDecision(fake.decided[0], reviewdomain.Decision{Outcome: reviewdomain.ReviewApproved, ValidUntil: want.ValidUntil}) {
-		t.Errorf("an approval without a reason and without waivers: %d %s, asked %+v", recorder.Code, recorder.Body, fake.decided)
-	}
-
-	fake = &contractReviews{review: rejectedReview()}
-	recorder = newReviewService(t, fake).do(t, call{Method: http.MethodPost, Target: deciding, Token: alice.Subject,
-		Body: `{"outcome":"REJECTED","reason":"every operation needs its operationId"}`})
-	if recorder.Code != http.StatusOK || !reflect.DeepEqual(members(t, recorder), shownReview(shownRejection())) {
-		t.Fatalf("rejected: %d\n %s\nwant\n %v", recorder.Code, recorder.Body, shownReview(shownRejection()))
-	}
-	if rejection := (reviewdomain.Decision{Outcome: reviewdomain.ReviewRejected, Reason: "every operation needs its operationId"}); len(fake.decided) != 1 ||
-		!sameDecision(fake.decided[0], rejection) {
-		t.Errorf("the use case was asked to decide with %+v, want %+v", fake.decided, rejection)
-	}
-
-	// What the contract does not state is refused before the use case.
-	firstWaiver := func(change func(map[string]any)) func(map[string]any) {
-		return func(body map[string]any) { change(body["waivers"].([]any)[0].(map[string]any)) }
-	}
-	many := make([]any, 101)
-	for i := range many {
-		many[i] = map[string]any{"rule_id": fmt.Sprintf("F04-GOV-%03d", i), "reason": "accepted", "expires_at": decided.Format(time.RFC3339)}
-	}
-	refused := map[string]string{
-		"no body":                             "",
-		"no outcome":                          decision(func(body map[string]any) { delete(body, "outcome") }),
-		"an outcome a reviewer does not give": decision(func(body map[string]any) { body["outcome"] = "WITHDRAWN" }),
-		"an outcome there is not":             decision(func(body map[string]any) { body["outcome"] = "approved" }),
-		"a reason of nothing":                 decision(func(body map[string]any) { body["reason"] = "" }),
-		"a reason longer than allowed":        decision(func(body map[string]any) { body["reason"] = strings.Repeat("r", 1001) }),
-		"a reason of two lines":               decision(func(body map[string]any) { body["reason"] = "reviewed\nwith the partner team" }),
-		"a time that is none":                 decision(func(body map[string]any) { body["valid_until"] = "next year" }),
-		"a time without its zone":             decision(func(body map[string]any) { body["valid_until"] = "2027-02-09T10:00:00" }),
-		"waivers that are no list":            decision(func(body map[string]any) { body["waivers"] = "F04-GOV-003" }),
-		"more waivers than there are rules":   decision(func(body map[string]any) { body["waivers"] = many }),
-		"a waiver of no rule":                 decision(firstWaiver(func(w map[string]any) { delete(w, "rule_id") })),
-		"a waiver of what is no rule":         decision(firstWaiver(func(w map[string]any) { w["rule_id"] = "every rule" })),
-		"a waiver without a reason":           decision(firstWaiver(func(w map[string]any) { delete(w, "reason") })),
-		"a waiver whose reason is nothing":    decision(firstWaiver(func(w map[string]any) { w["reason"] = "" })),
-		"a waiver that never ends":            decision(firstWaiver(func(w map[string]any) { delete(w, "expires_at") })),
-		"a waiver whose end is no time":       decision(firstWaiver(func(w map[string]any) { w["expires_at"] = "never" })),
-		"a waiver whose control is nothing":   decision(firstWaiver(func(w map[string]any) { w["compensating_control"] = "" })),
-		"a waiver that says more":             decision(firstWaiver(func(w map[string]any) { w["approved_by"] = "bob" })),
-		"a member nobody declared":            decision(func(body map[string]any) { body["decided_by"] = "bob" }),
-		"a scope with the decision": decision(func(body map[string]any) {
-			body["scope"] = []any{map[string]any{"audience": "public", "environment": "production"}}
-		}),
-		"a review that is no identifier": "-",
-	}
-	for name, body := range refused {
+	for name, c := range map[string]struct {
+		call   call
+		status int
+		code   string
+	}{
+		"a submission": {call{Method: http.MethodPost, Target: reviews, Token: alice.Subject,
+			Body: `{"check_run_id":"` + checkRunID + `","scope":[{"audience":"partner","environment":"sandbox"}]}`},
+			http.StatusMethodNotAllowed, CodeMethodNotAllowed},
+		"a withdrawal": {call{Method: http.MethodPost, Target: reviews + "/" + reviewID + "/withdrawal", Token: alice.Subject, Body: `{}`},
+			http.StatusNotFound, CodeRouteNotFound},
+		"a decision": {call{Method: http.MethodPost, Target: reviews + "/" + reviewID + "/decision", Token: alice.Subject,
+			Body: `{"outcome":"APPROVED","valid_until":"2027-02-09T10:00:00Z"}`},
+			http.StatusNotFound, CodeRouteNotFound},
+	} {
 		t.Run(name, func(t *testing.T) {
 			fake := &contractReviews{review: approvedReview()}
-			c := call{Method: http.MethodPost, Target: deciding, Token: alice.Subject, Body: body}
-			if body == "-" {
-				c.Target, c.Body = reviews+"/latest/decision", decision(nil)
-			}
-			wantRefusal(t, newReviewService(t, fake).do(t, c), http.StatusBadRequest, CodeRequestInvalid)
-			if len(fake.decided) != 0 {
-				t.Errorf("the use case was asked to decide with %+v", fake.decided)
+			wantRefusal(t, newReviewService(t, fake).do(t, c.call), c.status, c.code)
+			if len(fake.targets) != 0 || len(fake.listed) != 0 {
+				t.Errorf("a use case was reached: %+v %+v", fake.targets, fake.listed)
 			}
 		})
 	}
-}
-
-// sameDecision compares two decisions, their times as instants.
-func sameDecision(got, want reviewdomain.Decision) bool {
-	if got.Outcome != want.Outcome || got.Reason != want.Reason || !got.ValidUntil.Equal(want.ValidUntil) || len(got.Waivers) != len(want.Waivers) {
-		return false
-	}
-	for i, waiver := range got.Waivers {
-		other := want.Waivers[i]
-		if waiver.RuleID != other.RuleID || waiver.Reason != other.Reason || waiver.CompensatingControl != other.CompensatingControl ||
-			!waiver.ExpiresAt.Equal(other.ExpiresAt) {
-			return false
-		}
-	}
-	return true
 }
 
 // What the service answers for a review satisfies the schema the contract
@@ -614,20 +356,22 @@ func TestTheContractStatesAReviewAsItIsAnswered(t *testing.T) {
 		})
 	}
 
-	// The statuses of a revision are the ones the registry has.
+	// A revision is recorded as the draft the registry records, and the
+	// other statuses are where the revisions reviewed before stand: the
+	// contract still answers them.
 	var statuses []string
 	for _, value := range contract.Components.Schemas["ContractRevision"].Value.Properties["status"].Value.Enum {
 		status, _ := value.(string)
 		statuses = append(statuses, status)
 	}
-	if want := []string{registrydomain.RevisionDraft, registrydomain.RevisionInReview, registrydomain.RevisionApproved,
-		registrydomain.RevisionRejected, registrydomain.RevisionWithdrawn}; !reflect.DeepEqual(statuses, want) {
-		t.Errorf("the contract declares the statuses %v of a revision, the registry %v", statuses, want)
+	if want := []string{registrydomain.RevisionDraft, "IN_REVIEW", "APPROVED", "REJECTED", "WITHDRAWN"}; !reflect.DeepEqual(statuses, want) {
+		t.Errorf("the contract declares the statuses %v of a revision, want %v", statuses, want)
 	}
 }
 
-// What a review refuses is a problem of its own code. A review that is not
-// what was recorded is a failure of the service, logged for who operates it.
+// What a read of a review refuses is a problem of its own code. A review
+// that is not what was recorded is a failure of the service, logged for who
+// operates it.
 func TestWhatAReviewRefusesIsAProblemOfItsOwnCode(t *testing.T) {
 	cases := map[string]struct {
 		err    error
@@ -636,32 +380,10 @@ func TestWhatAReviewRefusesIsAProblemOfItsOwnCode(t *testing.T) {
 		detail string
 	}{
 		"a review nobody asked for":      {checks.ErrReviewNotFound, http.StatusNotFound, "REVIEW_NOT_FOUND", ""},
-		"a check nobody recorded":        {checks.ErrCheckRunNotFound, http.StatusNotFound, "CHECK_RUN_NOT_FOUND", ""},
 		"someone who holds no such role": {checks.ErrForbidden, http.StatusForbidden, CodeForbidden, "The caller holds no role in the workspace that allows this."},
-		"someone who did not ask for it": {reviewdomain.ErrNotRequester, http.StatusForbidden, CodeForbidden, "A review is withdrawn by whoever asked for it."},
-		"someone who had a part in it": {reviewdomain.ErrNotIndependent, http.StatusForbidden, "REVIEWER_NOT_INDEPENDENT",
-			"Whoever recorded the revision, ran its check or asked for the review does not decide on it."},
-		"a waiver of a rule nothing waives": {fmt.Errorf("%w: F04-GOV-004", reviewdomain.ErrWaiverForbidden), http.StatusUnprocessableEntity, "WAIVER_FORBIDDEN",
-			"A rule that nothing waives cannot be waived."},
-		"rules that are not waived": {fmt.Errorf("%w: F04-GOV-002, F04-GOV-003", reviewdomain.ErrWaiverMissing), http.StatusConflict, "WAIVER_REQUIRED",
-			"Rules failed or could not be judged in the check of the review. An approval waives each of them by name."},
-		"a suspended product": {checks.ErrProductSuspended, http.StatusConflict, CodeProductNotActive, "The product is suspended and takes no new work."},
-		"a check of another policy": {reviewdomain.ErrCheckStale, http.StatusConflict, "POLICY_STALE",
-			"The check was not made under the policy and by the tool versions a check is made with now. Run the check again."},
-		"rules nothing waives that failed": {fmt.Errorf("%w: F04-GOV-004, F04-GOV-010", reviewdomain.ErrReviewBlocked), http.StatusConflict, "REVIEW_BLOCKED",
-			"In the check, rules that nothing waives failed or could not be judged. No decision approves such a revision."},
-		"a review that is concluded": {reviewdomain.ErrReviewConcluded, http.StatusConflict, "REVIEW_CONCLUDED", "The review was concluded already."},
-		"another review that is open": {checks.ErrReviewInProgress, http.StatusConflict, "REVIEW_IN_PROGRESS",
-			"A review of the revision is open. A revision is under one review at a time."},
-		"a revision at another status": {fmt.Errorf("%w: it is APPROVED", registrydomain.ErrStatusConflict), http.StatusConflict, "REVISION_STATUS_CONFLICT",
-			"The revision is not at a status this starts from."},
-		"a review the model refuses":  {fmt.Errorf("%w: a target is named twice", reviewdomain.ErrInvalidReview), http.StatusUnprocessableEntity, CodeRequestUnprocessable, ""},
-		"a page the use case refuses": {checks.ErrInvalidReviewPage, http.StatusBadRequest, CodeRequestInvalid, ""},
+		"a page the use case refuses":    {checks.ErrInvalidReviewPage, http.StatusBadRequest, CodeRequestInvalid, ""},
 	}
 	requests := []call{
-		{Method: http.MethodPost, Target: reviews, Token: alice.Subject, Body: submission(nil)},
-		{Method: http.MethodPost, Target: reviews + "/" + reviewID + "/withdrawal", Token: alice.Subject, Body: `{}`},
-		{Method: http.MethodPost, Target: reviews + "/" + reviewID + "/decision", Token: alice.Subject, Body: decision(nil)},
 		{Method: http.MethodGet, Target: reviews + "/" + reviewID, Token: alice.Subject},
 		{Method: http.MethodGet, Target: reviews, Token: alice.Subject},
 	}

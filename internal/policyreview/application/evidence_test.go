@@ -6,100 +6,66 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"go.idp.xyz/idp-api-fabric/internal/policyreview/application"
 	"go.idp.xyz/idp-api-fabric/internal/policyreview/domain"
 )
 
-// named is what a release prepared under the review recorded of it: the
-// review, the check the review rests on, what the check read and the policy
-// it was held to.
-func named(review domain.Review) application.ReleaseEvidenceQuery {
+// named is what a release prepared on the check recorded of it, and of the
+// review it was prepared under if it names one: the check, what it read and
+// the policy it was held to.
+func named(reviewID string) application.ReleaseEvidenceQuery {
 	return application.ReleaseEvidenceQuery{
-		Revision: shipment, ReviewID: review.Request.ID, CheckRunID: "check",
+		Revision: shipment, ReviewID: reviewID, CheckRunID: "check",
 		PolicySnapshotID: "snapshot", PolicyDigest: domain.Baseline().Digest(), InputDigest: closure,
 	}
 }
 
-// The evidence of a release is the review and the check it was prepared
-// under, as they were recorded, and it is the same whether or not that
-// approval holds now. An approval that ran out, a waiver that did, a reviewer
-// who lost the grant and tools that moved on from the check each make
-// VerifyReleaseApproval refuse, and none of them changes what the release
-// was prepared on: it is asked what it was, not whether it still counts.
-func TestTheEvidenceOfAReleaseIsWhatItWasPreparedOnWhetherOrNotTheApprovalStillHolds(t *testing.T) {
+// The evidence of a release is the check it was prepared on, and the review
+// it was prepared under if it was prepared under one, as they were recorded.
+// It is the same whatever became of the policy and the tools since, and
+// whatever the check found: a release is asked what it was prepared on, not
+// whether a release would be prepared on it today.
+func TestTheEvidenceOfAReleaseIsWhatItWasPreparedOn(t *testing.T) {
 	cases := map[string]struct {
-		given approval
-		// arrange makes the world as the case says and returns the use
-		// cases to ask, which are those of w unless the case changes them.
-		arrange func(*testing.T, *world, domain.Review, *grant) *application.Reviews
-		// refused is why the approval does not hold in that world.
-		refused error
+		given checked
+		// review says that the release was prepared under an approval, as
+		// releases were before reviews were retired.
+		review bool
+		// tool is the rules tool of today, if it is not the one that ran
+		// the check.
+		tool domain.Tool
 	}{
-		"an approval that holds": {},
-		"an approval that ran out": {
-			arrange: func(_ *testing.T, w *world, review domain.Review, _ *grant) *application.Reviews {
-				w.now = review.Conclusion.ValidUntil.Add(24 * time.Hour)
-				return nil
-			},
-			refused: application.ErrApprovalExpired,
-		},
-		"a waiver that ran out while the approval lasts": {
-			given: approval{waived: true},
-			arrange: func(_ *testing.T, w *world, review domain.Review, _ *grant) *application.Reviews {
-				w.now = review.Conclusion.Waivers[0].ExpiresAt.Add(24 * time.Hour)
-				return nil
-			},
-			refused: application.ErrWaiverExpired,
-		},
-		"a reviewer whose grant is not in force": {
-			arrange: func(_ *testing.T, _ *world, _ domain.Review, members *grant) *application.Reviews {
-				members.held = false
-				return nil
-			},
-			refused: application.ErrReviewerGrantRevoked,
-		},
-		"tools that moved on from the check": {
-			arrange: func(t *testing.T, w *world, _ domain.Review, _ *grant) *application.Reviews {
-				dependencies := w.dependencies()
-				dependencies.Evaluator = toolOf(domain.Tool{Name: rulesTool.Name, Version: "4"})
-				moved, err := application.NewReviews(dependencies)
-				if err != nil {
-					t.Fatal(err)
-				}
-				return moved
-			},
-			refused: domain.ErrCheckStale,
-		},
+		"a release prepared on its check":                     {},
+		"a release prepared under an approval":                {review: true},
+		"a release prepared on a check with a waived failure": {given: checked{observed: []domain.Observation{undescribed}}},
+		"a check the tools have moved on from":                {tool: domain.Tool{Name: rulesTool.Name, Version: "4"}},
+		"an approval on a check the tools have moved on from": {review: true, tool: domain.Tool{Name: rulesTool.Name, Version: "4"}},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			w, reviews, review := approved(t, c.given)
-			members := &grant{held: true}
-			if c.arrange != nil {
-				if moved := c.arrange(t, w, review, members); moved != nil {
-					reviews = moved
+			w := newWorld()
+			run := c.given.run(t, w, rulesTool)
+			want := application.ReleaseEvidence{Check: run.Overview()}
+			query := named("")
+			if c.review {
+				review := w.recorded("review", "check", domain.ReviewApproved)
+				want.Review, query.ReviewID = &review, review.Request.ID
+			}
+			if c.tool != (domain.Tool{}) {
+				// The check is no longer one a release is prepared on.
+				if _, err := w.checking(t, c.tool, compareTool).VerifyReleaseCheck(context.Background(), preparing()); !errors.Is(err, domain.ErrCheckStale) {
+					t.Fatalf("the check is refused with %v for a release prepared now, want %v", err, domain.ErrCheckStale)
 				}
 			}
-			run := w.runs["check"]
 
-			// The approval is as the case says.
-			if _, err := reviews.VerifyReleaseApproval(context.Background(), releasing(review), members.hold); !errors.Is(err, c.refused) {
-				t.Fatalf("the approval is refused with %v, want %v", err, c.refused)
-			}
-			w.audited, w.events, w.moves = nil, nil, nil
-
-			got, err := reviews.ReleaseEvidence(context.Background(), named(review))
-			want := application.ReleaseEvidence{Review: review, Check: run.Overview()}
+			got, err := w.reviewing(t).ReleaseEvidence(context.Background(), query)
 			if err != nil || !reflect.DeepEqual(got, want) {
-				t.Fatalf("got %+v, %v; want the review and the check as they were recorded %+v", got, err, want)
+				t.Fatalf("got %+v, %v; want the check and the review as they were recorded %+v", got, err, want)
 			}
-			if got.Review.Conclusion.ConcludedBy != rita || !reflect.DeepEqual(got.Check.Tools, []domain.Tool{rulesTool}) ||
-				got.Check.PolicyDigest != domain.Baseline().Digest() {
-				t.Errorf("the evidence is %+v, want the approval of rita on the check of %v under the baseline", got, rulesTool)
+			if !reflect.DeepEqual(got.Check.Tools, []domain.Tool{rulesTool}) || got.Check.PolicyDigest != domain.Baseline().Digest() {
+				t.Errorf("the evidence is %+v, want the check of %v under the baseline", got, rulesTool)
 			}
-			unchanged(t, w, review)
 		})
 	}
 }
@@ -121,6 +87,13 @@ func TestEvidenceThatIsNotWhatTheReleaseNamesIsDamaged(t *testing.T) {
 	// naming changes what the release is said to have recorded.
 	naming := func(change func(*application.ReleaseEvidenceQuery)) arrange {
 		return func(_ *world, _ domain.Review, query *application.ReleaseEvidenceQuery) { change(query) }
+	}
+	// unreviewed is a release prepared on its check alone.
+	unreviewed := func(change func(*application.ReleaseEvidenceQuery)) arrange {
+		return naming(func(q *application.ReleaseEvidenceQuery) {
+			q.ReviewID = ""
+			change(q)
+		})
 	}
 	damaged := map[string]struct {
 		arrange arrange
@@ -162,19 +135,32 @@ func TestEvidenceThatIsNotWhatTheReleaseNamesIsDamaged(t *testing.T) {
 			naming(func(q *application.ReleaseEvidenceQuery) { q.PolicySnapshotID = "another" }), domain.ErrCheckRunDamaged},
 		"a check held to another policy": {
 			naming(func(q *application.ReleaseEvidenceQuery) { q.PolicyDigest = other }), domain.ErrCheckRunDamaged},
+
+		// A release prepared on its check alone is held to its check alone.
+		"a check that is gone, of a release on its check": {
+			func(w *world, review domain.Review, query *application.ReleaseEvidenceQuery) {
+				delete(w.runs, "check")
+				query.ReviewID = ""
+			}, domain.ErrCheckRunDamaged},
+		"a check of another revision, of a release on its check": {
+			unreviewed(func(q *application.ReleaseEvidenceQuery) { q.Revision.RevisionID = "another" }), domain.ErrCheckRunDamaged},
+		"a check that read other content, of a release on its check": {
+			unreviewed(func(q *application.ReleaseEvidenceQuery) { q.InputDigest = other }), domain.ErrCheckRunDamaged},
+		"a check held to another policy, of a release on its check": {
+			unreviewed(func(q *application.ReleaseEvidenceQuery) { q.PolicyDigest = other }), domain.ErrCheckRunDamaged},
 	}
 	for name, c := range damaged {
 		t.Run(name, func(t *testing.T) {
-			w, reviews, review := approved(t, approval{})
-			query := named(review)
+			w := newWorld()
+			checked{}.run(t, w, rulesTool)
+			review := w.recorded("review", "check", domain.ReviewApproved)
+			query := named(review.Request.ID)
 			c.arrange(w, review, &query)
-			stored := w.reviews[review.Request.ID]
 
-			got, err := reviews.ReleaseEvidence(context.Background(), query)
+			got, err := w.reviewing(t).ReleaseEvidence(context.Background(), query)
 			if !errors.Is(err, c.want) || !reflect.DeepEqual(got, application.ReleaseEvidence{}) {
 				t.Fatalf("got %+v, %v; want %v and no evidence", got, err, c.want)
 			}
-			unchanged(t, w, stored)
 		})
 	}
 }

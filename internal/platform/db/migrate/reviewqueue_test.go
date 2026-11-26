@@ -221,8 +221,13 @@ func TestRunIndexesTheReviewRequestsForTheQueueAndLeavesTheReviewsAsTheyAre(t *t
 	if !slices.Equal(applied, planned) {
 		t.Errorf("the history records\n %+v\nwant every step of the plan, each once\n %+v", applied, planned)
 	}
-	if got := reviews(); !slices.Equal(got, written) {
-		t.Errorf("the reviews are\n %v\nwant them as they were written\n %v", got, written)
+	// The step leaves the reviews as they were written. The one that was
+	// still open is withdrawn by a step of this build that comes after it
+	// (reviewsWithdrawn), and by nothing else.
+	withdrawn := slices.Clone(written)
+	withdrawn[1] += "|WITHDRAWN"
+	if got := reviews(); !slices.Equal(got, withdrawn) {
+		t.Errorf("the reviews are\n %v\nwant them as they were written, the open one withdrawn\n %v", got, withdrawn)
 	}
 	wantIndexes := slices.Concat(earlier, []string{
 		"review_request_queue_order: btree (product_id, workspace_id, requested_at, review_id)",

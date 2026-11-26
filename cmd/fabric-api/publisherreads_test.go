@@ -5,16 +5,14 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 )
 
 // A publisher of a workspace reads what it is to release: the revisions of
 // the assets of the workspace, their files, their checks, how two of them
-// compare and the reviews that approved them, answer for answer as an
-// author reads them. That is where it finds the revision and the review a
-// release names. It writes no revision, runs no check and has no part in a
-// review, and the grant counts in the workspace it was made in and in no
-// other.
+// compare and the reviews of before, answer for answer as an author reads
+// them. That is where it finds the revision and the check a release rests
+// on. It writes no revision and runs no check, and the grant counts in the
+// workspace it was made in and in no other.
 func TestAPublisherReadsWhatItIsToReleaseAndWritesNoneOfIt(t *testing.T) {
 	members := reviewsFor(t)
 	membership := members.join(members.product, members.workspace, "owner", "publisher", "internal_publisher")
@@ -26,8 +24,7 @@ func TestAPublisherReadsWhatItIsToReleaseAndWritesNoneOfIt(t *testing.T) {
 	s.join(s.product, other, "owner", "between", "internal_publisher")
 
 	first := s.inReview(revisionSource, "author", "author", "author")
-	approved := s.call(http.MethodPost, first.review+"/decision", "reviewer", deciding("APPROVED", "", time.Now().Add(time.Hour)))
-	s.require(approved, http.StatusOK, "")
+	s.concluded(first.review, "reviewer", "APPROVED", "")
 	second := s.call(http.MethodPost, s.revisions, "author", uploadRevision("openapi.yaml", revisionSource+"# next\n"))
 	s.require(second, http.StatusCreated, "")
 	draft := s.revisions + "/" + second.id("revision_id")
@@ -48,32 +45,26 @@ func TestAPublisherReadsWhatItIsToReleaseAndWritesNoneOfIt(t *testing.T) {
 		t.Errorf("the reads left %d audit records and %d events", after-records, sent-events)
 	}
 
-	// What it read is what a release names: the approved revision and the
-	// review that approved it.
-	listed, _ := s.page(first.revision+"/reviews", "publisher")
-	if len(listed) != 1 || listed[0]["status"] != "APPROVED" || listed[0]["review_id"] != last(first.review) {
-		t.Fatalf("the publisher lists the reviews %v, want the one that approved the revision", listed)
+	// What it read is what a release rests on: the revision and its check.
+	listed, _ := s.page(first.revision+"/check-runs", "publisher")
+	if len(listed) != 1 || listed[0]["check_run_id"] != first.check {
+		t.Fatalf("the publisher lists the checks %v, want the one of the revision", listed)
 	}
-	s.require(s.prepare(listed[0]["revision_id"].(string), listed[0]["review_id"].(string), "1.0.0", "publisher"), http.StatusCreated, "")
+	s.require(s.prepare(last(first.revision), first.check, "1.0.0", "publisher"), http.StatusCreated, "")
 
-	// It writes no revision, runs no check and has no part in a review.
-	// Each refusal is on record as a refusal of what was asked.
-	s.expect("a publisher writes no revision, runs no check and has no part in a review", "publisher", []exchange{
+	// It writes no revision and runs no check. Each refusal is on record as
+	// a refusal of what was asked.
+	s.expect("a publisher writes no revision and runs no check", "publisher", []exchange{
 		{http.MethodPost, s.revisions, uploadRevision("openapi.yaml", revisionSource+"# by the publisher\n"), http.StatusForbidden, "FORBIDDEN"},
 		{http.MethodPost, draft + "/check-runs", "", http.StatusForbidden, "FORBIDDEN"},
-		{http.MethodPost, first.revision + "/reviews", asking(first.check, partnerSandbox), http.StatusForbidden, "FORBIDDEN"},
-		{http.MethodPost, first.review + "/withdrawal", `{}`, http.StatusForbidden, "FORBIDDEN"},
-		{http.MethodPost, first.review + "/decision", deciding("REJECTED", "not mine to say", time.Time{}), http.StatusForbidden, "FORBIDDEN"},
 	})
 	refusals := s.recorded(func(row audited) bool { return row.Subject == "publisher" && row.Outcome != "SUCCEEDED" })
-	for action, want := range map[string]int{
-		"revision.create": 1, "revision.check": 1, "review.request": 1, "review.withdraw": 1, "review.reject": 1,
-	} {
+	for action, want := range map[string]int{"revision.create": 1, "revision.check": 1} {
 		if got := s.on("publisher", action, "DENY-03", false); got != want {
 			t.Errorf("%d refusals of %s are on record, want %d: %v", got, action, want, refusals)
 		}
 	}
-	if occurrences(refusals) != 5 || s.count("contractregistry.contract_revision") != 2 || s.count("policyreview.check_run") != 1 ||
+	if occurrences(refusals) != 2 || s.count("contractregistry.contract_revision") != 2 || s.count("policyreview.check_run") != 1 ||
 		s.count("policyreview.review_request") != 1 || s.count("policyreview.review_conclusion") != 1 {
 		t.Errorf("the refusals are on record as %v; %d revisions, %d checks, %d reviews and %d conclusions are stored",
 			refusals, s.count("contractregistry.contract_revision"), s.count("policyreview.check_run"),

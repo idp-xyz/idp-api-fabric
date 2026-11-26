@@ -39,8 +39,8 @@ func New(deps Dependencies) (*Publication, error) {
 		return nil, errors.New("publication needs transactions, storage, authority, audit, outbox, clock and identifiers")
 	}
 	if p := deps.Partner; p != nil && (p.ProductID == "" || p.TargetID == "" || p.ProductActive == nil ||
-		p.Allowed == nil || p.ReadApproved == nil) {
-		return nil, errors.New("partner publication needs a product, target, grant authority and approved artifact reader")
+		p.Allowed == nil || p.Read == nil) {
+		return nil, errors.New("partner publication needs a product, target, grant authority and artifact reader")
 	}
 	return &Publication{deps: deps}, nil
 }
@@ -114,17 +114,13 @@ func (s *Publication) ListTargets(ctx context.Context, request domain.Request, a
 	return TargetPage{Items: items[:limit], Next: &ports.TargetPosition{At: last.CreatedAt, ID: last.ID}}, nil
 }
 
-// GetSlot reads what a slot points at, whether an access block stands
-// between that release and whoever asks for its artifact, and whether the
-// approval the release rests on still holds. A block is why the artifact is
-// not served, and the read that is refused says nothing of it. The approval
-// status explains whether the release could be activated today and also
-// governs whether the partner origin can serve it.
+// GetSlot reads what a slot points at and whether an access block stands
+// between that release and whoever asks for its artifact. A block is why the
+// artifact is not served, and the read that is refused says nothing of it.
 func (s *Publication) GetSlot(ctx context.Context, request domain.Request) (domain.SlotView, error) {
 	var result domain.SlotView
 	err := s.deps.Transactions.WithinTransaction(ctx, func(tx context.Context) error {
-		access, err := s.asset(tx, request, false)
-		if err != nil {
+		if _, err := s.asset(tx, request, false); err != nil {
 			return err
 		}
 		target, err := s.target(tx, request, ports.HoldTarget)
@@ -135,7 +131,7 @@ func (s *Publication) GetSlot(ctx context.Context, request domain.Request) (doma
 		if err != nil {
 			return err
 		}
-		result, err = s.view(tx, request, access.WorkspaceID, target, slot)
+		result, err = s.view(tx, request, target, slot)
 		return err
 	})
 	return result, s.refused(ctx, request, "publication.read", "PublicationSlot", err)
@@ -206,13 +202,14 @@ func (s *Publication) ChangeSlot(ctx context.Context, request domain.Request, ch
 }
 
 // checkActivation decides whether a release is put on a slot. An activation
-// puts it there on an approval that holds for the target now, on a check
-// that compared its revision with what the slot served last. A restoration
-// returns the slot to a release it served before, which is what a publisher
-// falls back to when what is served has to go: the release has to be in the
-// history of the slot. Partner restorations require a current approval.
-// Both take a product that admits work, a target that serves, no access
-// block and a publisher who had no part in the revision.
+// puts it there on the check it was prepared on, which compared its revision
+// with what the slot served last where that is another revision. A
+// restoration returns the slot to a release it served before, which is what
+// a publisher falls back to when what is served has to go: the release has
+// to be in the history of the slot. Both take a product that admits work, a
+// target that serves and no access block. Neither asks whether the check
+// would be made the same way under the policy and the tools of today: that
+// was asked when the release was prepared.
 func (s *Publication) checkActivation(ctx context.Context, request domain.Request, access ports.AssetAccess, target domain.Target, slot domain.Slot, op domain.Operation) error {
 	if !access.Active {
 		return ErrProductSuspended
@@ -228,8 +225,7 @@ func (s *Publication) checkActivation(ctx context.Context, request domain.Reques
 		return ErrBlocked
 	}
 	var baseline string
-	returning := op.Action == domain.Restore
-	if returning {
+	if op.Action == domain.Restore {
 		if slot.ID == "" {
 			return domain.ErrNotInHistory
 		}
@@ -246,8 +242,7 @@ func (s *Publication) checkActivation(ctx context.Context, request domain.Reques
 			return err
 		}
 	}
-	return s.deps.Authority.Admission(ctx, request, access.WorkspaceID, target, op.ReleaseID, baseline,
-		returning && target.Audience == "internal")
+	return s.deps.Authority.Admission(ctx, request, access.WorkspaceID, op.ReleaseID, baseline)
 }
 
 type OperationPage struct {
@@ -285,10 +280,7 @@ func (s *Publication) ListOperations(ctx context.Context, request domain.Request
 // ActiveArtifact serves only through the current pointer. The shared target
 // lock orders this authorization with block changes while the membership and
 // configuration locks order it with revocation. What the pointer names is
-// served for as long as it is neither withdrawn nor blocked: an approval
-// that ran out, lost its reviewer or was overtaken by the policy and the
-// tools since stops the next release from being put there, and takes
-// nothing down. The slot says so to whoever reads it.
+// served for as long as it is neither withdrawn nor blocked.
 func (s *Publication) ActiveArtifact(ctx context.Context, request domain.Request) (ports.Artifact, error) {
 	var artifact ports.Artifact
 	err := s.deps.Transactions.WithinTransaction(ctx, func(tx context.Context) error {

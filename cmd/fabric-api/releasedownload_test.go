@@ -180,16 +180,16 @@ func TestTwoReleasesOfAnAssetAreDownloadedEachAsItself(t *testing.T) {
 // and the artifact: an access block on its target, on its asset or on the
 // release, a product that is suspended, an audience that is not configured
 // any more. A slot serves an artifact to a target, and these are what it
-// holds to. An approval that ran out and a reviewer who lost the grant are
-// not among them: the slot serves on, as the download does. A release read
-// by its identifier is served to none, and is read by whoever may read the
+// holds to. A check the tools have moved on from is not among them: the slot
+// serves on, as the download does. A release read by its identifier is served
+// to none, and is read by whoever may read the
 // release: whoever reads the revision it was prepared from. This is what
 // the contract says of the download, and what was decided of it.
 func TestAReleaseOnABlockedTargetIsStillDownloadedByItsIdentifier(t *testing.T) {
 	s := publicationFor(t)
 	target, configPath := s.target(internalSandbox, "engineering")
 	slot := assetSlot(target, s.asset)
-	_, review, id := s.released(revisionSource, "", "1.0.0")
+	revision, check, id := s.released(revisionSource, "", "1.0.0")
 	s.require(s.change(slot, "publisher", "ACTIVATE", 0, id, "", "first"), http.StatusOK, "")
 	path := s.releaseAt(id)
 	digest := s.call(http.MethodGet, path, "author", "").id("artifact_digest")
@@ -220,24 +220,12 @@ func TestAReleaseOnABlockedTargetIsStillDownloadedByItsIdentifier(t *testing.T) 
 	s.suspend("ACTIVE")
 	served("the product active again", http.StatusOK, "")
 
-	// An approval that stops holding takes the release neither off the
-	// slot nor out of reach by its identifier. The slot says what became
-	// of the approval.
-	if _, err := s.owner.Exec(t.Context(), `UPDATE policyreview.review_conclusion
-SET valid_until = concluded_at + interval '1 millisecond' WHERE review_id = $1`, review); err != nil {
-		t.Fatal(err)
-	}
-	served("an approval that ran out", http.StatusOK, "")
-	var membership string
-	if err := s.owner.QueryRow(t.Context(), `SELECT membership_id FROM productgovernance.workspace_membership
-WHERE product_id = $1 AND workspace_id = $2 AND principal_subject = 'reviewer'
-  AND role = 'internal_reviewer' AND revoked_at IS NULL`, s.product, s.workspace).Scan(&membership); err != nil {
-		t.Fatal(err)
-	}
-	s.revoke("/v1/products/"+s.product+"/workspaces/"+s.workspace+"/memberships/"+membership, "owner")
-	served("a reviewer who lost the grant", http.StatusOK, "")
-	if shown := s.call(http.MethodGet, slot, "publisher", ""); shown.body["approval_problem"] == nil || shown.body["blocked"] != false {
-		t.Fatalf("the slot reads %v, want it to name what became of the approval and no block", shown.body)
+	// A check of the revision by a later version of the tools takes the
+	// release neither off the slot nor out of reach by its identifier.
+	recordAnotherCheck(t, checkFixture{stack: s.stack}, checkRef(s, revision), check)
+	served("a check by a later version of the tools", http.StatusOK, "")
+	if shown := s.call(http.MethodGet, slot, "publisher", ""); shown.body["blocked"] != false {
+		t.Fatalf("the slot reads %v, want no block", shown.body)
 	}
 
 	s.require(s.securityRole("security", "security_admin", "owner"), http.StatusCreated, "")

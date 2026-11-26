@@ -29,14 +29,15 @@ func (s *stack) announced(eventType string) int {
 	return events
 }
 
-// released approves a revision of the source, checked against the baseline
-// if one is named, and prepares a release of it under the version.
-func (s *releaseFixture) released(source, baseline, version string) (revision, review, release string) {
+// released imports and checks a revision of the source, against the baseline
+// if one is named, and prepares a release of it under the version on that
+// check.
+func (s *releaseFixture) released(source, baseline, version string) (revision, check, release string) {
 	s.t.Helper()
-	revision, review = s.approve(source, baseline, internalSandbox)
-	prepared := s.prepare(revision, review, version, "publisher")
+	revision, check = s.checkedRevision(source, baseline)
+	prepared := s.prepare(revision, check, version, "publisher")
 	s.require(prepared, http.StatusCreated, "")
-	return revision, review, prepared.id("release_id")
+	return revision, check, prepared.id("release_id")
 }
 
 func (s *releaseFixture) suspend(status string) {
@@ -48,11 +49,10 @@ func (s *releaseFixture) suspend(status string) {
 
 // A publisher of the workspace changes what a slot serves, and whoever
 // reads the revisions of the workspace reads the slot, its history and what
-// it serves. Whoever had a part in a revision does not put a release of it
-// on a slot, publisher or not, and takes it down like any publisher: a
-// withdrawal asks for the role and for nothing else. Every change says what
-// it does, to which generation, under which key.
-func TestASlotIsChangedByAPublisherWhoHadNoPartInTheRevision(t *testing.T) {
+// it serves. A publisher who imported and checked the revision puts it on a
+// slot and takes it down like any other: nobody has to be independent of it.
+// Every change says what it does, to which generation, under which key.
+func TestASlotIsChangedByAPublisherOfTheWorkspace(t *testing.T) {
 	s := publicationFor(t)
 	target, _ := s.target(internalSandbox, "engineering")
 	slot := assetSlot(target, s.asset)
@@ -66,10 +66,6 @@ func TestASlotIsChangedByAPublisherWhoHadNoPartInTheRevision(t *testing.T) {
 	}
 	s.require(s.change(slot, "stranger", "ACTIVATE", 0, id, "", "first"), http.StatusNotFound, "PRODUCT_NOT_FOUND")
 	s.join(s.product, s.workspace, "owner", "author", "internal_publisher")
-	s.join(s.product, s.workspace, "owner", "reviewer", "internal_publisher")
-	for _, caller := range []string{"author", "reviewer"} {
-		s.require(s.change(slot, caller, "ACTIVATE", 0, id, "", "first"), http.StatusForbidden, "PUBLISHER_NOT_INDEPENDENT")
-	}
 	if rows := s.count("publication.slot") + s.count("publication.operation"); rows != 0 {
 		t.Fatalf("the refusals left %d rows of slots and operations", rows)
 	}
@@ -88,8 +84,8 @@ func TestASlotIsChangedByAPublisherWhoHadNoPartInTheRevision(t *testing.T) {
 		{"ACTIVATE", ids.NewUUID(), "", http.StatusNotFound, "RELEASE_NOT_FOUND"},
 	})
 
-	// Whoever had a part in the revision takes it down, and does not put
-	// it back.
+	// Whoever imported and checked the revision takes it down, and puts it
+	// back.
 	down := s.change(slot, "author", "WITHDRAW", 1, "", "wrong audience", "down")
 	s.require(down, http.StatusOK, "")
 	if down.body["generation"] != float64(2) || down.body["action"] != "WITHDRAW" || down.body["release_id"] != nil ||
@@ -103,8 +99,7 @@ func TestASlotIsChangedByAPublisherWhoHadNoPartInTheRevision(t *testing.T) {
 		t.Fatalf("the slot after the withdrawal: %d %v", withdrawn.status, withdrawn.body)
 	}
 	s.expectChanges("nothing is withdrawn twice", slot, 2, []change{{"WITHDRAW", "", "again", http.StatusConflict, "NO_ACTIVE_RELEASE"}})
-	s.require(s.change(slot, "author", "RESTORE", 2, id, "back again", "up"), http.StatusForbidden, "PUBLISHER_NOT_INDEPENDENT")
-	up := s.change(slot, "publisher", "RESTORE", 2, id, "back again", "up")
+	up := s.change(slot, "author", "RESTORE", 2, id, "back again", "up")
 	s.require(up, http.StatusOK, "")
 	if up.body["generation"] != float64(3) || up.body["action"] != "RESTORE" || up.body["release_id"] != id ||
 		up.body["previous_release_id"] != nil || up.body["reason"] != "back again" {
@@ -157,7 +152,7 @@ func TestASlotIsChangedByAPublisherWhoHadNoPartInTheRevision(t *testing.T) {
 		step := item.(map[string]any)
 		steps = append(steps, fmt.Sprintf("%v %v by %v", step["generation"], step["action"], step["performed_by"].(map[string]any)["subject"]))
 	}
-	if want := []string{"1 ACTIVATE by publisher", "2 WITHDRAW by author", "3 RESTORE by publisher"}; !reflect.DeepEqual(steps, want) ||
+	if want := []string{"1 ACTIVATE by publisher", "2 WITHDRAW by author", "3 RESTORE by author"}; !reflect.DeepEqual(steps, want) ||
 		history.body["next_after_generation"] != nil {
 		t.Errorf("the history of the slot is %v, want %v and nothing after it", steps, want)
 	}
@@ -172,13 +167,12 @@ func TestASlotIsChangedByAPublisherWhoHadNoPartInTheRevision(t *testing.T) {
 	}{
 		{"publisher", "publication.activate", "AC-04", true, 1},
 		{"author", "publication.withdraw", "AC-05", true, 1},
-		{"publisher", "publication.restore", "AC-04", true, 1},
-		{"author", "publication.activate", "DENY-03", false, 2},
-		{"reviewer", "publication.activate", "DENY-03", false, 2},
+		{"author", "publication.restore", "AC-04", true, 1},
+		{"author", "publication.activate", "DENY-03", false, 1},
+		{"reviewer", "publication.activate", "DENY-03", false, 1},
 		{"coauthor", "publication.activate", "DENY-03", false, 1},
 		{"maintainer", "publication.activate", "DENY-03", false, 1},
 		{"owner", "publication.activate", "DENY-03", false, 1},
-		{"author", "publication.restore", "DENY-03", false, 1},
 	} {
 		if got := s.on(c.subject, c.action, c.rule, c.done); got != c.want {
 			t.Errorf("%d records of %s by %s under %s, want %d", got, c.action, c.subject, c.rule, c.want)
@@ -218,9 +212,8 @@ func (s *releaseFixture) expectChanges(when, slot string, generation int64, chan
 	}
 }
 
-// A slot takes a release of another revision when the check that revision
-// was approved on compared it with what the slot served last, withdrawn or
-// not; another release of the same revision needs no comparison. A slot
+// A slot takes a release of another revision when the check that release
+// rests on compared it with what the slot served last, withdrawn or not; another release of the same revision needs no comparison. A slot
 // returns to any release it served before, and to no other.
 func TestASlotTakesWhatWasComparedWithItsLastReleaseAndReturnsToWhatItServed(t *testing.T) {
 	s := publicationFor(t)
@@ -232,8 +225,8 @@ func TestASlotTakesWhatWasComparedWithItsLastReleaseAndReturnsToWhatItServed(t *
 	slot, elsewhere := assetSlot(target, s.asset), assetSlot(second.header.Get("Location"), s.asset)
 	source := func(version string) string { return strings.ReplaceAll(revisionSource, "v1", version) }
 
-	firstRevision, firstReview, first := s.released(revisionSource, "", "1.0.0")
-	patch := s.prepare(firstRevision, firstReview, "1.0.1", "publisher")
+	firstRevision, firstCheck, first := s.released(revisionSource, "", "1.0.0")
+	patch := s.prepare(firstRevision, firstCheck, "1.0.1", "publisher")
 	s.require(patch, http.StatusCreated, "")
 	secondRevision, _, next := s.released(source("v2"), firstRevision, "2.0.0")
 	_, _, third := s.released(source("v3"), secondRevision, "3.0.0")

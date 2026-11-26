@@ -172,8 +172,10 @@ func TestRunUpgradesTheReviewBuildForPublication(t *testing.T) {
 		t.Fatal(err)
 	}
 	publicationSteps := []string{"contractregistry/004_immutable_release", "productgovernance/008_publication_roles", "publication/001_targets_and_slots"}
-	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool { return slices.Contains(publicationSteps, step.ID) })
-	if len(plan)-len(before) != len(publicationSteps) {
+	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool {
+		return slices.Contains(publicationSteps, step.ID) || slices.Contains(checkRelease, step.ID)
+	})
+	if len(plan)-len(before) != len(publicationSteps)+len(checkRelease) {
 		t.Fatal("the plan is missing a publication migration")
 	}
 	if err := migrate.Apply(t.Context(), conn, quiet, before); err != nil {
@@ -554,7 +556,7 @@ func TestRunLeavesTheSnapshotsOfTheBuildBeforeGitOriginsAsTheUploadsTheyAre(t *t
 	// Keep the current tables to exercise the history guard for Git origins.
 	// The release table's foreign key only uses the original revision columns.
 	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool {
-		return step.ID == gitOrigin || step.ID == reviewState
+		return step.ID == gitOrigin || step.ID == reviewState || slices.Contains(checkRelease, step.ID)
 	})
 	if len(before) == len(plan) {
 		t.Fatalf("the plan does not carry %s; this test would pass vacuously", gitOrigin)
@@ -963,6 +965,9 @@ func TestRunLetsAReviewBeDecidedAndLeavesTheWithdrawalsOfTheBuildBeforeWhatTheyA
 	// this one nor the ones that came after it.
 	var later []string
 	before := slices.DeleteFunc(slices.Clone(plan), func(step migrate.Step) bool {
+		if slices.Contains(checkRelease, step.ID) {
+			return true
+		}
 		if step.Schema != "policyreview" || step.ID < reviewDecision {
 			return false
 		}
@@ -1023,23 +1028,30 @@ func TestRunLetsAReviewBeDecidedAndLeavesTheWithdrawalsOfTheBuildBeforeWhatTheyA
 	if _, err := app.Exec(t.Context(), recordPolicy, snapshot, cargopai); err != nil {
 		t.Fatalf("record a policy as the build before: %v", err)
 	}
-	// Four revisions, each checked and in review.
+	// Four revisions, each checked and in review, and three more that are
+	// put in review once the database is migrated.
 	reviews := []string{
 		"a1b2c3d4-0001-4a5b-8c6d-7e8f9a0b1c2d", "a1b2c3d4-0002-4a5b-8c6d-7e8f9a0b1c2d",
 		"a1b2c3d4-0003-4a5b-8c6d-7e8f9a0b1c2d", "a1b2c3d4-0004-4a5b-8c6d-7e8f9a0b1c2d",
+		"a1b2c3d4-0005-4a5b-8c6d-7e8f9a0b1c2d", "a1b2c3d4-0006-4a5b-8c6d-7e8f9a0b1c2d",
+		"a1b2c3d4-0007-4a5b-8c6d-7e8f9a0b1c2d",
 	}
-	for i, review := range reviews {
+	ask := func(i int) {
+		t.Helper()
 		revision := "b2c3d4e5-000" + string(rune('1'+i)) + "-4b6c-9d7e-8f9a0b1c2d3e"
 		check := "c3d4e5f6-000" + string(rune('1'+i)) + "-4c7d-ae8f-9a0b1c2d3e4f"
 		if _, err := app.Exec(t.Context(), recordCheck, check, cargopai, team, shipping, revision, snapshot, digest); err != nil {
 			t.Fatalf("record a check as the build before: %v", err)
 		}
-		if _, err := app.Exec(t.Context(), recordRequest, review, cargopai, team, shipping, revision, check, digest); err != nil {
+		if _, err := app.Exec(t.Context(), recordRequest, reviews[i], cargopai, team, shipping, revision, check, digest); err != nil {
 			t.Fatalf("record a request as the build before: %v", err)
 		}
-		if _, err := app.Exec(t.Context(), recordScope, review); err != nil {
+		if _, err := app.Exec(t.Context(), recordScope, reviews[i]); err != nil {
 			t.Fatalf("record a scope as the build before: %v", err)
 		}
+	}
+	for i := range 4 {
+		ask(i)
 	}
 	if _, err := app.Exec(t.Context(), withdraw, reviews[0], "the wrong baseline"); err != nil {
 		t.Fatalf("withdraw a review as the build before: %v", err)
@@ -1083,9 +1095,14 @@ func TestRunLetsAReviewBeDecidedAndLeavesTheWithdrawalsOfTheBuildBeforeWhatTheyA
 		t.Errorf("a waiver by the role as that build granted it: got %v, want it refused for lack of privilege", err)
 	}
 
-	// That build is still running while this one is rolled out, and
-	// withdraws a review the way it does.
-	if _, err := app.Exec(t.Context(), withdraw, reviews[1], nil); err != nil {
+	// The reviews that were open are withdrawn by a later step of the plan
+	// (reviewsWithdrawn): no review is decided any more. That build is still
+	// running while this one is rolled out, and asks for reviews and
+	// withdraws one the way it does.
+	for i := 4; i < len(reviews); i++ {
+		ask(i)
+	}
+	if _, err := app.Exec(t.Context(), withdraw, reviews[4], nil); err != nil {
 		t.Fatalf("withdraw a review as the build before, after the migration: %v", err)
 	}
 
@@ -1100,16 +1117,16 @@ func TestRunLetsAReviewBeDecidedAndLeavesTheWithdrawalsOfTheBuildBeforeWhatTheyA
 
 	// Granted, the role records a decision: an approval with what it
 	// waives, and a rejection. What is no decision is still refused.
-	if _, err := app.Exec(t.Context(), decide, reviews[2], "APPROVED", nil, "2027-02-17T10:00:00Z"); err != nil {
+	if _, err := app.Exec(t.Context(), decide, reviews[5], "APPROVED", nil, "2027-02-17T10:00:00Z"); err != nil {
 		t.Errorf("an approval once the role is granted: %v", err)
 	}
-	if _, err := app.Exec(t.Context(), waive, reviews[2]); err != nil {
+	if _, err := app.Exec(t.Context(), waive, reviews[5]); err != nil {
 		t.Errorf("a waiver once the role is granted: %v", err)
 	}
-	if _, err := app.Exec(t.Context(), decide, reviews[3], "REJECTED", nil, nil); sqlState(err) != checkViolation {
+	if _, err := app.Exec(t.Context(), decide, reviews[6], "REJECTED", nil, nil); sqlState(err) != checkViolation {
 		t.Errorf("a rejection without a reason: got %v, want a check violation", err)
 	}
-	if _, err := app.Exec(t.Context(), decide, reviews[3], "REJECTED", "the partner team asked for paging first", nil); err != nil {
+	if _, err := app.Exec(t.Context(), decide, reviews[6], "REJECTED", "the partner team asked for paging first", nil); err != nil {
 		t.Errorf("a rejection once the role is granted: %v", err)
 	}
 
@@ -1131,14 +1148,18 @@ func TestRunLetsAReviewBeDecidedAndLeavesTheWithdrawalsOfTheBuildBeforeWhatTheyA
 	if err != nil {
 		t.Fatalf("read the conclusions: %v", err)
 	}
+	retired := "Withdrawn when reviews were retired by CR-0001: a release is prepared on a check and needs no approval."
 	want := []conclusion{
 		{reviews[0], "WITHDRAWN", "the wrong baseline", false, 0},
-		{reviews[1], "WITHDRAWN", "", false, 0},
-		{reviews[2], "APPROVED", "", true, 1},
-		{reviews[3], "REJECTED", "the partner team asked for paging first", false, 0},
+		{reviews[1], "WITHDRAWN", retired, false, 0},
+		{reviews[2], "WITHDRAWN", retired, false, 0},
+		{reviews[3], "WITHDRAWN", retired, false, 0},
+		{reviews[4], "WITHDRAWN", "", false, 0},
+		{reviews[5], "APPROVED", "", true, 1},
+		{reviews[6], "REJECTED", "the partner team asked for paging first", false, 0},
 	}
 	if !slices.Equal(got, want) {
-		t.Errorf("the conclusions are\n %+v\nwant the withdrawals as they were and the decisions of this build\n %+v", got, want)
+		t.Errorf("the conclusions are\n %+v\nwant the withdrawals as they were, those of the reviews left open and the decisions of that build\n %+v", got, want)
 	}
 }
 

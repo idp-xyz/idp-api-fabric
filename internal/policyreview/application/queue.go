@@ -45,10 +45,9 @@ type QueueDependencies struct {
 	Audit   func(context.Context, ports.AuditEntry) error
 }
 
-// ReviewQueue is the use case of reading the reviews that wait in a
-// workspace, and those that were decided there, in the order they were asked
-// for: what a reviewer looks at to find what to decide, and what an author
-// looks at to find what became of what it asked.
+// ReviewQueue is the use case of reading the reviews of a workspace, in the
+// order they were asked for: the record of what was asked there and how it
+// ended. No review is asked for any more, so none waits for a decision.
 type ReviewQueue struct {
 	deps QueueDependencies
 }

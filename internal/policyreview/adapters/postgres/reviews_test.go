@@ -1,13 +1,17 @@
 package postgres_test
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"go.idp.xyz/idp-api-fabric/internal/platform/db"
@@ -21,6 +25,7 @@ import (
 var (
 	reviewTool = domain.Tool{Name: "fabric-openapi-rules", Version: "test"}
 	carol      = domain.Principal{Issuer: "https://issuer.example", Subject: "carol"}
+	rita       = domain.Principal{Issuer: "https://issuer.example", Subject: "rita"}
 )
 
 type reviewFixture struct {
@@ -28,6 +33,9 @@ type reviewFixture struct {
 	fabric  *db.Database
 	checks  *postgres.CheckRuns
 	reviews *postgres.Reviews
+	// app is a connection of the role a process connects with, which the
+	// reviews of before are recorded under.
+	app *pgx.Conn
 }
 
 func newReviewFixture(t *testing.T) (*reviewFixture, pgtest.Database) {
@@ -40,6 +48,7 @@ func newReviewFixture(t *testing.T) (*reviewFixture, pgtest.Database) {
 	t.Cleanup(fabric.Close)
 	return &reviewFixture{
 		t: t, fabric: fabric, checks: postgres.NewCheckRuns(fabric.Framework), reviews: postgres.NewReviews(fabric.Framework),
+		app: pgtest.Connect(t, database.Application),
 	}, database
 }
 
@@ -83,17 +92,145 @@ func (f *reviewFixture) check(revision domain.RevisionRef, failed ...string) dom
 	return run
 }
 
+// No review is asked for or concluded any more (CR-0001), and the adapter
+// only reads them. The reviews these tests read are written as the build
+// before recorded them, with the statements it ran.
+
+// instant is a time as the tables keep it.
+func instant(at time.Time) time.Time { return at.UTC().Truncate(time.Microsecond) }
+
+// ask is a request carol made of the revision of the check, for the scope,
+// as the model kept it: the scope in the order of its audiences, then of its
+// environments.
 func (f *reviewFixture) ask(run domain.CheckRun, at time.Time, scope ...domain.Target) domain.ReviewRequest {
-	f.t.Helper()
-	request, err := domain.RequestReview(ids.NewUUID(), run, domain.Baseline(), []domain.Tool{reviewTool}, scope, "ready for partners", carol, at)
-	if err != nil {
-		f.t.Fatal(err)
+	ordered := slices.Clone(scope)
+	slices.SortFunc(ordered, func(a, b domain.Target) int {
+		return cmp.Or(strings.Compare(a.Audience, b.Audience), strings.Compare(a.Environment, b.Environment))
+	})
+	return domain.ReviewRequest{
+		ID: ids.NewUUID(), Revision: run.Revision, CheckRunID: run.ID, InputDigest: run.InputDigest, Scope: ordered,
+		Note: "ready for partners", RequestedBy: carol, RequestedAt: instant(at),
 	}
-	return request
 }
 
-func (f *reviewFixture) within(work func(context.Context) error) error {
-	return f.fabric.WithinTransaction(f.t.Context(), work)
+// withdrawal, approval and rejection are the conclusions a review could
+// have, as the model gave them: an approval waives its rules in their order.
+func withdrawal(review domain.Review, by domain.Principal, reason string, at time.Time) domain.Conclusion {
+	return domain.Conclusion{ReviewID: review.Request.ID, Outcome: domain.ReviewWithdrawn, Reason: reason, ConcludedBy: by, ConcludedAt: instant(at)}
+}
+
+func approval(review domain.Review, reason string, at, until time.Time, waivers ...domain.Waiver) domain.Conclusion {
+	conclusion := domain.Conclusion{
+		ReviewID: review.Request.ID, Outcome: domain.ReviewApproved, Reason: reason, ConcludedBy: rita,
+		ConcludedAt: instant(at), ValidUntil: instant(until),
+	}
+	for _, waiver := range waivers {
+		waiver.ExpiresAt = instant(waiver.ExpiresAt)
+		conclusion.Waivers = append(conclusion.Waivers, waiver)
+	}
+	slices.SortFunc(conclusion.Waivers, func(a, b domain.Waiver) int { return strings.Compare(a.RuleID, b.RuleID) })
+	return conclusion
+}
+
+func rejection(review domain.Review, reason string, at time.Time) domain.Conclusion {
+	return domain.Conclusion{ReviewID: review.Request.ID, Outcome: domain.ReviewRejected, Reason: reason, ConcludedBy: rita, ConcludedAt: instant(at)}
+}
+
+// nullable is what the tables keep of a word nobody said.
+func nullable(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+// record stores a request, as the build before did when it was asked for:
+// at the version the status of the revision took, with its scope.
+func (f *reviewFixture) record(request domain.ReviewRequest, version int64) error {
+	tx, err := f.app.Begin(f.t.Context())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(f.t.Context()) }()
+	revision := request.Revision
+	if _, err := tx.Exec(f.t.Context(), `
+INSERT INTO policyreview.review_request (
+    review_id, product_id, workspace_id, api_asset_id, revision_id, revision_status_version, check_run_id,
+    input_digest, note, requested_at, requested_by_issuer, requested_by_subject, supplementary
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, request.ID, revision.ProductID, revision.WorkspaceID, revision.AssetID,
+		revision.RevisionID, version, request.CheckRunID, request.InputDigest, nullable(request.Note),
+		request.RequestedAt, request.RequestedBy.Issuer, request.RequestedBy.Subject, request.Supplementary); err != nil {
+		return fmt.Errorf("store a review request: %w", err)
+	}
+	var audiences, environments []string
+	for _, target := range request.Scope {
+		audiences, environments = append(audiences, target.Audience), append(environments, target.Environment)
+	}
+	if _, err := tx.Exec(f.t.Context(), `
+INSERT INTO policyreview.review_scope (review_id, audience, environment)
+SELECT $1::uuid, * FROM unnest($2::text[], $3::text[])`, request.ID, audiences, environments); err != nil {
+		return fmt.Errorf("store the scope of a review: %w", err)
+	}
+	return tx.Commit(f.t.Context())
+}
+
+// conclude stores a conclusion, with the waivers of an approval, as the build
+// before did when the review ended.
+func (f *reviewFixture) conclude(conclusion domain.Conclusion) error {
+	tx, err := f.app.Begin(f.t.Context())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(f.t.Context()) }()
+	var validUntil *time.Time
+	if !conclusion.ValidUntil.IsZero() {
+		validUntil = &conclusion.ValidUntil
+	}
+	if _, err := tx.Exec(f.t.Context(), `
+INSERT INTO policyreview.review_conclusion (
+    review_id, outcome, reason, concluded_at, concluded_by_issuer, concluded_by_subject, valid_until
+) VALUES ($1,$2,$3,$4,$5,$6,$7)`, conclusion.ReviewID, string(conclusion.Outcome), nullable(conclusion.Reason),
+		conclusion.ConcludedAt, conclusion.ConcludedBy.Issuer, conclusion.ConcludedBy.Subject, validUntil); err != nil {
+		return fmt.Errorf("store the conclusion of a review: %w", err)
+	}
+	if len(conclusion.Waivers) > 0 {
+		var (
+			rules, reasons []string
+			controls       []*string
+			expiries       []time.Time
+		)
+		for _, waiver := range conclusion.Waivers {
+			rules, reasons = append(rules, waiver.RuleID), append(reasons, waiver.Reason)
+			controls, expiries = append(controls, nullable(waiver.CompensatingControl)), append(expiries, waiver.ExpiresAt)
+		}
+		if _, err := tx.Exec(f.t.Context(), `
+INSERT INTO policyreview.review_waiver (review_id, rule_id, reason, compensating_control, expires_at)
+SELECT $1::uuid, * FROM unnest($2::text[], $3::text[], $4::text[], $5::timestamptz[])`,
+			conclusion.ReviewID, rules, reasons, controls, expiries); err != nil {
+			return fmt.Errorf("store the waivers of a review: %w", err)
+		}
+	}
+	return tx.Commit(f.t.Context())
+}
+
+// asked stores the request and fails the test if it cannot be stored.
+func (f *reviewFixture) asked(request domain.ReviewRequest, version int64) domain.Review {
+	f.t.Helper()
+	if err := f.record(request, version); err != nil {
+		f.t.Fatal(err)
+	}
+	return domain.Review{Request: request}
+}
+
+// concluded stores the conclusion of the review and fails the test if it
+// cannot be stored.
+func (f *reviewFixture) concluded(review domain.Review, conclusion domain.Conclusion) domain.Review {
+	f.t.Helper()
+	if err := f.conclude(conclusion); err != nil {
+		f.t.Fatal(err)
+	}
+	review.Conclusion = &conclusion
+	return review
 }
 
 func stateOf(err error) string {
@@ -104,12 +241,12 @@ func stateOf(err error) string {
 	return ""
 }
 
-// A request is stored with its scope and read back as it was asked, under
-// the revision it is of and no other. Its conclusion is stored once. A
-// revision is in review under one request at a time: a second request at
-// the same version of its status is refused, and one at a later version is
-// the next review of its history.
-func TestAReviewIsStoredOnceAndReadUnderItsRevision(t *testing.T) {
+// A review that was recorded is read back as it was asked, with its scope and
+// its conclusion, under the revision it is of and no other, and the history
+// of a revision is its reviews in the order they were asked for. The tables
+// held a revision to one request at a time, at the version its status took,
+// and a review to one conclusion.
+func TestAReviewIsReadBackAsItWasRecordedUnderItsRevision(t *testing.T) {
 	f, _ := newReviewFixture(t)
 	revision := revisionRef()
 	run := f.check(revision)
@@ -117,13 +254,7 @@ func TestAReviewIsStoredOnceAndReadUnderItsRevision(t *testing.T) {
 	partner := domain.Target{Audience: "partner", Environment: "sandbox"}
 	request := f.ask(run, asked, partner, domain.Target{Audience: "internal", Environment: "production"})
 
-	if err := f.reviews.Request(t.Context(), request, 2); err == nil {
-		t.Fatal("a request was stored outside a transaction")
-	}
-	if err := f.within(func(ctx context.Context) error { return f.reviews.Request(ctx, request, 2) }); err != nil {
-		t.Fatal(err)
-	}
-	open := domain.Review{Request: request}
+	open := f.asked(request, 2)
 	if got, found, err := f.reviews.Find(t.Context(), revision, request.ID); err != nil || !found || !reflect.DeepEqual(got, open) {
 		t.Fatalf("read back %+v found %t, want %+v: %v", got, found, open, err)
 	}
@@ -147,38 +278,22 @@ func TestAReviewIsStoredOnceAndReadUnderItsRevision(t *testing.T) {
 	}
 
 	// One request at a version of the status of the revision.
-	twice := f.ask(run, asked.Add(time.Minute), partner)
-	err := f.within(func(ctx context.Context) error { return f.reviews.Request(ctx, twice, 2) })
-	if stateOf(err) != "23505 review_request_once_key" {
+	if err := f.record(f.ask(run, asked.Add(time.Minute), partner), 2); stateOf(err) != "23505 review_request_once_key" {
 		t.Errorf("a second request at the same version: got %v, want it refused by review_request_once_key", err)
 	}
 
-	conclusion, err := domain.Withdraw(open, carol, "the wrong baseline", asked.Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := f.reviews.Conclude(t.Context(), conclusion); err == nil {
-		t.Fatal("a conclusion was stored outside a transaction")
-	}
-	if err := f.within(func(ctx context.Context) error { return f.reviews.Conclude(ctx, conclusion) }); err != nil {
-		t.Fatal(err)
-	}
-	concluded := domain.Review{Request: request, Conclusion: &conclusion}
+	concluded := f.concluded(open, withdrawal(open, carol, "the wrong baseline", asked.Add(time.Hour)))
 	if got, _, err := f.reviews.Find(t.Context(), revision, request.ID); err != nil || !reflect.DeepEqual(got, concluded) {
 		t.Fatalf("read back %+v, want %+v: %v", got, concluded, err)
 	}
-	err = f.within(func(ctx context.Context) error { return f.reviews.Conclude(ctx, conclusion) })
-	if stateOf(err) != "23505 review_conclusion_pkey" {
+	if err := f.conclude(*concluded.Conclusion); stateOf(err) != "23505 review_conclusion_pkey" {
 		t.Errorf("a second conclusion: got %v, want it refused by the key of the table", err)
 	}
 
 	// The next review of the revision, and the history in the order it was
 	// asked in, page by page.
-	again := f.ask(run, asked.Add(2*time.Hour), partner)
-	if err := f.within(func(ctx context.Context) error { return f.reviews.Request(ctx, again, 4) }); err != nil {
-		t.Fatal(err)
-	}
-	history := []domain.Review{concluded, {Request: again}}
+	again := f.asked(f.ask(run, asked.Add(2*time.Hour), partner), 4)
+	history := []domain.Review{concluded, again}
 	if listed, err := f.reviews.List(t.Context(), revision, nil, 10); err != nil || !reflect.DeepEqual(listed, history) {
 		t.Fatalf("the history is %+v, want %+v: %v", listed, history, err)
 	}
@@ -187,10 +302,10 @@ func TestAReviewIsStoredOnceAndReadUnderItsRevision(t *testing.T) {
 		t.Fatalf("the first page of one: %+v, %v", first, err)
 	}
 	behind, err := f.reviews.List(t.Context(), revision, &ports.Position{At: request.RequestedAt, ID: request.ID}, 10)
-	if err != nil || len(behind) != 1 || behind[0].Request.ID != again.ID {
+	if err != nil || len(behind) != 1 || behind[0].Request.ID != again.Request.ID {
 		t.Fatalf("the page behind the first review: %+v, %v", behind, err)
 	}
-	if last, err := f.reviews.List(t.Context(), revision, &ports.Position{At: again.RequestedAt, ID: again.ID}, 10); err != nil || len(last) != 0 {
+	if last, err := f.reviews.List(t.Context(), revision, &ports.Position{At: again.Request.RequestedAt, ID: again.Request.ID}, 10); err != nil || len(last) != 0 {
 		t.Errorf("the page behind the last review: %+v, %v", last, err)
 	}
 }
@@ -209,36 +324,25 @@ func TestTheTablesHoldAReviewToItsCheckAndItsScope(t *testing.T) {
 	// A check of another revision is no evidence for this one.
 	misplaced := f.ask(run, asked, partner)
 	misplaced.CheckRunID = foreign.ID
-	err := f.within(func(ctx context.Context) error { return f.reviews.Request(ctx, misplaced, 2) })
-	if stateOf(err) != "23503 review_request_check_fkey" {
+	if err := f.record(misplaced, 2); stateOf(err) != "23503 review_request_check_fkey" {
 		t.Errorf("a request on the check of another revision: got %v, want it refused by review_request_check_fkey", err)
 	}
 	// A revision is recorded at version 1, so no request finds it there.
-	err = f.within(func(ctx context.Context) error { return f.reviews.Request(ctx, f.ask(run, asked, partner), 1) })
-	if !strings.HasPrefix(stateOf(err), "23514 ") {
+	if err := f.record(f.ask(run, asked, partner), 1); !strings.HasPrefix(stateOf(err), "23514 ") {
 		t.Errorf("a request at version 1 of the status: got %v, want a check violation", err)
 	}
 	foreignScope := f.ask(run, asked, partner)
 	foreignScope.Scope = []domain.Target{{Audience: "customers", Environment: "sandbox"}}
-	err = f.within(func(ctx context.Context) error { return f.reviews.Request(ctx, foreignScope, 2) })
-	if !strings.HasPrefix(stateOf(err), "23514 ") {
+	if err := f.record(foreignScope, 2); !strings.HasPrefix(stateOf(err), "23514 ") {
 		t.Errorf("a scope with an audience there is not: got %v, want a check violation", err)
 	}
 	if listed, err := f.reviews.List(t.Context(), revision, nil, 10); err != nil || len(listed) != 0 {
 		t.Fatalf("the refused requests left %d reviews: %v", len(listed), err)
 	}
 
-	request := f.ask(run, asked, partner)
-	if err := f.within(func(ctx context.Context) error { return f.reviews.Request(ctx, request, 2) }); err != nil {
-		t.Fatal(err)
-	}
-	conclusion, err := domain.Withdraw(domain.Review{Request: request}, carol, "", asked.Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := f.within(func(ctx context.Context) error { return f.reviews.Conclude(ctx, conclusion) }); err != nil {
-		t.Fatal(err)
-	}
+	open := f.asked(f.ask(run, asked, partner), 2)
+	request := open.Request
+	f.concluded(open, withdrawal(open, carol, "", asked.Add(time.Hour)))
 
 	app := pgtest.Connect(t, database.Application)
 	for name, statement := range map[string]string{

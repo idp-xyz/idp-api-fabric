@@ -21,9 +21,10 @@ const (
 	servedConfig = "70000000-0000-4000-8000-000000000001"
 )
 
-// lapsed is why the approval of a release does not hold, as the authority
-// says it to whoever asks to put the release on a slot.
-var lapsed = errors.New("the approval of the release does not hold")
+// uncompared is why the authority does not admit a release, as it says it
+// to whoever asks to put the release on a slot: its check did not compare
+// the revision with the one the slot served last.
+var uncompared = errors.New("the check did not compare against the active revision")
 
 // publishing stands in for what the use cases of one slot reach besides
 // what listing answers: the slot the store has and its history, and what
@@ -36,9 +37,11 @@ type publishing struct {
 	// that took no operation yet.
 	held domain.Slot
 	// history are the releases the slot served, and latest the one it
-	// served last.
-	history []string
-	latest  string
+	// served last. audience is the audience of the configuration of the
+	// target, internal unless a test says otherwise.
+	history  []string
+	latest   string
+	audience string
 	// refusing is what the authority answers to whoever puts a release on
 	// the slot, and unreadable what it answers to a read of an artifact.
 	refusing, unreadable error
@@ -79,13 +82,14 @@ func (p *publishing) Apply(ctx context.Context, _ domain.Slot, op domain.Operati
 
 func (p *publishing) Config(ctx context.Context, _, config string) (string, string, error) {
 	p.did(ctx, "Config %s", config)
+	if p.audience != "" {
+		return p.audience, "sandbox", nil
+	}
 	return "internal", "sandbox", nil
 }
 
-func (p *publishing) Admission(ctx context.Context, request domain.Request, workspace string, target domain.Target,
-	release, previous string, returning bool) error {
-	p.did(ctx, "Admission of %s of the asset %s in %s on %s after %q, %s", release, request.AssetID, workspace, target.ID, previous,
-		map[bool]string{false: "for the first time", true: "returning"}[returning])
+func (p *publishing) Admission(ctx context.Context, request domain.Request, workspace, release, previous string) error {
+	p.did(ctx, "Admission of %s of the asset %s in %s after %q", release, request.AssetID, workspace, previous)
 	return p.refusing
 }
 
@@ -120,7 +124,7 @@ func onSlot() *publishing {
 		listing: &listing{
 			targets: map[string]domain.Target{listedTarget: target},
 			access:  ports.AssetAccess{WorkspaceID: engineering, Reader: true, ArtifactReader: true, Publisher: true, Active: true},
-			blocked: map[string]bool{}, unapproved: map[string]error{},
+			blocked: map[string]bool{},
 		},
 		held: domain.Slot{
 			ID: servedSlot, ProductID: listedProduct, TargetID: listedTarget, AssetID: firstAsset,
@@ -149,13 +153,12 @@ func reached() []string {
 
 // A release is put on a slot in one of two ways, and they ask different
 // things. An activation puts it there for the first time: the authority is
-// asked to admit it on an approval that holds, against the release the slot
-// served last, and the history of the slot is not looked at. A restoration
-// returns the slot to a release: the release has to be in the history of
-// the slot, nothing is compared, and the authority is asked to admit it as
-// a release that returns, which is how it knows not to ask whether the
-// approval still holds. A withdrawal puts nothing on the slot and asks the
-// authority nothing more than who the caller is.
+// asked to admit it against the release the slot served last, and the
+// history of the slot is not looked at. A restoration returns the slot to a
+// release: the release has to be in the history of the slot, and the
+// authority is asked to admit it against nothing. Neither asks whether the
+// check of the release would pass today. A withdrawal puts nothing on the
+// slot and asks the authority nothing more than who the caller is.
 func TestAReleaseIsPutOnASlotForTheFirstTimeOrReturnsToIt(t *testing.T) {
 	changes := map[string]struct {
 		change domain.Change
@@ -171,7 +174,7 @@ func TestAReleaseIsPutOnASlotForTheFirstTimeOrReturnsToIt(t *testing.T) {
 				"1 Config " + servedConfig,
 				"1 HasBlock " + firstAsset + "/" + newRelease + " on " + listedTarget,
 				"1 LatestRelease on " + servedSlot,
-				fmt.Sprintf("1 Admission of %s of the asset %s in %s on %s after %q, for the first time", newRelease, firstAsset, engineering, listedTarget, secondRelease),
+				fmt.Sprintf("1 Admission of %s of the asset %s in %s after %q", newRelease, firstAsset, engineering, secondRelease),
 				fmt.Sprintf("1 Apply ACTIVATE of %q at generation 3", newRelease),
 			},
 			applied: domain.Operation{Action: domain.Activate, PreviousReleaseID: secondRelease, ReleaseID: newRelease},
@@ -183,7 +186,7 @@ func TestAReleaseIsPutOnASlotForTheFirstTimeOrReturnsToIt(t *testing.T) {
 				"1 Config " + servedConfig,
 				"1 HasBlock " + firstAsset + "/" + firstRelease + " on " + listedTarget,
 				"1 PriorRelease " + firstRelease + " on " + servedSlot,
-				fmt.Sprintf("1 Admission of %s of the asset %s in %s on %s after %q, returning", firstRelease, firstAsset, engineering, listedTarget, ""),
+				fmt.Sprintf("1 Admission of %s of the asset %s in %s after %q", firstRelease, firstAsset, engineering, ""),
 				fmt.Sprintf("1 Apply RESTORE of %q at generation 3", firstRelease),
 			},
 			applied: domain.Operation{Action: domain.Restore, PreviousReleaseID: secondRelease, ReleaseID: firstRelease, Reason: "the second breaks clients"},
@@ -221,15 +224,58 @@ func TestAReleaseIsPutOnASlotForTheFirstTimeOrReturnsToIt(t *testing.T) {
 	}
 }
 
+// A slot of the configured partner target takes a release the way an
+// internal one does: an activation is admitted against what the slot served
+// last, and a restoration against nothing. A partner restoration used to ask
+// for an approval that still held; a release is now restored on the check it
+// was prepared on, whichever audience the target serves.
+func TestAPartnerSlotIsChangedAsAnInternalOneIs(t *testing.T) {
+	for name, c := range map[string]struct {
+		change domain.Change
+		after  string
+	}{
+		"an activation": {domain.Change{Action: domain.Activate, ExpectedGeneration: 2, ReleaseID: newRelease, IdempotencyKey: "next"}, secondRelease},
+		"a restoration": {domain.Change{Action: domain.Restore, ExpectedGeneration: 2, ReleaseID: firstRelease, Reason: "back", IdempotencyKey: "back"}, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := onSlot()
+			target := w.targets[listedTarget]
+			target.Audience = "partner"
+			w.targets[listedTarget], w.audience = target, "partner"
+			service, err := New(Dependencies{
+				Transactions: w, Store: w, Authority: w, Audit: w.record, Enqueue: w.enqueue, Clock: w, IDs: w,
+				Partner: &PartnerAccess{
+					ProductID: listedProduct, TargetID: listedTarget,
+					ProductActive: func(context.Context, string) (bool, error) { return true, nil },
+					Allowed:       func(context.Context, ports.PartnerGrantRequest) (bool, error) { return true, nil },
+					Read: func(context.Context, domain.Request, domain.Target, string) (ports.Artifact, error) {
+						return ports.Artifact{}, errors.New("a change reads no artifact")
+					},
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := service.ChangeSlot(context.Background(), slotRequest, c.change); err != nil {
+				t.Fatalf("the change of the partner slot: %v", err)
+			}
+			admission := fmt.Sprintf("1 Admission of %s of the asset %s in %s after %q", c.change.ReleaseID, firstAsset, engineering, c.after)
+			if !slices.Contains(w.asked, admission) || len(w.applied) != 1 {
+				t.Errorf("the change asked %v and applied %+v, want %q and the operation", w.asked, w.applied, admission)
+			}
+		})
+	}
+}
+
 // What the authority says of a release that is put on a slot is what the
 // change is answered: nothing is applied, recorded as done or announced. A
-// refusal for who the caller is, a publisher who had a part in the revision,
-// is on record as one, under the action that was refused; a refusal for the
-// approval of the release is a state of the release and no record of the
-// caller. The authority is asked the same of a release that returns: it
-// decides what it does not ask of one.
+// refusal of the release, a check that did not compare it with what the slot
+// served or that is not the one it recorded, is a state of the release and no
+// record of the caller. Whoever had a part in the revision is no reason: the
+// publisher may be whoever imported, checked or prepared it, and the
+// authority is not asked about that.
 func TestWhatTheAuthorityRefusesIsNotPutOnTheSlot(t *testing.T) {
-	involved := errors.Join(errors.New("the publisher recorded the revision"), ErrForbidden)
+	damaged := errors.New("the check is not the one the release recorded")
 	activate := domain.Change{Action: domain.Activate, ExpectedGeneration: 2, ReleaseID: newRelease, IdempotencyKey: "next"}
 	restore := domain.Change{Action: domain.Restore, ExpectedGeneration: 2, ReleaseID: firstRelease, Reason: "the second breaks clients", IdempotencyKey: "back"}
 	for name, c := range map[string]struct {
@@ -238,10 +284,9 @@ func TestWhatTheAuthorityRefusesIsNotPutOnTheSlot(t *testing.T) {
 		// record is the action the refusal is on record under, if it is.
 		record string
 	}{
-		"an activation under an approval that does not hold": {activate, lapsed, ""},
-		"an activation by who had a part in the revision":    {activate, involved, "publication.activate"},
-		"a restoration the authority does not admit":         {restore, lapsed, ""},
-		"a restoration by who had a part in the revision":    {restore, involved, "publication.restore"},
+		"an activation on a check that did not compare":     {activate, uncompared, ""},
+		"an activation on a check that is not the recorded": {activate, damaged, ""},
+		"a restoration on a check that is not the recorded": {restore, damaged, ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			w := onSlot()
@@ -268,7 +313,7 @@ func TestWhatTheAuthorityRefusesIsNotPutOnTheSlot(t *testing.T) {
 // refused before the authority is asked anything of the release, whatever
 // the authority would say, and so is any release for a slot that took no
 // operation yet. An activation is not held to the history: what a slot
-// served before is activated as any release is, on an approval that holds.
+// served before is activated as any release is, against what it served last.
 func TestASlotReturnsOnlyToAReleaseItServed(t *testing.T) {
 	asked := func(w *publishing, what string) bool {
 		return slices.ContainsFunc(w.asked, func(line string) bool { return strings.Contains(line, what) })
@@ -298,31 +343,28 @@ func TestASlotReturnsOnlyToAReleaseItServed(t *testing.T) {
 	}
 
 	// The first release, which the slot served, is activated as a release
-	// that is new to it: compared with what the slot served last, and
-	// admitted for the first time.
+	// that is new to it: compared with what the slot served last.
 	w = onSlot()
 	again := domain.Change{Action: domain.Activate, ExpectedGeneration: 2, ReleaseID: firstRelease, IdempotencyKey: "again"}
 	if _, err := w.service(t).ChangeSlot(context.Background(), slotRequest, again); err != nil {
 		t.Fatal(err)
 	}
-	admission := fmt.Sprintf("1 Admission of %s of the asset %s in %s on %s after %q, for the first time", firstRelease, firstAsset, engineering, listedTarget, secondRelease)
+	admission := fmt.Sprintf("1 Admission of %s of the asset %s in %s after %q", firstRelease, firstAsset, engineering, secondRelease)
 	if !slices.Contains(w.asked, admission) || asked(w, "PriorRelease") {
 		t.Errorf("the activation of a release the slot served asked %v, want %q and the history not asked", w.asked, admission)
 	}
 }
 
-// What a slot points at is served without a word about its approval. The
-// read asks who the caller is to the asset, holds the target, asks whether
-// the target serves, reads the slot, asks whether a block covers the
-// release, and reads the artifact: the authority is asked neither whether
-// the approval of the release holds nor to admit it, so that an approval
-// that does not hold changes nothing of what is served. A read that is
-// served leaves no record.
-func TestWhatASlotPointsAtIsServedWithoutAskingAboutItsApproval(t *testing.T) {
+// What a slot points at is served without a word about its check. The read
+// asks who the caller is to the asset, holds the target, asks whether the
+// target serves, reads the slot, asks whether a block covers the release,
+// and reads the artifact: the authority is not asked to admit it, so that
+// what it would say of the release today changes nothing of what is served.
+// A read that is served leaves no record.
+func TestWhatASlotPointsAtIsServedWithoutAskingAboutItsCheck(t *testing.T) {
 	w := onSlot()
-	// The approval of what the slot points at does not hold, and the
-	// authority would admit nothing.
-	w.unapproved[secondRelease], w.refusing = lapsed, lapsed
+	// The authority would admit nothing.
+	w.refusing = uncompared
 	got, err := w.service(t).ActiveArtifact(context.Background(), slotRequest)
 	if want := (ports.Artifact{Digest: "sha256:" + strings.Repeat("d", 64), Payload: []byte(secondRelease)}); err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v and %v, want the artifact of the release the slot points at: %+v", got, err, want)
@@ -344,7 +386,7 @@ func TestWhatASlotPointsAtIsServedWithoutAskingAboutItsApproval(t *testing.T) {
 }
 
 // What keeps an artifact from being served is said by the slot, the target
-// and the product, and not by the approval: a block that covers the
+// and the product, and not by the check of the release: a block that covers the
 // release, a slot that points at none, a product that takes no work and a
 // target that does not serve. Each is answered as nothing to serve, without
 // a reason, is on record as a refusal of the read, and the artifact is not

@@ -170,6 +170,23 @@ func checkProblem(err error) (Problem, bool) {
 		return problem(http.StatusBadRequest, CodeRequestInvalid, "The baseline must be a different revision of the same API asset."), true
 	case errors.Is(err, checks.ErrProductSuspended):
 		return problem(http.StatusConflict, CodeProductNotActive, "The product is suspended and takes no new work."), true
+	case errors.Is(err, checks.ErrBaselineMismatch):
+		return problem(http.StatusConflict, "COMPATIBILITY_BASELINE_MISMATCH", "The release must rest on a check against the last active revision."), true
+	case errors.Is(err, domain.ErrCheckStale):
+		return problem(http.StatusConflict, "POLICY_STALE",
+			"The check was not made under the policy and by the tool versions a check is made with now. Run the check again."), true
+	case errors.Is(err, domain.ErrReleaseBlocked):
+		return problem(http.StatusConflict, "RELEASE_BLOCKED",
+			"In the check, rules that nothing waives failed or could not be judged. No release is prepared on such a check."), true
+	case errors.Is(err, domain.ErrWaiverMissing):
+		return problem(http.StatusConflict, "WAIVER_REQUIRED",
+			"Rules failed or could not be judged in the check. A release waives each of them by name."), true
+	case errors.Is(err, domain.ErrWaiverForbidden):
+		return problem(http.StatusUnprocessableEntity, "WAIVER_FORBIDDEN", "A rule that nothing waives cannot be waived."), true
+	case errors.Is(err, domain.ErrReleaseCheckMissing):
+		return problem(http.StatusConflict, "RELEASE_CHECK_INCOMPLETE", "A mandatory contract check lacks evidence."), true
+	case errors.Is(err, domain.ErrInvalidWaiver):
+		return problem(http.StatusUnprocessableEntity, CodeRequestUnprocessable, ""), true
 	default:
 		return reviewProblem(err)
 	}

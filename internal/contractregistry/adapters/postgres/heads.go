@@ -43,6 +43,7 @@ SELECT r.revision_id, r.source_snapshot_id, r.product_id, r.workspace_id,
        r.captured_by_issuer, r.captured_by_subject,
        l.release_id, l.revision_id, l.review_id, l.check_run_id, l.policy_snapshot_id, l.policy_digest,
        l.input_digest, l.artifact_digest, l.release_version, l.prepared_at, l.prepared_by_issuer, l.prepared_by_subject,
+       l.waivers,
        EXISTS (SELECT 1 FROM contractregistry.contract_release x
                WHERE x.product_id = $1 AND x.api_asset_id = t.api_asset_id AND x.revision_id = r.revision_id)
 FROM unnest($2::text[]::uuid[], $3::text[]::uuid[]) AS t(api_asset_id, workspace_id)
@@ -60,7 +61,7 @@ JOIN LATERAL (
     LIMIT 1) r ON true
 LEFT JOIN LATERAL (
     SELECT release_id, revision_id, review_id, check_run_id, policy_snapshot_id, policy_digest, input_digest,
-           artifact_digest, release_version, prepared_at, prepared_by_issuer, prepared_by_subject
+           artifact_digest, release_version, prepared_at, prepared_by_issuer, prepared_by_subject, waivers
     FROM contractregistry.contract_release
     WHERE product_id = $1 AND api_asset_id = t.api_asset_id AND workspace_id = t.workspace_id
     ORDER BY prepared_at DESC, release_id DESC
@@ -70,11 +71,13 @@ func scanHead(row pgx.CollectableRow) (ports.Head, error) {
 	var head ports.Head
 	revision := &head.Revision
 	// The columns of a release are all there or all absent: the statement
-	// joins one row or none.
+	// joins one row or none. Only the review may be absent from a release
+	// that is there: one prepared on its check alone names none.
 	var (
 		releaseID, releaseRevision, review, check, snapshot, policy, input, artifact *string
 		version, issuer, subject                                                     *string
 		preparedAt                                                                   *time.Time
+		waivers                                                                      []byte
 	)
 	if err := row.Scan(&revision.ID, &revision.SourceSnapshotID, &revision.Asset.ProductID, &revision.Asset.WorkspaceID,
 		&revision.Asset.AssetID, &revision.Sequence, &revision.Status, &revision.StatusVersion, &revision.SourceKind,
@@ -82,30 +85,38 @@ func scanHead(row pgx.CollectableRow) (ports.Head, error) {
 		&revision.Entrypoint, &revision.SpecVersion, &revision.SourceDigest, &revision.RefClosureDigest, &revision.CreatedAt,
 		&revision.CreatedBy.Issuer, &revision.CreatedBy.Subject,
 		&releaseID, &releaseRevision, &review, &check, &snapshot, &policy, &input, &artifact,
-		&version, &preparedAt, &issuer, &subject, &head.Released); err != nil {
+		&version, &preparedAt, &issuer, &subject, &waivers, &head.Released); err != nil {
 		return ports.Head{}, err
 	}
 	revision.CreatedAt = revision.CreatedAt.UTC()
 	if releaseID == nil {
 		return head, nil
 	}
-	for _, member := range []*string{releaseRevision, review, check, snapshot, policy, input, artifact, version, issuer, subject} {
+	for _, member := range []*string{releaseRevision, check, snapshot, policy, input, artifact, version, issuer, subject} {
 		if member == nil {
 			return ports.Head{}, fmt.Errorf("the last release %s of asset %s is not whole", *releaseID, revision.Asset.AssetID)
 		}
 	}
-	if preparedAt == nil {
+	if preparedAt == nil || waivers == nil {
 		return ports.Head{}, fmt.Errorf("the last release %s of asset %s is not whole", *releaseID, revision.Asset.AssetID)
 	}
-	head.Release = &domain.Release{
-		ID: *releaseID, Asset: revision.Asset, RevisionID: *releaseRevision, ReviewID: *review,
-		Approval:       domain.ApprovalEvidence{CheckRunID: *check, PolicySnapshotID: *snapshot, PolicyDigest: *policy},
+	release := &domain.Release{
+		ID: *releaseID, Asset: revision.Asset, RevisionID: *releaseRevision,
+		Evidence:       domain.CheckEvidence{CheckRunID: *check, PolicySnapshotID: *snapshot, PolicyDigest: *policy},
 		Version:        *version,
 		InputDigest:    *input,
 		ArtifactDigest: *artifact,
 		PreparedAt:     preparedAt.UTC(),
 		PreparedBy:     domain.Principal{Issuer: *issuer, Subject: *subject},
 	}
+	if review != nil {
+		release.ReviewID = *review
+	}
+	var err error
+	if release.Waivers, err = readWaivers(waivers); err != nil {
+		return ports.Head{}, err
+	}
+	head.Release = release
 	return head, nil
 }
 

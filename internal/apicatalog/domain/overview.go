@@ -63,8 +63,8 @@ type Overview struct {
 	LatestCheck *OverviewCheck
 	// LatestRelease is nil while the asset has no release.
 	LatestRelease *OverviewRelease
-	// ReleasePending says that the last revision is approved and that no
-	// release was prepared from it. It says nothing of whether the approval
-	// still holds: a release asks that when it is prepared.
+	// ReleasePending says that the last revision has a check and that no
+	// release was prepared from it. It says nothing of whether that check
+	// lets a release be prepared: a release asks that when it is prepared.
 	ReleasePending bool
 }

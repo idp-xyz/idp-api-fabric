@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"go.idp.xyz/idp-api-fabric/internal/platform/db/pgtest"
 	"go.idp.xyz/idp-api-fabric/internal/platform/ids"
@@ -43,7 +42,10 @@ func (s *releaseFixture) target(scope [2]string, portal string) (path, configPat
 	return target.header.Get("Location"), base + "/audience-configs/" + config.id("audience_config_id")
 }
 
-func (s *releaseFixture) approve(source, baselineID string, scopes ...[2]string) (revisionID, reviewID string) {
+// checkedRevision imports the source as the author and checks it, against
+// the revision of baselineID if one is named. It returns the revision and the
+// check a release of it is prepared on.
+func (s *releaseFixture) checkedRevision(source, baselineID string) (revisionID, checkID string) {
 	s.t.Helper()
 	imported := s.call(http.MethodPost, s.revisions, "author", uploadRevision("openapi.yaml", source))
 	s.require(imported, http.StatusCreated, "")
@@ -54,21 +56,25 @@ func (s *releaseFixture) approve(source, baselineID string, scopes ...[2]string)
 	}
 	checked := s.call(http.MethodPost, checkPath, "author", "")
 	s.require(checked, http.StatusCreated, "")
-	checkID := checked.body["check_run"].(map[string]any)["check_run_id"].(string)
-	review := s.call(http.MethodPost, s.revisions+"/"+revisionID+"/reviews", "author", asking(checkID, scopes...))
-	s.require(review, http.StatusCreated, "")
-	reviewID = review.id("review_id")
-	approved := s.call(http.MethodPost, review.header.Get("Location")+"/decision", "reviewer",
-		deciding("APPROVED", "", time.Now().Add(time.Hour)))
-	s.require(approved, http.StatusOK, "")
-	return revisionID, reviewID
+	return revisionID, checked.body["check_run"].(map[string]any)["check_run_id"].(string)
 }
 
-func (s *releaseFixture) prepare(revision, review, version, caller string) answer {
+// waiver is a rule a release is prepared with a waiver of, and why.
+type waiver struct{ rule, reason string }
+
+// prepare asks for a release of the revision under the version, on the check
+// and with the waivers, as the caller.
+func (s *releaseFixture) prepare(revision, check, version, caller string, waivers ...waiver) answer {
 	s.t.Helper()
-	return s.call(http.MethodPost, s.asset+"/releases", caller, jsonBody(map[string]string{
-		"revision_id": revision, "review_id": review, "version": version,
-	}))
+	body := map[string]any{"revision_id": revision, "check_run_id": check, "version": version}
+	if len(waivers) > 0 {
+		given := make([]map[string]string, 0, len(waivers))
+		for _, w := range waivers {
+			given = append(given, map[string]string{"rule_id": w.rule, "reason": w.reason})
+		}
+		body["waivers"] = given
+	}
+	return s.call(http.MethodPost, s.asset+"/releases", caller, jsonBody(body))
 }
 
 func (s *releaseFixture) change(slot, actor, action string, generation int64, releaseID, reason, key string) answer {
@@ -147,14 +153,15 @@ func TestPublicationStageKeepsImmutableReleasesAndRecoversSlots(t *testing.T) {
 	s := publicationFor(t)
 	target, _ := s.target(internalSandbox, "engineering")
 	slot := assetSlot(target, s.asset)
-	revision, review := s.approve(revisionSource, "", internalSandbox)
-	s.require(s.prepare(revision, review, "1.0.0", "author"), http.StatusForbidden, "FORBIDDEN")
+	revision, check := s.checkedRevision(revisionSource, "")
+	s.require(s.prepare(revision, check, "1.0.0", "author"), http.StatusForbidden, "FORBIDDEN")
+	// Whoever imported and checked the revision prepares its release once
+	// it is a publisher as well: nobody has to be independent of it.
 	s.join(s.product, s.workspace, "owner", "author", "internal_publisher")
-	s.require(s.prepare(revision, review, "1.0.0", "author"), http.StatusForbidden, "PUBLISHER_NOT_INDEPENDENT")
-	first := s.prepare(revision, review, "1.0.0", "publisher")
+	first := s.prepare(revision, check, "1.0.0", "author")
 	s.require(first, http.StatusCreated, "")
 	firstID := first.id("release_id")
-	if again := s.prepare(revision, review, "1.0.0", "publisher"); again.status != http.StatusOK || again.id("release_id") != firstID {
+	if again := s.prepare(revision, check, "1.0.0", "publisher"); again.status != http.StatusOK || again.id("release_id") != firstID {
 		t.Fatalf("retry did not return the same release: %d %v", again.status, again.body)
 	}
 	s.require(s.prepare(revision, ids.NewUUID(), "1.0.0", "publisher"), http.StatusConflict, "RELEASE_VERSION_CONFLICT")
@@ -196,8 +203,8 @@ func TestPublicationStageKeepsImmutableReleasesAndRecoversSlots(t *testing.T) {
 	s.requireArtifact(slot, first.id("artifact_digest"), revisionSource)
 
 	secondSource := strings.ReplaceAll(revisionSource, "v1", "v2")
-	secondRevision, secondReview := s.approve(secondSource, revision, internalSandbox)
-	second := s.prepare(secondRevision, secondReview, "2.0.0", "publisher")
+	secondRevision, secondCheck := s.checkedRevision(secondSource, revision)
+	second := s.prepare(secondRevision, secondCheck, "2.0.0", "publisher")
 	s.require(second, http.StatusCreated, "")
 	releases := s.call(http.MethodGet, s.asset+"/releases?page_size=1", "publisher", "")
 	s.require(releases, http.StatusOK, "")
@@ -214,8 +221,8 @@ func TestPublicationStageKeepsImmutableReleasesAndRecoversSlots(t *testing.T) {
 	other.reviewFixture = &otherReview
 	other.revisions = s.revisionAsset(s.product, s.workspace, "maintainer", "tracking-api", "HTTP")
 	other.asset = strings.TrimSuffix(other.revisions, "/revisions")
-	otherRevision, otherDecision := other.approve(revisionSource, "", internalSandbox)
-	otherRelease := other.prepare(otherRevision, otherDecision, "1.0.0", "publisher")
+	otherRevision, otherCheck := other.checkedRevision(revisionSource, "")
+	otherRelease := other.prepare(otherRevision, otherCheck, "1.0.0", "publisher")
 	s.require(otherRelease, http.StatusCreated, "")
 	otherSlot := assetSlot(target, other.asset)
 	s.require(s.change(otherSlot, "publisher", "ACTIVATE", 0, otherRelease.id("release_id"), "", key), http.StatusOK, "")
@@ -273,18 +280,18 @@ func TestPublicationStageRejectsMissingEvidenceAndRollsBackAnOutboxFailure(t *te
 	s := publicationFor(t)
 	target, configPath := s.target(internalSandbox, "engineering")
 	slot := assetSlot(target, s.asset)
-	production, _ := s.target([2]string{"internal", "production"}, "engineering")
 	external, _ := s.target(partnerSandbox, "developers")
-	targets := s.call(http.MethodGet, "/v1/products/"+s.product+"/publication-targets?page_size=2", "publisher", "")
+	targets := s.call(http.MethodGet, "/v1/products/"+s.product+"/publication-targets?page_size=1", "publisher", "")
 	s.require(targets, http.StatusOK, "")
-	if len(targets.body["items"].([]any)) != 2 || targets.id("next_page_token") == "" {
+	if len(targets.body["items"].([]any)) != 1 || targets.id("next_page_token") == "" {
 		t.Fatalf("unexpected target page %v", targets.body)
 	}
-	revision, review := s.approve(revisionSource, "", internalSandbox, partnerSandbox)
-	release := s.prepare(revision, review, "1.0.0", "publisher")
+	revision, check := s.checkedRevision(revisionSource, "")
+	// A release rests on a check of its revision that was recorded.
+	s.require(s.prepare(revision, ids.NewUUID(), "1.0.0", "publisher"), http.StatusNotFound, "CHECK_RUN_NOT_FOUND")
+	release := s.prepare(revision, check, "1.0.0", "publisher")
 	s.require(release, http.StatusCreated, "")
 	id := release.id("release_id")
-	s.require(s.change(assetSlot(production, s.asset), "publisher", "ACTIVATE", 0, id, "", "first"), http.StatusConflict, "APPROVAL_SCOPE_MISMATCH")
 	s.require(s.change(assetSlot(external, s.asset), "publisher", "ACTIVATE", 0, id, "", "first"), http.StatusConflict, "PUBLICATION_TARGET_UNAVAILABLE")
 	s.require(s.call(http.MethodGet, slot+"/artifact", "parcel", ""), http.StatusNotFound, "PRODUCT_NOT_FOUND")
 	s.require(s.change(slot, "publisher", "RESTORE", 0, id, "nothing published yet", "before-first"), http.StatusConflict, "RELEASE_NOT_IN_SLOT_HISTORY")
@@ -306,8 +313,8 @@ CHECK (event_type <> 'fabric.publication.slot.activated')`); err != nil {
 	if s.count("publication.operation") != 1 || s.count("platformoperations.audit_record") != auditCount+1 || s.count("bento.outbox") != eventCount+1 {
 		t.Fatal("the successful retry did not commit one operation, audit record and event")
 	}
-	thirdRevision, thirdReview := s.approve(strings.ReplaceAll(revisionSource, "v1", "v3"), "", internalSandbox)
-	third := s.prepare(thirdRevision, thirdReview, "3.0.0", "publisher")
+	thirdRevision, thirdCheck := s.checkedRevision(strings.ReplaceAll(revisionSource, "v1", "v3"), "")
+	third := s.prepare(thirdRevision, thirdCheck, "3.0.0", "publisher")
 	s.require(third, http.StatusCreated, "")
 	s.require(s.change(slot, "publisher", "ACTIVATE", 1, third.id("release_id"), "", "no-diff"), http.StatusConflict, "COMPATIBILITY_BASELINE_MISMATCH")
 	s.require(s.call(http.MethodDelete, configPath, "owner", ""), http.StatusNoContent, "")
@@ -315,12 +322,15 @@ CHECK (event_type <> 'fabric.publication.slot.activated')`); err != nil {
 	s.require(s.change(slot, "publisher", "WITHDRAW", 1, "", "configuration removed", "after-removal"), http.StatusOK, "")
 }
 
-func TestPublicationStageHonorsScopeAndReviewerRevocation(t *testing.T) {
+// A slot is changed within its product and for an asset of it, and a release
+// is put on it again once it was withdrawn: as a new activation, on the check
+// it was prepared on, and as a return to what it served.
+func TestPublicationStageHonorsScopeAndTakesAWithdrawnReleaseAgain(t *testing.T) {
 	s := publicationFor(t)
 	target, _ := s.target(internalSandbox, "engineering")
 	slot := assetSlot(target, s.asset)
-	revision, review := s.approve(revisionSource, "", internalSandbox)
-	release := s.prepare(revision, review, "1.0.0", "publisher")
+	revision, check := s.checkedRevision(revisionSource, "")
+	release := s.prepare(revision, check, "1.0.0", "publisher")
 	s.require(release, http.StatusCreated, "")
 	id := release.id("release_id")
 	s.require(s.change(slot, "publisher", "ACTIVATE", 0, id, "", "publish"), http.StatusOK, "")
@@ -334,24 +344,10 @@ func TestPublicationStageHonorsScopeAndReviewerRevocation(t *testing.T) {
 	s.require(s.change(assetSlot(foreignTarget, parcelAsset), "publisher", "ACTIVATE", 0, id, "", "foreign"), http.StatusNotFound, "PUBLICATION_TARGET_NOT_FOUND")
 	s.require(s.change(assetSlot(target, parcelAsset), "publisher", "ACTIVATE", 0, id, "", "foreign"), http.StatusNotFound, "API_ASSET_NOT_FOUND")
 
-	var membership string
-	if err := s.owner.QueryRow(t.Context(), `SELECT membership_id FROM productgovernance.workspace_membership
-WHERE product_id = $1 AND workspace_id = $2 AND principal_subject = 'reviewer'
-  AND role = 'internal_reviewer' AND revoked_at IS NULL`, s.product, s.workspace).Scan(&membership); err != nil {
-		t.Fatal(err)
-	}
-	path := "/v1/products/" + s.product + "/workspaces/" + s.workspace + "/memberships/" + membership
-	s.require(s.call(http.MethodDelete, path, "owner", ""), http.StatusNoContent, "")
-	// The revocation stops the next release under that approval. What is
-	// published stays published.
+	s.require(s.change(slot, "publisher", "WITHDRAW", 1, "", "withdrawn for a while", "withdraw"), http.StatusOK, "")
+	s.require(s.change(slot, "publisher", "ACTIVATE", 2, id, "", "activate-again"), http.StatusOK, "")
 	s.requireArtifact(slot, release.id("artifact_digest"), revisionSource)
-	s.require(s.prepare(revision, review, "1.0.1", "publisher"), http.StatusConflict, "REVIEWER_AUTH_REVOKED")
-	s.join(s.product, s.workspace, "owner", "reviewer", "internal_reviewer")
-	s.require(s.prepare(revision, review, "1.0.1", "publisher"), http.StatusConflict, "REVIEWER_AUTH_REVOKED")
-	s.require(s.change(slot, "publisher", "WITHDRAW", 1, "", "reviewer grant revoked", "withdraw"), http.StatusOK, "")
-	// The slot does not take the release as a new one, and returns to it
-	// as the one it served.
-	s.require(s.change(slot, "publisher", "ACTIVATE", 2, id, "", "activate-again"), http.StatusConflict, "REVIEWER_AUTH_REVOKED")
-	s.require(s.change(slot, "publisher", "RESTORE", 2, id, "restore", "restore"), http.StatusOK, "")
+	s.require(s.change(slot, "publisher", "WITHDRAW", 3, "", "withdrawn again", "withdraw-again"), http.StatusOK, "")
+	s.require(s.change(slot, "publisher", "RESTORE", 4, id, "restore", "restore"), http.StatusOK, "")
 	s.requireArtifact(slot, release.id("artifact_digest"), revisionSource)
 }

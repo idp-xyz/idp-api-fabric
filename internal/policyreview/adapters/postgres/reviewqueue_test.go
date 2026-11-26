@@ -1,7 +1,6 @@
 package postgres_test
 
 import (
-	"context"
 	"errors"
 	"reflect"
 	"slices"
@@ -39,57 +38,41 @@ type asked struct {
 func (a asked) id() string { return a.review.Request.ID }
 
 // askIn stores the request for a review of a revision of a new asset of the
-// place, by the principal, at the instant. An empty identifier is a new one.
-// The rules that are named failed in the check, which an approval then has to
-// waive.
+// place, by the principal, at the instant, as the build before recorded one.
+// An empty identifier is a new one. The rules that are named failed in the
+// check, which an approval then had to waive.
 func (f *reviewFixture) askIn(where place, id string, by domain.Principal, at time.Time, failed ...string) asked {
 	f.t.Helper()
 	revision := domain.RevisionRef{
 		ProductID: where.product, WorkspaceID: where.workspace, AssetID: ids.NewUUID(), RevisionID: ids.NewUUID(),
 	}
 	run := f.check(revision, failed...)
-	if id == "" {
-		id = ids.NewUUID()
+	request := f.ask(run, at, queueTarget)
+	if id != "" {
+		request.ID = id
 	}
-	request, err := domain.RequestReview(id, run, domain.Baseline(), []domain.Tool{reviewTool}, []domain.Target{queueTarget}, "for the queue", by, at)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	if err := f.within(func(ctx context.Context) error { return f.reviews.Request(ctx, request, 2) }); err != nil {
-		f.t.Fatal(err)
-	}
-	return asked{review: domain.Review{Request: request}, run: run}
+	request.Note, request.RequestedBy = "for the queue", by
+	return asked{review: f.asked(request, 2), run: run}
 }
 
-// withdraw ends the review as whoever asked for it can.
+// withdraw ends the review as whoever asked for it could.
 func (f *reviewFixture) withdraw(review asked, at time.Time) asked {
 	f.t.Helper()
-	conclusion, err := domain.Withdraw(review.review, review.review.Request.RequestedBy, "no longer needed", at)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	if err := f.within(func(ctx context.Context) error { return f.reviews.Conclude(ctx, conclusion) }); err != nil {
-		f.t.Fatal(err)
-	}
-	review.review.Conclusion = &conclusion
+	review.review = f.concluded(review.review, withdrawal(review.review, review.review.Request.RequestedBy, "no longer needed", at))
 	return review
 }
 
 // approve ends the review with an approval of a day, which waives what is given.
 func (f *reviewFixture) approve(review asked, at time.Time, waivers ...domain.Waiver) asked {
 	f.t.Helper()
-	conclusion := f.decide(review.review, review.run, domain.Decision{
-		Outcome: domain.ReviewApproved, ValidUntil: at.Add(24 * time.Hour), Waivers: waivers,
-	}, at)
-	review.review.Conclusion = &conclusion
+	review.review = f.concluded(review.review, approval(review.review, "", at, at.Add(24*time.Hour), waivers...))
 	return review
 }
 
 // reject ends the review with a rejection.
 func (f *reviewFixture) reject(review asked, at time.Time) asked {
 	f.t.Helper()
-	conclusion := f.decide(review.review, review.run, domain.Decision{Outcome: domain.ReviewRejected, Reason: "not yet"}, at)
-	review.review.Conclusion = &conclusion
+	review.review = f.concluded(review.review, rejection(review.review, "not yet", at))
 	return review
 }
 
@@ -98,15 +81,9 @@ func (f *reviewFixture) reject(review asked, at time.Time) asked {
 // the approved revision has.
 func (f *reviewFixture) askAgain(of asked, by domain.Principal, at time.Time) asked {
 	f.t.Helper()
-	request, err := domain.RequestReview(ids.NewUUID(), of.run, domain.Baseline(), []domain.Tool{reviewTool}, []domain.Target{queueTarget}, "again", by, at)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	request.Supplementary = true
-	if err := f.within(func(ctx context.Context) error { return f.reviews.Request(ctx, request, 3) }); err != nil {
-		f.t.Fatal(err)
-	}
-	return asked{review: domain.Review{Request: request}, run: of.run}
+	request := f.ask(of.run, at, queueTarget)
+	request.Note, request.RequestedBy, request.Supplementary = "again", by, true
+	return asked{review: f.asked(request, 3), run: of.run}
 }
 
 func reviewIDs(reviews []domain.Review) []string {
