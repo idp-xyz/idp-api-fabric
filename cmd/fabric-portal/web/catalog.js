@@ -318,12 +318,18 @@ export function catalogPanel({ product, workspace, signal }) {
   };
   more.onclick = () => load(false);
 
+  function start() {
+    if (started) return;
+    started = true;
+    load(true);
+  }
+
   return {
     element,
-    start() {
-      if (started) return;
-      started = true;
-      load(true);
+    start,
+    open(asset) {
+      start();
+      showAsset(asset);
     },
   };
 }

@@ -173,7 +173,7 @@ func TestPortalServesTheWorkbenchAndRefusesAnHTMLAPIResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/", "/app.css", "/app.js", "/workbench.js", "/publication.js", "/access-blocks.js", "/catalog.js"} {
+	for _, path := range []string{"/", "/app.css", "/app.js", "/workbench.js", "/publication.js", "/access-blocks.js", "/catalog.js", "/dashboard.js"} {
 		got := httptest.NewRecorder()
 		handler.ServeHTTP(got, httptest.NewRequest(http.MethodGet, path, nil))
 		if got.Code != http.StatusOK || got.Body.Len() == 0 || got.Header().Get("Content-Security-Policy") == "" {
@@ -187,7 +187,7 @@ func TestPortalServesTheWorkbenchAndRefusesAnHTMLAPIResponse(t *testing.T) {
 	}
 }
 
-func TestPortalForwardsOnlyTheCatalogReads(t *testing.T) {
+func TestPortalForwardsOnlyTheCatalogAndDashboardReads(t *testing.T) {
 	const asset = "/v1/products/p/assets/a"
 	var forwarded atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -208,6 +208,7 @@ func TestPortalForwardsOnlyTheCatalogReads(t *testing.T) {
 		{http.MethodGet, "/v1/products/p/assets?workspace_id=w&q=ship&check_status=FAIL&page_size=20", http.StatusOK},
 		{http.MethodGet, asset + "/publications?page_size=100", http.StatusOK},
 		{http.MethodGet, asset + "/revisions/r/reviews?page_size=100", http.StatusOK},
+		{http.MethodGet, "/v1/products/p/publication-targets/t/assets?page_size=100", http.StatusOK},
 		{http.MethodGet, asset + "/revisions/r/source", http.StatusNotFound},
 		{http.MethodPost, "/v1/products/p/assets", http.StatusMethodNotAllowed},
 	} {
@@ -226,7 +227,7 @@ func TestPortalForwardsOnlyTheCatalogReads(t *testing.T) {
 			}
 		}
 	}
-	if got := forwarded.Load(); got != 3 {
-		t.Errorf("upstream received %d requests, want only the three catalog reads", got)
+	if got := forwarded.Load(); got != 4 {
+		t.Errorf("upstream received %d requests, want only the four catalog and dashboard reads", got)
 	}
 }

@@ -3,6 +3,7 @@ import { api, assetPath, badge, field, fill, list, node, page, productPath, revi
 import { publicationPanel } from "./publication.js";
 import { accessBlockPanel } from "./access-blocks.js";
 import { catalogPanel } from "./catalog.js";
+import { dashboardPanel } from "./dashboard.js";
 
 const el = id => document.getElementById(id);
 const productSelect = el("product");
@@ -16,7 +17,7 @@ const readers = ["workspace_maintainer", "internal_author", "internal_reviewer",
 let productRequest;
 let view;
 let caller;
-let shownView = "reviews";
+let shownView = "dashboard";
 
 function notice(text = "", error = false) {
   const item = el("notice");
@@ -38,11 +39,12 @@ function showReviewWorkspace(visible) {
 function showView(name) {
   for (const id of ["filter-field", "refresh", "reviews-view"]) el(id).hidden = name !== "reviews";
   el("catalog-view").hidden = name !== "catalog";
+  el("dashboard-view").hidden = name !== "dashboard";
   if (!name) return;
   shownView = name;
-  el("view-reviews").setAttribute("aria-pressed", String(name === "reviews"));
-  el("view-catalog").setAttribute("aria-pressed", String(name === "catalog"));
+  for (const mode of ["dashboard", "reviews", "catalog"]) el("view-" + mode).setAttribute("aria-pressed", String(name === mode));
   if (name === "catalog") view?.catalog.start();
+  if (name === "dashboard") view?.dashboard.start();
 }
 
 async function chooseProduct(preferredWorkspace = "") {
@@ -98,6 +100,7 @@ async function chooseProduct(preferredWorkspace = "") {
 }
 
 function clearWorkspace() {
+  el("dashboard-view").replaceChildren();
   el("catalog-view").replaceChildren();
   el("queue").replaceChildren();
   el("queue-status").textContent = "";
@@ -127,23 +130,38 @@ async function chooseWorkspace(product, callerInProduct) {
   };
   view = selection;
   const { signal } = selection.controller;
+  const assetsPath = productPath(product) + "/assets?workspace_id=" + segment(workspace);
+  const assets = list(assetsPath, signal).then(items => new Map(items.map(item => [item.api_asset_id, item])));
+  assets.catch(() => {});
   selection.catalog = catalogPanel({ product, workspace, signal });
+  selection.dashboard = dashboardPanel({
+    product, workspace, assets, reviews: canReadReviews, signal,
+    openReview: review => {
+      showView("reviews");
+      showReview(selection, review, true).catch(report);
+    },
+    openAsset: asset => {
+      showView("catalog");
+      selection.catalog.open(asset);
+    },
+  });
   el("catalog-view").replaceChildren(selection.catalog.element);
+  el("dashboard-view").replaceChildren(selection.dashboard.element);
   if (shownView === "catalog") selection.catalog.start();
+  if (shownView === "dashboard") selection.dashboard.start();
   if (!canReadReviews) {
     el("queue-status").textContent = "当前身份无法读取此工作区的评审。";
     return;
   }
-  const assetsPath = productPath(product) + "/assets?workspace_id=" + segment(workspace);
   const author = roles.includes("internal_author");
-  const [assets, targets] = await Promise.all([
-    list(assetsPath, signal),
+  const [visible, targets] = await Promise.all([
+    assets,
     author ? list(productPath(product) + "/audience-configs", signal) : Promise.resolve([]),
   ]);
   if (signal.aborted) return;
-  selection.assets = new Map(assets.map(item => [item.api_asset_id, item]));
+  selection.assets = visible;
   selection.targets = targets;
-  if (author) configureSubmission(selection, assets);
+  if (author) configureSubmission(selection, [...visible.values()]);
   await loadQueue(selection, true);
 }
 
@@ -436,6 +454,7 @@ async function start() {
 productSelect.onchange = () => chooseProduct().catch(report);
 el("filter").onchange = () => { if (view?.reviews) loadQueue(view, true).catch(report); };
 el("more").onclick = () => { if (view?.reviews) loadQueue(view, false).catch(report); };
+el("view-dashboard").onclick = () => showView("dashboard");
 el("view-reviews").onclick = () => showView("reviews");
 el("view-catalog").onclick = () => showView("catalog");
 el("refresh").onclick = () => chooseProduct(workspaceSelect.value).catch(report);
