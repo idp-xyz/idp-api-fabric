@@ -101,7 +101,7 @@
 <strong>直接上游</strong>：<code>docs/F01_Product_Requirements.md</code>；《IDP Supply Chain DDD Product Engineering Standard V1.0》（IDP-SCG-STD-001）<br/>
 <strong>后续承接</strong>：F03 领域与数据模型、F04 契约治理、F05 安全与多租户、F06 双门户、F07 工程质量、F08 交付验收<br/>
 <strong>文档边界</strong>：描述应如何构建，不声明系统已实现、上线、满足 SLO 或通过六道门禁。<br/>
-<strong>变更</strong>：<a href="../decisions/CR-0001.md">CR-0001</a>（2026-11-26 已决定）内部使用不再设审批，准备 Release 以检查为准。本文写到的审批、审批证据和检查/审批职责分离是取消之前的候选设计；现状见 F03 §5.15、F04 §11.6 和 F05 §6.14。</p>
+<strong>变更</strong>：<a href="../decisions/CR-0001.md">CR-0001</a>（2026-11-26 已决定）内部使用不再设审批，准备 Release 以检查为准。本文写到的审批、审批证据和检查/审批职责分离是取消之前的候选设计；现状见 F03 §5.15、F04 §11.6 和 F05 §6.14。<a href="../decisions/CR-0002.md">CR-0002</a>（2026-11-26 已决定）内部使用从简，其中目录的可重建投影 <code>AssetSearchIndex</code> 暂不建，见 §18.2 D-08。</p>
 </blockquote>
 <h2 id="section-0">0. 执行摘要与架构裁决</h2>
 <p><strong>建议的 V1.0 目标架构</strong>：一个独立于 CargoPai、IDP Parcel、IDP Brant 和 IDP Prism 的 <strong>联邦式 API 治理控制平面</strong>；业务产品保有独立的领域服务和运行时 API。控制平面优先使用 <strong>Go 模块化单体 + 持久任务 Worker</strong>，共享 PostgreSQL 权威元数据存储、不可变制品存储及可重建的查询索引。双门户以独立授权面访问同一受控能力集合；外部按产品分别发布及展示。</p>
@@ -1165,7 +1165,7 @@
 <li><strong>D-05</strong>：发布权限矩阵、关键威胁、Cookie/CSP/Token/Network 策略及保留合规由 F05 决定。</li>
 <li><strong>D-06</strong>：双门户页面与交互、WCAG 2.2 AA 验证、多语言版本降级由 F06 决定。</li>
 <li><strong>D-07</strong>：量化容量、p95、SLO、RPO/RTO、资源预算、备份演练、数据迁移与值守由 F07/F08 决定。</li>
-<li><strong>D-08</strong>：跨区域/独立客户实例、复杂搜索、事件总线和 AI Agent 等仅当真实需求触发时再行 ADR。</li>
+<li><strong>D-08</strong>：跨区域/独立客户实例、复杂搜索、事件总线和 AI Agent 等仅当真实需求触发时再行 ADR。目录列表的可重建投影 <code>AssetSearchIndex</code> 按 CR-0002 同样暂不建：资产概况在读的时候算，资产数量需要时再建索引（F03 §5.13）。</li>
 </ul>
 <h3 id="section-18-3">18.3 后续文档的明确交付边界</h3>
 <div aria-label="可横向滚动的数据表格" class="table-scroll" role="region" tabindex="0"><table>

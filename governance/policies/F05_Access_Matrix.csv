@@ -27,7 +27,7 @@ AC-25,explorer_user,ExplorerRequest,explorer.execute,sandbox,grant.active & prod
 AC-26,ci_service,ContractRevision,ci.revision.submit,service,token.audience & service.scope & source.allowed & product.same,control-plane,DENY,PROPOSED,NOT_RUN,
 AC-27,ci_service,CheckRun,ci.check.read,service,token.audience & service.scope & product.same,governance-PEP,DENY,PROPOSED,NOT_RUN,
 AC-28,worker,ImportJob,job.execute,service,workload.identity & lease.valid & job.scope & egress.restricted,worker-admission,DENY,PROPOSED,NOT_RUN,
-AC-29,internal_auditor,AuditRecord,audit.search,internal,auditor.scope & product.allowed & fields.minimized,audit-PEP,DENY,PROPOSED,NOT_RUN,
+AC-29,internal_auditor,AuditRecord,audit.search,internal,auditor.scope & product.allowed,audit-PEP,DENY,PROPOSED,NOT_RUN,CR-0002
 AC-30,auditor_exporter,AuditRecord,audit.export,internal,role.audit_export & purpose.approved & scope.finite & stepup.valid,audit-export-PEP,DENY,PROPOSED,NOT_RUN,
 AC-31,platform_operator,Connector,connector.status.read,internal,operator.scope & secrets.redacted,connector-PEP,DENY,PROPOSED,NOT_RUN,
 AC-32,connector_admin,Connector,connector.rotate,internal,role.connector_admin & stepup.valid & purpose.approved,connector-PEP,DENY,PROPOSED,NOT_RUN,
