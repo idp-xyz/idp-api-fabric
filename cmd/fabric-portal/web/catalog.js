@@ -1,5 +1,6 @@
 import { api, assetPath, badge, field, fill, list, node, page, productPath, revisionPath, segment, statuses, timestamp } from "./workbench.js";
 import { checkDetail } from "./checks.js";
+import { compareSection } from "./compare.js";
 import { publicationPanel } from "./publication.js";
 import { releaseForm } from "./releases.js";
 
@@ -315,7 +316,9 @@ export function catalogPanel({ product, productName, workspace, roles, signal })
       checkSection.append(node("h4", "检查"));
       if (author) checkSection.append(checkRunForm());
       checkSection.append(checkList, checkBox);
-      block.append(checkSection);
+      block.append(checkSection, compareSection({
+        path, revision, others: ordered.filter(item => item.revision_id !== revision.revision_id), signal: shown,
+      }));
       // Preparing needs the list of the revision's checks to choose from.
       const preparation = publisher && !checks.error ? releaseForm({
         productName, asset, revision, path, releasePath: base + "/releases", sequenceOf, signal: shown, onPrepared: prepared,

@@ -316,6 +316,7 @@ func TestPortalForwardsOnlyTheCatalogAndDashboardReads(t *testing.T) {
 		{http.MethodGet, asset + "/publications?page_size=100", http.StatusOK},
 		{http.MethodGet, asset + "/revisions/r/reviews?page_size=100", http.StatusOK},
 		{http.MethodGet, "/v1/products/p/publication-targets/t/assets?page_size=100", http.StatusOK},
+		{http.MethodGet, asset + "/revisions/r/compatibility?baseline_revision_id=b", http.StatusOK},
 		{http.MethodGet, asset + "/revisions/r/source", http.StatusNotFound},
 		{http.MethodPost, "/v1/products/p/assets", http.StatusMethodNotAllowed},
 	} {
@@ -334,7 +335,7 @@ func TestPortalForwardsOnlyTheCatalogAndDashboardReads(t *testing.T) {
 			}
 		}
 	}
-	if got := forwarded.Load(); got != 4 {
-		t.Errorf("upstream received %d requests, want only the four catalog and dashboard reads", got)
+	if got := forwarded.Load(); got != 5 {
+		t.Errorf("upstream received %d requests, want only the five catalog and dashboard reads", got)
 	}
 }
