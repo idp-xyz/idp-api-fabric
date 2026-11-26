@@ -72,6 +72,9 @@ matrix_rows_raw=[
  ('internal_author','Review','review.withdraw','internal','workspace.member & product.same & action.role & review.requester_same & review.open','control-plane','DENY_OR_404'),
  ('internal_author_or_reviewer','Review','review.read','internal','workspace.member & product.same & action.role & revision.same','control-plane','DENY_OR_404'),
  ('internal_reviewer','ContractRevision','revision.read','internal','workspace.member & product.same & action.role','control-plane','DENY_OR_404'),
+ # The review queue in F05 sections 6.10 and 6.13: the reviews of a whole
+ # workspace, with no revision named. Refusals reuse DENY-03.
+ ('product_owner_or_governance_reader','Review','review.read','internal','product.same & workspace.same & (role.product_owner OR workspace.reader_role)','control-plane','DENY_OR_404'),
 ]
 m=[]
 for i,(principal,res,action,channel,conditions,pep,fail) in enumerate(matrix_rows_raw,1):

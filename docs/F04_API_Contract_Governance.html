@@ -1021,7 +1021,69 @@
 </tr>
 </tbody>
 </table></div>
-<p>F04-GOV-014 到 020、025 到 027 这 10 条（Release 摘要链、发布授权、审批绑定、渲染清理、独立评审等）没有工具，每次检查都记为 <code>NOT_RUN</code>。F04-GOV-001、005、009、012 复核的是导入时已经执行过的限制。读文档内容的规则（001–003、005–008、011）在文件不是良构文档或超出读取上限时为 <code>UNKNOWN</code>；004 和 010 按行读原始字节，注释里的内容也在内。F04-GOV-004 和 010 按已知的形式匹配，<code>PASS</code> 只说明没有匹配到这些形式，不是“没有凭证”的证明。发现的说明不复述命中的内容。</p>
+<p>F04-GOV-014 到 020、025 到 027 这 10 条管的是 Release、发布、评审和渲染，检查一个修订时这些还不存在，所以检查里没有工具评估它们，每次检查都记为 <code>NOT_RUN</code>。它们在检查之外的环节执行，或者现在不适用，见下表。准备 Release 和发布时，阻断级规则是 <code>NOT_RUN</code> 会被拒绝（409 <code>RELEASE_CHECK_INCOMPLETE</code>，§11.6），这 10 条和不带基线时的 F04-GOV-013 除外（<code>internal/policyreview/application/approval.go</code> 的 <code>outsideContractChecks</code>）。所以一次检查的 <code>status</code> 仍只会是 <code>FAIL</code> 或 <code>UNKNOWN</code>，但批准和发布不因这 10 条被挡。登记表没有随之修改，是否把它们移出检查时的策略，待裁决。</p>
+<div aria-label="可左右滚动的 API 治理与测试表格" class="table-scroll" role="region" tabindex="0"><table>
+<thead>
+<tr>
+<th>规则</th>
+<th>在哪里执行</th>
+<th>见</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F04-GOV-014 摘要链</td>
+<td>准备 Release 时绑定修订的闭包摘要，制品按 SHA-256 寻址，读出时重新核对</td>
+<td>§11.6、F03 §5.10</td>
+</tr>
+<tr>
+<td>F04-GOV-015 发布范围、CAS 与阻断</td>
+<td>槽位按目标 × 资产唯一，改变槽位要带 <code>expected_generation</code>；经槽位读取时逐次检查阻断。按编号下载不看阻断，与设计不一致，待裁决</td>
+<td>§11.6、F05 §6.9</td>
+</tr>
+<tr>
+<td>F04-GOV-016 策略快照与批准</td>
+<td>准备 Release、<code>ACTIVATE</code> 和 <code>RESTORE</code> 时重新核对批准的范围、到期、豁免和现行策略</td>
+<td>§11.6</td>
+</tr>
+<tr>
+<td>F04-GOV-017 渲染清理</td>
+<td>内部门户不使用 <code>innerHTML</code> 这类写入 HTML 的接口；开发者门户用 <code>html/template</code> 转义契约文本</td>
+<td><code>cmd/fabric-portal</code>、<code>cmd/fabric-developer-portal</code></td>
+</tr>
+<tr>
+<td>F04-GOV-018 工具与输入的来源</td>
+<td>每次检查都记录 <code>tool_manifest</code> 和 <code>input_digest</code>，由检查记录本身满足</td>
+<td>本节“检查全文”</td>
+</tr>
+<tr>
+<td>F04-GOV-019 产品规则不削弱全局规则</td>
+<td>现在只有全局策略集 <code>fabric-global-contract-governance</code>，没有产品级规则，暂不适用</td>
+<td>—</td>
+</tr>
+<tr>
+<td>F04-GOV-020 不支持的规范不能发布</td>
+<td>导入只接受 OpenAPI 3.1.2；F04-GOV-001、009、011 判断不了时为 <code>UNKNOWN</code>，三条都不可豁免，提交评审返回 409 <code>REVIEW_BLOCKED</code></td>
+<td>§11.3、§11.5</td>
+</tr>
+<tr>
+<td>F04-GOV-025 评审人独立</td>
+<td>作决定时排除登记人、检查发起人和提交人；准备 Release 和发布时，发布人不能参与过这个修订</td>
+<td>§11.5、§11.6</td>
+</tr>
+<tr>
+<td>F04-GOV-026 私有 API 不进公开索引</td>
+<td>还没有公开门户和搜索；合作方读取绑定一个 <code>partner</code> 目标，要登录，暂不适用</td>
+<td><code>cmd/fabric-api/PARTNER.md</code></td>
+</tr>
+<tr>
+<td>F04-GOV-027 外部状态不冒充最新</td>
+<td>交付状态和边缘传播状态如实报告为 <code>UNKNOWN</code></td>
+<td>§11.6</td>
+</tr>
+</tbody>
+</table></div>
+<p>F04-GOV-001、005、009、012 复核的是导入时已经执行过的限制。读文档内容的规则（001–003、005–008、011）在文件不是良构文档或超出读取上限时为 <code>UNKNOWN</code>；004 和 010 按行读原始字节，注释里的内容也在内。F04-GOV-004 和 010 按已知的形式匹配，<code>PASS</code> 只说明没有匹配到这些形式，不是“没有凭证”的证明。发现的说明不复述命中的内容。</p>
 <p>登记表里 F04-GOV-011、012、013 的 <code>verification_mode</code> 仍是 <code>F07_TOOL_ADAPTER</code>。§7.1 说这一类规则不应在输出中标记 <code>PASS</code>；内置工具现在评估这三条，评估通过时给出 <code>PASS</code>。登记表没有随实现更新，这一处不一致待裁决。</p>
 <p><strong>修订比较。</strong> 比较器 <code>fabric-openapi-compatibility</code> 只比较两个修订的入口文档，并要求两边都是通过官方 Schema 的 3.1.2 文档、闭包都核对通过。它按 §5 的四类给每处差异分类，总分类取最重的一类，从重到轻是 <code>BREAKING</code>、<code>UNKNOWN</code>、<code>RISKY</code>、<code>COMPATIBLE</code>。没有列在下表里的差异一律是 <code>UNKNOWN</code>。</p>
 <div aria-label="可左右滚动的 API 治理与测试表格" class="table-scroll" role="region" tabindex="0"><table>
@@ -1144,7 +1206,7 @@
 </tbody>
 </table></div>
 <p>哪些规则需要豁免，读那次检查就知道：<code>outcomes</code> 里 <code>waivable</code> 为真、状态是 <code>FAIL</code> 或 <code>UNKNOWN</code> 的那些。基线的 23 条规则里可豁免的是 F04-GOV-002、003、007 和 013，其中 007 的级别是 <code>WARN</code>：有发现时状态是 <code>WARN</code>，不需要豁免。带基线的检查里，F04-GOV-013 在 <code>BREAKING</code> 时是 <code>FAIL</code>，在 <code>RISKY</code> 和 <code>UNKNOWN</code> 时是 <code>UNKNOWN</code>（§11.4），两种情况批准时都要豁免：破坏性变更和判断不了的变更不会被自动放行，评审人要写明理由。</p>
-<p><code>WARN</code> 和 <code>NOT_RUN</code> 的规则不需要豁免。基线里有 10 条规则没有工具，每次检查都是 <code>NOT_RUN</code>（§11.4），所以现在的批准都是在这 10 条没有评估的情况下作出的。批准绑定在那次检查上，检查里记着它们没有评估。</p>
+<p><code>WARN</code> 和 <code>NOT_RUN</code> 的规则不需要豁免。基线里有 10 条规则在检查里没有工具，每次检查都是 <code>NOT_RUN</code>（§11.4），所以批准所依据的检查没有评估这 10 条，检查里如实记着。其中 6 条在导入、评审、准备 Release、发布或渲染时执行，F04-GOV-018 由检查记录本身满足，2 条暂不适用，F04-GOV-027 靠如实报告 <code>UNKNOWN</code>（§11.4 的表）；这些执行的结果不写进检查，也不写进批准。</p>
 <p>决定的人必须没有参与被评审的东西：登记修订的人、发起那次检查的人和提交申请的人作决定，返回 403 <code>REVIEWER_NOT_INDEPENDENT</code>，批准和驳回都一样。产品暂停时不能作决定，返回 409 <code>PRODUCT_NOT_ACTIVE</code>。</p>
 <p><strong>状态和并发。</strong> 修订的 <code>status</code> 是 <code>DRAFT</code>、<code>IN_REVIEW</code>、<code>APPROVED</code>、<code>REJECTED</code>、<code>WITHDRAWN</code> 之一（F03 §5.9）。每个写操作在事务里锁住修订再改状态，所以同时到达的几个请求只有一个成功：同时提交，其余得到 409 <code>REVISION_STATUS_CONFLICT</code>（复审是 409 <code>REVIEW_IN_PROGRESS</code>，见 §11.7）；同时决定或撤回，其余得到 409 <code>REVISION_STATUS_CONFLICT</code> 或 <code>REVIEW_CONCLUDED</code>。<code>REJECTED</code> 的修订不能再提交；<code>APPROVED</code> 的修订在 0.23.0 之前也不能，之后可以提交复审（§11.7）。相同内容再次导入，返回 200 和原来的修订，带着它现在的状态。</p>
 <p><strong>错误。</strong> 评审不属于该修订或不存在，返回 404 <code>REVIEW_NOT_FOUND</code>。请求体不符合契约（缺少必填成员、未声明的成员、取值不在枚举内、时间不是带时区的 RFC 3339、编号不是 UUID）返回 400 <code>REQUEST_INVALID</code>，三个写操作都要求有请求体。符合契约但模型不接受的（上面各表之外，还有说明或理由首尾带空白）返回 422 <code>REQUEST_UNPROCESSABLE</code>。分页令牌属于另一个修订的列表，返回 400 <code>PAGE_TOKEN_INVALID</code>。存储的评审与记录时不符（F03 §5.9）时返回 500 <code>INTERNAL_ERROR</code>，响应不说原因，日志在 <code>correlation_id</code> 下写明是哪一条评审。</p>
