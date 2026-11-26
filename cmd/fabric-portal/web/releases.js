@@ -1,4 +1,4 @@
-import { api, badge, confirmChange, field, fill, node, segment, statuses, timestamp } from "./workbench.js";
+import { api, badge, confirmChange, field, fill, loading, node, segment, statuses, timestamp } from "./workbench.js";
 import { blockers } from "./checks.js";
 
 const versionPattern = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
@@ -12,7 +12,7 @@ export function releaseForm({ productName, asset, revision, path, releasePath, s
   const form = node("form", "", "form release-form");
   const check = node("select");
   check.required = true;
-  const compared = node("p", "", "hint muted");
+  const compared = node("p", "", "hint");
   const rules = node("div");
   const version = node("input");
   version.required = true;
@@ -21,7 +21,7 @@ export function releaseForm({ productName, asset, revision, path, releasePath, s
   version.spellcheck = false;
   const submit = node("button", "准备 Release", "primary");
   submit.type = "submit";
-  const message = node("p", "", "muted");
+  const message = node("p", "", "status-line");
   message.setAttribute("role", "status");
   form.append(field("依据的检查", check, "release-check"), compared, rules, field("版本", version, "release-version"), submit, message);
 
@@ -58,18 +58,21 @@ export function releaseForm({ productName, asset, revision, path, releasePath, s
     blocked = unwaivable.length > 0;
     reasons = [];
     if (blocked) {
-      const list = node("ul", "", "checks");
+      const list = node("ul", "", "rules");
       for (const rule of unwaivable) {
         const entry = node("li");
-        entry.append(node("span", rule.rule_id + " ", "rule"), badge(rule.status), node("small", rule.description, "muted"));
+        entry.dataset.state = rule.status;
+        const line = node("div", "", "rule-line");
+        line.append(node("span", rule.rule_id, "rule"), badge(rule.status));
+        entry.append(line, node("p", rule.description, "rule-description"));
         list.append(entry);
       }
       rules.replaceChildren(node("p", "以下规则不可豁免，结论为失败或未知。此检查不能准备 Release，请修正契约后重新检查。",
-        "publication-error"), list);
+        "notice error"), list);
       return;
     }
     if (!waivable.length) {
-      rules.replaceChildren(node("p", "此检查没有失败或未知的规则，无需豁免。", "muted"));
+      rules.replaceChildren(node("p", "此检查没有失败或未知的规则，无需豁免。", "notice ok"));
       return;
     }
     const waivers = node("fieldset", "", "waivers");
@@ -80,7 +83,7 @@ export function releaseForm({ productName, asset, revision, path, releasePath, s
       input.maxLength = 1000;
       input.autocomplete = "off";
       const box = field(rule.rule_id + " 豁免理由", input, "waiver-" + rule.rule_id);
-      box.append(node("small", statuses[rule.status] + " · " + rule.description, "muted"));
+      box.append(node("small", statuses[rule.status] + " · " + rule.description, "hint"));
       reasons.push({ rule, input });
       waivers.append(box);
     }
@@ -95,7 +98,7 @@ export function releaseForm({ productName, asset, revision, path, releasePath, s
     blocked = false;
     reasons = [];
     compared.textContent = "";
-    rules.replaceChildren(check.value ? node("p", "正在读取检查…", "muted") : node("p", "请先由作者运行检查。", "muted"));
+    rules.replaceChildren(check.value ? loading("正在读取检查…") : node("p", "请先由作者运行检查。", "empty"));
     sync();
     if (!check.value) return;
     try {
@@ -104,7 +107,7 @@ export function releaseForm({ productName, asset, revision, path, releasePath, s
       detail = result;
       showRules();
     } catch (error) {
-      if (!current.aborted) rules.replaceChildren(node("p", error.message, "publication-error"));
+      if (!current.aborted) rules.replaceChildren(node("p", error.message, "notice error"));
     } finally {
       if (!current.aborted) sync();
     }

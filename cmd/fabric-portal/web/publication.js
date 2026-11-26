@@ -1,4 +1,4 @@
-import { api, assetPath, confirmChange, field, fill, list, node, productPath, segment, statuses, timestamp } from "./workbench.js";
+import { api, assetPath, badge, button, card, confirmChange, facts, field, fill, icon, list, loading, node, productPath, segment, statuses, timestamp } from "./workbench.js";
 
 const actions = { ACTIVATE: "发布", WITHDRAW: "撤销", RESTORE: "恢复" };
 const visibility = { EMPTY: "尚未发布", ACTIVE: "已生效", WITHDRAWN: "已撤销" };
@@ -11,12 +11,16 @@ const targetName = target => target.portal_key + " / " + target.audience + " / "
 export function publicationPanel({ product, productName, asset, releases: known, publisher, signal, describe = item => item.version }) {
   const root = productPath(product);
   const releasePath = assetPath(product, asset.api_asset_id) + "/releases";
-  const element = node("section", "", "detail-section publication");
-  const message = node("p", "", "muted");
+  const element = node("section", "", "publication");
+  const heading = node("h3", "", "section-title");
+  heading.append(icon("publish"), node("span", "发布"));
+  heading.id = "publication-title";
+  element.setAttribute("aria-labelledby", heading.id);
+  const message = loading("");
   message.setAttribute("role", "status");
-  const targetBoxes = node("div");
+  const targetBoxes = node("div", "", "targets");
   const others = node("div");
-  element.append(node("h4", "发布"), message, targetBoxes, others);
+  element.append(heading, message, targetBoxes, others);
 
   let releases = known || [];
   const panels = [];
@@ -32,12 +36,9 @@ export function publicationPanel({ product, productName, asset, releases: known,
 
   function targetPanel(target) {
     const suffix = "-" + target.publication_target_id;
-    const box = node("section", "", "publication-target");
-    const head = node("div", "", "section-title");
-    const refresh = node("button", "刷新");
-    refresh.type = "button";
-    head.append(node("h5", target.portal_key + " / " + target.environment), refresh);
-    const status = node("p", "", "muted");
+    const refresh = button("刷新", "small ghost", "refresh");
+    const box = card(target.portal_key + " / " + target.environment, { level: "h4", className: "publication-target", actions: [refresh] });
+    const status = node("p", "", "status-line");
     status.setAttribute("role", "status");
     const action = node("select");
     for (const [value, label] of Object.entries(actions)) action.add(new Option(label, value));
@@ -47,13 +48,14 @@ export function publicationPanel({ product, productName, asset, releases: known,
     const apply = node("button", "执行发布操作", "primary");
     apply.type = "submit";
     const slotDetails = node("div");
-    const history = node("div");
+    const history = node("div", "", "history");
     const releaseField = field("Release", release, "publication-release" + suffix);
-    const operationForm = node("form", "", "form");
-    operationForm.append(field("操作", action, "publication-action" + suffix), releaseField,
-      field("操作理由", reason, "publication-reason" + suffix), apply);
+    const reasonField = field("操作理由", reason, "publication-reason" + suffix);
+    reasonField.classList.add("wide");
+    const operationForm = node("form", "", "form operation-form");
+    operationForm.append(field("操作", action, "publication-action" + suffix), releaseField, reasonField, apply);
     operationForm.hidden = !publisher;
-    box.append(head, status, slotDetails, operationForm, history);
+    box.append(status, slotDetails, operationForm, history);
 
     let working = false;
     let slot = null;
@@ -102,15 +104,13 @@ export function publicationPanel({ product, productName, asset, releases: known,
     function showSlot() {
       slotDetails.replaceChildren();
       if (!slot) return;
-      const facts = node("dl", "", "facts");
-      for (const [label, value] of [
-        ["槽位状态", visibility[slot.visibility] || slot.visibility],
+      slotDetails.append(facts([
+        ["槽位状态", badge(slot.visibility, visibility[slot.visibility] || slot.visibility)],
         ["槽位代数", String(slot.generation)],
         ["当前 Release", slot.active_release_id ? versionOf(slot.active_release_id) : "无"],
-        ["访问阻断", slot.blocked ? "已阻断" : "无"],
-        ["边缘传播", statuses[slot.delivery_status] || slot.delivery_status],
-      ]) facts.append(node("dt", label), node("dd", value));
-      slotDetails.append(facts);
+        ["访问阻断", slot.blocked ? badge("BLOCKED", "已阻断") : "无"],
+        ["边缘传播", badge(slot.delivery_status)],
+      ], "facts grid"));
     }
 
     async function readSlot() {
@@ -124,16 +124,17 @@ export function publicationPanel({ product, productName, asset, releases: known,
       if (!Number.isSafeInteger(slot.generation) || slot.generation === 0) return;
       const after = Math.max(0, slot.generation - 10);
       const operations = await api(slotPath + "/operations?after_generation=" + after + "&page_size=10", { signal });
-      const rows = node("ul", "", "checks");
+      const rows = node("ol", "", "timeline");
       for (const op of [...operations.items].reverse()) {
         const entry = node("li");
+        entry.dataset.action = op.action;
         const name = op.release_id || op.previous_release_id;
         entry.append(node("strong", "#" + op.generation + " · " + actions[op.action] + (name ? " " + versionOf(name) : "")),
           node("small", op.performed_by.subject + " · " + timestamp(op.occurred_at), "muted"));
-        if (op.reason) entry.append(node("small", op.reason));
+        if (op.reason) entry.append(node("small", op.reason, "reason"));
         rows.append(entry);
       }
-      if (rows.childElementCount) history.append(node("h6", "最近操作"), rows);
+      if (rows.childElementCount) history.append(node("h5", "最近操作"), rows);
     }
 
     // A refresh also rereads the releases, which may have been prepared
@@ -204,7 +205,7 @@ export function publicationPanel({ product, productName, asset, releases: known,
   }
 
   function listOthers(slots, targets) {
-    const rows = node("ul", "", "checks");
+    const rows = node("ul", "", "slot-list");
     for (const slot of slots) {
       const target = targets.find(item => item.publication_target_id === slot.publication_target_id);
       if (!target || target.audience === "internal") continue;
@@ -218,7 +219,10 @@ export function publicationPanel({ product, productName, asset, releases: known,
       ].filter(Boolean).join(" · "), "muted"));
       rows.append(entry);
     }
-    if (rows.childElementCount) others.replaceChildren(node("h5", "其他发布目标"), rows);
+    if (!rows.childElementCount) return;
+    const box = card("其他发布目标", { level: "h4", className: "other-targets" });
+    box.append(rows);
+    others.replaceChildren(box);
   }
 
   async function start() {
@@ -240,9 +244,13 @@ export function publicationPanel({ product, productName, asset, releases: known,
         panel.read();
       }
       listOthers(slots, targets);
+      message.className = "empty";
       message.textContent = internal.length ? "" : "此产品尚未登记内部发布目标。";
     } catch (error) {
-      if (!signal.aborted) message.textContent = error.message;
+      if (!signal.aborted) {
+        message.className = "notice";
+        message.textContent = error.message;
+      }
     }
   }
 

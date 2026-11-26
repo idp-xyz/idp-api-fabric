@@ -1,6 +1,7 @@
-import { api, badge, confirmChange, field, fill, list, node, productPath, segment, timestamp } from "./workbench.js";
+import { api, badge, button, card, confirmChange, facts, field, fill, icon, list, node, productPath, segment, timestamp } from "./workbench.js";
 
 const scopeNames = { target: "整个发布目标", asset: "一个 API 资产", release: "一个 Release" };
+const identifiers = new Set(["阻断编号", "API 资产 ID", "Release ID"]);
 
 function blockScope(block) {
   const values = [["影响范围", scopeNames[block.release_id ? "release" : block.api_asset_id ? "asset" : "target"]]];
@@ -9,16 +10,21 @@ function blockScope(block) {
   return values;
 }
 
+// accessBlockPanel is the access control of one product's publication
+// targets: a security admin blocks a target, an asset on it or one release,
+// and another security reviewer clears the block. It reads nothing until it
+// is first shown.
 export function accessBlockPanel({ product, productName, caller, canBlock, canClear, signal }) {
   const targetPath = productPath(product) + "/publication-targets";
-  const panel = node("details", "", "panel access-blocks");
-  const body = node("div", "", "panel-body");
+  const panel = node("section", "", "access-blocks");
+  const heading = node("h2", "访问阻断与解除", "visually-hidden");
+  heading.id = "access-blocks-title";
+  panel.setAttribute("aria-labelledby", heading.id);
   const target = node("select");
-  const refresh = node("button", "刷新阻断记录");
-  refresh.type = "button";
-  const scope = node("div", "", "publication-scope");
+  const refresh = button("刷新阻断记录", "secondary", "refresh");
+  const scope = node("div", "", "card control-row security-scope");
   scope.append(field("安全发布目标", target, "security-target"), refresh);
-  const message = node("p", "", "muted");
+  const message = node("p", "", "status-line");
   message.setAttribute("role", "status");
 
   const createForm = node("form", "", "block-form");
@@ -38,19 +44,26 @@ export function accessBlockPanel({ product, productName, caller, canBlock, canCl
   const reason = node("input");
   reason.required = true;
   reason.maxLength = 500;
-  const create = node("button", "阻断访问", "primary");
+  const create = node("button", "", "primary danger");
   create.type = "submit";
+  create.append(icon("lock"), node("span", "阻断访问"));
   createControls.append(field("阻断范围", level, "block-level"), assetField, releaseField,
     field("阻断理由", reason, "block-reason"), create);
-  createForm.append(createControls);
-  createForm.hidden = !canBlock;
+  createForm.append(node("p", "源站会拒绝此范围内已发布制品的读取。限定到资产或 Release 时填写事故中确认的编号。", "hint"), createControls);
+  const createCard = card("阻断访问", { iconName: "lock", className: "block-create" });
+  createCard.append(createForm);
+  createCard.hidden = !canBlock;
 
   const records = node("ul", "", "block-records");
   records.setAttribute("aria-label", "访问阻断记录");
-  const more = node("button", "加载更多阻断记录");
-  more.type = "button";
-  body.append(scope, message, createForm, records, more);
-  panel.append(node("summary", "访问阻断与解除"), body);
+  const more = button("加载更多阻断记录", "secondary more");
+  const none = node("p", "请选择目标。", "empty");
+  none.setAttribute("role", "status");
+  const recordCard = card("访问阻断记录", { iconName: "shield", className: "block-list" });
+  recordCard.append(records, none, more);
+  const columns = node("div", "", "security-columns");
+  columns.append(createCard, recordCard);
+  panel.append(heading, scope, message, columns);
 
   let started = false;
   let working = false;
@@ -109,7 +122,7 @@ export function accessBlockPanel({ product, productName, caller, canBlock, canCl
     for (const block of [...known.values()].sort((a, b) => b.generation - a.generation)) {
       const row = node("li");
       const active = block.status === "BLOCK_ACTIVE";
-      const facts = node("dl", "", "facts");
+      row.dataset.state = block.status;
       const values = [
         ["阻断编号", block.access_block_id],
         ...blockScope(block),
@@ -119,25 +132,27 @@ export function accessBlockPanel({ product, productName, caller, canBlock, canCl
       if (block.cleared_by) {
         values.push(["解除时间", block.cleared_by.subject + " · " + timestamp(block.cleared_at)], ["解除理由", block.clear_reason]);
       }
-      for (const [label, value] of values) facts.append(node("dt", label), node("dd", value));
       const states = node("div", "", "block-states");
-      states.append(node("strong", active ? "源站阻断中" : "源站已解除"), node("span", "边缘传播"), badge(block.edge_status));
-      row.append(states, facts);
+      states.append(badge(block.status, active ? "源站阻断中" : "源站已解除"), node("span", "边缘传播"), badge(block.edge_status));
+      row.append(states, facts(values.map(([label, value]) => [label, identifiers.has(label) ? node("code", value, "digest") : value]),
+        "facts grid"));
       if (active && canClear) {
         if (block.created_by.issuer === caller.issuer && block.created_by.subject === caller.subject) {
-          row.append(node("p", "请由另一位安全评审人解除。", "muted"));
+          row.append(node("p", "请由另一位安全评审人解除。", "notice"));
         } else {
           row.append(clearanceForm(block));
         }
       }
       records.append(row);
     }
+    none.hidden = known.size > 0;
+    none.textContent = "此目标暂无访问阻断记录。";
     sync();
   }
 
   function clearanceForm(block) {
-    const form = node("form", "", "block-form");
-    const controls = node("fieldset", "", "block-inputs");
+    const form = node("form", "", "block-form clearance");
+    const controls = node("fieldset", "", "block-inputs control-row");
     const clearReason = node("input");
     clearReason.required = true;
     clearReason.maxLength = 500;
@@ -170,6 +185,8 @@ export function accessBlockPanel({ product, productName, caller, canBlock, canCl
       known.clear();
       records.replaceChildren();
       cursor = undefined;
+      none.hidden = Boolean(target.value);
+      none.textContent = "请选择目标。";
     }
     if (!target.value) return;
     note("正在读取阻断记录…");
@@ -183,7 +200,7 @@ export function accessBlockPanel({ product, productName, caller, canBlock, canCl
     cursor = next;
     for (const block of result.items) known.set(block.access_block_id, block);
     renderRecords();
-    note(known.size ? "" : "此目标暂无访问阻断记录。");
+    note("");
   }
 
   function reload() {
@@ -221,12 +238,6 @@ export function accessBlockPanel({ product, productName, caller, canBlock, canCl
     });
   };
 
-  panel.ontoggle = () => {
-    if (panel.open && !started) {
-      started = true;
-      reload();
-    }
-  };
   refresh.onclick = reload;
   target.onchange = () => run(async () => {
     createForm.reset();
@@ -236,5 +247,12 @@ export function accessBlockPanel({ product, productName, caller, canBlock, canCl
   more.onclick = () => { if (cursor) run(() => readPage(true)); };
   level.onchange = sync;
   sync();
-  return panel;
+  return {
+    element: panel,
+    start() {
+      if (started) return;
+      started = true;
+      reload();
+    },
+  };
 }
