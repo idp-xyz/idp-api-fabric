@@ -49,6 +49,11 @@
             <div class="field"><label for="check">检查证据</label><select id="check" required></select></div>
             <div class="field"><label for="target">审批范围（可多选）</label><select id="target" multiple size="3" required></select></div>
           </div>
+          <div class="check-run">
+            <div class="field"><label for="baseline">兼容性对比基线（可选）</label><select id="baseline"></select></div>
+            <button id="run-check" type="button" disabled>运行检查</button>
+          </div>
+          <p class="hint muted">按当前策略检查所选修订。相同修订、基线、策略和工具的检查沿用已有记录；策略更新后再运行会得到新的检查。</p>
           <label>说明 <input id="note" maxlength="500" autocomplete="off"></label>
           <button id="request" class="primary" type="submit" disabled>提交评审</button>
         </form>

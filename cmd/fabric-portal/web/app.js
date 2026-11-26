@@ -9,6 +9,7 @@ const workspaceSelect = el("workspace");
 const assetSelect = el("asset");
 const revisionSelect = el("revision");
 const checkSelect = el("check");
+const baselineSelect = el("baseline");
 const targetSelect = el("target");
 const readers = ["workspace_maintainer", "internal_author", "internal_reviewer", "internal_publisher"];
 
@@ -177,13 +178,17 @@ function configureSubmission(selection, assets) {
   fill(assetSelect, assets.filter(asset => asset.api_kind === "HTTP"), "api_asset_id", item => item.display_name, "请选择资产");
   fill(revisionSelect, [], "", () => "", "请选择修订");
   fill(checkSelect, [], "", () => "", "请选择检查");
+  fill(baselineSelect, [], "", () => "", "不对比");
+  selection.revisions = [];
   fill(targetSelect, selection.targets, "audience_config_id", item => item.audience + " / " + item.environment);
   el("note").value = "";
   el("submission").hidden = false;
+  el("run-check").disabled = true;
   updateRequestButton();
   assetSelect.onchange = () => loadRevisions(selection).catch(report);
   revisionSelect.onchange = () => loadChecks(selection).catch(report);
   checkSelect.onchange = targetSelect.onchange = updateRequestButton;
+  el("run-check").onclick = () => runCheck(selection).catch(report);
 }
 
 function choiceSignal(selection) {
@@ -192,30 +197,71 @@ function choiceSignal(selection) {
   return AbortSignal.any([selection.choice.signal, selection.controller.signal]);
 }
 
+const revisionLabel = item => "#" + item.revision_sequence + " · " + statuses[item.status];
+
 async function loadRevisions(selection) {
   const signal = choiceSignal(selection);
   const asset = assetSelect.value;
+  selection.revisions = [];
   fill(revisionSelect, [], "", () => "", "请选择修订");
   fill(checkSelect, [], "", () => "", "请选择检查");
+  fill(baselineSelect, [], "", () => "", "不对比");
+  el("run-check").disabled = true;
   updateRequestButton();
   if (!asset) return;
   const revisions = await list(assetPath(selection.product, asset) + "/revisions", signal);
   if (signal.aborted) return;
+  selection.revisions = revisions;
   const eligible = revisions.filter(revision => ["DRAFT", "APPROVED", "WITHDRAWN"].includes(revision.status));
-  fill(revisionSelect, eligible, "revision_id",
-    item => "#" + item.revision_sequence + " · " + statuses[item.status], eligible.length ? "请选择修订" : "没有可提交的修订");
+  fill(revisionSelect, eligible, "revision_id", revisionLabel, eligible.length ? "请选择修订" : "没有可提交的修订");
 }
 
 async function loadChecks(selection) {
   const signal = choiceSignal(selection);
   const revision = revisionSelect.value;
   fill(checkSelect, [], "", () => "", "请选择检查");
+  const baselines = revision ? selection.revisions.filter(item => item.revision_id !== revision) : [];
+  fill(baselineSelect, baselines, "revision_id", revisionLabel, "不对比");
+  el("run-check").disabled = !revision;
   updateRequestButton();
   if (!revision) return;
+  await listChecks(selection, revision, signal);
+}
+
+async function listChecks(selection, revision, signal) {
   const checks = await list(revisionPath(selection.product, assetSelect.value, revision) + "/check-runs", signal);
   if (signal.aborted) return;
-  fill(checkSelect, checks, "check_run_id", item => statuses[item.status] + " · " + timestamp(item.completed_at),
+  const compared = item => {
+    const baseline = selection.revisions.find(other => other.revision_id === item.compatibility?.baseline.revision_id);
+    return item.compatibility ? " · 对比 " + (baseline ? "#" + baseline.revision_sequence : "另一修订") : "";
+  };
+  fill(checkSelect, checks, "check_run_id", item => statuses[item.status] + " · " + timestamp(item.completed_at) + compared(item),
     checks.length ? "请选择检查" : "修订还没有检查证据");
+}
+
+// Only an author runs a check; a reviewer reads the evidence and runs none.
+async function runCheck(selection) {
+  const revision = revisionSelect.value;
+  if (!selection.roles.includes("internal_author") || !revision) return;
+  const signal = choiceSignal(selection);
+  let path = revisionPath(selection.product, assetSelect.value, revision) + "/check-runs";
+  if (baselineSelect.value) path += "?baseline_revision_id=" + segment(baselineSelect.value);
+  const recorded = new Set(Array.from(checkSelect.options, option => option.value));
+  el("run-check").disabled = true;
+  notice("正在运行检查…");
+  try {
+    const { check_run: run } = await api(path, { post: true, signal });
+    if (signal.aborted) return;
+    await listChecks(selection, revision, signal);
+    if (signal.aborted) return;
+    checkSelect.value = run.check_run_id;
+    updateRequestButton();
+    notice((recorded.has(run.check_run_id) ? "相同输入、基线、策略和工具的检查已有记录，已选中。" : "检查已记录并选中。") +
+      "结论：" + statuses[run.status] + "。");
+  } finally {
+    if (!signal.aborted) el("run-check").disabled = false;
+    else if (view === selection) notice();
+  }
 }
 
 function updateRequestButton() {

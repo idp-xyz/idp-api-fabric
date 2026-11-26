@@ -39,6 +39,7 @@ function describeError(status, code, trace) {
     PRECONDITION_FAILED: "槽位代数已变化，请核对当前状态。",
     REVISION_STATUS_CONFLICT: "修订状态已有变化，请刷新队列。",
     REVIEW_IN_PROGRESS: "此修订已有待处理的评审。",
+    PRODUCT_NOT_ACTIVE: "产品已暂停，暂不接受新的操作。",
     FABRIC_UNAVAILABLE: "Fabric API 暂不可用，请稍后重试。",
   };
   let text = messages[code];
@@ -48,10 +49,10 @@ function describeError(status, code, trace) {
     (trace ? " · 请求 " + trace : "");
 }
 
-export async function api(path, { signal, data, idempotencyKey } = {}) {
+export async function api(path, { signal, data, idempotencyKey, post = Boolean(data) } = {}) {
   const options = { signal, headers: { Accept: "application/json" }, cache: "no-store" };
+  if (post) options.method = "POST";
   if (data) {
-    options.method = "POST";
     options.headers["Content-Type"] = "application/json";
     options.body = JSON.stringify(data);
   }
