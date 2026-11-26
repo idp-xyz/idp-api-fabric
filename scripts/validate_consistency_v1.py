@@ -59,4 +59,4 @@ for p in [D/'F08_Delivery_and_Acceptance.md',R/'README.md',D/'README.md']:
 if errors:
  print('FAIL CONSISTENCY V1.0:',*errors,sep='\n- ')
  sys.exit(1)
-print(f'PASS consistency-design-only: 7 ADR Proposed, Manifest DRAFT, core_AC={len(ac)}, detail_DC={len(dc)}, direct_requirements={len(tr)}, all runtime NOT_RUN.')
+print(f'PASS consistency-design-only: {sum("Proposed" in f.read_text("utf8") for f in (R/"decisions").glob("ADR-*.md"))} ADR Proposed, Manifest DRAFT, core_AC={len(ac)}, detail_DC={len(dc)}, direct_requirements={len(tr)}, all runtime NOT_RUN.')
