@@ -216,7 +216,7 @@ func TestPortalServesTheWorkbenchAndRefusesAnHTMLAPIResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/", "/app.css", "/app.js", "/workbench.js", "/publication.js", "/access-blocks.js"} {
+	for _, path := range []string{"/", "/app.css", "/app.js", "/workbench.js", "/publication.js", "/access-blocks.js", "/catalog.js"} {
 		got := httptest.NewRecorder()
 		handler.ServeHTTP(got, httptest.NewRequest(http.MethodGet, path, nil))
 		if got.Code != http.StatusOK || got.Body.Len() == 0 || got.Header().Get("Content-Security-Policy") == "" {
@@ -227,5 +227,49 @@ func TestPortalServesTheWorkbenchAndRefusesAnHTMLAPIResponse(t *testing.T) {
 	handler.ServeHTTP(got, httptest.NewRequest(http.MethodGet, "/api/v1/caller", nil))
 	if got.Code != http.StatusBadGateway || !strings.Contains(got.Body.String(), "FABRIC_UNAVAILABLE") {
 		t.Errorf("unexpected upstream HTML returned %d %q", got.Code, got.Body.String())
+	}
+}
+
+func TestPortalForwardsOnlyTheCatalogReads(t *testing.T) {
+	const asset = "/v1/products/p/assets/a"
+	var forwarded atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwarded.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"received": r.Method + " " + r.URL.RequestURI()})
+	}))
+	defer upstream.Close()
+	handler, err := newPortal(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range []struct {
+		method, path string
+		want         int
+	}{
+		{http.MethodGet, "/v1/products/p/assets?workspace_id=w&q=ship&check_status=FAIL&page_size=20", http.StatusOK},
+		{http.MethodGet, asset + "/publications?page_size=100", http.StatusOK},
+		{http.MethodGet, asset + "/revisions/r/reviews?page_size=100", http.StatusOK},
+		{http.MethodGet, asset + "/revisions/r/source", http.StatusNotFound},
+		{http.MethodPost, "/v1/products/p/assets", http.StatusMethodNotAllowed},
+	} {
+		req := httptest.NewRequest(c.method, "/api"+c.path, nil)
+		req.Header.Set("Authorization", "Bearer example-access-token")
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		got := httptest.NewRecorder()
+		handler.ServeHTTP(got, req)
+		if got.Code != c.want {
+			t.Errorf("%s %s returned %d, want %d", c.method, c.path, got.Code, c.want)
+		}
+		if c.want == http.StatusOK {
+			var result map[string]string
+			if err := json.Unmarshal(got.Body.Bytes(), &result); err != nil || result["received"] != c.method+" "+c.path {
+				t.Errorf("the proxy returned %q for %s %s", got.Body.String(), c.method, c.path)
+			}
+		}
+	}
+	if got := forwarded.Load(); got != 3 {
+		t.Errorf("upstream received %d requests, want only the three catalog reads", got)
 	}
 }
