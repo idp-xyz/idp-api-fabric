@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,11 +11,12 @@ import (
 	"testing"
 )
 
-func TestPortalForwardsSameOriginReviewOperationsWithCaller(t *testing.T) {
+func TestPortalForwardsASameOriginReleasePreparationWithCaller(t *testing.T) {
+	const preparation = "{\"revision_id\":\"r\",\"check_run_id\":\"c\",\"version\":\"1.0.0\",\"waivers\":[{\"rule_id\":\"F04-GOV-002\",\"reason\":\"accepted\"}]}"
 	var forwarded atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		forwarded.Add(1)
-		if r.URL.Path != "/v1/products/p/assets/a/revisions/r/reviews/x/decision" || r.URL.RawQuery != "test=1" || r.Method != http.MethodPost {
+		if r.URL.Path != "/v1/products/p/assets/a/releases" || r.URL.RawQuery != "test=1" || r.Method != http.MethodPost {
 			t.Errorf("upstream received %s %s", r.Method, r.URL)
 		}
 		if r.Header.Get("Authorization") != "Bearer example-access-token" || r.Header.Get("Cookie") != "" ||
@@ -22,13 +24,14 @@ func TestPortalForwardsSameOriginReviewOperationsWithCaller(t *testing.T) {
 			t.Error("the portal forwarded the wrong identity or content headers")
 		}
 		body, err := io.ReadAll(r.Body)
-		if err != nil || string(body) != "{}" {
+		if err != nil || string(body) != preparation {
 			t.Errorf("upstream body: %q (%v)", body, err)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Set-Cookie", "untrusted_cookie=value")
 		w.Header().Set("Cache-Control", "public")
-		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Location", "/v1/products/p/assets/a/releases/x")
+		w.WriteHeader(http.StatusCreated)
 		_, _ = io.WriteString(w, "{}")
 	}))
 	defer upstream.Close()
@@ -37,10 +40,10 @@ func TestPortalForwardsSameOriginReviewOperationsWithCaller(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	path := "/api/v1/products/p/assets/a/revisions/r/reviews/x/decision?test=1"
+	path := "/api/v1/products/p/assets/a/releases?test=1"
 	request := func(method, target, site string) *httptest.ResponseRecorder {
 		t.Helper()
-		req := httptest.NewRequest(method, target, strings.NewReader("{}"))
+		req := httptest.NewRequest(method, target, strings.NewReader(preparation))
 		req.Header.Set("Authorization", "Bearer example-access-token")
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Cookie", "session=private")
@@ -52,17 +55,66 @@ func TestPortalForwardsSameOriginReviewOperationsWithCaller(t *testing.T) {
 	}
 
 	if got := request(http.MethodPost, path, "cross-site"); got.Code != http.StatusForbidden {
-		t.Errorf("a cross-site decision returned %d", got.Code)
+		t.Errorf("a cross-site release preparation returned %d", got.Code)
 	}
 	if got := request(http.MethodPost, "/api/v1/products/p/role-assignments", "same-origin"); got.Code != http.StatusNotFound {
 		t.Errorf("a role grant through the portal returned %d", got.Code)
 	}
-	if got := request(http.MethodPost, path, "same-origin"); got.Code != http.StatusOK || got.Header().Get("Cache-Control") != "no-store" ||
-		got.Header().Get("Set-Cookie") != "" {
-		t.Errorf("same-origin decision returned %d with headers %v", got.Code, got.Header())
+	if got := request(http.MethodPost, path, "same-origin"); got.Code != http.StatusCreated || got.Header().Get("Cache-Control") != "no-store" ||
+		got.Header().Get("Set-Cookie") != "" || got.Header().Get("Location") != "" {
+		t.Errorf("same-origin release preparation returned %d with headers %v", got.Code, got.Header())
 	}
 	if got := forwarded.Load(); got != 1 {
-		t.Errorf("upstream received %d requests, want only the same-origin decision", got)
+		t.Errorf("upstream received %d requests, want only the same-origin release preparation", got)
+	}
+}
+
+// Since CR-0001 nobody asks for, withdraws or decides a review, and the
+// portal forwards none of it. The reviews of before stay readable.
+func TestPortalForwardsNoReviewChange(t *testing.T) {
+	const revision = "/v1/products/p/assets/a/revisions/r"
+	var forwarded atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwarded.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"received": r.Method + " " + r.URL.RequestURI()})
+	}))
+	defer upstream.Close()
+	handler, err := newPortal(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range []struct {
+		method, path string
+		want         int
+	}{
+		{http.MethodPost, revision + "/reviews", http.StatusMethodNotAllowed},
+		{http.MethodPost, revision + "/reviews/x/withdrawal", http.StatusNotFound},
+		{http.MethodPost, revision + "/reviews/x/decision", http.StatusNotFound},
+		{http.MethodPost, revision + "/reviews/x", http.StatusMethodNotAllowed},
+		{http.MethodGet, revision + "/reviews?page_size=100", http.StatusOK},
+		{http.MethodGet, revision + "/reviews/x", http.StatusOK},
+		{http.MethodGet, "/v1/products/p/workspaces/w/reviews?status=WITHDRAWN", http.StatusOK},
+	} {
+		req := httptest.NewRequest(c.method, "/api"+c.path, strings.NewReader("{}"))
+		req.Header.Set("Authorization", "Bearer example-access-token")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		got := httptest.NewRecorder()
+		handler.ServeHTTP(got, req)
+		if got.Code != c.want {
+			t.Errorf("%s %s returned %d, want %d", c.method, c.path, got.Code, c.want)
+		}
+		if c.want == http.StatusOK {
+			var result map[string]string
+			if err := json.Unmarshal(got.Body.Bytes(), &result); err != nil || result["received"] != c.method+" "+c.path {
+				t.Errorf("the proxy returned %q for %s %s", got.Body.String(), c.method, c.path)
+			}
+		}
+	}
+	if got := forwarded.Load(); got != 3 {
+		t.Errorf("upstream received %d requests, want only the three review reads", got)
 	}
 }
 
@@ -216,7 +268,19 @@ func TestPortalServesTheWorkbenchAndRefusesAnHTMLAPIResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/", "/app.css", "/app.js", "/workbench.js", "/publication.js", "/access-blocks.js", "/catalog.js", "/dashboard.js", "/checks.js"} {
+	// Every file of the front end is served, so a module that is added
+	// without its route fails here rather than in the browser.
+	files, err := fs.ReadDir(web, "web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{"/"}
+	for _, file := range files {
+		if file.Name() != "index.html" {
+			paths = append(paths, "/"+file.Name())
+		}
+	}
+	for _, path := range paths {
 		got := httptest.NewRecorder()
 		handler.ServeHTTP(got, httptest.NewRequest(http.MethodGet, path, nil))
 		if got.Code != http.StatusOK || got.Body.Len() == 0 || got.Header().Get("Content-Security-Policy") == "" {

@@ -82,7 +82,7 @@ func newPortal(origin string) (http.Handler, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", staticFile("index.html"))
-	for _, name := range []string{"app.js", "app.css", "workbench.js", "publication.js", "access-blocks.js", "catalog.js", "dashboard.js", "checks.js"} {
+	for _, name := range []string{"app.js", "app.css", "workbench.js", "publication.js", "access-blocks.js", "catalog.js", "dashboard.js", "checks.js", "releases.js"} {
 		mux.HandleFunc("GET /"+name, staticFile(name))
 	}
 	proxy := fabricProxy(upstream)
@@ -117,9 +117,8 @@ func newPortal(origin string) (http.Handler, error) {
 	} {
 		mux.Handle("GET "+path, proxy)
 	}
+	// Reviews are read only: since CR-0001 a release is prepared on a check.
 	mux.Handle("POST "+revision+"/check-runs", proxy)
-	mux.Handle("POST "+revision+"/reviews", proxy)
-	mux.Handle("POST "+revision+"/reviews/{review}/decision", proxy)
 	mux.Handle("POST "+asset+"/releases", proxy)
 	mux.Handle("POST "+slot+"/operations", proxy)
 	mux.Handle("POST "+blocks, proxy)

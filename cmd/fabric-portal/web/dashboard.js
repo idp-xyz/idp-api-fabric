@@ -8,10 +8,9 @@ const latest = (asset, detail) => {
 };
 
 // dashboardPanel gathers what needs someone's attention in one workspace:
-// reviews waiting for a decision, assets whose latest check failed, approved
-// revisions without a release, and published slots that are blocked or whose
-// approval no longer holds. Each item opens where it is handled.
-export function dashboardPanel({ product, workspace, assets, reviews, signal, openReview, openAsset }) {
+// assets whose latest check failed, checked revisions without a release, and
+// published slots that are blocked. Each item opens the asset in the catalog.
+export function dashboardPanel({ product, workspace, assets, signal, openAsset }) {
   const element = node("section", "", "dashboard");
   element.setAttribute("aria-labelledby", "dashboard-title");
   const title = node("div", "", "dashboard-title");
@@ -80,7 +79,7 @@ export function dashboardPanel({ product, workspace, assets, reviews, signal, op
       const slots = await list(productPath(product) + "/publication-targets/" + segment(target.publication_target_id) +
         "/assets", current);
       for (const slot of slots) {
-        if (names.has(slot.api_asset_id) && (slot.blocked || slot.approval_problem)) found.push({ slot, target });
+        if (names.has(slot.api_asset_id) && slot.blocked) found.push({ slot, target });
       }
     }
     return { items: found.slice(0, limit), more: found.length > limit };
@@ -96,11 +95,7 @@ export function dashboardPanel({ product, workspace, assets, reviews, signal, op
     try {
       const names = await assets;
       if (current.aborted) return;
-      const reviewPath = productPath(product) + "/workspaces/" + segment(workspace) + "/reviews?status=IN_REVIEW";
-      const [waiting, failing, pending, problems] = await Promise.all([
-        reviews ? settle(page(reviewPath, limit, "", current).then(result => ({
-          items: result.items, more: Boolean(result.next_page_token),
-        }))) : { error: new Error("当前身份无法读取此工作区的评审。") },
+      const [failing, pending, problems] = await Promise.all([
         settle(assetPage({ check_status: "FAIL" }, current)),
         settle(assetPage({ release_pending: "true" }, current)),
         settle(slotProblems(names, current)),
@@ -108,16 +103,12 @@ export function dashboardPanel({ product, workspace, assets, reviews, signal, op
       if (current.aborted) return;
       const nameOf = id => names.get(id)?.display_name || id;
       cards.replaceChildren(
-        card("待评审", waiting, "没有等待决定的评审。", review => action(nameOf(review.api_asset_id),
-          review.requested_by.subject + " · " + timestamp(review.requested_at), () => openReview(review))),
         card("最近检查失败", failing, "没有最新检查失败的资产。", asset => action(asset.display_name,
           latest(asset, timestamp(asset.overview?.latest_check?.completed_at ?? asset.created_at)), () => openAsset(asset))),
-        card("已批准、待准备 Release", pending, "没有等待准备 Release 的修订。", asset => action(asset.display_name,
-          latest(asset, statuses.APPROVED), () => openAsset(asset))),
-        card("发布需要处理", problems, "没有被阻断或批准有问题的发布。", ({ slot, target }) => action(nameOf(slot.api_asset_id),
-          target.audience + " / " + target.environment + " · " +
-            [slot.blocked ? "已阻断" : "", slot.approval_problem || ""].filter(Boolean).join("，"),
-          () => openAsset(names.get(slot.api_asset_id)))),
+        card("已检查、待准备 Release", pending, "没有等待准备 Release 的修订。", asset => action(asset.display_name,
+          latest(asset, "检查" + (statuses[asset.overview?.latest_check?.status] || "")), () => openAsset(asset))),
+        card("发布需要处理", problems, "没有被阻断的发布。", ({ slot, target }) => action(nameOf(slot.api_asset_id),
+          target.audience + " / " + target.environment + " · 已阻断", () => openAsset(names.get(slot.api_asset_id)))),
       );
       status.textContent = "";
     } catch (error) {

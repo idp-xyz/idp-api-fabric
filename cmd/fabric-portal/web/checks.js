@@ -5,6 +5,15 @@ const categories = {
 };
 const severities = { BLOCK: "阻断", WARN: "警告" };
 
+// blockers splits the rules that stand between a check and a release as the
+// release gate does: every rule that failed or could not be judged, whatever
+// its severity, since a rule that warns can still be UNKNOWN. The waivable
+// ones are waived by name; any other one refuses the release.
+export function blockers(check) {
+  const open = check.outcomes.filter(rule => rule.status === "FAIL" || rule.status === "UNKNOWN");
+  return { waivable: open.filter(rule => rule.waivable), unwaivable: open.filter(rule => !rule.waivable) };
+}
+
 // checkDetail shows one recorded check: what it ran on and with, then each
 // rule's result and findings, grouped by the kind of rule.
 export function checkDetail(check) {
