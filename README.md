@@ -227,6 +227,11 @@ python scripts/verify_manifest.py
 - [F06 设计 Markdown](docs/F06_Developer_Experience.md) / [HTML](docs/F06_Developer_Experience.html)（F06-A 内部工程、F06-B CargoPai Developers、F06-C 共享设计系统）
 - [F06-A 内部交互原型](portal/prototypes/internal-engineering.html) · [F06-B CargoPai 外部门户](portal/prototypes/cargopai-developers.html) · [共享 Token 样式](portal/prototypes/shared.css)。全部为 LOCAL_MOCK。
 - [页面清单](docs/F06_Page_Inventory.csv)：21 页/共享视图；[需求追溯](tests/acceptance/F06_experience_trace.csv)：89 行；[体验场景](tests/acceptance/F06_experience_scenarios.csv)：32 行，状态 NOT_RUN。
+- 页面清单的 `status` 列：`MOCK/NOT_RUN` 只有离线原型；`IMPLEMENTED/NOT_RUN` 和 `PARTIAL/NOT_RUN` 表示 main 上已有完整或部分实现，斜杠后面是真实验收，仍未执行。
+  - IN-07 已实现：[内部门户](cmd/fabric-portal/README.md)按目标 × 资产准备 Release，带代次发布、撤销和恢复，并建立和解除访问阻断。
+  - IN-06 部分实现：能批准和驳回、逐条豁免；门户里不能重跑检查，也看不到审计证据。
+  - IN-05 部分实现：评审详情里列出检查的每条规则结论和发现；没有单独的检查页面，也不展示兼容性比较。
+  - EX-03 部分实现：[CargoPai Developers](cmd/fabric-developer-portal/README.md) 展示一个资产的操作、响应码说明和搜索；没有 Schema 和代码示例。
 
 **F08 已完成交付设计**：见 `docs/F08_Delivery_and_Acceptance.md`，真实测试与具名批准仍需实施，Mock 和静态校验不能充当运行验证。
 
