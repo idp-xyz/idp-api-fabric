@@ -75,7 +75,7 @@ func fromGit() registrydomain.Revision {
 		Asset:    registrydomain.AssetRef{ProductID: productID, WorkspaceID: workspaceID, AssetID: apiAssetID},
 		Sequence: 2, Status: registrydomain.RevisionDraft, SourceKind: registrydomain.SourceGit,
 		Origin:     registrydomain.GitOrigin{Repository: contractsRepository, Commit: contractsCommit, Ref: "refs/heads/main"},
-		Entrypoint: "api/openapi.yaml", SpecVersion: "3.1.2",
+		Entrypoint: "api/openapi.yaml", Specification: registrydomain.OpenAPI, SpecVersion: "3.1.2",
 		SourceDigest:     "sha256:" + fmt.Sprintf("%064x", 1),
 		RefClosureDigest: "sha256:" + fmt.Sprintf("%064x", 2),
 		CreatedAt:        createdAt,
