@@ -258,6 +258,55 @@ func TestPortalForwardsASameOriginCheckRunWithItsBaseline(t *testing.T) {
 	}
 }
 
+func TestPortalForwardsASameOriginAssetRegistrationAndRevisionImport(t *testing.T) {
+	const assets = "/v1/products/p/assets"
+	const revisions = assets + "/a/revisions"
+	var forwarded atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwarded.Add(1)
+		body, _ := io.ReadAll(r.Body)
+		if r.Method != http.MethodPost || r.URL.Path != assets && r.URL.Path != revisions ||
+			r.Header.Get("Content-Type") != "application/json" || string(body) != `{"entrypoint":"openapi.yaml"}` ||
+			r.Header.Get("Authorization") != "Bearer example-access-token" || r.Header.Get("Cookie") != "" {
+			t.Errorf("misrouted %s %s with %q or wrong caller", r.Method, r.URL, body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Location", r.URL.Path+"/x")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, "{}")
+	}))
+	defer upstream.Close()
+	handler, err := newPortal(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range []struct {
+		path, site string
+		want       int
+	}{
+		{assets, "same-origin", http.StatusCreated},
+		{revisions, "same-origin", http.StatusCreated},
+		{assets, "cross-site", http.StatusForbidden},
+		{revisions, "cross-site", http.StatusForbidden},
+		{revisions + "/r", "same-origin", http.StatusMethodNotAllowed},
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api"+c.path, strings.NewReader(`{"entrypoint":"openapi.yaml"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer example-access-token")
+		req.Header.Set("Cookie", "browser-session=private")
+		req.Header.Set("Sec-Fetch-Site", c.site)
+		got := httptest.NewRecorder()
+		handler.ServeHTTP(got, req)
+		if got.Code != c.want || got.Header().Get("Cache-Control") != "no-store" || got.Header().Get("Location") != "" {
+			t.Errorf("POST %s (%s) returned %d with %v, want %d, no-store and no upstream location", c.path, c.site, got.Code, got.Header(), c.want)
+		}
+	}
+	if got := forwarded.Load(); got != 2 {
+		t.Errorf("upstream received %d requests, want the same-origin registration and import", got)
+	}
+}
+
 func TestPortalServesTheWorkbenchAndRefusesAnHTMLAPIResponse(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
@@ -320,7 +369,7 @@ func TestPortalForwardsOnlyTheCatalogAndDashboardReads(t *testing.T) {
 		{http.MethodGet, "/v1/products/p/audit-records?action=release.prepare&outcome=DENIED&recorded_since=2026-11-26T00%3A00%3A00.000Z&page_size=50", http.StatusOK},
 		{http.MethodPost, "/v1/products/p/audit-records", http.StatusMethodNotAllowed},
 		{http.MethodGet, asset + "/revisions/r/source", http.StatusNotFound},
-		{http.MethodPost, "/v1/products/p/assets", http.StatusMethodNotAllowed},
+		{http.MethodPost, "/v1/products/p/workspaces", http.StatusMethodNotAllowed},
 	} {
 		req := httptest.NewRequest(c.method, "/api"+c.path, nil)
 		req.Header.Set("Authorization", "Bearer example-access-token")

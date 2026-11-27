@@ -37,6 +37,8 @@ const icons = {
   revision: ["M6 3.5v11", "M18 9.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z", "M6 20.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z", "M18 9.5a9 9 0 0 1-9 9"],
   shield: ["M12 3 19 6v5.5c0 4.3-2.9 8-7 9.5-4.1-1.5-7-5.2-7-9.5V6l7-3Z"],
   filter: ["M3.5 5h17l-6.5 8v6l-4 1.5V13L3.5 5Z"],
+  file: ["M14 3.5H6.5a1 1 0 0 0-1 1v15a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V8L14 3.5Z", "M14 3.5V8h4.5"],
+  folder: ["M3.5 6.5a1 1 0 0 1 1-1h5l2 2.5h8a1 1 0 0 1 1 1v9.5a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1V6.5Z"],
 };
 
 // icon draws one of a few line icons. It is decoration only: the text next
@@ -98,6 +100,10 @@ export const loading = text => node("p", text, "loading");
 function describeError(status, code, trace) {
   const messages = {
     FORBIDDEN: "当前身份没有所需权限。",
+    API_ASSET_KEY_TAKEN: "此产品已有使用该资产键的 API 资产。",
+    API_ASSET_KIND_UNSUPPORTED: "此类资产暂不支持导入契约。",
+    CONTRACT_SOURCE_INVALID: "文件不符合导入要求：入口须为 OpenAPI 3.1.2，引用只能指向本次导入的文件，不能有远程引用、包外路径或循环引用。",
+    REQUEST_TOO_LARGE: "导入内容超过大小上限。",
     POLICY_STALE: "该检查不是按现行策略和工具完成的，请重新运行检查。",
     RELEASE_BLOCKED: "检查中有不可豁免的规则失败或未知，不能准备 Release。",
     WAIVER_REQUIRED: "请为每条失败或未知的可豁免规则填写豁免理由。",

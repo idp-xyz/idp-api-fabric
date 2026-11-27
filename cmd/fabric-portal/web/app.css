@@ -452,6 +452,17 @@ h4.card-title { font-size: 15px; }
 .clearance { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); }
 .clearance .block-inputs { display: flex; }
 
+/* Registering an asset and importing a revision */
+.card-head + .tool-box, .card-head + .notice { margin-top: 0; }
+.import-form { gap: 12px; }
+.import-form > button[type="submit"] { justify-self: start; }
+.import-fields { margin-top: 0; padding-top: 0; border-top: 0; }
+.import-files { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.import-files li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; font-size: 12.5px; }
+.import-files li .digest { white-space: normal; overflow-wrap: anywhere; }
+.import-problems { margin: 0; padding-left: 18px; color: #8e2634; font-size: 13px; }
+.import-problems:empty, .import-files:empty { display: none; }
+
 /* Audit records: a day heads the records of it, a refusal is marked at the
    start of its row as well as in words. */
 .filter-more { flex: 1 1 100%; }
