@@ -6,7 +6,7 @@ IN-04,INTERNAL,Revision Detail,MVP,API Author,Revision/Release,F06-A,IMPLEMENTED
 IN-05,INTERNAL,Governance Results,MVP,API Author,CheckRun/Policy,F06-A,IMPLEMENTED/NOT_RUN
 IN-06,INTERNAL,Check and Release Preparation,MVP,Release Operator,CheckRun/ContractRelease,F06-A,IMPLEMENTED/NOT_RUN
 IN-07,INTERNAL,Publication Recovery,MVP,Release Operator,PublicationSlot/AccessBlock,F06-A,IMPLEMENTED/NOT_RUN
-IN-08,INTERNAL,Audit Timeline,MVP,Auditor,AuditEvent,F06-A,MOCK/NOT_RUN
+IN-08,INTERNAL,Audit Timeline,MVP,Auditor,AuditEvent,F06-A,IMPLEMENTED/NOT_RUN
 IN-09,INTERNAL,Membership Admin,V1,Platform Admin,Membership/Role,F06-A,MOCK/NOT_RUN
 IN-10,INTERNAL,Integration Jobs,V1,Operator,Job/Reconciliation,F06-A,MOCK/NOT_RUN
 IN-11,INTERNAL,Governance Analytics,V1.x,Product Owner,Impact/Metrics,F06-A,MOCK/NOT_RUN

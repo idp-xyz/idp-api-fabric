@@ -1,5 +1,6 @@
 import { api, fill, list, productPath, segment } from "./workbench.js";
 import { accessBlockPanel } from "./access-blocks.js";
+import { auditPanel } from "./audit.js";
 import { catalogPanel } from "./catalog.js";
 import { dashboardPanel } from "./dashboard.js";
 
@@ -8,7 +9,8 @@ const productSelect = el("product");
 const workspaceSelect = el("workspace");
 
 // Each view is one entry of the sidebar. The workspace views need a
-// workspace; access control is for the security roles of the product.
+// workspace; access control is for the security roles of the product, and
+// the audit records for its auditors.
 const pages = {
   dashboard: {
     title: "工作台",
@@ -22,6 +24,10 @@ const pages = {
     title: "发布访问控制",
     subtitle: "阻断整个发布目标、其中的 API 资产或单个 Release，由另一位安全评审人解除。源站阻断、边缘传播和发布槽位分开显示。",
   },
+  audit: {
+    title: "审计记录",
+    subtitle: "当前产品的审计记录：谁在什么时候做了什么、结果如何、依据哪条规则，以及请求的关联 ID。操作人如实显示；记录只读，不能修改。",
+  },
 };
 const defaultTitle = "契约检查与发布";
 
@@ -29,6 +35,7 @@ let productRequest;
 let view;
 let caller;
 let blocks;
+let audit;
 let shownView = "dashboard";
 let detailName = "";
 const available = new Set();
@@ -70,8 +77,9 @@ function trail() {
 function offer(names) {
   available.clear();
   for (const name of names) available.add(name);
+  for (const name of Object.keys(pages)) el("nav-" + name).closest("li").hidden = !available.has(name);
   el("nav-workspace").hidden = !available.has("dashboard");
-  el("nav-product").hidden = !available.has("security");
+  el("nav-product").hidden = !available.has("security") && !available.has("audit");
 }
 
 function showView(name) {
@@ -90,6 +98,7 @@ function showView(name) {
   if (name === "catalog") view?.catalog.start();
   if (name === "dashboard") view?.dashboard.start();
   if (name === "security") blocks?.start();
+  if (name === "audit") audit?.start();
 }
 
 // On a narrow screen the sidebar is a drawer over the page, closed by a
@@ -105,7 +114,8 @@ function drawer(open, restore = true) {
   menu.setAttribute("aria-label", open ? "关闭导航" : "打开导航");
   el("shade").hidden = !open;
   el("main-area").inert = open;
-  if (open) (el("sidebar").querySelector(".nav-item[aria-current]") || el("sidebar").querySelector(".nav-item:not([hidden])"))?.focus();
+  if (open) (el("sidebar").querySelector(".nav-item[aria-current]") ||
+    el("sidebar").querySelector(".nav-group:not([hidden]) li:not([hidden]) > .nav-item"))?.focus();
   else if (wasOpen && restore) menu.focus();
 }
 
@@ -122,9 +132,11 @@ async function chooseProduct() {
   view?.controller.abort();
   view = null;
   blocks = null;
+  audit = null;
   notice();
   clearWorkspace();
   el("security-view").replaceChildren();
+  el("audit-view").replaceChildren();
   el("workspace-field").hidden = true;
   offer([]);
   showView("");
@@ -145,18 +157,24 @@ async function chooseProduct() {
   const canSeeWorkspace = roles.includes("product_owner") || callerInProduct.workspaces.length > 0;
   const canBlock = roles.includes("security_admin");
   const canClear = roles.includes("security_reviewer");
+  const canAudit = roles.includes("internal_auditor");
   const productName = productSelect.selectedOptions[0].text;
   if (canBlock || canClear) {
     blocks = accessBlockPanel({ product, productName, caller, canBlock, canClear, signal });
     el("security-view").replaceChildren(blocks.element);
   }
+  if (canAudit) {
+    audit = auditPanel({ product, signal });
+    el("audit-view").replaceChildren(audit.element);
+  }
+  const productViews = [...(blocks ? ["security"] : []), ...(audit ? ["audit"] : [])];
   const workspaces = canSeeWorkspace ? await list(productPath(product) + "/workspaces", signal) : [];
   if (signal.aborted) return;
-  if (!workspaces.length && blocks) {
+  if (!workspaces.length && productViews.length) {
     el("context").textContent = "";
     scope(productName);
-    offer(["security"]);
-    showView("security");
+    offer(productViews);
+    showView(shownView);
     return;
   }
   if (!canSeeWorkspace) {
@@ -165,7 +183,7 @@ async function chooseProduct() {
   }
   el("context").textContent = "";
   el("workspace-field").hidden = false;
-  offer(blocks ? ["dashboard", "catalog", "security"] : ["dashboard", "catalog"]);
+  offer(["dashboard", "catalog", ...productViews]);
   showView(shownView);
   fill(workspaceSelect, workspaces, "workspace_id", item => item.display_name);
   workspaceSelect.onchange = () => chooseWorkspace(product, callerInProduct);
