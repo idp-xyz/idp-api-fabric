@@ -92,15 +92,27 @@ type SourceFile struct {
 	Content string
 }
 
+// Specification is the language of a contract, which decides the tools a
+// check of it is made with: OpenAPI for an HTTP asset, AsyncAPI for an event
+// asset.
+type Specification string
+
+const (
+	OpenAPI  Specification = "OPENAPI"
+	AsyncAPI Specification = "ASYNCAPI"
+)
+
 // Source is what a check reads: the files a revision was recorded from, as
 // Contract Registry hands them over, and the digest of their closure. That
 // digest is the input digest of the check: it covers the entrypoint and the
-// path and bytes of every file.
+// path and bytes of every file. The specification is the one the revision
+// was recorded in; it is not part of the digest.
 type Source struct {
-	Entrypoint string
-	Files      []SourceFile
-	Digest     string
-	Closure    ReferenceClosure
+	Specification Specification
+	Entrypoint    string
+	Files         []SourceFile
+	Digest        string
+	Closure       ReferenceClosure
 }
 
 // ReferenceClosure records revalidation of the submitted file closure

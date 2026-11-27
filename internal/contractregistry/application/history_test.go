@@ -28,7 +28,7 @@ func TestTheSourceOfARevisionIsReadForWhoMayReadTheRevision(t *testing.T) {
 		{Path: "schemas/common.json", Content: "{\"Shipment\":{\"type\":\"object\"}}\n"},
 		{Path: "openapi.yaml", Content: contract},
 	}
-	snapshot, err := domain.CaptureSource("openapi.yaml", "3.1.2", files)
+	snapshot, err := domain.CaptureSource("openapi.yaml", domain.OpenAPI, "3.1.2", files)
 	if err != nil {
 		t.Fatal(err)
 	}

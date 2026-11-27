@@ -16,6 +16,7 @@ const settle = promise => promise.then(value => ({ value }), error => ({ error }
 const short = digest => digest.length > 19 ? digest.slice(0, 19) + "…" : digest;
 const newestFirst = (a, b) => Date.parse(b.completed_at) - Date.parse(a.completed_at);
 const revisionLabel = item => "#" + item.revision_sequence + " · " + (statuses[item.status] || item.status);
+const specificationLabel = item => (item.specification === "ASYNCAPI" ? "AsyncAPI " : "OpenAPI ") + item.spec_version;
 const lifecycle = value => badge(value, lifecycles[value] || value);
 
 function code(text) {
@@ -327,7 +328,7 @@ export function catalogPanel({ product, productName, workspace, roles, signal, o
         pick.dataset.revision = item.revision_id;
         pick.setAttribute("aria-pressed", "false");
         pick.onclick = () => showRevision(item);
-        return [pick, badge(item.status), sources[item.source_kind] || item.source_kind, item.spec_version,
+        return [pick, badge(item.status), sources[item.source_kind] || item.source_kind, specificationLabel(item),
           code(short(item.source_digest)), code(short(item.ref_closure_digest)), timestamp(item.created_at)];
       }));
     });
@@ -364,7 +365,7 @@ export function catalogPanel({ product, productName, workspace, roles, signal, o
         ["状态", badge(revision.status)],
         ["来源", origin ? "Git " + origin.repository + " @ " + origin.commit + (origin.ref ? " (" + origin.ref + ")" : "") :
           sources[revision.source_kind] || revision.source_kind],
-        ["规范版本", revision.spec_version],
+        ["规范版本", specificationLabel(revision)],
         ["导入时间", timestamp(revision.created_at)],
         ["修订 ID", code(revision.revision_id)],
         ["入口文件", code(revision.entrypoint)],

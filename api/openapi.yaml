@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: IDP API Fabric management API
-  version: 0.38.0
+  version: 0.39.0
   description: >-
     The HTTP contract of the Fabric control plane. The DTOs and the handler
     interface in internal/transport/http are generated from this document, and
@@ -973,14 +973,17 @@ paths:
           $ref: '#/components/responses/Problem'
     post:
       operationId: importRevision
-      summary: Import an OpenAPI source bundle as a draft revision
+      summary: Import a contract source bundle as a draft revision
       description: >-
-        A current internal author of the HTTP asset's owning workspace can
-        import into an active product. Submit UTF-8 YAML or JSON files as
-        standard Base64, with a canonical relative entrypoint. The bundle
-        holds up to 16 files and 40960 decoded bytes, within the 65536-byte
-        HTTP request limit. Capture supports an OpenAPI 3.1.2 entrypoint and
-        relative JSON Pointer references within the bundle. It refuses
+        A current internal author of the asset's owning workspace can import
+        into an active product. Submit UTF-8 YAML or JSON files as standard
+        Base64, with a canonical relative entrypoint. The bundle holds up to
+        16 files and 40960 decoded bytes, within the 65536-byte HTTP request
+        limit. An HTTP asset takes an OpenAPI 3.1.2 entrypoint and an event
+        asset an AsyncAPI 3.1.0 one. An entrypoint of another
+        version, or of the specification of the other kind of asset, is
+        refused (422 UNSUPPORTED_SPEC_VERSION). Capture supports relative
+        JSON Pointer references within the bundle. It refuses
         remote references, paths outside the bundle and cycles. The original
         entrypoint and referenced files are preserved with SHA-256 digests.
         Inaccessible assets are hidden using the API Catalog read rules.
@@ -3223,8 +3226,12 @@ components:
         artifact_digest:
           $ref: '#/components/schemas/ContractDigest'
         artifact_format:
+          description: >-
+            fabric-openapi-source/v1 for a release of an OpenAPI contract,
+            fabric-asyncapi-source/v1 for one of an AsyncAPI contract. Both
+            hold the files of the revision as they were recorded.
           type: string
-          enum: [fabric-openapi-source/v1]
+          enum: [fabric-openapi-source/v1, fabric-asyncapi-source/v1]
         version:
           type: string
           pattern: '^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$'
@@ -4372,7 +4379,7 @@ components:
       pattern: '^sha256:[a-f0-9]{64}$'
     ContractRevision:
       type: object
-      required: [revision_id, source_snapshot_id, product_id, api_asset_id, revision_sequence, status, source_kind, entrypoint, spec_version, source_digest, ref_closure_digest, created_at]
+      required: [revision_id, source_snapshot_id, product_id, api_asset_id, revision_sequence, status, source_kind, entrypoint, specification, spec_version, source_digest, ref_closure_digest, created_at]
       additionalProperties: false
       properties:
         revision_id:
@@ -4407,9 +4414,18 @@ components:
           $ref: '#/components/schemas/GitOrigin'
         entrypoint:
           $ref: '#/components/schemas/ContractSourcePath'
-        spec_version:
+        specification:
+          description: >-
+            The language of the contract: OPENAPI for an HTTP asset, ASYNCAPI
+            for an event asset. A revision recorded before 0.39.0 is OpenAPI.
           type: string
-          const: '3.1.2'
+          enum: [OPENAPI, ASYNCAPI]
+        spec_version:
+          description: >-
+            The version of the specification the entrypoint declares: 3.1.2
+            for OpenAPI, 3.1.0 for AsyncAPI.
+          type: string
+          enum: ['3.1.2', '3.1.0']
         source_digest:
           $ref: '#/components/schemas/ContractDigest'
         ref_closure_digest:

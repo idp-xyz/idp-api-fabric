@@ -39,7 +39,7 @@ const selectHeads = `
 SELECT r.revision_id, r.source_snapshot_id, r.product_id, r.workspace_id,
        r.api_asset_id, r.revision_sequence, r.status, r.status_version, r.source_kind,
        r.origin_repository, r.origin_commit, r.origin_ref,
-       r.entrypoint, r.spec_version, r.source_digest, r.ref_closure_digest, r.captured_at,
+       r.entrypoint, r.specification, r.spec_version, r.source_digest, r.ref_closure_digest, r.captured_at,
        r.captured_by_issuer, r.captured_by_subject,
        l.release_id, l.revision_id, l.review_id, l.check_run_id, l.policy_snapshot_id, l.policy_digest,
        l.input_digest, l.artifact_digest, l.release_version, l.prepared_at, l.prepared_by_issuer, l.prepared_by_subject,
@@ -52,7 +52,7 @@ JOIN LATERAL (
            v.revision_sequence, v.status, v.status_version, s.source_kind,
            coalesce(s.origin_repository, '') AS origin_repository, coalesce(s.origin_commit, '') AS origin_commit,
            coalesce(s.origin_ref, '') AS origin_ref,
-           s.entrypoint, v.spec_version, s.source_digest, s.ref_closure_digest, s.captured_at,
+           s.entrypoint, v.specification, v.spec_version, s.source_digest, s.ref_closure_digest, s.captured_at,
            s.captured_by_issuer, s.captured_by_subject
     FROM contractregistry.contract_revision v
     JOIN contractregistry.source_snapshot s USING (source_snapshot_id)
@@ -82,7 +82,7 @@ func scanHead(row pgx.CollectableRow) (ports.Head, error) {
 	if err := row.Scan(&revision.ID, &revision.SourceSnapshotID, &revision.Asset.ProductID, &revision.Asset.WorkspaceID,
 		&revision.Asset.AssetID, &revision.Sequence, &revision.Status, &revision.StatusVersion, &revision.SourceKind,
 		&revision.Origin.Repository, &revision.Origin.Commit, &revision.Origin.Ref,
-		&revision.Entrypoint, &revision.SpecVersion, &revision.SourceDigest, &revision.RefClosureDigest, &revision.CreatedAt,
+		&revision.Entrypoint, &revision.Specification, &revision.SpecVersion, &revision.SourceDigest, &revision.RefClosureDigest, &revision.CreatedAt,
 		&revision.CreatedBy.Issuer, &revision.CreatedBy.Subject,
 		&releaseID, &releaseRevision, &review, &check, &snapshot, &policy, &input, &artifact,
 		&version, &preparedAt, &issuer, &subject, &waivers, &head.Released); err != nil {
@@ -102,6 +102,7 @@ func scanHead(row pgx.CollectableRow) (ports.Head, error) {
 	}
 	release := &domain.Release{
 		ID: *releaseID, Asset: revision.Asset, RevisionID: *releaseRevision,
+		Specification:  revision.Specification,
 		Evidence:       domain.CheckEvidence{CheckRunID: *check, PolicySnapshotID: *snapshot, PolicyDigest: *policy},
 		Version:        *version,
 		InputDigest:    *input,

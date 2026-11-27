@@ -10,10 +10,12 @@ import (
 )
 
 var (
-	ErrForbidden         = errors.New("the caller may not work with revisions of this asset")
-	ErrProductSuspended  = errors.New("the product is suspended")
-	ErrAssetKind         = errors.New("the API asset does not take OpenAPI revisions")
-	ErrRefusalNotAudited = errors.New("a revision refusal could not be audited")
+	ErrForbidden        = errors.New("the caller may not work with revisions of this asset")
+	ErrProductSuspended = errors.New("the product is suspended")
+	// ErrSpecificationMismatch reports a contract of the other language than
+	// the asset's: an HTTP asset takes OpenAPI and an event asset AsyncAPI.
+	ErrSpecificationMismatch = errors.New("an HTTP asset takes an OpenAPI contract and an event asset an AsyncAPI one")
+	ErrRefusalNotAudited     = errors.New("a revision refusal could not be audited")
 )
 
 type Dependencies struct {
@@ -62,9 +64,6 @@ func (r *Registry) ImportRevision(ctx context.Context, command ImportRevision) (
 		if !active {
 			return ErrProductSuspended
 		}
-		if !scope.HTTP {
-			return ErrAssetKind
-		}
 		if command.Origin.Declared() {
 			if err := command.Origin.Validate(); err != nil {
 				return err
@@ -73,6 +72,13 @@ func (r *Registry) ImportRevision(ctx context.Context, command ImportRevision) (
 		source, err := r.deps.Capture(command.Entrypoint, command.Files)
 		if err != nil {
 			return err
+		}
+		want := domain.AsyncAPI
+		if scope.HTTP {
+			want = domain.OpenAPI
+		}
+		if source.Specification != want {
+			return ErrSpecificationMismatch
 		}
 		registered, err = r.deps.Revisions.Register(tx, domain.Draft{
 			ID: r.deps.Identifiers.NewID(), SourceSnapshotID: r.deps.Identifiers.NewID(),

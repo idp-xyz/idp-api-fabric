@@ -58,7 +58,7 @@ func (d *registryDouble) Reader(context.Context, domain.Principal, domain.AssetR
 
 func (d *registryDouble) capture(entrypoint string, files []domain.SourceFile) (domain.SourceSnapshot, error) {
 	d.captured++
-	return domain.CaptureSource(entrypoint, "3.1.2", files)
+	return domain.CaptureSource(entrypoint, domain.OpenAPI, "3.1.2", files)
 }
 
 func (d *registryDouble) Register(_ context.Context, draft domain.Draft, source domain.SourceSnapshot) (ports.Registration, error) {
@@ -66,7 +66,7 @@ func (d *registryDouble) Register(_ context.Context, draft domain.Draft, source 
 	return ports.Registration{Created: true, Revision: domain.Revision{
 		ID: draft.ID, SourceSnapshotID: draft.SourceSnapshotID, Asset: draft.Asset, Sequence: int64(len(d.drafts)),
 		Status: domain.RevisionDraft, SourceKind: draft.Origin.SourceKind(), Origin: draft.Origin,
-		Entrypoint: source.Entrypoint, SpecVersion: source.SpecVersion,
+		Entrypoint: source.Entrypoint, Specification: source.Specification, SpecVersion: source.SpecVersion,
 		SourceDigest: source.SourceDigest, RefClosureDigest: source.RefClosureDigest, CreatedAt: draft.CapturedAt,
 	}}, nil
 }
@@ -187,9 +187,7 @@ func TestAnImportRecordsOnlyAnOriginTheModelAccepts(t *testing.T) {
 	}
 }
 
-// What a caller is told who may not import, or who imports into an asset or
-// a product that takes no import, does not depend on the origin it names:
-// the origin is looked at after all of that.
+// Authorization and product state are checked before origin validation.
 func TestAnOriginIsLookedAtAfterWhoImportsAndInto(t *testing.T) {
 	malformed := domain.GitOrigin{Repository: "http://git.example/logistics/contracts", Commit: "main"}
 	cases := map[string]struct {
@@ -197,9 +195,8 @@ func TestAnOriginIsLookedAtAfterWhoImportsAndInto(t *testing.T) {
 		want    error
 		audited int
 	}{
-		"someone who is no author":  {registryDouble{author: false, active: true, http: true}, application.ErrForbidden, 1},
-		"a suspended product":       {registryDouble{author: true, active: false, http: true}, application.ErrProductSuspended, 0},
-		"an asset that is not HTTP": {registryDouble{author: true, active: true, http: false}, application.ErrAssetKind, 0},
+		"someone who is no author": {registryDouble{author: false, active: true, http: true}, application.ErrForbidden, 1},
+		"a suspended product":      {registryDouble{author: true, active: false, http: true}, application.ErrProductSuspended, 0},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

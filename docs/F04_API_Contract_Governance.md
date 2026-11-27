@@ -14,7 +14,7 @@ F04 将 **`SourceSnapshot → ContractRevision → CheckRun（准备 Release 时
 | 决策主题 | F04 设计提议 | 真实状态 |
 |---|---|---|
 | HTTP 规范 | OpenAPI **3.1.2** 为初期验证目标；最新 **3.2.1** 作为兼容候选，不在工具未验证时宣称可正式发布 | Proposed / Tool PoC `NOT_RUN` |
-| 事件规范 | AsyncAPI **3.1.0** 为 V1 支持候选；MVP 可以仅登记事件资产元数据并拒绝未经支持的正式解析/发布 | Proposed / PoC `NOT_RUN` |
+| 事件规范 | AsyncAPI **3.1.0** 属于 V1，MVP 可仅登记事件资产元数据 | 0.39.0 的基础实现见 §11.11，正式验收证据仍按 F08 记录 |
 | 业务错误 | RFC 9457 `application/problem+json` 作为 Fabric 管理 API 的推荐错误表达 | 设计示例，非运行保证 |
 | 治理优先级 | **全局不可豁免安全要求 > 产品加强规则 > 可豁免质量规则**；必须记录策略版本、工具版本和输入摘要 | Proposed |
 | 对外发布 | Release 不可变；Slot `(target_id,api_asset_id)` 生效指针按 CAS 变更，deny-first；发布到文档门户 ≠ 获得真实业务 API 调用权 | Proposed / ADR-0004 待批 |
@@ -332,7 +332,7 @@ V1 按 `Experimental → Stable → Deprecated → Retired` 表达资产生命�
 
 这些资源登记后不变，所以没有 `ETag` 和 `If-Match`。全部响应带 `Cache-Control: no-store`。
 
-**导入。** 文件是 UTF-8 的 YAML 或 JSON，以标准 Base64 提交；一次最多 16 个文件、解码后合计 40960 字节，HTTP 请求体不超过 65536 字节。入口必须声明 OpenAPI 3.1.2，否则返回 422 `UNSUPPORTED_SPEC_VERSION`。引用只能是包内的相对 JSON Pointer；远程引用、越出包的路径、循环等返回 422 `CONTRACT_SOURCE_INVALID`。Base64 不合法返回 400 `REQUEST_INVALID`。资产不是 `HTTP` 类型返回 409 `API_ASSET_KIND_UNSUPPORTED`，产品已暂停返回 409 `PRODUCT_NOT_ACTIVE`。导入没有 `Idempotency-Key`：幂等来自内容，相同闭包重复提交得到同一个修订，响应以 200 而不是 201 区分。
+**导入。** 文件是 UTF-8 的 YAML 或 JSON，以标准 Base64 提交。一次最多 16 个文件，解码后合计 40960 字节，HTTP 请求体不超过 65536 字节。入口规范与资产类型的匹配见 §11.11。引用使用包内的相对 JSON Pointer。远程引用、越出包的路径或循环返回 422 `CONTRACT_SOURCE_INVALID`。Base64 不合法返回 400 `REQUEST_INVALID`。产品已暂停时返回 409 `PRODUCT_NOT_ACTIVE`。幂等来自内容，相同来源与闭包的重复提交返回 200 和原修订。
 
 **Git 来源。** `git_origin` 的三个字段的形式都写在契约里：仓库是不含凭证、查询串和片段的 https 网址，主机名小写，至多 300 个字符；提交是 40 或 64 位小写十六进制的完整提交名，缩写、分支名和标签名都不接受；引用是 `refs/` 开头的完整引用名，至多 200 个字符。形式不符的请求在进入用例之前返回 400 `REQUEST_INVALID`，带凭证的网址不会被写入数据库或日志。带来源时，入口和文件路径就是文件在仓库里的路径。Fabric 记录声明，不读取仓库。同一仓库、提交和入口带着另一份闭包再次提交，返回 409 `GIT_ORIGIN_CONFLICT`，不留下任何记录。
 
@@ -626,7 +626,7 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 
 ### 11.9 已实现的工作台查询接口
 
-本节对应管理 API 0.29.0–0.31.0，当时为 0.31.0（现行契约为 0.38.0，见 §11.10）：0.29.0 加入两个“我是谁”，0.30.0 加入一个 Workspace 里的评审队列，0.31.0 给资产的读取加上概况，并给资产列表加两个筛选。三个版本一共增加 3 个操作，当时是 60 个（0.37.0 起 57 个）。数据模型见 F03 §5.13，访问规则见 F05 §6.10。 [管理 API 契约](../api/openapi.yaml)
+本节对应管理 API 0.29.0–0.31.0。0.29.0 加入两个“我是谁”，0.30.0 加入一个 Workspace 里的评审队列，0.31.0 给资产的读取加上概况，并给资产列表加两个筛选。三个版本一共增加 3 个操作，当时是 60 个（0.37.0 起 57 个）。数据模型见 F03 §5.13，访问规则见 F05 §6.10。 [管理 API 契约](../api/openapi.yaml)
 
 | 方法 | 路径 | operationId | 从哪个版本起 |
 |---|---|---|---|
@@ -716,6 +716,13 @@ Slot、操作记录、审计和 Outbox 在同一事务提交。目标阻断使�
 | 0.38.0 | CR-0002：`getContractReleaseArtifact` 在这个 Release 的阻断（产品的任一发布目标上，没有解除）存在时答 409 `RELEASE_ACCESS_BLOCKED`，操作声明了 409；目标和资产的阻断、产品暂停不挡；`getPublishedArtifact`、`blockPublicationAccess` 的描述补了文字（§11.8） | 处理新的 409：0.37.0 下载成功的，Release 被阻断时现在被拒绝。没有迁移，不需要重新授权；全部进程换完以后才对每次下载生效 |
 
 0.33.0–0.36.0 沿用 60 个管理操作，0.37.0 删除 3 个评审写操作，现为 57 个；0.38.0 不增减操作，也没有新的 schema。服务端按请求重新判权，列表在分页之前按授予的产品和 Workspace 范围过滤。写操作按各自角色检查。详细作用域与拒绝语义见 [F05 §6.12](F05_Security_and_Multitenancy.md#612-内部发布审计与读取权限033003500360)。
+
+### 11.11 AsyncAPI 事件契约（0.39.0）
+
+- `HTTP` 资产使用 OpenAPI 3.1.2，`EVENT` 资产使用 AsyncAPI 3.1.0。规范与资产类型不匹配或版本不受支持时返回 422 `UNSUPPORTED_SPEC_VERSION`。两类修订沿用 §11.3 的导入、历史和原文接口。响应以 `specification` 和 `spec_version` 标明规范类型和版本。
+- 事件检查使用本地固定的 AsyncAPI 3.1.0 Schema，并复用引用范围、凭证扫描、内网地址检查和 Release 门禁。以旧修订为基线时，删除频道或操作、改变固定频道地址或操作方向返回 `BREAKING`。比较器无法判定的消息、协议绑定及引用文件变更返回 `UNKNOWN`。检查结论按 §11.6 的检查和豁免规则处理。
+- 事件 Release 制品格式为 `fabric-asyncapi-source/v1`，包含原始文件、路径和摘要。事件制品通过已授权的槽位读出。访问阻断按 §11.6 和 §11.8 检查。实际 Broker 联调仍使用 V1 验收流程。
+- 升级先应用 `contractregistry/007_revision_specification`。历史修订的规范记为 `OPENAPI`，制品字节和摘要沿用原记录。现有的 57 个管理操作继续适用。调用方需要适配新增的 `specification` 字段、扩展后的规范版本及制品格式枚举。部署完成后再导入事件契约。
 
 ## 12. API Catalog 元数据、文档产物和发布加工
 

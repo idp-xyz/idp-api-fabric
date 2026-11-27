@@ -444,7 +444,7 @@ func TestARowWithAReleaseThatIsNotWholeIsNoHead(t *testing.T) {
 		values := []any{
 			"6d7e8f90-a1b2-4c3d-8e4f-5a6b7c8d9e0f", "8f90a1b2-c3d4-4e5f-a6b7-c8d9e0f1a2b3", "1c9a4e7b-52d0-4f8e-b6a1-90c3d2e4f5a6",
 			"7d2e9f10-3a4b-4c5d-8e6f-0a1b2c3d4e5f", "4b5c6d7e-8f90-4a1b-9c2d-3e4f5a6b7c8d",
-			int64(3), "APPROVED", int64(3), "UPLOAD", "", "", "", "openapi.yaml", "3.1.2",
+			int64(3), "APPROVED", int64(3), "UPLOAD", "", "", "", "openapi.yaml", domain.OpenAPI, "3.1.2",
 			"sha256:" + fmt.Sprintf("%064x", 1), "sha256:" + fmt.Sprintf("%064x", 2), instant, "https://issuer.example", "author",
 		}
 		return savedRow{values: append(append(values, release...), released)}

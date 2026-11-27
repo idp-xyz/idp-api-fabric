@@ -29,7 +29,7 @@ func TestTheFilesOfARevisionAreReadUnderItsAsset(t *testing.T) {
 
 	record := func(asset domain.AssetRef, entrypoint string, files ...domain.SourceFile) (domain.Revision, domain.SourceSnapshot) {
 		t.Helper()
-		snapshot, err := domain.CaptureSource(entrypoint, "3.1.2", files)
+		snapshot, err := domain.CaptureSource(entrypoint, domain.OpenAPI, "3.1.2", files)
 		if err != nil {
 			t.Fatal(err)
 		}

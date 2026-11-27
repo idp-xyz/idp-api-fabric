@@ -71,7 +71,7 @@ func TestContractRevisionImportUsesTheCurrentAssetAuthorAndDeduplicates(t *testi
 	}
 	eventPath := s.revisionAsset(product, workspace, "maintainer", "shipping-events", "EVENT")
 	s.expect("OpenAPI imports apply to HTTP assets", "author", []exchange{
-		{http.MethodPost, eventPath, body, http.StatusConflict, "API_ASSET_KIND_UNSUPPORTED"},
+		{http.MethodPost, eventPath, body, http.StatusUnprocessableEntity, "UNSUPPORTED_SPEC_VERSION"},
 	})
 
 	var events int
