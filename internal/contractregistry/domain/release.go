@@ -7,7 +7,21 @@ import (
 	"time"
 )
 
-const ArtifactFormat = "fabric-openapi-source/v1"
+// The formats of an artifact, by the specification of its contract. The
+// bytes of an OpenAPI artifact are what they were before AsyncAPI was taken.
+const (
+	ArtifactFormat      = "fabric-openapi-source/v1"
+	EventArtifactFormat = "fabric-asyncapi-source/v1"
+)
+
+// ArtifactFormatOf is the format of the artifact of a contract written in
+// specification.
+func ArtifactFormatOf(specification Specification) string {
+	if specification == AsyncAPI {
+		return EventArtifactFormat
+	}
+	return ArtifactFormat
+}
 
 // MaxArtifactBytes bounds the bytes of an artifact, as the table that keeps
 // them does. The largest source a revision is recorded from (MaxSourceBytes
@@ -40,6 +54,9 @@ type Release struct {
 	ID         string
 	Asset      AssetRef
 	RevisionID string
+	// Specification is the language of the contract of the revision, which
+	// decides the format of the artifact.
+	Specification Specification
 	// ReviewID names the review that approved the revision, for a release
 	// prepared under one. A release prepared since reviews are no longer
 	// decided (CR-0001) rests on its check alone and names none.
@@ -88,7 +105,7 @@ func BuildArtifact(revision Revision, files []SourceFile) ([]byte, string, error
 		SpecVersion string         `json:"spec_version"`
 		InputDigest string         `json:"ref_closure_digest"`
 		Files       []artifactFile `json:"files"`
-	}{ArtifactFormat, revision.Entrypoint, revision.SpecVersion, revision.RefClosureDigest, make([]artifactFile, 0, len(recorded))}
+	}{ArtifactFormatOf(revision.Specification), revision.Entrypoint, revision.SpecVersion, revision.RefClosureDigest, make([]artifactFile, 0, len(recorded))}
 	for _, file := range recorded {
 		artifact.Files = append(artifact.Files, artifactFile{Path: file.Path, Digest: file.Digest, Content: []byte(file.Content)})
 	}

@@ -14,18 +14,24 @@ var (
 	ErrProductSuspended  = errors.New("the product is suspended")
 	ErrRefusalNotAudited = errors.New("a check refusal could not be audited")
 	ErrInvalidBaseline   = errors.New("the baseline must be a different revision of the same API asset")
+	// ErrNoTools reports a revision of a specification this build has no
+	// tools for. Contract Registry records revisions of the ones it has.
+	ErrNoTools = errors.New("no tools check a contract of this specification")
 )
 
 type Dependencies struct {
 	Transactions ports.Transactions
 	Revisions    ports.Revisions
 	Checks       ports.CheckRuns
-	Evaluator    ports.Evaluator
-	Comparator   ports.Comparator
-	Audit        func(context.Context, ports.AuditEntry) error
-	Events       ports.Events
-	Clock        ports.Clock
-	Identifiers  ports.Identifiers
+	// Evaluators and Comparators are the tools of a check by the
+	// specification of the contract they read, one of each for every
+	// specification a revision is recorded in.
+	Evaluators  map[domain.Specification]ports.Evaluator
+	Comparators map[domain.Specification]ports.Comparator
+	Audit       func(context.Context, ports.AuditEntry) error
+	Events      ports.Events
+	Clock       ports.Clock
+	Identifiers ports.Identifiers
 }
 
 type Checks struct {
@@ -35,11 +41,34 @@ type Checks struct {
 
 func NewChecks(deps Dependencies) (*Checks, error) {
 	if deps.Transactions == nil || deps.Revisions == nil || deps.Checks == nil ||
-		deps.Evaluator == nil || deps.Comparator == nil || deps.Audit == nil || deps.Events == nil ||
+		len(deps.Evaluators) == 0 || len(deps.Evaluators) != len(deps.Comparators) || deps.Audit == nil || deps.Events == nil ||
 		deps.Clock == nil || deps.Identifiers == nil {
-		return nil, errors.New("Policy & Review needs transactions, revisions, check storage, an evaluator, a comparator, audit, events, clock and identifiers")
+		return nil, errors.New("Policy & Review needs transactions, revisions, check storage, evaluators and comparators, audit, events, clock and identifiers")
+	}
+	for specification, evaluator := range deps.Evaluators {
+		if comparator := deps.Comparators[specification]; evaluator == nil || comparator == nil {
+			return nil, fmt.Errorf("Policy & Review needs an evaluator and a comparator for %s", specification)
+		}
 	}
 	return &Checks{deps: deps, policy: domain.Baseline()}, nil
+}
+
+// toolsFor are the evaluator and the comparator a source is checked with.
+func (c *Checks) toolsFor(source domain.Source) (ports.Evaluator, ports.Comparator, error) {
+	evaluator, found := c.deps.Evaluators[source.Specification]
+	if !found {
+		return nil, nil, fmt.Errorf("%w: %q", ErrNoTools, source.Specification)
+	}
+	return evaluator, c.deps.Comparators[source.Specification], nil
+}
+
+// tools are the tools a check is made with today, of every specification.
+func (c *Checks) tools() []domain.Tool {
+	var tools []domain.Tool
+	for specification, evaluator := range c.deps.Evaluators {
+		tools = append(tools, evaluator.Tool(), c.deps.Comparators[specification].Tool())
+	}
+	return tools
 }
 
 type Execution struct {
@@ -54,7 +83,11 @@ func (c *Checks) Run(ctx context.Context, target ports.Target, baselineID string
 	if err != nil {
 		return Execution{}, err
 	}
-	tool := c.deps.Evaluator.Tool()
+	evaluator, compare, err := c.toolsFor(source)
+	if err != nil {
+		return Execution{}, err
+	}
+	tool := evaluator.Tool()
 	tools := []domain.Tool{tool}
 	var baseline domain.Source
 	var comparator domain.Tool
@@ -68,7 +101,10 @@ func (c *Checks) Run(ctx context.Context, target ports.Target, baselineID string
 		if err != nil {
 			return Execution{}, err
 		}
-		comparator = c.deps.Comparator.Tool()
+		if baseline.Specification != source.Specification {
+			return Execution{}, ErrInvalidBaseline
+		}
+		comparator = compare.Tool()
 		tools = append(tools, comparator)
 	}
 	toolDigest := domain.ToolDigest(tools)
@@ -106,13 +142,13 @@ func (c *Checks) Run(ctx context.Context, target ports.Target, baselineID string
 		}
 
 		started := c.deps.Clock.Now()
-		observations := c.deps.Evaluator.Evaluate(source, c.policy.Rules())
+		observations := evaluator.Evaluate(source, c.policy.Rules())
 		var comparison *domain.ComparisonEvidence
 		if baselineID != "" {
 			comparison = &domain.ComparisonEvidence{
 				Baseline:   domain.ComparisonBaseline{RevisionID: baselineID, InputDigest: baseline.Digest},
 				Tool:       comparator,
-				Comparison: c.deps.Comparator.Compare(baseline, source),
+				Comparison: compare.Compare(baseline, source),
 			}
 		}
 		completed := c.deps.Clock.Now()

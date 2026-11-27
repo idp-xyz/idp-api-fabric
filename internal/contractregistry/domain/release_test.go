@@ -41,7 +41,7 @@ func TestTheLargestSourceMakesAnArtifactWithinTheBound(t *testing.T) {
 		}
 		files = append(files, SourceFile{Path: name, Content: strings.Repeat("#", each)})
 	}
-	snapshot, err := CaptureSource(files[0].Path, "3.1.2", files)
+	snapshot, err := CaptureSource(files[0].Path, OpenAPI, "3.1.2", files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestAnArtifactIsTheRecordedFilesUnderItsDigest(t *testing.T) {
 			"components:\r\n  schemas:\r\n    Shipment: {$ref: 'schemas/common.json#/Shipment'}\r\n"},
 		{Path: "schemas/common.json", Content: `{"Shipment":{"type":"object"}}` + "\n"},
 	}
-	snapshot, err := CaptureSource("openapi.yaml", "3.1.2", files)
+	snapshot, err := CaptureSource("openapi.yaml", OpenAPI, "3.1.2", files)
 	if err != nil {
 		t.Fatal(err)
 	}

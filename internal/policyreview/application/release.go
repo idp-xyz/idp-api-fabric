@@ -65,8 +65,7 @@ func (c *Checks) VerifyReleaseCheck(ctx context.Context, input ReleaseCheck) (Ve
 	}
 	verified := VerifiedCheck{CheckRunID: run.ID, PolicySnapshotID: run.PolicySnapshotID, PolicyDigest: run.PolicyDigest}
 	if input.Preparing {
-		tools := []domain.Tool{c.deps.Evaluator.Tool(), c.deps.Comparator.Tool()}
-		if verified.Waivers, err = domain.GateRelease(run, c.policy, tools, input.Waivers); err != nil {
+		if verified.Waivers, err = domain.GateRelease(run, c.policy, c.tools(), input.Waivers); err != nil {
 			return VerifiedCheck{}, err
 		}
 	}

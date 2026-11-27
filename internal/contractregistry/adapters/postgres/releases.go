@@ -18,6 +18,9 @@ type Releases struct{ database *bentopostgres.DB }
 
 func NewReleases(database *bentopostgres.DB) *Releases { return &Releases{database: database} }
 
+// The specification of a release is the one of its revision, which the
+// release does not repeat.
+//
 // A release prepared on its check alone names no review: review_id is NULL
 // and is read as the empty identifier. Its waivers are a JSON array of rule
 // and reason, in the order of their rules, and an empty one for a release
@@ -25,7 +28,8 @@ func NewReleases(database *bentopostgres.DB) *Releases { return &Releases{databa
 const selectRelease = `
 SELECT release_id, product_id, workspace_id, api_asset_id, revision_id, coalesce(review_id::text, ''),
        check_run_id, policy_snapshot_id, policy_digest, input_digest, artifact_digest,
-       release_version, prepared_at, prepared_by_issuer, prepared_by_subject, waivers
+       release_version, prepared_at, prepared_by_issuer, prepared_by_subject, waivers,
+       (SELECT r.specification FROM contractregistry.contract_revision r WHERE r.revision_id = contract_release.revision_id)
 FROM contractregistry.contract_release
 WHERE product_id = $1 AND api_asset_id = $2 AND workspace_id = $3`
 
@@ -40,7 +44,7 @@ func scanRelease(row pgx.Row) (domain.Release, error) {
 	var waivers []byte
 	err := row.Scan(&r.ID, &r.Asset.ProductID, &r.Asset.WorkspaceID, &r.Asset.AssetID, &r.RevisionID, &r.ReviewID,
 		&r.Evidence.CheckRunID, &r.Evidence.PolicySnapshotID, &r.Evidence.PolicyDigest, &r.InputDigest, &r.ArtifactDigest,
-		&r.Version, &r.PreparedAt, &r.PreparedBy.Issuer, &r.PreparedBy.Subject, &waivers)
+		&r.Version, &r.PreparedAt, &r.PreparedBy.Issuer, &r.PreparedBy.Subject, &waivers, &r.Specification)
 	if err != nil {
 		return domain.Release{}, err
 	}

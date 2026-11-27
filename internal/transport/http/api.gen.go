@@ -227,12 +227,15 @@ func (e CompatibilityClassification) Valid() bool {
 
 // Defines values for ContractReleaseArtifactFormat.
 const (
-	ContractReleaseArtifactFormatFabricOpenapiSourceV1 ContractReleaseArtifactFormat = "fabric-openapi-source/v1"
+	ContractReleaseArtifactFormatFabricAsyncapiSourceV1 ContractReleaseArtifactFormat = "fabric-asyncapi-source/v1"
+	ContractReleaseArtifactFormatFabricOpenapiSourceV1  ContractReleaseArtifactFormat = "fabric-openapi-source/v1"
 )
 
 // Valid indicates whether the value is a known member of the ContractReleaseArtifactFormat enum.
 func (e ContractReleaseArtifactFormat) Valid() bool {
 	switch e {
+	case ContractReleaseArtifactFormatFabricAsyncapiSourceV1:
+		return true
 	case ContractReleaseArtifactFormatFabricOpenapiSourceV1:
 		return true
 	default:
@@ -275,13 +278,34 @@ func (e ContractRevisionSourceKind) Valid() bool {
 
 // Defines values for ContractRevisionSpecVersion.
 const (
+	ContractRevisionSpecVersionN310 ContractRevisionSpecVersion = "3.1.0"
 	ContractRevisionSpecVersionN312 ContractRevisionSpecVersion = "3.1.2"
 )
 
 // Valid indicates whether the value is a known member of the ContractRevisionSpecVersion enum.
 func (e ContractRevisionSpecVersion) Valid() bool {
 	switch e {
+	case ContractRevisionSpecVersionN310:
+		return true
 	case ContractRevisionSpecVersionN312:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ContractRevisionSpecification.
+const (
+	ContractRevisionSpecificationASYNCAPI ContractRevisionSpecification = "ASYNCAPI"
+	ContractRevisionSpecificationOPENAPI  ContractRevisionSpecification = "OPENAPI"
+)
+
+// Valid indicates whether the value is a known member of the ContractRevisionSpecification enum.
+func (e ContractRevisionSpecification) Valid() bool {
+	switch e {
+	case ContractRevisionSpecificationASYNCAPI:
+		return true
+	case ContractRevisionSpecificationOPENAPI:
 		return true
 	default:
 		return false
@@ -1027,8 +1051,10 @@ type ContractRecordedFile struct {
 // ContractRelease defines model for ContractRelease.
 type ContractRelease struct {
 	// APIAssetID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
-	APIAssetID     Identifier                    `json:"api_asset_id"`
-	ArtifactDigest ContractDigest                `json:"artifact_digest"`
+	APIAssetID     Identifier     `json:"api_asset_id"`
+	ArtifactDigest ContractDigest `json:"artifact_digest"`
+
+	// ArtifactFormat fabric-openapi-source/v1 for a release of an OpenAPI contract, fabric-asyncapi-source/v1 for one of an AsyncAPI contract. Both hold the files of the revision as they were recorded.
 	ArtifactFormat ContractReleaseArtifactFormat `json:"artifact_format"`
 
 	// CheckRunID The check the release rests on
@@ -1064,7 +1090,7 @@ type ContractRelease struct {
 	WorkspaceID Identifier `json:"workspace_id"`
 }
 
-// ContractReleaseArtifactFormat defines model for ContractRelease.ArtifactFormat.
+// ContractReleaseArtifactFormat fabric-openapi-source/v1 for a release of an OpenAPI contract, fabric-asyncapi-source/v1 for one of an AsyncAPI contract. Both hold the files of the revision as they were recorded.
 type ContractReleaseArtifactFormat string
 
 // ContractReleaseStatus defines model for ContractRelease.Status.
@@ -1114,8 +1140,13 @@ type ContractRevision struct {
 	SourceKind ContractRevisionSourceKind `json:"source_kind"`
 
 	// SourceSnapshotID The stable identity of an object: a UUID in its canonical form. It is never reused and says nothing about the object.
-	SourceSnapshotID Identifier                  `json:"source_snapshot_id"`
-	SpecVersion      ContractRevisionSpecVersion `json:"spec_version"`
+	SourceSnapshotID Identifier `json:"source_snapshot_id"`
+
+	// SpecVersion The version of the specification the entrypoint declares: 3.1.2 for OpenAPI, 3.1.0 for AsyncAPI.
+	SpecVersion ContractRevisionSpecVersion `json:"spec_version"`
+
+	// Specification The language of the contract: OPENAPI for an HTTP asset, ASYNCAPI for an event asset. A revision recorded before 0.39.0 is OpenAPI.
+	Specification ContractRevisionSpecification `json:"specification"`
 
 	// Status Where the revision stood in its review. A revision is recorded as a DRAFT and stays one: no review is asked for any more. Revisions reviewed before are APPROVED, REJECTED or WITHDRAWN. Its content is the same at every status, and the status does not gate a release.
 	Status ContractRevisionStatus `json:"status"`
@@ -1124,8 +1155,11 @@ type ContractRevision struct {
 // ContractRevisionSourceKind GIT for a source submitted with a Git origin, UPLOAD for one without
 type ContractRevisionSourceKind string
 
-// ContractRevisionSpecVersion defines model for ContractRevision.SpecVersion.
+// ContractRevisionSpecVersion The version of the specification the entrypoint declares: 3.1.2 for OpenAPI, 3.1.0 for AsyncAPI.
 type ContractRevisionSpecVersion string
+
+// ContractRevisionSpecification The language of the contract: OPENAPI for an HTTP asset, ASYNCAPI for an event asset. A revision recorded before 0.39.0 is OpenAPI.
+type ContractRevisionSpecification string
 
 // ContractRevisionStatus Where the revision stood in its review. A revision is recorded as a DRAFT and stays one: no review is asked for any more. Revisions reviewed before are APPROVED, REJECTED or WITHDRAWN. Its content is the same at every status, and the status does not gate a release.
 type ContractRevisionStatus string
@@ -2139,7 +2173,7 @@ type ServerInterface interface {
 	// ListRevisions List draft revision metadata for an API asset
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions)
 	ListRevisions(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier, params ListRevisionsParams)
-	// ImportRevision Import an OpenAPI source bundle as a draft revision
+	// ImportRevision Import a contract source bundle as a draft revision
 	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions)
 	ImportRevision(w http.ResponseWriter, r *http.Request, productID ProductID, apiAssetID Identifier)
 	// GetRevision Read one immutable draft revision's metadata
@@ -12403,7 +12437,7 @@ type StrictServerInterface interface {
 	// ListRevisions List draft revision metadata for an API asset
 	// (GET /v1/products/{product_id}/assets/{api_asset_id}/revisions)
 	ListRevisions(ctx context.Context, request ListRevisionsRequestObject) (ListRevisionsResponseObject, error)
-	// ImportRevision Import an OpenAPI source bundle as a draft revision
+	// ImportRevision Import a contract source bundle as a draft revision
 	// (POST /v1/products/{product_id}/assets/{api_asset_id}/revisions)
 	ImportRevision(ctx context.Context, request ImportRevisionRequestObject) (ImportRevisionResponseObject, error)
 	// GetRevision Read one immutable draft revision's metadata

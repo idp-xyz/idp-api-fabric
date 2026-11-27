@@ -92,7 +92,7 @@ func showRelease(release domain.Release) ContractRelease {
 		RevisionID: release.RevisionID, ReviewID: optionalString(release.ReviewID), CheckRunID: release.Evidence.CheckRunID,
 		PolicySnapshotID: release.Evidence.PolicySnapshotID, PolicyDigest: release.Evidence.PolicyDigest,
 		Waivers: make([]ReleaseWaiver, 0, len(release.Waivers)), RefClosureDigest: release.InputDigest,
-		ArtifactDigest: release.ArtifactDigest, ArtifactFormat: domain.ArtifactFormat, Version: release.Version, Status: "READY",
+		ArtifactDigest: release.ArtifactDigest, ArtifactFormat: ContractReleaseArtifactFormat(domain.ArtifactFormatOf(release.Specification)), Version: release.Version, Status: "READY",
 		PreparedAt: release.PreparedAt, PreparedBy: Principal(release.PreparedBy),
 	}
 	for _, waiver := range release.Waivers {

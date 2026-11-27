@@ -30,7 +30,7 @@ func TestConcurrentRegistrationReusesContentAndKeepsTheOriginalBytes(t *testing.
 	content := "openapi: 3.1.2\r\ninfo: {title: Shipments, version: v1}\r\n"
 	capture := func(bytes string) domain.SourceSnapshot {
 		t.Helper()
-		snapshot, err := domain.CaptureSource("openapi.yaml", "3.1.2", []domain.SourceFile{
+		snapshot, err := domain.CaptureSource("openapi.yaml", domain.OpenAPI, "3.1.2", []domain.SourceFile{
 			{Path: "openapi.yaml", Content: bytes},
 		})
 		if err != nil {
@@ -143,7 +143,7 @@ func TestARevisionSaysWhoRecordedItWhoeverSubmitsItsContentAgain(t *testing.T) {
 	asset := domain.AssetRef{ProductID: ids.NewUUID(), WorkspaceID: ids.NewUUID(), AssetID: ids.NewUUID()}
 	author := domain.Principal{Issuer: "https://issuer.example", Subject: "author"}
 	coauthor := domain.Principal{Issuer: "https://other-issuer.example", Subject: "coauthor"}
-	source, err := domain.CaptureSource("openapi.yaml", "3.1.2", []domain.SourceFile{
+	source, err := domain.CaptureSource("openapi.yaml", domain.OpenAPI, "3.1.2", []domain.SourceFile{
 		{Path: "openapi.yaml", Content: "openapi: 3.1.2\ninfo: {title: Shipments, version: v1}\n"},
 	})
 	if err != nil {
@@ -212,7 +212,7 @@ func TestASourceIsRecordedOncePerOriginAndACommitWithOneClosure(t *testing.T) {
 	const content = "openapi: 3.1.2\ninfo: {title: Shipments, version: v1}\n"
 	capture := func(entrypoint, bytes string) domain.SourceSnapshot {
 		t.Helper()
-		snapshot, err := domain.CaptureSource(entrypoint, "3.1.2", []domain.SourceFile{{Path: entrypoint, Content: bytes}})
+		snapshot, err := domain.CaptureSource(entrypoint, domain.OpenAPI, "3.1.2", []domain.SourceFile{{Path: entrypoint, Content: bytes}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -365,7 +365,7 @@ func TestConcurrentDeclarationsOfOneCommitRecordOneClosure(t *testing.T) {
 	const writers = 6
 	results := make(chan error, writers)
 	for writer := range writers {
-		source, err := domain.CaptureSource("openapi.yaml", "3.1.2", []domain.SourceFile{{
+		source, err := domain.CaptureSource("openapi.yaml", domain.OpenAPI, "3.1.2", []domain.SourceFile{{
 			Path: "openapi.yaml", Content: "openapi: 3.1.2\ninfo: {title: Shipments, version: v" + string(rune('1'+writer)) + "}\n",
 		}})
 		if err != nil {

@@ -61,6 +61,8 @@ import (
 	checkoutbox "go.idp.xyz/idp-api-fabric/internal/policyreview/adapters/outbox"
 	checkdb "go.idp.xyz/idp-api-fabric/internal/policyreview/adapters/postgres"
 	checks "go.idp.xyz/idp-api-fabric/internal/policyreview/application"
+	checkdomain "go.idp.xyz/idp-api-fabric/internal/policyreview/domain"
+	checkports "go.idp.xyz/idp-api-fabric/internal/policyreview/ports"
 	governanceoutbox "go.idp.xyz/idp-api-fabric/internal/productgovernance/adapters/outbox"
 	governancedb "go.idp.xyz/idp-api-fabric/internal/productgovernance/adapters/postgres"
 	"go.idp.xyz/idp-api-fabric/internal/productgovernance/adapters/static"
@@ -326,12 +328,16 @@ func compose(database *db.Database, verifier httptransport.TokenVerifier, config
 		Transactions: transactions,
 		Revisions:    checkedRevisions,
 		Checks:       checkRuns,
-		Evaluator:    checkopenapi.Evaluator{},
-		Comparator:   checkopenapi.Comparator{},
-		Audit:        audit.recordCheck,
-		Events:       checkEvents,
-		Clock:        clock,
-		Identifiers:  identifiers,
+		Evaluators: map[checkdomain.Specification]checkports.Evaluator{
+			checkdomain.OpenAPI: checkopenapi.Evaluator{}, checkdomain.AsyncAPI: checkopenapi.EventEvaluator{},
+		},
+		Comparators: map[checkdomain.Specification]checkports.Comparator{
+			checkdomain.OpenAPI: checkopenapi.Comparator{}, checkdomain.AsyncAPI: checkopenapi.EventComparator{},
+		},
+		Audit:       audit.recordCheck,
+		Events:      checkEvents,
+		Clock:       clock,
+		Identifiers: identifiers,
 	})
 	if err != nil {
 		return nil, err

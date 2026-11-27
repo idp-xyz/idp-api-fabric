@@ -24,7 +24,7 @@ func TestTheSourceOfARevisionIsReadBackAsItWasRecorded(t *testing.T) {
 		{Path: "api/openapi.yaml", Content: "openapi: 3.1.2\n"},
 		{Path: "schemas/Address.json", Content: `{"type":"object"}`},
 	}
-	snapshot, err := domain.CaptureSource("api/openapi.yaml", "3.1.2", files)
+	snapshot, err := domain.CaptureSource("api/openapi.yaml", domain.OpenAPI, "3.1.2", files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestTheSourceOfARevisionIsReadBackAsItWasRecorded(t *testing.T) {
 func TestStoredFilesThatAreNotTheRecordedOnesAreNotTheSource(t *testing.T) {
 	entrypoint := domain.SourceFile{Path: "openapi.yaml", Content: "openapi: 3.1.2\ninfo: {title: Shipments, version: v1}\n"}
 	schema := domain.SourceFile{Path: "schemas/shipment.yaml", Content: "type: object\n"}
-	snapshot, err := domain.CaptureSource(entrypoint.Path, "3.1.2", []domain.SourceFile{entrypoint, schema})
+	snapshot, err := domain.CaptureSource(entrypoint.Path, domain.OpenAPI, "3.1.2", []domain.SourceFile{entrypoint, schema})
 	if err != nil {
 		t.Fatal(err)
 	}

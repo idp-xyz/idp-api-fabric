@@ -34,7 +34,7 @@ func (f *statusFixture) release(revision domain.Revision, version string, at tim
 		f.t.Fatal(err)
 	}
 	return domain.Release{
-		ID: ids.NewUUID(), Asset: f.asset, RevisionID: revision.ID,
+		ID: ids.NewUUID(), Asset: f.asset, RevisionID: revision.ID, Specification: revision.Specification,
 		Evidence: domain.CheckEvidence{
 			CheckRunID: ids.NewUUID(), PolicySnapshotID: ids.NewUUID(), PolicyDigest: "sha256:" + strings.Repeat("a", 64),
 		},

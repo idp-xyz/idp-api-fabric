@@ -108,7 +108,7 @@ func (d *releaseDouble) Prepared(context.Context, domain.Release, string) error 
 func releases(t *testing.T, status string) (*application.Releases, *releaseDouble) {
 	t.Helper()
 	files := []domain.SourceFile{{Path: "openapi.yaml", Content: contract}}
-	source, err := domain.CaptureSource("openapi.yaml", "3.1.2", files)
+	source, err := domain.CaptureSource("openapi.yaml", domain.OpenAPI, "3.1.2", files)
 	if err != nil {
 		t.Fatal(err)
 	}

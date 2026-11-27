@@ -49,7 +49,8 @@ func (r checkRevisions) Source(ctx context.Context, target checkports.Target) (c
 		return checkdomain.RevisionRef{}, checkdomain.Source{}, err
 	}
 	source := checkdomain.Source{
-		Entrypoint: recorded.Revision.Entrypoint, Digest: recorded.Revision.RefClosureDigest,
+		Specification: checkdomain.Specification(recorded.Revision.Specification),
+		Entrypoint:    recorded.Revision.Entrypoint, Digest: recorded.Revision.RefClosureDigest,
 		Files: make([]checkdomain.SourceFile, 0, len(recorded.Files)),
 	}
 	source.Closure = verifyReferenceClosure(source.Entrypoint, source.Digest, recorded.Files)

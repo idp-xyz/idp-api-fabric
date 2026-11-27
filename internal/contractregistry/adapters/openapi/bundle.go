@@ -16,8 +16,10 @@ import (
 	"go.idp.xyz/idp-api-fabric/internal/contractregistry/domain"
 )
 
+// The one version of each specification a revision is recorded in.
 const (
-	specVersion = "3.1.2"
+	specVersion      = "3.1.2"
+	eventSpecVersion = "3.1.0"
 
 	maxNodes          = 8192
 	maxNodeDepth      = 64
@@ -31,8 +33,10 @@ var (
 	unescapePointer      = strings.NewReplacer("~1", "/", "~0", "~")
 )
 
-// Capture checks the OpenAPI envelope and resolves JSON Pointer references
-// within the uploaded files. No filesystem or network loader is involved.
+// Capture checks the envelope of the entrypoint, OpenAPI or AsyncAPI, and
+// resolves JSON Pointer references within the uploaded files. No filesystem
+// or network loader is involved. Both are read the same way: their
+// references are Reference Objects with a relative file path and a pointer.
 func Capture(entrypoint string, files []domain.SourceFile) (domain.SourceSnapshot, error) {
 	if !domain.ValidSourcePath(entrypoint) || len(files) < 1 || len(files) > domain.MaxSourceFiles {
 		return domain.SourceSnapshot{}, invalid("the entrypoint or number of files is invalid")
@@ -66,16 +70,23 @@ func Capture(entrypoint string, files []domain.SourceFile) (domain.SourceSnapsho
 		bundle.files[file.Path] = file
 	}
 	root := bundle.mapping[bundle.documents[entrypoint]]
+	specification, supported := domain.OpenAPI, specVersion
 	version := root["openapi"]
-	if version == nil || version.ShortTag() != "!!str" || version.Kind != yaml.ScalarNode {
-		return domain.SourceSnapshot{}, invalid("the entrypoint does not declare an OpenAPI version")
+	if event := root["asyncapi"]; event != nil {
+		if version != nil {
+			return domain.SourceSnapshot{}, invalid("the entrypoint declares both an OpenAPI and an AsyncAPI version")
+		}
+		specification, supported, version = domain.AsyncAPI, eventSpecVersion, event
 	}
-	if version.Value != specVersion {
+	if version == nil || version.ShortTag() != "!!str" || version.Kind != yaml.ScalarNode {
+		return domain.SourceSnapshot{}, invalid("the entrypoint declares no OpenAPI or AsyncAPI version")
+	}
+	if version.Value != supported {
 		return domain.SourceSnapshot{}, domain.ErrUnsupportedSpecVersion
 	}
 	info := bundle.mapping[root["info"]]
 	if !nonemptyString(info["title"]) || !nonemptyString(info["version"]) {
-		return domain.SourceSnapshot{}, invalid("the entrypoint needs an OpenAPI title and API version")
+		return domain.SourceSnapshot{}, invalid("the entrypoint needs a title and an API version")
 	}
 
 	// Include every file named by a reference, checking each captured file
@@ -88,7 +99,7 @@ func Capture(entrypoint string, files []domain.SourceFile) (domain.SourceSnapsho
 		}
 		closure = append(closure, bundle.files[name])
 	}
-	return domain.CaptureSource(entrypoint, specVersion, closure)
+	return domain.CaptureSource(entrypoint, specification, supported, closure)
 }
 
 func readDocument(file domain.SourceFile) (*yaml.Node, error) {

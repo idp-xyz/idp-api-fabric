@@ -53,6 +53,7 @@ type Revision struct {
 	// Origin is declared for a GIT source and zero for an UPLOAD.
 	Origin           GitOrigin
 	Entrypoint       string
+	Specification    Specification
 	SpecVersion      string
 	SourceDigest     string
 	RefClosureDigest string

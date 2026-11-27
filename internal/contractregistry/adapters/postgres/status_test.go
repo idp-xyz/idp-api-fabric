@@ -44,7 +44,7 @@ func (f *statusFixture) record() domain.Revision {
 	f.t.Helper()
 	f.count++
 	content := "openapi: 3.1.2\ninfo: {title: Shipments, version: v" + string(rune('0'+f.count)) + "}\n"
-	snapshot, err := domain.CaptureSource("openapi.yaml", "3.1.2", []domain.SourceFile{{Path: "openapi.yaml", Content: content}})
+	snapshot, err := domain.CaptureSource("openapi.yaml", domain.OpenAPI, "3.1.2", []domain.SourceFile{{Path: "openapi.yaml", Content: content}})
 	if err != nil {
 		f.t.Fatal(err)
 	}

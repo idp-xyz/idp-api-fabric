@@ -110,7 +110,9 @@ func (s silent) Completed(context.Context, domain.CheckRun, string) error {
 func (w *world) checking(t *testing.T, evaluator, comparator domain.Tool) *application.Checks {
 	t.Helper()
 	checks, err := application.NewChecks(application.Dependencies{
-		Transactions: w, Revisions: w, Checks: w, Evaluator: toolOf(evaluator), Comparator: toolOf(comparator),
+		Transactions: w, Revisions: w, Checks: w,
+		Evaluators:  map[domain.Specification]ports.Evaluator{domain.OpenAPI: toolOf(evaluator)},
+		Comparators: map[domain.Specification]ports.Comparator{domain.OpenAPI: toolOf(comparator)},
 		Audit: func(context.Context, ports.AuditEntry) error {
 			t.Error("verifying the check of a release left an audit record")
 			return nil

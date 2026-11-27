@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/santhosh-tekuri/jsonschema/v6"
+
 	"go.idp.xyz/idp-api-fabric/internal/policyreview/domain"
 )
 
@@ -62,9 +64,12 @@ func comparableDocument(source domain.Source) object {
 	if !parsed.readable() || len(parsed.specVersion().findings) > 0 {
 		return nil
 	}
-	root := parsed.entrypoint()
+	return validatedDocument(parsed.entrypoint(), officialSchema)
+}
+
+func validatedDocument(root *node, loadSchema func() (*jsonschema.Schema, error)) object {
 	document, err := jsonValue(root)
-	schema, schemaErr := officialSchema()
+	schema, schemaErr := loadSchema()
 	if err != nil || schemaErr != nil || schema.Validate(document) != nil {
 		return nil
 	}

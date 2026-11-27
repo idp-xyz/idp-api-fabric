@@ -22,8 +22,7 @@ import (
 
 // The contract states what a release is in the words of the model, so what
 // the validator lets through is what the model accepts: the form of a
-// version, where it is asked and where it is answered, the one format an
-// artifact has and the one status a release has.
+// version, the supported artifact formats and the status of a release.
 func TestTheContractStatesAReleaseAsTheModelDoes(t *testing.T) {
 	contract, err := loadContract()
 	if err != nil {
@@ -47,10 +46,13 @@ func TestTheContractStatesAReleaseAsTheModelDoes(t *testing.T) {
 		t.Error("a preparation still names a review: a release is prepared on a check")
 	}
 	release := schemas["ContractRelease"].Value
-	for member, want := range map[string]string{"artifact_format": registrydomain.ArtifactFormat, "status": "READY"} {
+	for member, want := range map[string][]any{
+		"artifact_format": {registrydomain.ArtifactFormat, registrydomain.EventArtifactFormat},
+		"status":          {"READY"},
+	} {
 		property := release.Properties[member]
-		if property == nil || !reflect.DeepEqual(property.Value.Enum, []any{want}) {
-			t.Errorf("the contract does not state the %s of a release as %q and nothing else", member, want)
+		if property == nil || !reflect.DeepEqual(property.Value.Enum, want) {
+			t.Errorf("the contract does not declare %s with the model values %v", member, want)
 		}
 	}
 	// A release always says what it waived, and names a review only when it

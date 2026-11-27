@@ -7,7 +7,7 @@
 
 ## 工程实现同步（2026-11-19）
 
-> 下面按版本记录实现。0.17.0–0.36.0 各段写到的评审、批准和 `approval_problem` 已由 0.37.0（[CR-0001](decisions/CR-0001.md)）取消，现状见本节 0.37.0 的两段；0.38.0（[CR-0002](decisions/CR-0002.md)）见本节最后一段。
+> 下面按版本记录实现。0.17.0–0.36.0 各段写到的评审、批准和 `approval_problem` 已由 0.37.0（[CR-0001](decisions/CR-0001.md)）取消。后续变更见各版本说明。
 
 PR #6（产品负责人管理）和 #7（四类分页列表）已合入 main。对应领域与物理模型见 F03 §5.5，分页协议见 F04 §3.1.1，权限规则见 F05 §6.1；授权矩阵新增 AC-36…43，仍保留设计候选状态。可复现的本地 HTTP 负载实验及原始数据见 [列表压测记录](tests/performance/README.md)。该实现记录不改变 F01–F08 正式验收和具名批准的状态。
 
@@ -72,6 +72,8 @@ PR #10 和 #11 的实现详见 [F03 §5.6](docs/F03_Domain_and_Data_Model.md#56-
 升级执行 `fabric-migrate -apply`，不需要重新授权：应用 `contractregistry/005`、`006` 和 `policyreview/007`，仍在评审中的修订改为 `WITHDRAWN`，开着的评审记为撤回，理由引用 CR-0001，已有结论不变。迁移只处理执行时还开着的评审，旧进程应尽快换完。此后的构建（契约不变）收回应用角色对四张评审表的 `INSERT` 和 `contract_revision` 的 `UPDATE`：`fabric-migrate -apply -grant-to <application_role>` 会撤销这五项，所以执行前先停掉所有 0.36.x 及更早的进程，否则它们写评审会被拒绝，重启时也拒绝启动；0.37.0 的进程不受影响。门户随 PR #75 改为“导入 → 检查 → 准备 Release → 发布”。实现详见 [F03 §5.15](docs/F03_Domain_and_Data_Model.md#515-release-依据检查cr-000103700)、[F04 §11.6](docs/F04_API_Contract_Governance.md#116-已实现的-release-与发布接口) 和 [F05 §6.14](docs/F05_Security_and_Multitenancy.md#614-取消评审后的权限cr-000103700)。授权矩阵中 AC-03、AC-35、AC-50、AC-51 退役，编号保留。
 
 管理 API 0.38.0 按 [CR-0002](decisions/CR-0002.md)（内部使用从简）让按编号下载看这个 Release 的阻断：产品的任一发布目标上有范围是这个 Release、而且没有解除的访问阻断时，`getContractReleaseArtifact` 答 409 `RELEASE_ACCESS_BLOCKED`，解除以后恢复；目标和资产的阻断、产品暂停不挡，来源和元数据照常读。拒绝记 DENY-03、`release.download`。读阻断之前先对产品的全部发布目标加共享锁，放置和解除阻断与下载因此有确定的先后。没有迁移，不需要重新授权，操作数仍是 57；全部进程换完以后才对每次下载生效。CR-0002 另有三项只改文档：审计员看到行动人的原值（AC-29 去掉 `fields.minimized`），平台管理员留在部署配置（每个副本同一份设置，改动走部署自身的变更控制，Fabric 不审计），暂不建 `AssetSearchIndex`。实现详见 [F05 §6.15](docs/F05_Security_and_Multitenancy.md#615-内部使用从简cr-000203800)、[F04 §11.8](docs/F04_API_Contract_Governance.md#118-已实现的查询接口) 和 [F03 §5.12](docs/F03_Domain_and_Data_Model.md#512-已实现的查询与追溯)。
+
+管理 API 0.39.0 实现 V1 事件契约的基础流程。事件资产可导入 AsyncAPI 3.1.0、运行离线检查、准备 Release 并通过授权发布槽位读取制品。事件规范和版本可在修订详情查看。先执行 `fabric-migrate -apply` 应用 `contractregistry/007_revision_specification`，升级所有 API 副本及严格校验响应的客户端后再导入事件契约。 [契约与升级说明](docs/F04_API_Contract_Governance.md#1111-asyncapi-事件契约0390)
 
 ## 阅读入口
 

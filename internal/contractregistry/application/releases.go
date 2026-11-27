@@ -100,7 +100,8 @@ func (r *Releases) Prepare(ctx context.Context, command PrepareRelease) (Prepara
 			return err
 		}
 		release := domain.Release{
-			ID: r.deps.Identifiers.NewID(), Asset: asset, RevisionID: revision.ID, Evidence: evidence, Waivers: waivers,
+			ID: r.deps.Identifiers.NewID(), Asset: asset, RevisionID: revision.ID, Specification: revision.Specification,
+			Evidence: evidence, Waivers: waivers,
 			Version: command.Version, InputDigest: revision.RefClosureDigest, ArtifactDigest: digest,
 			PreparedAt: r.deps.Clock.Now().UTC().Truncate(time.Microsecond), PreparedBy: command.Caller,
 		}

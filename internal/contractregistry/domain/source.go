@@ -23,6 +23,15 @@ var (
 	sourcePath                = regexp.MustCompile(`^[a-zA-Z0-9._-]+(/[a-zA-Z0-9._-]+)*$`)
 )
 
+// Specification identifies the language of a contract. An HTTP asset uses
+// OpenAPI and an event asset uses AsyncAPI.
+type Specification string
+
+const (
+	OpenAPI  Specification = "OPENAPI"
+	AsyncAPI Specification = "ASYNCAPI"
+)
+
 type SourceFile struct {
 	Path    string
 	Content string
@@ -46,6 +55,7 @@ func ValidSourcePath(name string) bool {
 // references. The sorted manifest is the input to RefClosureDigest.
 type SourceSnapshot struct {
 	Entrypoint       string
+	Specification    Specification
 	SpecVersion      string
 	SourceDigest     string
 	RefClosureDigest string
@@ -64,12 +74,14 @@ type sourceManifest struct {
 	Files      []manifestFile `json:"files"`
 }
 
-// CaptureSource records a resolved file set and its content digests.
-func CaptureSource(entrypoint, version string, files []SourceFile) (SourceSnapshot, error) {
+// CaptureSource records a resolved file set and its content digests. The
+// specification and its version are what the entrypoint declares; neither
+// is part of a digest.
+func CaptureSource(entrypoint string, specification Specification, version string, files []SourceFile) (SourceSnapshot, error) {
 	ordered := slices.Clone(files)
 	slices.SortFunc(ordered, func(a, b SourceFile) int { return strings.Compare(a.Path, b.Path) })
 	manifest := sourceManifest{Entrypoint: entrypoint, Files: make([]manifestFile, 0, len(ordered))}
-	snapshot := SourceSnapshot{Entrypoint: entrypoint, SpecVersion: version, files: ordered}
+	snapshot := SourceSnapshot{Entrypoint: entrypoint, Specification: specification, SpecVersion: version, files: ordered}
 	for i, file := range ordered {
 		if i > 0 && ordered[i-1].Path == file.Path {
 			return SourceSnapshot{}, ErrInvalidSource
@@ -118,7 +130,7 @@ type RecordedFile struct {
 // storage that lost or altered a file from storage that kept it; it does not
 // hold against someone who rewrites the files and the digests together.
 func RecordedSource(revision Revision, files []SourceFile) ([]RecordedFile, error) {
-	stored, err := CaptureSource(revision.Entrypoint, revision.SpecVersion, files)
+	stored, err := CaptureSource(revision.Entrypoint, revision.Specification, revision.SpecVersion, files)
 	if err != nil || stored.SourceDigest != revision.SourceDigest || stored.RefClosureDigest != revision.RefClosureDigest {
 		return nil, ErrSourceDamaged
 	}

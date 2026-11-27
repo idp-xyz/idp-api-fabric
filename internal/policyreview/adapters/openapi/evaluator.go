@@ -1,7 +1,7 @@
 // Package openapi evaluates the rules of the rule registry that can be
-// judged from the files of an OpenAPI contract alone: the automated subset
-// of F04 §7.1. It reads the files it is handed and nothing else: no
-// reference makes it open a file or an address.
+// judged from the files of a contract alone: the automated subset of F04
+// §7.1. It judges OpenAPI and AsyncAPI contracts from the supplied files.
+// References are resolved within the submitted bundle.
 //
 // Checks cover the official document schema and the built-in rules.
 // A check records rules without an evaluator as not run.
@@ -40,10 +40,12 @@ func (Evaluator) Tool() domain.Tool {
 // reads the documents: it is undecided on a source whose files are not all
 // well-formed, since a rule about what a document says cannot be judged on
 // one that says nothing clear. The others read the bytes.
-var evaluators = map[string]struct {
+type evaluatorTable map[string]struct {
 	judge func(*bundle) judgment
 	reads bool
-}{
+}
+
+var evaluators = evaluatorTable{
 	"supported_spec_version":  {(*bundle).specVersion, true},
 	"info_required":           {(*bundle).infoRequired, true},
 	"operation_id_required":   {(*bundle).operationIDRequired, true},
@@ -61,6 +63,10 @@ var evaluators = map[string]struct {
 // Evaluate judges the source by the rules whose evaluator is one of
 // evaluators, and says nothing of the others.
 func (Evaluator) Evaluate(source domain.Source, rules []domain.Rule) []domain.Observation {
+	return evaluate(evaluators, source, rules)
+}
+
+func evaluate(evaluators evaluatorTable, source domain.Source, rules []domain.Rule) []domain.Observation {
 	read := read(source)
 	var observations []domain.Observation
 	for _, rule := range rules {

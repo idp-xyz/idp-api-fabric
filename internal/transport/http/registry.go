@@ -149,7 +149,8 @@ func revisionOf(revision domain.Revision) (ContractRevision, error) {
 	body := ContractRevision{
 		RevisionID: revision.ID, SourceSnapshotID: revision.SourceSnapshotID, ProductID: revision.Asset.ProductID,
 		APIAssetID: revision.Asset.AssetID, RevisionSequence: revision.Sequence, Status: ContractRevisionStatus(revision.Status),
-		SourceKind: ContractRevisionSourceKind(revision.SourceKind), Entrypoint: revision.Entrypoint, SpecVersion: ContractRevisionSpecVersion(revision.SpecVersion),
+		SourceKind: ContractRevisionSourceKind(revision.SourceKind), Entrypoint: revision.Entrypoint,
+		Specification: ContractRevisionSpecification(revision.Specification), SpecVersion: ContractRevisionSpecVersion(revision.SpecVersion),
 		SourceDigest: revision.SourceDigest, RefClosureDigest: revision.RefClosureDigest, CreatedAt: revision.CreatedAt,
 	}
 	if origin := revision.Origin; origin.Declared() {
@@ -173,8 +174,6 @@ func registryProblem(err error) (Problem, bool) {
 		return problem(http.StatusBadRequest, CodeRequestInvalid, ""), true
 	case errors.Is(err, registry.ErrProductSuspended):
 		return problem(http.StatusConflict, CodeProductNotActive, "The product is suspended and takes no new work."), true
-	case errors.Is(err, registry.ErrAssetKind):
-		return problem(http.StatusConflict, "API_ASSET_KIND_UNSUPPORTED", "The API asset does not accept OpenAPI revisions."), true
 	case errors.Is(err, ports.ErrOriginConflict):
 		return problem(http.StatusConflict, "GIT_ORIGIN_CONFLICT",
 			"This entrypoint of the commit is already recorded for the asset with other files."), true
@@ -184,7 +183,10 @@ func registryProblem(err error) (Problem, bool) {
 		// reached it another way.
 		return problem(http.StatusUnprocessableEntity, CodeRequestUnprocessable, ""), true
 	case errors.Is(err, domain.ErrUnsupportedSpecVersion):
-		return problem(http.StatusUnprocessableEntity, "UNSUPPORTED_SPEC_VERSION", "The entrypoint must be OpenAPI 3.1.2."), true
+		return problem(http.StatusUnprocessableEntity, "UNSUPPORTED_SPEC_VERSION", "The entrypoint must be OpenAPI 3.1.2 or AsyncAPI 3.1.0."), true
+	case errors.Is(err, registry.ErrSpecificationMismatch):
+		return problem(http.StatusUnprocessableEntity, "UNSUPPORTED_SPEC_VERSION",
+			"An HTTP asset takes an OpenAPI 3.1.2 contract and an event asset an AsyncAPI 3.1.0 one."), true
 	case errors.Is(err, domain.ErrInvalidSource):
 		return problem(http.StatusUnprocessableEntity, "CONTRACT_SOURCE_INVALID", "The source bundle violates the import requirements."), true
 	default:
