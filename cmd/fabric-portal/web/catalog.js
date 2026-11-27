@@ -4,6 +4,7 @@ import {
 } from "./workbench.js";
 import { checkDetail } from "./checks.js";
 import { compareSection } from "./compare.js";
+import { assetForm, importForm } from "./imports.js";
 import { publicationPanel } from "./publication.js";
 import { releaseForm } from "./releases.js";
 
@@ -73,12 +74,14 @@ function releaseTable(items) {
 // catalogPanel lists the API assets of one workspace with the filters the
 // server applies before paging, and opens an asset in their place: its
 // revisions, a revision's checks, releases and past reviews, and where the
-// asset is published. There an author runs checks and a publisher prepares
-// releases and publishes them. onDetail hears the name of the open asset,
+// asset is published. A maintainer registers assets; there an author imports
+// revisions and runs checks, and a publisher prepares releases and publishes
+// them. onDetail hears the name of the open asset,
 // or nothing once the list is back.
 export function catalogPanel({ product, productName, workspace, roles, signal, onDetail = () => {} }) {
   const author = roles.includes("internal_author");
   const publisher = roles.includes("internal_publisher");
+  const maintainer = roles.includes("workspace_maintainer");
   const element = node("div", "", "catalog");
 
   const query = node("input");
@@ -130,11 +133,26 @@ export function catalogPanel({ product, productName, workspace, roles, signal, o
   wrap.append(assets);
   const more = button("加载更多", "secondary more");
   more.hidden = true;
-  const listCard = card("API 资产", { level: "h2", iconName: "asset", className: "asset-list" });
+  const register = maintainer ? button("登记 API 资产", "secondary", "asset") : null;
+  const listCard = card("API 资产", { level: "h2", iconName: "asset", className: "asset-list", actions: register ? [register] : [] });
   const listHeading = listCard.querySelector(".card-title");
   listHeading.id = "catalog-title";
   listHeading.tabIndex = -1;
   listCard.setAttribute("aria-labelledby", listHeading.id);
+  if (register) {
+    const box = node("div", "", "tool-box");
+    box.id = "asset-register";
+    box.hidden = true;
+    box.append(assetForm({ product, workspace, signal, onRegistered: registered }));
+    register.setAttribute("aria-controls", box.id);
+    register.setAttribute("aria-expanded", "false");
+    register.onclick = () => {
+      box.hidden = !box.hidden;
+      register.setAttribute("aria-expanded", String(!box.hidden));
+      if (!box.hidden) box.querySelector("input").focus();
+    };
+    listCard.append(box);
+  }
   listCard.append(wrap, status, more);
   const listView = node("div", "", "catalog-list");
   listView.append(form, listCard);
@@ -229,21 +247,47 @@ export function catalogPanel({ product, productName, workspace, roles, signal, o
     return row;
   }
 
-  // releasedFrom brings an asset's row up to date with a release just
-  // prepared, as listAssets would answer now: the release is the latest, and
-  // the latest revision waits for none once it is prepared from that revision.
-  function releasedFrom(asset, release) {
+  // refresh brings an asset's row up to date with what was just done to it,
+  // as listAssets would answer now.
+  function refresh(asset, change) {
     const overview = asset.overview;
     const row = rows.querySelector("button[data-asset=\"" + CSS.escape(asset.api_asset_id) + "\"]")?.closest("tr");
     if (!overview || !row) return;
-    asset.overview = {
-      ...overview,
-      latest_release: { release_id: release.release_id, revision_id: release.revision_id, version: release.version, prepared_at: release.prepared_at },
-      release_pending: overview.release_pending && overview.latest_revision?.revision_id !== release.revision_id,
-    };
+    asset.overview = change(overview);
     const replacement = assetRow(asset);
     replacement.querySelector("button[data-asset]").setAttribute("aria-pressed", String(opened === asset.api_asset_id));
     row.replaceWith(replacement);
+  }
+
+  // A release just prepared is the latest, and the latest revision waits for
+  // none once it is prepared from that revision.
+  function releasedFrom(asset, release) {
+    refresh(asset, overview => ({
+      ...overview,
+      latest_release: { release_id: release.release_id, revision_id: release.revision_id, version: release.version, prepared_at: release.prepared_at },
+      release_pending: overview.release_pending && overview.latest_revision?.revision_id !== release.revision_id,
+    }));
+  }
+
+  // A revision just imported is the latest, and has no check yet.
+  function importedTo(asset, revision) {
+    refresh(asset, ({ latest_check: _, ...overview }) => ({
+      ...overview,
+      latest_revision: {
+        revision_id: revision.revision_id, revision_sequence: revision.revision_sequence, status: revision.status, created_at: revision.created_at,
+      },
+      release_pending: false,
+    }));
+  }
+
+  // An asset just registered is opened, and the list read again to hold it.
+  async function registered(asset) {
+    const box = element.querySelector("#asset-register");
+    box.hidden = true;
+    register.setAttribute("aria-expanded", "false");
+    await load(true);
+    if (signal.aborted) return;
+    showAsset(asset, { note: "已登记 " + asset.display_name + "。" + (author && asset.api_kind === "HTTP" ? "可以在下方导入第一个修订。" : "") });
   }
 
   // closeAsset leaves the asset and brings the list back as it was.
@@ -271,7 +315,9 @@ export function catalogPanel({ product, productName, workspace, roles, signal, o
     return block;
   }
 
-  async function showAsset(asset) {
+  // showAsset opens an asset on its newest revision, or on the one named. A
+  // note says what was just done to it.
+  async function showAsset(asset, { revisionId = "", note = "" } = {}) {
     detailRequest?.abort();
     const controller = new AbortController();
     detailRequest = controller;
@@ -333,6 +379,35 @@ export function catalogPanel({ product, productName, workspace, roles, signal, o
       }));
     });
     if (ordered.length) revisionSection.firstChild.append(node("span", "从新到旧 · 选择修订查看检查和 Release", "hint"));
+    if (author && asset.api_kind === "HTTP" && !revisions.error) {
+      const box = node("div", "", "tool-box");
+      box.id = "revision-import";
+      box.hidden = ordered.length > 0;
+      box.append(importForm({
+        path: base + "/revisions", signal: current,
+        onImported: (revision, created) => {
+          if (created) importedTo(asset, revision);
+          showAsset(asset, {
+            revisionId: revision.revision_id,
+            note: created ? "已导入为修订 #" + revision.revision_sequence + "。" : "这组文件已经导入过，即修订 #" + revision.revision_sequence + "。",
+          });
+        },
+      }));
+      const toggle = button("导入修订", "secondary small", "publish");
+      toggle.setAttribute("aria-controls", box.id);
+      toggle.setAttribute("aria-expanded", String(!box.hidden));
+      toggle.onclick = () => {
+        box.hidden = !box.hidden;
+        toggle.setAttribute("aria-expanded", String(!box.hidden));
+      };
+      revisionSection.firstChild.append(toggle);
+      revisionSection.firstChild.after(box);
+    }
+    if (note) {
+      const said = node("p", note, "notice ok");
+      said.setAttribute("role", "status");
+      revisionSection.firstChild.after(said);
+    }
     const publication = publicationPanel({
       product, productName, asset, releases: releases.value, publisher, signal: current,
       describe: item => item.version + (sequenceOf(item.revision_id) ? " · 修订 #" + sequenceOf(item.revision_id) : ""),
@@ -342,7 +417,7 @@ export function catalogPanel({ product, productName, workspace, roles, signal, o
     // A caller may read the releases of an asset without its revisions.
     if (revisions.error && releaseList.length) detail.append(section("Release", "release", releases, releaseTable));
     detail.append(publication.element);
-    if (ordered.length) await showRevision(ordered[0]);
+    if (ordered.length) await showRevision(ordered.find(item => item.revision_id === revisionId) || ordered[0]);
 
     async function showRevision(revision) {
       revisionRequest?.abort();
